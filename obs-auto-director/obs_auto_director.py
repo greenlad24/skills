@@ -43,7 +43,7 @@ try:  # Present when running inside OBS; absent under pytest / demo.
 except ImportError:  # pragma: no cover - exercised only outside OBS
     obs = None
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 NEG_INF_DB = -90.0
 
@@ -68,19 +68,28 @@ class PacingEngine:
       (e.g. vocals just came in — that cut must not wait)
     """
 
-    def __init__(self, min_shot_s: float = 2.5):
+    def __init__(self, min_shot_s: float = 2.5, override_hold_s: float = 8.0):
         self.min_shot_s = min_shot_s
+        self.override_hold_s = override_hold_s
         self.scene: Optional[str] = None
         self.last_cut_t = -1e9
+        self.external_hold_until = -1e9
 
-    def sync(self, scene: Optional[str]) -> None:
-        """Tell the engine what is actually on program (manual cuts etc.)."""
-        if scene:
+    def sync(self, t: float, scene: Optional[str]) -> None:
+        """Tell the engine what is actually on program. A scene we did not
+        cut to ourselves is a manual override: respect it — restart the
+        shot clock and hold off non-priority cuts for a while instead of
+        stomping the operator's cut on the next tick."""
+        if scene and scene != self.scene:
             self.scene = scene
+            self.last_cut_t = t
+            self.external_hold_until = t + self.override_hold_s
 
     def request(self, t: float, scene: str, reason: str,
                 priority: bool = False) -> Optional[Cut]:
         if not scene or scene == self.scene:
+            return None
+        if not priority and t < self.external_hold_until:
             return None
         if not priority and (t - self.last_cut_t) < self.min_shot_s:
             return None
@@ -110,14 +119,28 @@ class LevelVAD:
     def update(self, t: float, level_db: float) -> bool:
         level_db = max(level_db if level_db == level_db else NEG_INF_DB,
                        NEG_INF_DB)  # NaN/-inf guard
-        hot = level_db >= self.floor_db + self.margin_db
 
-        # Adapt the noise floor using the pre-update floor.
-        if level_db < self.floor_db:
-            self.floor_db += 0.3 * (level_db - self.floor_db)
-        elif not hot:
-            self.floor_db += 0.005 * (level_db - self.floor_db)
-        self.floor_db = min(self.floor_db, -25.0)
+        # Muted / disconnected input is "no signal", not "a very quiet room":
+        # learning a floor from it would poison the detector (floor collapses
+        # to -90, then ordinary room tone reads as hot forever).
+        if level_db <= NEG_INF_DB + 1.0:
+            hot = False
+        else:
+            hot = level_db >= self.floor_db + self.margin_db
+            # Adapt the noise floor using the pre-update floor.
+            if level_db < self.floor_db:
+                self.floor_db += 0.3 * (level_db - self.floor_db)
+            elif not hot:
+                self.floor_db += 0.005 * (level_db - self.floor_db)
+            else:
+                # Bounded recovery so a poisoned (too-low) floor can climb
+                # back even if the signal never drops below it again. The
+                # target keeps 6 dB of headroom under the hot threshold, so
+                # recovery can never turn the current signal not-hot.
+                target = level_db - self.margin_db - 6.0
+                if self.floor_db < target:
+                    self.floor_db += 0.002 * (target - self.floor_db)
+            self.floor_db = min(self.floor_db, -25.0)
 
         if hot:
             if self._hot_since is None:
@@ -130,6 +153,13 @@ class LevelVAD:
             if self.active and (t - self._last_hot_t) >= self.release_s:
                 self.active = False
         return self.active
+
+    def resync(self, t: float) -> None:
+        """Restart timers after a time discontinuity (stall, pause/resume),
+        so the gap is not counted as attack or release time."""
+        self._hot_since = None
+        if self.active:
+            self._last_hot_t = t
 
 
 def apply_crosstalk_gate(talking: List[bool], levels: List[float],
@@ -263,6 +293,12 @@ class LiveDirector:
     def _update_instrumental(self, t: float) -> Optional[Cut]:
         if not self.cfg.instrumental_scenes:
             return None
+        if t < self.pace.external_hold_until:
+            # Operator cut manually: let their shot ride, resume rotation
+            # only after the hold expires.
+            self._next_rotate_t = max(self._next_rotate_t or 0.0,
+                                      self.pace.external_hold_until)
+            return None
         if self._next_rotate_t is None:  # engaged mid-instrumental
             self._next_rotate_t = t
         if t < self._next_rotate_t:
@@ -301,6 +337,8 @@ class PodcastConfig:
     closeup_max_s: float = 25.0       # then relax back out for variety
     emphasis_db: float = 6.0          # sudden loudness => earlier close-up
     emphasis_hold_s: float = 1.0
+    park_after_s: float = 6.0         # dead air: release floor, rest on wide
+    utter_debounce_s: float = 0.3     # a blip this short continues an utterance
     rapid_window_s: float = 10.0      # N floor changes in this window ...
     rapid_cuts: int = 3               # ... sends us to the wide shot
     rapid_calm_s: float = 6.0
@@ -366,14 +404,31 @@ class PodcastDirector:
                levels: Optional[List[float]] = None) -> Optional[Cut]:
         cfg = self.cfg
         if self._last_t is not None:
-            self._dt = max(t - self._last_t, 1e-3)
+            raw_dt = t - self._last_t
+            if raw_dt > 0.5:
+                # Time discontinuity (UI stall, pause/resume): the gap must
+                # not be counted as utterance length or holder silence —
+                # otherwise a fused pre/post-gap backchannel reads as a long
+                # interruption and steals the floor.
+                self._dt = 0.25
+                for st in self.speakers:
+                    if st.talking:
+                        st.utter_start = t
+                if self.holder is not None:
+                    self.speakers[self.holder].last_talk_t = t
+            else:
+                self._dt = max(raw_dt, 1e-3)
         self._last_t = t
 
         # 1. Bookkeeping per speaker.
         for i, st in enumerate(self.speakers):
             talk = talking[i] if i < len(talking) else False
             if talk and not st.talking:
-                st.utter_start = t
+                # Debounced: a sub-utter_debounce_s dropout (detector
+                # flicker) continues the same utterance rather than
+                # restarting the interrupt-commit clock.
+                if (t - st.last_talk_t) >= cfg.utter_debounce_s:
+                    st.utter_start = t
             st.talking = talk
             if talk:
                 st.last_talk_t = t
@@ -416,6 +471,22 @@ class PodcastDirector:
                                      f"{cfg.speakers[c].name} interrupts",
                                      priority=False)
 
+        # 2b. Dead air: nobody talking and the holder silent for a while —
+        # release the floor and rest on the wide (if any) rather than
+        # eventually pushing in on a silent face.
+        if (self.holder is not None
+                and not any(s.talking for s in self.speakers)
+                and (t - self.speakers[self.holder].last_talk_t)
+                >= cfg.park_after_s):
+            self.holder = None
+            self.wide = False
+            self.changes.clear()
+            self._pending = ("", False)
+            if cfg.wide_scene:
+                return self.pace.request(t, cfg.wide_scene,
+                                         "dead air — resting on wide")
+            return None
+
         if self.holder is None:
             return None
         h = self.holder
@@ -452,12 +523,15 @@ class PodcastDirector:
 
             if self.shot == "medium":
                 held = t - self.shot_since
+                # Push-ins require a holder who is actually holding forth —
+                # dead air must not read as a "micro-pause to cut on".
+                recently_active = (t - st.last_talk_t) < 2.0
                 if emphatic:
                     self.shot = "close"
                     self.shot_since = t
                     self._note_transition(
                         f"{sp.name} gets emphatic — push in", False)
-                elif held >= cfg.closeup_after_s and (
+                elif held >= cfg.closeup_after_s and recently_active and (
                         not st.talking  # micro-pause: a natural beat to cut on
                         or held >= cfg.closeup_after_s + cfg.closeup_grace_s):
                     self.shot = "close"
@@ -547,6 +621,7 @@ class _G:
     hotkey_id = None
     missing_scenes: set = set()
     settings = None
+    last_tick_t = None
 
 
 G = _G()
@@ -675,11 +750,15 @@ def _tick() -> None:
     if not G.active or G.director is None:
         return
     t = time.monotonic()
+    if G.last_tick_t is not None and (t - G.last_tick_t) > 0.5:
+        for vad in G.vads:
+            vad.resync(t)  # a UI stall must not count as attack/release time
+    G.last_tick_t = t
     for m in G.meters.values():
         m.ensure_attached(t)
 
     # Keep the pacing engine in sync with reality (manual cuts, transitions).
-    G.director.pace.sync(_current_scene_name())
+    G.director.pace.sync(t, _current_scene_name())
 
     levels = [G.meters[name].level if name in G.meters else NEG_INF_DB
               for name in G.meter_order]

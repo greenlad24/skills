@@ -100,6 +100,27 @@ class TestLiveDirector:
         cuts, _ = run(d, [(5, True), (20, False)])
         assert all(c.scene == "Singer" for _, c in cuts)
 
+    def test_manual_cut_holds_rotation(self):
+        # Verified bug #2: the director used to stomp an operator's manual
+        # cut on the next tick. Now a manual cut rides for override_hold_s.
+        d = make_director(cut_interval_s=6.0)
+        cuts1, _ = run(d, [(7, False)])              # rotation running
+        d.pace.sync(7.0, "Operator Shot")            # manual cut at t=7
+        cuts2, _ = run(d, [(7.5, False)], start_t=7.0)   # to t=14.5
+        early = [t for t, _ in cuts2 if t < 15.0]
+        assert not early, f"rotation must pause during manual hold: {early}"
+        cuts3, _ = run(d, [(6, False)], start_t=14.5)
+        assert cuts3, "rotation must resume after the hold expires"
+
+    def test_vocal_onset_overrides_manual_hold(self):
+        d = make_director()
+        run(d, [(5, False)])
+        d.pace.sync(5.0, "Operator Shot")
+        cuts, _ = run(d, [(3, True)], start_t=5.0)
+        singer = [t for t, c in cuts if c.scene == "Singer"]
+        assert singer and singer[0] <= 5.2, \
+            "vocals coming in must still cut to the singer during a hold"
+
     def test_energy_pacing_speeds_up_loud_sections(self):
         cfg = dict(cut_interval_s=8.0, cut_jitter=0.0)
         quiet = make_director(**cfg)

@@ -98,6 +98,31 @@ class TestFloorLogic:
         cuts, _ = run(d, [(5, False, False)])
         assert cuts == []
 
+    def test_tick_gap_does_not_fuse_backchannels_into_a_steal(self):
+        # Verified bug #3: a stall between ticks used to fuse a pre-gap and
+        # post-gap backchannel into one long "utterance" that stole the floor.
+        d = make_director()
+        cuts, t = run(d, [(5, True, False),        # Anna holds
+                          (0.4, True, True)])      # Ben: brief "mm-hm"
+        # 3.6s tick gap (UI stall), then another brief Ben backchannel.
+        cuts2, _ = run(d, [(0.5, True, True), (3, True, False)], start_t=t + 3.6)
+        all_cuts = cuts + cuts2
+        assert all("Ben" not in c.scene for _, c in all_cuts), \
+            "fused backchannels across a tick gap must not steal the floor"
+
+    def test_detector_dropout_does_not_reset_interrupt_clock(self):
+        # Verified bug #4: a single off-tick used to restart the utterance,
+        # making interrupt_commit_s unreachable on fluctuating detectors.
+        d = make_director()
+        run(d, [(5, True, False)])                     # Anna holds (t 0-5)
+        cuts, _ = run(d, [(1.0, True, True),           # Ben overlaps 5.0-6.0
+                          (0.05, True, False),         # one-tick dropout
+                          (1.45, True, True)],         # resumes to t=7.5
+                      start_t=5.0)
+        ben = [t for t, c in cuts if c.scene == "Ben Medium"]
+        assert ben and ben[0] <= 7.0, \
+            "a sustained interruption with one flicker tick must still commit"
+
 
 class TestShotSelection:
     def test_closeup_after_holding_floor(self):
@@ -131,6 +156,26 @@ class TestShotSelection:
                           (5, False, True)])      # handoff to Ben
         ben = [c.scene for _, c in cuts if "Ben" in c.scene]
         assert ben and ben[0] == "Ben Medium"
+
+    def test_no_closeup_on_dead_air(self):
+        # Verified bug #5: silence used to satisfy the "micro-pause" clause,
+        # pushing in on a speaker who had stopped talking long ago.
+        d = make_director(closeup_after_s=10.0, park_after_s=999.0,
+                          wide_scene="")
+        cuts, _ = run(d, [(3, True, False), (15, False, False)])
+        assert all(c.scene != "Anna Close" for _, c in cuts), \
+            "must not push in on a silent speaker"
+
+    def test_dead_air_parks_on_wide_and_recovers(self):
+        d = make_director(park_after_s=6.0)
+        cuts, _ = run(d, [(3, True, False),          # Anna talks
+                          (9, False, False),         # long dead air
+                          (4, False, True)])         # Ben picks it up
+        scenes = [c.scene for _, c in cuts]
+        assert "Two Shot" in scenes, "dead air should rest on the wide"
+        i_wide = scenes.index("Two Shot")
+        assert "Ben Medium" in scenes[i_wide + 1:], \
+            "next speaker takes the floor after the park"
 
     def test_emphasis_pushes_in_early(self):
         d = make_director(closeup_after_s=30.0, emphasis_db=6.0,
