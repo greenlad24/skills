@@ -1,4 +1,4 @@
-from obs_auto_director import (
+from autodirector.core import (
     LevelVAD, PacingEngine, apply_crosstalk_gate, NEG_INF_DB,
 )
 

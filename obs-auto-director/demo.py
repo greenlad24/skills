@@ -14,7 +14,7 @@ timestamp and the director's reasoning.
 import random
 import sys
 
-from obs_auto_director import (
+from autodirector.core import (
     LevelVAD, LiveConfig, LiveDirector,
     PodcastConfig, PodcastDirector, SpeakerCfg,
     apply_crosstalk_gate, NEG_INF_DB,

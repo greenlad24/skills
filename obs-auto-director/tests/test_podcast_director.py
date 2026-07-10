@@ -1,4 +1,4 @@
-from obs_auto_director import PodcastConfig, PodcastDirector, SpeakerCfg
+from autodirector.core import PodcastConfig, PodcastDirector, SpeakerCfg
 
 TICK = 0.05
 QUIET = None  # marker: not talking

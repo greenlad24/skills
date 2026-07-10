@@ -1,6 +1,6 @@
 import random
 
-from obs_auto_director import LiveConfig, LiveDirector
+from autodirector.core import LiveConfig, LiveDirector
 
 TICK = 0.05
 

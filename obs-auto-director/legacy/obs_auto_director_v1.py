@@ -1,4 +1,5 @@
-"""
+"""DEPRECATED — frozen v1 OBS script. v2 lives in the autodirector package.
+
 OBS AutoDirector — an automatic scene director for OBS Studio.
 
 One job, done well: switch between your OBS scenes the way a human director
