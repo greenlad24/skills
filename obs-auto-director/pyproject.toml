@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "obs-auto-director"
+version = "2.0.0.dev0"
+description = "AutoDirector: automatic scene director for OBS Studio on macOS — live-show and podcast modes, adaptive voice chain, AI audio review."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "numpy>=1.24",
+    "sounddevice>=0.4.6",
+    "websockets>=11",
+]
+
+[project.optional-dependencies]
+classify = ["onnxruntime>=1.16"]
+menubar = ["rumps>=0.4"]
+dev = ["pytest>=7"]
+
+[project.scripts]
+autodirector = "autodirector.app:main"
+
+[tool.setuptools.packages.find]
+include = ["autodirector*"]

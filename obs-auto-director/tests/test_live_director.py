@@ -121,6 +121,15 @@ class TestLiveDirector:
         assert singer and singer[0] <= 5.2, \
             "vocals coming in must still cut to the singer during a hold"
 
+    def test_defer_rotation_holds_the_shot(self):
+        d = make_director(cut_interval_s=6.0)
+        cuts1, _ = run(d, [(5.9, False)])            # next rotation due ~6.0
+        d.defer_rotation(5.9, delay_s=1.0)           # vocal entrance brewing
+        cuts2, _ = run(d, [(0.8, False)], start_t=5.9)
+        assert not cuts2, "rotation must hold while vocal evidence builds"
+        cuts3, _ = run(d, [(2, False)], start_t=6.7)
+        assert cuts3, "rotation resumes if the vocals never materialize"
+
     def test_energy_pacing_speeds_up_loud_sections(self):
         cfg = dict(cut_interval_s=8.0, cut_jitter=0.0)
         quiet = make_director(**cfg)

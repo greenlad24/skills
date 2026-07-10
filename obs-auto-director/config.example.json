@@ -1,0 +1,60 @@
+{
+  "obs": {
+    "host": "127.0.0.1",
+    "port": 4455,
+    "password": "paste-the-obs-websocket-password-here"
+  },
+
+  "mode": "live",
+
+  "live": {
+    "device": "Scarlett 18i20",
+    "channels": 1,
+    "singer_scene": "Singer",
+    "instrumental_scenes": ["Wide", "Guitar", "Drums", "Keys"],
+    "calibration_file": "~/.autodirector/live_cal.json",
+    "sensitivity_bias": 0.0,
+    "vocal_in_dwell_s": 0.5,
+    "vocal_out_dwell_s": 2.5
+  },
+
+  "podcast": {
+    "speakers": [
+      {
+        "name": "Host",
+        "device": "Host USB Mic",
+        "channel": null,
+        "obs_source": "Mic - Host",
+        "medium_scene": "Host Medium",
+        "closeup_scene": "Host Close",
+        "sensitivity_db": 8.0
+      },
+      {
+        "name": "Guest",
+        "device": "Guest USB Mic",
+        "channel": null,
+        "obs_source": "Mic - Guest",
+        "medium_scene": "Guest Medium",
+        "closeup_scene": "Guest Close",
+        "sensitivity_db": 8.0
+      }
+    ],
+    "wide_scene": "Two Shot",
+    "voice_chain": {
+      "enabled": true,
+      "target_speech_db": -20.0
+    },
+    "ai_review": {
+      "enabled": true,
+      "api_key_env": "ANTHROPIC_API_KEY",
+      "model": "claude-haiku-4-5-20251001",
+      "interval_s": 180,
+      "audit_log": "~/.autodirector/ai_audit.jsonl"
+    }
+  },
+
+  "classifier": {
+    "model": "~/Library/Application Support/AutoDirector/models/yamnet.onnx",
+    "class_map": "~/Library/Application Support/AutoDirector/models/yamnet_class_map.csv"
+  }
+}

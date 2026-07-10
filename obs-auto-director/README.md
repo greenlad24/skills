@@ -1,177 +1,172 @@
-# OBS AutoDirector 🎬
+# AutoDirector 🎬
 
-An automatic scene director for OBS Studio. It does one thing well: **switch
-between your OBS scenes the way a human director would**, driven by what it
-hears on your audio sources.
+An automatic scene director for OBS Studio on macOS. It listens to your
+show and cuts between your OBS scenes the way a human director would —
+plus, in podcast mode, it rides your voice processing like a broadcast
+engineer.
 
-It ships as a single-file OBS **script plugin** (`obs_auto_director.py`) —
-no extra app to run, no virtual audio cables, no websocket setup. It meters
-your OBS audio sources directly and cuts the program scene from inside OBS.
+**v2 is a standalone menu-bar/CLI app.** It captures audio itself (real
+DSP on raw samples — not level meters), makes its decisions locally, and
+drives OBS over the built-in obs-websocket. One checkbox in OBS, no
+virtual cables for most setups, no OBS scripting/Python configuration.
 
-## The two modes
+> The v1 OBS-script plugin lives frozen in `legacy/` and is deprecated:
+> OBS scripts cannot access raw audio, which v2's features require.
+> See `docs/ARCHITECTURE.md` for the full story.
 
-### 🎤 Live show mode
+## What it does
 
-For live music. Point it at the **vocal mic** source:
+### 🎤 Live show mode — one mixed feed in, professional cutting out
 
-- The moment vocals come in, it makes a **priority cut to the singer scene**
-  and holds it — pauses between sung lines don't shake it off.
-- When the phrase ends it **lingers a beat** (like a real director riding the
-  moment), then starts rotating through your **instrumental scenes**
-  (wide / guitar / drums / keys …).
-- Instrumental shot lengths are **humanized** — jittered around your base
-  interval so it never feels like a metronome — and optionally **paced by the
-  energy of the music** (louder sections cut faster, quiet ones breathe).
-- The first shot after vocals end pulls out to the **first scene in your
-  list** (put your wide there — that's the cut that reads best).
-- During very long vocal sections it can take a brief tasteful **cutaway**
-  and come right back to the singer.
+Feed it the same mixed audio your show uses (your interface or mixer —
+it opens the device *alongside* OBS; macOS allows shared access).
 
-### 🎙 Podcast mode
+- **Learns your mix in 20 seconds.** A calibration wizard listens to ~10 s
+  of the band without vocals and ~10 s with the singer, then builds a
+  detector for *your* material. It reports its confidence (d′) honestly
+  and automatically directs more conservatively when the mix is hard.
+- **Vocals in → the singer scene.** Detection combines pitch salience,
+  vibrato, syllabic modulation and more — real singing, not just "loud".
+- **Main singer policy:** vocals mean the *main singer scene*, always.
+  Backing vocals never drag the camera away. (Optionally enroll the main
+  singer's pitch range for extra bias; it only nudges confidence, never
+  vetoes.)
+- **Instrumental sections** rotate your shots (wide first — the pull-out
+  after a phrase reads best) with humanized, jittered timing.
+- **Entrance anticipation:** when vocal evidence starts building, the
+  rotation holds rather than burning a cut a beat before the singer
+  comes in.
 
-For two-person shows where each speaker has their own mic and **two scenes:
-a medium and a close-up**:
+### 🎙 Podcast mode — per-speaker mics, shots *and* sound
 
-- Follows the **active speaker** using each speaker's own mic level, with an
-  adaptive noise floor and a crosstalk gate so mic bleed doesn't fool it.
-- A speaker **keeps the floor through natural pauses** (default 1.2 s), and
-  "mm-hm" **backchannel never steals the shot**. A sustained interruption
-  does — after it proves itself (default 1.6 s of overlap).
-- A floor change lands on the new speaker's **medium** shot. Hold the floor
-  and the director **pushes in to the close-up** — waiting for a natural
-  micro-pause to cut on when it can — then **relaxes back to medium** after a
-  while for variety.
-- Sudden **emphasis** (a speaker getting noticeably louder than their own
-  baseline) earns an early push-in.
-- A rapid back-and-forth exchange cuts to your **wide two-shot** until the
-  exchange settles, then returns to whoever holds the floor.
+Each speaker's mic is its own device/channel (keep mic sources
+always-active in OBS so both voices are always in the broadcast mix —
+scenes change the picture, not the audio).
 
-Everything above is enforced by a pacing engine: a **minimum shot length**
-guards against flicker, and only genuinely urgent cuts (vocals coming in, a
-clean speaker handoff) are allowed to jump the queue.
+- **Floor-holding direction:** follows the active speaker; holds through
+  natural pauses; "mm-hm" never steals the shot; sustained interruptions
+  do. Medium → close-up when someone holds forth (cutting on a natural
+  micro-pause when possible), back out for variety, wide two-shot during
+  rapid exchanges, and it parks on the wide during dead air.
+- **Adaptive voice chain** per speaker, built from native OBS filters via
+  obs-websocket: noise suppression → expander → *your VSTs (untouched)* →
+  gain → compressor → 3-band EQ → limiter. The gate follows your room's
+  noise floor (and only moves while you're silent), gain matches both
+  speakers' loudness, EQ makes slow tilt corrections toward a natural
+  voice curve. Every parameter is clamped and slew-limited — worst case
+  is "slightly suboptimal", never an audible pump.
+- **AI engineer review (optional):** every few minutes, Claude reviews
+  the measured state (levels, tilt, gate chatter, clipping, noise labels)
+  and returns bounded adjustments with reasons — applied through the same
+  safety rails, logged to an audit file, and freezable per parameter.
+  Requires an Anthropic API key; without one the local loops run alone.
+- **Local audio classifier (optional):** a small on-device model (YAMNet
+  ONNX, ~4 MB) identifies background noise by name (fan, hum, traffic…)
+  and reinforces singing/speech detection. `scripts/fetch_models.sh`.
+
+### 🧘 Relaxed switching (both modes)
+
+Every decision passes through an evidence-based switcher: confidences are
+smoothed, challengers need sustained proof plus a dwell time, every cut
+has a cooldown, returning to a shot you just left costs extra evidence,
+and a hard rate cap stops the director from ever chasing a chaotic feed.
+Low-confidence cuts automatically extend the minimum shot length. The
+result: fewer, more committed cuts — it decides where the action is,
+then commits.
+
+### 🛟 Fail-safe, always
+
+If audio stalls, a device unplugs, or OBS disconnects: **AutoDirector
+does nothing.** Cuts freeze, OBS is untouched, your show continues under
+manual control, and it reconnects with backoff. Manual cuts you make are
+respected — the director backs off for several seconds instead of
+fighting you.
 
 ---
 
-## Install on macOS
-
-1. **Install Python 3** (3.10–3.12). Either the
-   [python.org installer](https://www.python.org/downloads/macos/) or
-   Homebrew:
-
-   ```bash
-   brew install python@3.11
-   ```
-
-2. **Tell OBS where Python is**: OBS → *Tools → Scripts → Python Settings*
-   tab, and browse to the Python installation, e.g.
-
-   - python.org install: `/Library/Frameworks/Python.framework/Versions/3.11`
-   - Homebrew (Apple Silicon): `/opt/homebrew/opt/python@3.11/Frameworks/Python.framework/Versions/3.11`
-   - Homebrew (Intel): `/usr/local/opt/python@3.11/Frameworks/Python.framework/Versions/3.11`
-
-3. **Add the script**: *Scripts* tab → **+** → select `obs_auto_director.py`.
-
-The script uses only the Python standard library — nothing to `pip install`.
-
-## Set up your scenes
-
-**Live show mode**
-
-| Setting | What to pick |
-|---|---|
-| Vocal mic | The singer's mic **audio source** |
-| Singer scene | The scene with the singer camera |
-| Instrumental scenes | One scene name per line; **put the wide shot first** |
-| Energy source (optional) | A band/music mix source — enables energy-aware pacing |
-
-**Podcast mode**
-
-| Setting | What to pick |
-|---|---|
-| Speaker 1 / 2 mic | Each speaker's own **audio source** |
-| Medium scene (each) | That speaker's medium shot |
-| Close-up scene (each) | That speaker's close-up (optional — falls back to medium) |
-| Wide / two-shot (optional) | Used during rapid exchanges |
-
-Then check **Active** and start talking / playing. Every cut is logged with
-its reasoning in the script log (*Script Log* button), e.g.:
-
-```
-[AutoDirector] CUT -> Ben Medium   (Ben takes the floor)
-[AutoDirector] CUT -> Anna Close   (Anna holding forth — close-up)
-[AutoDirector] CUT -> Two Shot     (rapid exchange — going wide)
-```
-
-### Grab the wheel any time
-
-Bind the **“AutoDirector: toggle”** hotkey (OBS → *Settings → Hotkeys*) to
-pause/resume the director instantly for manual control.
-
-## Tuning guide
-
-Start with the defaults — they're set for natural, professional pacing.
-
-| Feels like… | Try |
-|---|---|
-| It cuts to the singer too late | Lower *“Cut to singer after vocals for”* (attack) |
-| It bails off the singer between sung lines | Raise *“Treat as instrumental after silence of”* (release) |
-| It misses quiet vocals / triggers on stage bleed | Lower / raise *Vocal sensitivity* |
-| Instrumental cutting feels frantic / sleepy | Raise / lower *Instrumental shot length* |
-| Podcast cuts on every little pause | Raise *“keeps floor through pauses up to”* |
-| Close-ups come too eagerly / never | Raise / lower *“Push to close-up after holding floor”* |
-| Any mode flickers between scenes | Raise *Minimum shot length* |
-
-## Try it without OBS
-
-The directing brain is pure Python, so you can watch it direct a scripted
-show offline:
+## Install
 
 ```bash
-python3 demo.py live      # a song: intro / verses / solo / outro
-python3 demo.py podcast   # a conversation with interruptions & rapid exchange
+# with pipx (recommended)
+pipx install 'git+https://github.com/greenlad24/skills.git#subdirectory=obs-auto-director'
+# or from a checkout
+pip3 install ./obs-auto-director
+# optional extras
+pip3 install 'obs-auto-director[classify]'   # local audio classifier
 ```
 
-And run the test suite:
+Or build a self-contained binary (no Python needed on the target Mac):
+`./scripts/build_mac_app.sh` → `dist/autodirector`.
+
+**OBS side (once):** OBS → Tools → WebSocket Server Settings → Enable,
+copy the password into your config.
+
+## Quick start
 
 ```bash
-pip3 install pytest
-python3 -m pytest tests/
+autodirector devices                      # find your input device names
+cp config.example.json myshow.json        # edit scenes/devices/password
+autodirector calibrate --config myshow.json    # live mode: 20s wizard
+autodirector run --config myshow.json          # go
+autodirector run --config myshow.json --dry-run  # print cuts, don't touch OBS
 ```
 
-## Troubleshooting
+`python3 demo.py mix` directs a synthetic song through the real pipeline
+with no OBS or audio hardware — watch how it thinks before you wire
+anything up.
 
-- **My mic doesn't appear in the dropdown** — only sources with audio are
-  listed. If you just added the source, close and reopen the Scripts dialog.
-- **No cuts happen** — check *Active* is on, open the Script Log; the script
-  tells you if a scene name can't be found or a mode is missing settings.
-- **“Python Settings” won't accept my install** — OBS needs the framework
-  folder (the path ending in `/Versions/3.11`), not the `python3` binary.
-  On Apple Silicon make sure OBS and Python are both arm64.
-- **Two mics in one room trigger each other** — the crosstalk gate handles
-  most bleed; if needed, raise *Speech sensitivity* a couple of dB.
+## Audio routing on macOS
 
-## How it works
+| Your setup | Do this |
+|---|---|
+| Band/mixer feed on an audio interface | Point `live.device` at the same interface OBS uses — CoreAudio shares input devices. Nothing to install. |
+| Mix exists only inside OBS | OBS → Settings → Audio → Monitoring Device → **BlackHole 2ch** (free, notarized), monitor the relevant sources, set `live.device` to BlackHole. |
+| Podcast, one USB mic per speaker | One `speakers[]` entry per device. Keep both mic sources always-active in OBS. |
+| Podcast, both mics on one interface | Same `device` for both speakers with different `channel` numbers. |
 
-`obs_auto_director.py` is split in two halves:
+## Config reference (config.example.json)
 
-- **Directing core** (pure Python, no OBS imports): a `LevelVAD` voice
-  activity detector with an adaptive noise floor, a `PacingEngine` that
-  enforces minimum shot lengths and priority cuts, and the two directors —
-  `LiveDirector` (vocal/instrumental state machine) and `PodcastDirector`
-  (floor-holding, shot escalation, rapid-exchange logic). This half is fully
-  unit-tested (`tests/`).
-- **OBS glue**: attaches an `obs_volmeter` to each configured audio source,
-  ticks the director every 50 ms, and cuts the program scene through the
-  OBS frontend API. It stays in sync with manual cuts you make.
+- `obs`: host/port/password for obs-websocket.
+- `live`: `device`, `singer_scene`, `instrumental_scenes` (wide first),
+  `calibration_file`, `sensitivity_bias` (±logits), dwell overrides.
+- `podcast.speakers[]`: `name`, `device`/`channel`, `obs_source` (the OBS
+  audio source the voice chain manages), `medium_scene`, `closeup_scene`.
+- `podcast.voice_chain`: `enabled`, `target_speech_db`.
+- `podcast.ai_review`: `enabled`, `api_key_env` (default
+  `ANTHROPIC_API_KEY`), `model`, `interval_s`, `audit_log`.
+- `classifier`: paths to the optional ONNX model + class map.
 
-## Roadmap
+## Development
 
-- **Visual cues** for podcast mode (face/mouth activity from the camera
-  feeds) fused with the audio signal.
-- Content-aware close-ups (lightweight on-device speech emotion/keyword
-  cues).
-- 3+ speakers, and per-speaker shot preferences.
-- Beat-aligned cutting in live mode (cut on the downbeat).
+```bash
+pip3 install numpy websockets pytest
+python3 -m pytest tests/          # 96 tests: core, switcher, DSP on
+                                  # synthetic audio, chain rails, AI loop,
+                                  # obsws against a fake server, engines
+                                  # end-to-end, 30-40 min soak shows
+```
+
+Layout: `autodirector/core` (directors, pacing, switcher — pure logic),
+`dsp` (STFT front-end, vocal-in-mix, calibration), `chain` (rails,
+measurement, fast loop, AI review), `classify` (optional tagger),
+`io` (capture, obs-websocket), `app.py` (engines + CLI).
+
+Design docs: `docs/ARCHITECTURE.md` (decision + reconciliation),
+`docs/TEAM_REVIEW_SYNTHESIS.md` (the engineering review behind v2).
+
+## Honest limitations
+
+- One-channel vocal detection confirms an entrance in ~0.8–1.2 s (the
+  price of hearing vocals *inside* a mix). It reads as deliberate, not
+  late — and the entrance-anticipation hold prevents wasted cuts.
+- Sections where *only* backing vocals sing will keep the singer scene —
+  by design (v3 may add an optional separation model).
+- Screamed vocals and vocal-range instrument solos are genuinely hard;
+  calibration reports a low d′ and the director compensates by being
+  more deliberate.
+- AI review reads *measurements* (what an engineer reads off meters),
+  not raw audio; the local classifier supplies the "what am I hearing"
+  labels.
 
 ## License
 

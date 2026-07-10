@@ -81,6 +81,15 @@ class LiveDirector:
         options = [s for s in scenes if s != self.pace.scene] or scenes
         return self.rng.choice(options)
 
+    def defer_rotation(self, t: float, delay_s: float = 0.6) -> None:
+        """Hold the instrumental rotation briefly — used while vocal
+        evidence is building, so we don't burn a cut to another shot a
+        beat before the singer comes in."""
+        if not self.vocal:
+            target = t + delay_s
+            if self._next_rotate_t is None or self._next_rotate_t < target:
+                self._next_rotate_t = target
+
     # -- main tick ----------------------------------------------------------
     def update(self, t: float, vocal_active: bool,
                energy_db: Optional[float] = None) -> Optional[Cut]:
