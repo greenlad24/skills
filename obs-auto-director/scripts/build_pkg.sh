@@ -79,11 +79,17 @@ cat > build/distribution.xml <<EOF
 </installer-gui-script>
 EOF
 
-SIGN_ARGS=()
-[[ -n "${PKG_SIGN_ID:-}" ]] && SIGN_ARGS=(--sign "$PKG_SIGN_ID")
-productbuild --distribution build/distribution.xml \
-  --package-path build --resources build/resources \
-  "${SIGN_ARGS[@]}" dist/AutoDirector.pkg
+# (no arrays here: macOS ships bash 3.2, where expanding an empty array
+# under `set -u` aborts with "unbound variable")
+if [[ -n "${PKG_SIGN_ID:-}" ]]; then
+  productbuild --distribution build/distribution.xml \
+    --package-path build --resources build/resources \
+    --sign "$PKG_SIGN_ID" dist/AutoDirector.pkg
+else
+  productbuild --distribution build/distribution.xml \
+    --package-path build --resources build/resources \
+    dist/AutoDirector.pkg
+fi
 
 if [[ -n "${NOTARY_PROFILE:-}" ]]; then
   echo "==> Notarizing"
