@@ -54,20 +54,22 @@ pkgbuild --root build/pkgroot \
   build/AutoDirector-component.pkg
 
 echo "==> Building distributable installer"
-cat > build/distribution.xml <<EOF
-<?xml version="1.0" encoding="utf-8"?>
-<installer-gui-script minSpecVersion="2">
-  <title>AutoDirector</title>
-  <welcome language="en" mime-type="text/plain">
+mkdir -p build/resources
+cat > build/resources/welcome.txt <<'EOF'
 AutoDirector — an automatic scene director for OBS Studio.
 
 This installs AutoDirector.app into /Applications.
 
 After installing:
- 1. In OBS: Tools → WebSocket Server Settings → Enable
+ 1. In OBS: Tools -> WebSocket Server Settings -> Enable
  2. Launch AutoDirector — the Control Room opens in your browser
  3. Follow Setup, then (live mode) run the 20-second calibration
-  </welcome>
+EOF
+cat > build/distribution.xml <<EOF
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+  <title>AutoDirector</title>
+  <welcome file="welcome.txt" mime-type="text/plain"/>
   <options customize="never" require-scripts="false" rootVolumeOnly="true"/>
   <pkg-ref id="$IDENTIFIER" version="$VERSION">AutoDirector-component.pkg</pkg-ref>
   <choices-outline><line choice="default"/></choices-outline>
@@ -80,7 +82,8 @@ EOF
 SIGN_ARGS=()
 [[ -n "${PKG_SIGN_ID:-}" ]] && SIGN_ARGS=(--sign "$PKG_SIGN_ID")
 productbuild --distribution build/distribution.xml \
-  --package-path build "${SIGN_ARGS[@]}" dist/AutoDirector.pkg
+  --package-path build --resources build/resources \
+  "${SIGN_ARGS[@]}" dist/AutoDirector.pkg
 
 if [[ -n "${NOTARY_PROFILE:-}" ]]; then
   echo "==> Notarizing"

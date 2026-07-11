@@ -1,0 +1,79 @@
+name: Build AutoDirector.pkg
+
+on:
+  push:
+    branches: ["claude/obs-auto-director-mac-ccy9jl", "main"]
+    paths:
+      - "obs-auto-director/**"
+      - ".github/workflows/build-pkg.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run test suite
+        run: |
+          python -m pip install --quiet numpy websockets pytest
+          cd obs-auto-director
+          python -m pytest tests/ -q
+
+  build-pkg:
+    needs: test
+    runs-on: macos-latest # Apple Silicon
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Build AutoDirector.pkg
+        run: ./obs-auto-director/scripts/build_pkg.sh
+      - name: Rename with architecture
+        run: |
+          mv obs-auto-director/dist/AutoDirector.pkg \
+             AutoDirector-apple-silicon.pkg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AutoDirector-apple-silicon
+          path: AutoDirector-apple-silicon.pkg
+          if-no-files-found: error
+
+  release:
+    needs: build-pkg
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: AutoDirector-apple-silicon
+      - name: Publish download release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: autodirector-latest
+          name: "AutoDirector — latest build"
+          prerelease: true
+          files: AutoDirector-apple-silicon.pkg
+          body: |
+            ## Install on your Mac (Apple Silicon)
+
+            1. Download **AutoDirector-apple-silicon.pkg** below.
+            2. This build is unsigned: **right-click the .pkg → Open → Open**
+               (or `xattr -d com.apple.quarantine AutoDirector-apple-silicon.pkg`).
+            3. The installer puts **AutoDirector.app** into /Applications.
+            4. In OBS: *Tools → WebSocket Server Settings → Enable*.
+            5. Launch AutoDirector — the **Control Room** opens in your
+               browser. Follow Setup (Test connection pulls your scene
+               list), then in live mode run the 20-second calibration.
+            6. Grant microphone access when macOS asks — audio never
+               leaves your Mac.
+
+            Intel Macs: build locally with
+            `./obs-auto-director/scripts/build_pkg.sh` (needs Python 3.11).
+
+            Updated automatically from the latest commit on the build branch.
