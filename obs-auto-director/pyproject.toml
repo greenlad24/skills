@@ -17,6 +17,7 @@ dependencies = [
 
 [project.optional-dependencies]
 classify = ["onnxruntime>=1.16"]
+mixer = ["python-rtmidi>=1.5"]
 menubar = ["rumps>=0.4"]
 dev = ["pytest>=7"]
 

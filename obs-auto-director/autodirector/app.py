@@ -91,6 +91,9 @@ class LiveEngine:
         self.cuts: deque = deque(maxlen=80)
         self.current_scene: Optional[str] = None
         self.vocal_conf = 0.0
+        # Ground truth from the Mix Engineer's lead-vocal stem (when the
+        # mixer module runs): overrides mixed-feed inference entirely.
+        self.stem_vocal_hint: Optional[bool] = None
         self._tags = None
         self._pending_scene_sync: List[str] = []
         self.status = "starting"
@@ -200,6 +203,10 @@ class LiveEngine:
                 self.director.pace.sync(hop.t, self._pending_scene_sync.pop(0))
             conf = self.vocal.update(hop)
             conf = fuse_vocal_confidence(conf, self._tags)
+            if self.stem_vocal_hint is not None:
+                # The lead-vocal stem is a directly observed signal —
+                # near-ground-truth, so it wins over mix inference.
+                conf = 0.92 if self.stem_vocal_hint else 0.08
             self.vocal_conf = conf
             if self._cal_phase is not None:
                 feats = self.vocal.features()
@@ -478,6 +485,7 @@ class Runtime:
         self.cfg = self._load_or_create()
         self.obs = None
         self.engine = None
+        self.mixer = None
         self.captures: Dict[str, object] = {}
         self.error: Optional[str] = None
         self._lock = threading.RLock()
@@ -510,6 +518,12 @@ class Runtime:
                 pass
         self.captures = {}
         self.engine = None
+        if self.mixer is not None:
+            try:
+                self.mixer.close()
+            except Exception:
+                pass
+            self.mixer = None
 
     def rebuild(self) -> tuple:
         """(Re)build OBS client + engine from current config."""
@@ -561,6 +575,19 @@ class Runtime:
             capture.start()
             self.captures = {"live": capture}
             self.engine = LiveEngine(lcfg, self.obs, capture, tagger=tagger)
+            mcfg = lcfg.get("mixer", {})
+            if mcfg.get("enabled"):
+                from .mixer import MixEngineer
+                mix_cap = AudioCapture(
+                    device=mcfg.get("device"),
+                    channels=int(mcfg.get("channels", 16)))
+                mix_cap.start()
+                self.captures["mixer"] = mix_cap
+                ai_cfg = mcfg.get("ai_review", {})
+                self.mixer = MixEngineer(
+                    mcfg, obs=self.obs,
+                    api_key=os.environ.get(
+                        ai_cfg.get("api_key_env", "ANTHROPIC_API_KEY"), ""))
         else:
             pcfg = cfg.get("podcast", {})
             if not pcfg.get("speakers"):
@@ -578,7 +605,22 @@ class Runtime:
                                         tagger=tagger)
 
     def step(self) -> None:
+        mixer = self.mixer
         eng = self.engine
+        if mixer is not None:
+            try:
+                cap = self.captures.get("mixer")
+                pcm = cap.read() if cap else None
+                if pcm is not None:
+                    mixer.process(pcm, cap.audio_clock)
+                    mixer.control_tick(cap.audio_clock)
+                if mixer.review_due():
+                    threading.Thread(target=mixer.review,
+                                     daemon=True).start()
+                if eng is not None and hasattr(eng, "stem_vocal_hint"):
+                    eng.stem_vocal_hint = mixer.vocal_activity()
+            except Exception:
+                log.exception("mixer step failed")
         if eng is not None:
             try:
                 eng.step()
@@ -601,6 +643,8 @@ class Runtime:
             if self.obs else "down"
         state["config_mode"] = self.cfg.get("mode", "live")
         state["error"] = self.error
+        if self.mixer is not None:
+            state["mixer"] = self.mixer.ui_state()
         return state
 
 

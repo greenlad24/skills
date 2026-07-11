@@ -1,0 +1,317 @@
+"""Mix Engineer tests: role inference, MCU protocol (fake MIDI), stem
+analysis on synthetic multichannel audio, rails/slew, AI review, and
+the program sweetening chain."""
+
+import json
+
+import numpy as np
+import pytest
+
+from autodirector.mixer import (MCUFaders, MixEngineer, ProgramChain,
+                                StemAnalyzer, StemConfig, infer_role)
+from autodirector.mixer.mcu import FADER_MAX, UNITS_PER_DB, parse_lcd_sysex
+
+from synthaudio import SR, synth_instrumental, synth_lead_guitar, synth_vocal
+from test_chain import FakeOBS
+
+
+# ---------------------------------------------------------------------------
+# fakes
+# ---------------------------------------------------------------------------
+
+class FakePort:
+    """Records outgoing pitch bends; lets tests inject DAW echoes/LCD."""
+    instances = []
+
+    def __init__(self, name, on_pitchbend, on_lcd=None):
+        self.name = name
+        self.on_pb = on_pitchbend
+        self.on_lcd = on_lcd
+        self.sent = []
+        FakePort.instances.append(self)
+
+    def send_pitchbend(self, strip, value):
+        self.sent.append((strip, int(value)))
+
+    def close(self):
+        pass
+
+
+@pytest.fixture(autouse=True)
+def _reset_ports():
+    FakePort.instances = []
+    yield
+
+
+def multich(dur_s, tracks):
+    """Build (n, 16) audio: tracks is {channel: mono_array}."""
+    n = int(dur_s * SR)
+    out = np.zeros((n, 16))
+    for ch, sig in tracks.items():
+        out[:len(sig), ch] = sig[:n]
+    return out
+
+
+# ---------------------------------------------------------------------------
+class TestRoleInference:
+    def test_common_names(self):
+        assert infer_role("Lead Vox") == "lead_vocal"
+        assert infer_role("Vox") == "lead_vocal"
+        assert infer_role("BGV 1") == "backing_vocal"
+        assert infer_role("Kick") == "drums"
+        assert infer_role("Gtr L") == "guitar"
+        assert infer_role("Bass DI") == "bass"
+        assert infer_role("Keys") == "keys"
+        assert infer_role("Talkback") == ""
+
+
+class TestMCU:
+    def test_lcd_sysex_names_channels(self):
+        faders = MCUFaders(n_channels=16, port_factory=FakePort)
+        # DAW writes "Kick   Snare  " to strips 0-1 of port 1
+        msg = [0xF0, 0x00, 0x00, 0x66, 0x14, 0x12, 0x00] + \
+              [ord(c) for c in "Kick   Snare  "] + [0xF7]
+        parsed = parse_lcd_sysex(msg)
+        assert parsed == (0, "Kick   Snare  ")
+        FakePort.instances[0].on_lcd(*parsed)
+        assert faders.names[0] == "Kick"
+        assert faders.names[1] == "Snare"
+        # port 2 strip 0 -> channel 8
+        FakePort.instances[1].on_lcd(0, "Lead Vo")
+        assert faders.names[8] == "Lead Vo"
+
+    def test_fader_echo_baseline_and_relative_move(self):
+        faders = MCUFaders(n_channels=16, port_factory=FakePort)
+        # DAW echoes fader positions (user wiggles / handshake)
+        FakePort.instances[0].on_pb(2, 9000)    # channel 2
+        FakePort.instances[1].on_pb(0, 8000)    # channel 8
+        assert faders.heard_from_daw()
+        heard = faders.snapshot_baseline()
+        assert heard == 2
+        assert faders.set_rel_db(2, 3.0)
+        strip, val = FakePort.instances[0].sent[-1]
+        assert strip == 2
+        assert val == int(9000 + 3.0 * UNITS_PER_DB)
+        assert faders.set_rel_db(8, -2.0)
+        strip, val = FakePort.instances[1].sent[-1]
+        assert strip == 0 and val == int(8000 - 2.0 * UNITS_PER_DB)
+
+    def test_positions_clamped_to_fader_range(self):
+        faders = MCUFaders(n_channels=8, port_factory=FakePort)
+        FakePort.instances[0].on_pb(0, FADER_MAX - 10)
+        faders.snapshot_baseline()
+        faders.set_rel_db(0, 6.0)
+        _, val = FakePort.instances[0].sent[-1]
+        assert 0 <= val <= FADER_MAX
+
+
+class TestStemAnalyzer:
+    def make(self):
+        stems = [StemConfig(0, "Lead Vox", "lead_vocal"),
+                 StemConfig(1, "Gtr L", "guitar"),
+                 StemConfig(2, "Keys", "keys")]
+        return StemAnalyzer(stems)
+
+    def feed(self, an, audio, start_clock=0.0):
+        for s in range(0, len(audio), 4800):
+            an.process(audio[s:s + 4800], start_clock + s / SR)
+
+    def test_vocal_activity_ground_truth(self):
+        an = self.make()
+        # band plays, nobody sings
+        audio = multich(4.0, {1: synth_lead_guitar(4.0) * 0.4,
+                              2: synth_instrumental(4.0) * 0.4})
+        self.feed(an, audio)
+        assert an.vocal_activity() is False
+        # singer comes in
+        audio = multich(4.0, {0: synth_vocal(4.0) * 0.4,
+                              1: synth_lead_guitar(4.0, seed=5) * 0.4,
+                              2: synth_instrumental(4.0, seed=6) * 0.4})
+        self.feed(an, audio, start_clock=4.0)
+        assert an.vocal_activity() is True
+
+    def test_masking_score_reacts_to_loud_band(self):
+        an = self.make()
+        quiet_band = multich(6.0, {0: synth_vocal(6.0) * 0.5,
+                                   1: synth_lead_guitar(6.0) * 0.05})
+        self.feed(an, quiet_band)
+        low_mask = an.masking_score()
+        an2 = self.make()
+        loud_band = multich(6.0, {0: synth_vocal(6.0) * 0.1,
+                                  1: synth_lead_guitar(6.0) * 0.8})
+        self.feed(an2, loud_band)
+        high_mask = an2.masking_score()
+        assert low_mask is not None and high_mask is not None
+        assert high_mask > low_mask + 6.0
+
+    def test_dead_channel_detection(self):
+        an = self.make()
+        audio = multich(40.0, {1: synth_lead_guitar(40.0) * 0.4,
+                               2: synth_instrumental(40.0) * 0.4})
+        self.feed(an, audio)
+        snaps = an.snapshots()
+        assert snaps["Lead Vox"].dead is True
+        assert snaps["Gtr L"].dead is False
+
+
+class TestMixEngineer:
+    def make(self, transport=None, obs=None):
+        cfg = {"channels": 16, "program_source": "S1 Mix",
+               "master_channels": [14, 15],
+               "stems": [{"channel": 0, "name": "Lead Vox"},
+                         {"channel": 1, "name": "Gtr L"}],
+               "ai_review": {"enabled": True, "interval_s": 60}}
+        return MixEngineer(cfg, obs=obs or FakeOBS(),
+                           port_factory=FakePort,
+                           ai_transport=transport, api_key="k")
+
+    def prime(self, eng, vocal_gain=0.4, gtr_gain=0.4, dur=6.0, clock=0.0):
+        audio = multich(dur, {0: synth_vocal(dur) * vocal_gain,
+                              1: synth_lead_guitar(dur) * gtr_gain})
+        for s in range(0, len(audio), 4800):
+            eng.process(audio[s:s + 4800], clock + s / SR)
+        return clock + dur
+
+    def test_roles_inferred_from_config_names(self):
+        eng = self.make()
+        assert eng.analyzer.stems[0].role == "lead_vocal"
+        assert eng.analyzer.stems[1].role == "guitar"
+
+    def test_control_tick_slews_toward_target(self):
+        eng = self.make()
+        FakePort.instances[0].on_pb(0, 9000)
+        clock = self.prime(eng)
+        eng.snapshot_baseline()
+        assert eng.nudge(0, 2.0) == 2.0
+        # 0.5 dB per 0.5s tick -> needs 4 ticks to reach +2
+        for i in range(4):
+            eng.control_tick(clock + 0.5 * (i + 1) + 0.01)
+        assert abs(eng.rails[0].value - 2.0) < 1e-6
+        sent = FakePort.instances[0].sent
+        assert len(sent) == 4
+        deltas = [abs(b[1] - a[1]) for a, b in zip(sent, sent[1:])]
+        assert all(d <= 0.5 * UNITS_PER_DB + 1 for d in deltas), \
+            "fader must move in slewed steps, never jump"
+
+    def test_freeze_all_stops_movement(self):
+        eng = self.make()
+        FakePort.instances[0].on_pb(0, 9000)
+        clock = self.prime(eng)
+        eng.snapshot_baseline()
+        eng.nudge(0, 2.0)
+        eng.freeze_all(True)
+        eng.control_tick(clock + 1.0)
+        assert FakePort.instances[0].sent == []
+        assert eng.nudge(0, 1.0) == 0.0, "nudges rejected while frozen"
+
+    def test_report_compensates_own_fader_moves(self):
+        eng = self.make()
+        clock = self.prime(eng, vocal_gain=0.4)
+        eng.snapshot_baseline()
+        # we lift the vocal +2 (target only — pretend it was applied)
+        eng.nudge(0, 2.0)
+        report = eng.build_report()
+        vox = report["stems"]["Lead Vox"]
+        assert vox["fader_offset_db"] == 2.0
+        # source didn't change, so drift ~= -offset compensation ~= -2
+        assert vox["source_drift_db"] is not None
+        assert abs(vox["source_drift_db"] + 2.0) < 1.5
+
+    def test_ai_review_applies_stem_and_master_deltas(self, tmp_path):
+        resp = json.dumps({
+            "adjustments": [
+                {"stem": "Lead Vox", "delta_db": 1.5,
+                 "reason": "vocal masked by guitars"},
+                {"stem": "Gtr L", "delta_db": -9.0,
+                 "reason": "absurd — must clamp to 3"},
+                {"stem": "Nobody", "delta_db": 1.0, "reason": "dropped"},
+            ],
+            "master": [
+                {"param": "master_eq_high", "delta": 1.0,
+                 "reason": "mix a touch dark"},
+                {"param": "sneaky", "delta": 5.0, "reason": "dropped"},
+            ]})
+        calls = {}
+
+        def transport(key, model, payload):
+            calls["payload"] = payload
+            return resp
+
+        obs = FakeOBS()
+        obs.filters["S1 Mix"] = []
+        eng = self.make(transport=transport, obs=obs)
+        clock = self.prime(eng)
+        eng.snapshot_baseline()
+        applied = eng.review(now=1000.0)
+        by = {(a.get("stem"), a.get("param")): a for a in applied}
+        assert by[("Lead Vox", None)]["applied"] == 1.5
+        assert by[("Gtr L", None)]["applied"] == -3.0  # clamped
+        assert ("Nobody", None) not in by
+        assert by[("PROGRAM", "master_eq_high")]["applied"] > 0
+        # report sent to the AI used instrument names + masking
+        sent = json.loads(calls["payload"]["messages"][0]["content"])
+        assert "Lead Vox" in sent["stems"]
+        assert "vocal_masking_db" in sent
+        assert "program_bus" in sent
+
+    def test_review_not_due_without_baseline_or_when_frozen(self):
+        eng = self.make(transport=lambda *a: "{}")
+        assert not eng.review_due(now=1e9), "no baseline -> no reviews"
+        self.prime(eng)
+        eng.snapshot_baseline()
+        assert eng.review_due(now=1e9)
+        eng.freeze_all(True)
+        assert not eng.review_due(now=1e9)
+
+    def test_lcd_names_flow_into_stems(self):
+        cfg = {"channels": 16, "stems": [], "ai_review": {"enabled": False}}
+        eng = MixEngineer(cfg, obs=FakeOBS(), port_factory=FakePort)
+        FakePort.instances[0].on_lcd(0, "Kick   Vox    ")
+        eng.process(np.zeros((512, 16)), 0.0)
+        assert eng.analyzer.stems[0].name == "Kick"
+        assert eng.analyzer.stems[0].role == "drums"
+        assert eng.analyzer.stems[1].name == "Vox"
+        assert eng.analyzer.stems[1].role == "lead_vocal"
+
+
+class TestProgramChain:
+    def test_creates_filters_and_corrects_tilt_gently(self):
+        obs = FakeOBS()
+        obs.filters["S1 Mix"] = []
+        chain = ProgramChain(obs, "S1 Mix")
+        assert chain.ensure_filters()
+        names = [f["filterName"] for f in obs.filters["S1 Mix"]]
+        assert "AD: Program EQ" in names and "AD: Program Limiter" in names
+        for _ in range(200):
+            chain.note_master(-18.0, -26.0)  # way too dark
+        for _ in range(30):
+            chain.adapt()
+        assert chain.rails["master_eq_high"].value > 0.5
+        assert chain.rails["master_eq_high"].value <= 3.0  # rail ceiling
+
+    def test_deadband_leaves_good_mix_alone(self):
+        obs = FakeOBS()
+        obs.filters["S1 Mix"] = []
+        chain = ProgramChain(obs, "S1 Mix")
+        chain.ensure_filters()
+        for _ in range(200):
+            chain.note_master(-16.0, -11.0)  # close to target
+        moved = chain.adapt()
+        assert "master_eq_high" not in moved and "master_eq_low" not in moved
+
+
+class TestDirectorStemHint:
+    def test_hint_overrides_mix_inference(self, tmp_path):
+        from autodirector.app import LiveEngine
+        from test_engines import FakeCapture, FakeSceneOBS
+        instrumental = synth_instrumental(8.0)
+        obs = FakeSceneOBS()
+        eng = LiveEngine({"singer_scene": "Singer",
+                          "instrumental_scenes": ["Wide"]},
+                         obs, FakeCapture(instrumental))
+        eng.stem_vocal_hint = True  # lead stem says: singing
+        while eng.capture.pos < len(instrumental):
+            eng.step()
+        assert "Singer" in obs.scene_calls, \
+            "stem ground truth must drive the director even when the " \
+            "mix inference disagrees"

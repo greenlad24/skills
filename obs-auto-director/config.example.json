@@ -15,7 +15,32 @@
     "calibration_file": "~/.autodirector/live_cal.json",
     "sensitivity_bias": 0.0,
     "vocal_in_dwell_s": 0.5,
-    "vocal_out_dwell_s": 2.5
+    "vocal_out_dwell_s": 2.5,
+
+    "mixer": {
+      "enabled": false,
+      "device": "BlackHole 16ch",
+      "channels": 16,
+      "program_source": "Studio One Mix",
+      "master_channels": [14, 15],
+      "stems": [
+        { "channel": 0, "name": "Lead Vox" },
+        { "channel": 1, "name": "BGV" },
+        { "channel": 2, "name": "Gtr L" },
+        { "channel": 3, "name": "Gtr R" },
+        { "channel": 4, "name": "Bass" },
+        { "channel": 5, "name": "Kick" },
+        { "channel": 6, "name": "Snare" },
+        { "channel": 7, "name": "Keys" }
+      ],
+      "ai_review": {
+        "enabled": true,
+        "api_key_env": "ANTHROPIC_API_KEY",
+        "model": "claude-haiku-4-5-20251001",
+        "interval_s": 120,
+        "audit_log": "~/.autodirector/mix_audit.jsonl"
+      }
+    }
   },
 
   "podcast": {

@@ -94,6 +94,41 @@ scenes change the picture, not the audio).
   ONNX, ~4 MB) identifies background noise by name (fan, hum, traffic…)
   and reinforces singing/speech detection. `scripts/fetch_models.sh`.
 
+### 🎚 Mix Engineer (live mode, optional) — an AI A2 for your Studio One mix
+
+If your band is pre-mixed in **Studio One** (16 channels → OBS → YouTube),
+AutoDirector can ride the mix like a broadcast A2:
+
+- **Hears the real mix, decomposed.** Give each Studio One channel a
+  post-fader send to **BlackHole 16ch**: every stem arrives exactly as
+  it contributes to the broadcast (your channel-strip EQ/comp and fader
+  included) — never the raw mixer inputs.
+- **Knows your instruments by name.** Channel names arrive automatically
+  over the Mackie-Control wire (the same scribble-strip text a hardware
+  controller shows), and roles are inferred — Kick, Bass, Gtr L,
+  Lead Vox. The AI reasons in those terms.
+- **Rides faders in Studio One** via two virtual Mackie Control ports
+  (add "Mackie Control" + "Mackie Control XT" as External Devices —
+  16 dedicated strips, no banking). Take a **soundcheck snapshot**, and
+  from then on: ±6 dB max from soundcheck, ≤1 dB/s, master untouched.
+- **AI rebalance reviews** every couple of minutes: lead vocal masked by
+  the band → lift it / trim the crowders a touch; a channel drifted
+  since soundcheck → bring it home; dead channel → flagged, never
+  auto-muted. Our own fader moves are compensated out of the analysis,
+  so "the band got louder" and "we lifted it" never get confused.
+- **Subtle EQ/compression happens on the program feed in OBS** (gentle
+  3-band tilt, glue compression, safety limiter — adaptive within tiny
+  rails). Per-channel plugin internals in Studio One aren't reliably
+  automatable from outside, and they're your sound anyway: balance per
+  channel, sweeten the sum.
+- **The director gets ground truth.** With the lead-vocal stem audible
+  on its own channel, live-mode vocal detection stops being inference:
+  lead singing → singer scene, instantly — and backing vocals genuinely
+  can't fool it anymore.
+- Control Room gains a **mixer console**: 16 strips with meters, roles,
+  DEAD flags, fader offsets, per-strip locks, a vocal-masking readout,
+  soundcheck snapshot, and a big **FREEZE MIX** button.
+
 ### 🧘 Relaxed switching (both modes)
 
 Every decision passes through an evidence-based switcher: confidences are

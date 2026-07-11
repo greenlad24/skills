@@ -115,6 +115,26 @@ main{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(320px,1fr);
 .shot.on{color:#ffd8da;border-color:var(--live);background:rgba(255,70,82,.1);
   box-shadow:0 0 12px rgba(255,70,82,.15)}
 .shot .k{font-size:9px;letter-spacing:.1em;color:var(--muted);display:block}
+/* mixer console */
+.strips{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));
+  gap:10px}
+.strip{border:1px solid var(--line);border-radius:9px;padding:10px;
+  background:var(--inset);transition:border-color .15s}
+.strip.active{border-color:rgba(79,184,255,.45)}
+.strip .nm{font-size:12px;font-weight:700;display:flex;gap:6px;
+  align-items:center;margin-bottom:6px;min-height:16px}
+.strip .role{font-size:8px;font-weight:800;letter-spacing:.1em;
+  color:var(--muted);border:1px solid var(--line-2);border-radius:4px;
+  padding:1px 5px}
+.strip .role.voc{color:#ffd8da;border-color:rgba(255,70,82,.4)}
+.strip .fader{display:flex;align-items:center;gap:6px;margin-top:6px;
+  font-size:11px}
+.strip .fval{font-variant-numeric:tabular-nums;color:var(--ink)}
+.tag.dead{color:#fff;background:var(--bad)}
+.mixbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+  margin-bottom:12px}
+.masking{font-size:11px;color:var(--ink-2)}
+.masking b.badval{color:var(--warn)}
 .gauge-legend{display:flex;justify-content:space-between;color:var(--muted);
   font-size:10px;letter-spacing:.08em}
 .state-row{display:flex;align-items:center;gap:10px;margin-top:12px}
@@ -468,7 +488,7 @@ function liveCards(){
            <span class="k">${i === 0 ? "WIDE" : "INSTRUMENTAL"}</span>${s}</span>`
       ).join("")}
     </div>
-  </div>`;
+  </div>` + mixerCard();
 }
 
 const PARAM_LABEL = {expander_threshold:"Gate thresh", gain_db:"Gain",
@@ -516,6 +536,52 @@ function podcastCards(){
   </div>`;
 }
 
+function mixerCard(){
+  const M = S.mixer;
+  if (!M) return "";
+  const strips = M.stems.map(st => {
+    const vu = Math.max(0, Math.min(100, (st.level_db + 60) / 60 * 100));
+    const roleCls = st.role.includes("vocal") ? "voc" : "";
+    return `<div class="strip ${st.active ? "active" : ""}">
+      <div class="nm">${st.name}
+        ${st.role ? `<span class="role ${roleCls}">${st.role
+          .replace("_", " ").toUpperCase()}</span>` : ""}
+        ${st.dead ? '<span class="tag dead">DEAD</span>' : ""}</div>
+      <div class="vu"><div class="fill" style="width:${vu}%"></div></div>
+      <div class="fader">
+        <span class="fval mono">${st.fader_db > 0 ? "+" : ""}${st.fader_db} dB</span>
+        ${Math.abs(st.target_db - st.fader_db) > 0.05 ?
+          `<span style="color:var(--muted)">→ ${st.target_db > 0 ? "+" : ""}${st.target_db}</span>` : ""}
+        <span style="margin-left:auto"></span>
+        <button class="lock ${st.frozen ? "frozen" : ""}"
+          onclick="mixerFreezeStem(${st.channel}, ${!st.frozen})">
+          ${st.frozen ? "🔒" : "🔓"}</button>
+      </div>
+    </div>`;
+  }).join("");
+  const mask = M.vocal_masking_db;
+  return `<div class="card">
+    <h2>Mix engineer — Studio One <span class="spacer"></span>
+      <span class="pill"><span class="dot ${M.midi_available ?
+        (M.daw_heard ? "ok" : "warn") : "bad"}"></span>MIDI</span></h2>
+    <div class="mixbar">
+      <button class="btn ${M.frozen_all ? "" : "danger"}"
+        onclick="mixerAction('${M.frozen_all ? "unfreeze_all" : "freeze_all"}')">
+        ${M.frozen_all ? "▶ Resume mix" : "⏸ FREEZE MIX"}</button>
+      <button class="btn ghost" onclick="mixerSnapshot()">Soundcheck
+        snapshot${M.baselined ? " ✓" : ""}</button>
+      ${M.ai_enabled ? `<button class="btn ghost"
+        onclick="mixerAction('review_now')">AI review now</button>` : ""}
+      <span class="masking">${mask === null ? "" :
+        `vocal masking: <b class="${mask > 0 ? "badval" : ""}">${mask > 0 ? "+" : ""}${mask} dB</b>`}</span>
+      ${!M.daw_heard && M.midi_available ?
+        `<span class="masking">wiggle a fader in Studio One to confirm
+         the MCU wiring</span>` : ""}
+    </div>
+    <div class="strips">${strips}</div>
+  </div>`;
+}
+
 function setupHero(){
   return `<div class="card setup-hero">
     <h1>Welcome to AutoDirector</h1>
@@ -531,7 +597,8 @@ function renderMain(){
   if (col.dataset.html !== html){ col.innerHTML = html; col.dataset.html = html;
     const b = $("btnCal"); if (b) b.onclick = openCal; }
   $("aiCard").style.display =
-    (S.mode === "podcast" && S.podcast.ai_enabled) ? "" : "none";
+    ((S.mode === "podcast" && S.podcast.ai_enabled) ||
+     (S.mixer && S.mixer.ai_enabled)) ? "" : "none";
 }
 
 /* ---------- log ---------- */
@@ -548,16 +615,24 @@ function renderLog(){
          " · ⚠︎ OBS down" : ""}</span>
      </div>`).join("")
     : '<div class="empty">No cuts yet — the director is watching.</div>';
-  if (S.mode === "podcast"){
-    const log = S.podcast.ai_log;
-    $("aiLog").innerHTML = log.length ? log.map(e =>
-      `<div class="ai-entry"><div class="head mono">
-         ${e.speaker} · ${PARAM_LABEL[e.param] || e.param}
-         ${e.applied >= 0 ? "+" : ""}${(+e.applied).toFixed(1)} dB</div>
-       <div class="why">${e.reason}</div></div>`).join("")
-      : '<div class="empty">No adjustments yet.</div>';
-  }
+  const aiEntries = S.mode === "podcast" ? (S.podcast.ai_log || [])
+      : S.mixer ? (S.mixer.ai_log || []) : [];
+  $("aiLog").innerHTML = aiEntries.length ? aiEntries.map(e =>
+    `<div class="ai-entry"><div class="head mono">
+       ${e.speaker || e.stem} ·
+       ${PARAM_LABEL[e.param] || e.param || "fader"}
+       ${e.applied >= 0 ? "+" : ""}${(+e.applied).toFixed(1)} dB</div>
+     <div class="why">${e.reason}</div></div>`).join("")
+    : '<div class="empty">No adjustments yet.</div>';
 }
+window.mixerAction = a => api.post("/api/mixer", {action: a});
+window.mixerFreezeStem = (ch, frozen) =>
+  api.post("/api/mixer", {action: "freeze_stem", channel: ch, frozen});
+window.mixerSnapshot = async () => {
+  const r = await api.post("/api/mixer", {action: "snapshot"});
+  toast(`Soundcheck snapshot: ${r.faders_heard ?? 0} faders heard, ` +
+        `${r.stems_referenced ?? 0} stems referenced`);
+};
 
 /* ---------- calibration ---------- */
 function openCal(){ $("calOverlay").classList.add("open"); $("calVerdict").className = "verdict"; }

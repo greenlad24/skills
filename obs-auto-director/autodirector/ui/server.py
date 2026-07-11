@@ -144,6 +144,28 @@ class ControlRoomServer:
                         eng.calibration_cancel()
                         return self._json({"ok": True})
                     return self._json({"error": "unknown action"}, 400)
+                if self.path == "/api/mixer":
+                    mixer = runtime.mixer
+                    if mixer is None:
+                        return self._json({"error": "mixer not running"}, 409)
+                    action = body.get("action")
+                    if action == "freeze_all":
+                        mixer.freeze_all(True)
+                        return self._json({"frozen_all": True})
+                    if action == "unfreeze_all":
+                        mixer.freeze_all(False)
+                        return self._json({"frozen_all": False})
+                    if action == "snapshot":
+                        return self._json(mixer.snapshot_baseline())
+                    if action == "freeze_stem":
+                        ok = mixer.freeze_stem(int(body.get("channel", -1)),
+                                               bool(body.get("frozen", True)))
+                        return self._json({"ok": ok}, 200 if ok else 404)
+                    if action == "review_now":
+                        import threading as _t
+                        _t.Thread(target=mixer.review, daemon=True).start()
+                        return self._json({"ok": True})
+                    return self._json({"error": "unknown action"}, 400)
                 if self.path == "/api/freeze":
                     if eng is None or eng.mode != "podcast":
                         return self._json(
