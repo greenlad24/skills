@@ -5,10 +5,40 @@ show and cuts between your OBS scenes the way a human director would —
 plus, in podcast mode, it rides your voice processing like a broadcast
 engineer.
 
-**v2 is a standalone menu-bar/CLI app.** It captures audio itself (real
-DSP on raw samples — not level meters), makes its decisions locally, and
-drives OBS over the built-in obs-websocket. One checkbox in OBS, no
-virtual cables for most setups, no OBS scripting/Python configuration.
+**v2 is a standalone app with a Control Room.** It captures audio itself
+(real DSP on raw samples — not level meters), makes its decisions
+locally, and drives OBS over the built-in obs-websocket. One checkbox in
+OBS, no virtual cables for most setups.
+
+![Control Room — live show](docs/img/ui_live.png)
+
+## The Control Room
+
+Launch the app and the **Control Room** opens in your browser — a
+broadcast console for the director:
+
+- **Program card** — what's on air right now, and why the director cut
+  to it. Big DIRECTING switch (or press <kbd>D</kbd>) to grab manual
+  control instantly; the badge flips to *PAUSED — MANUAL CONTROL*.
+- **Vocal detector** (live) — the confidence gauge with the actual
+  enter/exit thresholds marked, current VOCAL/INSTRUMENTAL state, and
+  your calibration quality (d′) always visible.
+- **Shot pool** (live) — your scenes at a glance, live one highlighted.
+- **Speakers & voice chains** (podcast) — per-speaker VU meters with the
+  measured room-noise floor marked, TALKING / HAS FLOOR tags, and every
+  adaptive chain parameter as a live readout with a 🔒 freeze lock.
+- **Director's log** — every cut with its timestamp, reasoning, and
+  PRIORITY flag. If you don't like a decision, the log tells you which
+  knob explains it.
+- **AI engineer feed** — each adjustment Claude made, in dB, with its
+  reason. Freeze any parameter to veto the machines.
+- **Setup drawer** — guided configuration with a *Test connection*
+  button that pulls your scene list straight out of OBS, device
+  dropdowns, and per-speaker cards. Saving applies live.
+- **Calibration modal** (live) — the 20-second teach-in, with countdowns
+  and an honest verdict.
+
+![Control Room — podcast](docs/img/ui_podcast.png)
 
 > The v1 OBS-script plugin lives frozen in `legacy/` and is deprecated:
 > OBS scripts cannot access raw audio, which v2's features require.
@@ -86,29 +116,38 @@ fighting you.
 
 ## Install
 
+**Easiest — the .pkg installer** (build once on any Mac):
+
 ```bash
-# with pipx (recommended)
-pipx install 'git+https://github.com/greenlad24/skills.git#subdirectory=obs-auto-director'
-# or from a checkout
-pip3 install ./obs-auto-director
-# optional extras
-pip3 install 'obs-auto-director[classify]'   # local audio classifier
+./scripts/build_pkg.sh          # → dist/AutoDirector.pkg
 ```
 
-Or build a self-contained binary (no Python needed on the target Mac):
-`./scripts/build_mac_app.sh` → `dist/autodirector`.
+Double-click `AutoDirector.pkg` → it installs **AutoDirector.app** into
+/Applications. Launch it; the Control Room opens in your browser and
+walks you through setup. (Unsigned builds: right-click → Open the first
+time, or set `APP_SIGN_ID` / `PKG_SIGN_ID` / `NOTARY_PROFILE` env vars
+before building to sign and notarize.)
 
-**OBS side (once):** OBS → Tools → WebSocket Server Settings → Enable,
-copy the password into your config.
-
-## Quick start
+**Or as a Python package:**
 
 ```bash
-autodirector devices                      # find your input device names
-cp config.example.json myshow.json        # edit scenes/devices/password
-autodirector calibrate --config myshow.json    # live mode: 20s wizard
-autodirector run --config myshow.json          # go
+pip3 install ./obs-auto-director
+pip3 install 'obs-auto-director[classify]'   # + local audio classifier
+autodirector app                             # engine + Control Room
+```
+
+**OBS side (once):** OBS → Tools → WebSocket Server Settings → Enable,
+then paste the password in the Control Room's Setup drawer (use *Test
+connection* — it should report your scene count).
+
+## Quick start (CLI alternative)
+
+```bash
+autodirector app                          # Control Room + engine (default)
+autodirector devices                      # list input device names
+autodirector run --config myshow.json     # headless with explicit config
 autodirector run --config myshow.json --dry-run  # print cuts, don't touch OBS
+autodirector calibrate --config myshow.json      # terminal calibration wizard
 ```
 
 `python3 demo.py mix` directs a synthetic song through the real pipeline
