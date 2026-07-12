@@ -57,13 +57,37 @@ class MidiPort:
                  on_lcd: Optional[Callable[[int, str], None]] = None):
         import rtmidi  # type: ignore
         self._out = rtmidi.MidiOut()
-        self._out.open_virtual_port(name)
         self._in = rtmidi.MidiIn()
-        self._in.open_virtual_port(name)
+        try:
+            # macOS/Linux: create our own virtual ports.
+            self._out.open_virtual_port(name)
+            self._in.open_virtual_port(name)
+        except NotImplementedError:
+            # Windows: the OS cannot create virtual MIDI ports. The user
+            # creates ports with these names in loopMIDI (free) and we
+            # attach to them instead.
+            self._open_named(name)
         self._in.ignore_types(sysex=False)  # we want LCD name sysex
         self._on_pb = on_pitchbend
         self._on_lcd = on_lcd
         self._in.set_callback(self._cb)
+
+    def _open_named(self, name: str) -> None:
+        low = name.lower()
+        outs = self._out.get_ports()
+        ins = self._in.get_ports()
+        oi = next((i for i, p in enumerate(outs) if low in p.lower()), None)
+        ii = next((i for i, p in enumerate(ins) if low in p.lower()), None)
+        if oi is None or ii is None:
+            raise RuntimeError(
+                f"MIDI port '{name}' not found. On Windows, create ports "
+                f"named 'AutoDirector MCU 1' and 'AutoDirector MCU 2' in "
+                f"loopMIDI (free), then restart AutoDirector.")
+        self._out.open_port(oi)
+        self._in.open_port(ii)
+        # Note: loopMIDI ports are loopbacks, so we also hear our own
+        # fader messages back — harmless: the positions we 'hear' are the
+        # positions we set.
 
     def _cb(self, event, _data=None):
         msg, _dt = event

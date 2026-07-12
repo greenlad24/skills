@@ -94,23 +94,30 @@ scenes change the picture, not the audio).
   ONNX, ~4 MB) identifies background noise by name (fan, hum, traffic…)
   and reinforces singing/speech detection. `scripts/fetch_models.sh`.
 
-### 🎚 Mix Engineer (live mode, optional) — an AI A2 for your Studio One mix
+### 🎚 Mix Engineer (live mode, optional) — an AI A2 for your DAW mix
 
-If your band is pre-mixed in **Studio One** (16 channels → OBS → YouTube),
-AutoDirector can ride the mix like a broadcast A2:
+If your band is pre-mixed in a DAW (16 channels → OBS → YouTube),
+AutoDirector can ride the mix like a broadcast A2. It speaks **Mackie
+Control** — the industry-standard surface protocol — so it works with
+**Studio One, Cubase, Logic, REAPER**, and any other MCU-capable DAW:
+add two Mackie Control devices (main + XT) bound to the "AutoDirector
+MCU 1/2" ports (Studio One: *External Devices*; Cubase: *Studio Setup →
+Remote Devices*).
 
-- **Hears the real mix, decomposed.** Give each Studio One channel a
-  post-fader send to **BlackHole 16ch**: every stem arrives exactly as
-  it contributes to the broadcast (your channel-strip EQ/comp and fader
-  included) — never the raw mixer inputs.
+- **Hears the real mix, decomposed.** Give each DAW channel a
+  post-fader send to a 16-channel virtual device (**BlackHole 16ch** on
+  macOS; VB-Cable/VoiceMeeter on Windows): every stem arrives exactly
+  as it contributes to the broadcast (your channel-strip EQ/comp and
+  fader included) — never the raw mixer inputs.
 - **Knows your instruments by name.** Channel names arrive automatically
   over the Mackie-Control wire (the same scribble-strip text a hardware
   controller shows), and roles are inferred — Kick, Bass, Gtr L,
   Lead Vox. The AI reasons in those terms.
-- **Rides faders in Studio One** via two virtual Mackie Control ports
-  (add "Mackie Control" + "Mackie Control XT" as External Devices —
-  16 dedicated strips, no banking). Take a **soundcheck snapshot**, and
-  from then on: ±6 dB max from soundcheck, ≤1 dB/s, master untouched.
+- **Rides faders in your DAW** via two virtual Mackie Control ports
+  (16 dedicated strips, no banking). On macOS the ports appear
+  automatically; on Windows create them once in **loopMIDI** (free).
+  Take a **soundcheck snapshot**, and from then on: ±6 dB max from
+  soundcheck, ≤1 dB/s, master untouched.
 - **AI rebalance reviews** every couple of minutes: lead vocal masked by
   the band → lift it / trim the crowders a touch; a channel drifted
   since soundcheck → bring it home; dead channel → flagged, never
@@ -151,17 +158,28 @@ fighting you.
 
 ## Install
 
-**Easiest — the .pkg installer** (build once on any Mac):
+**Easiest — download a prebuilt installer** from the
+[latest-build release](https://github.com/greenlad24/skills/releases/tag/autodirector-latest):
 
-```bash
-./scripts/build_pkg.sh          # → dist/AutoDirector.pkg
-```
+| Platform | File |
+|---|---|
+| Mac — Apple Silicon | `AutoDirector-apple-silicon.pkg` |
+| Mac — Intel (older Macs, macOS 12+) | `AutoDirector-intel.pkg` |
+| Windows 10/11 | `AutoDirector-windows.exe` |
 
-Double-click `AutoDirector.pkg` → it installs **AutoDirector.app** into
-/Applications. Launch it; the Control Room opens in your browser and
-walks you through setup. (Unsigned builds: right-click → Open the first
-time, or set `APP_SIGN_ID` / `PKG_SIGN_ID` / `NOTARY_PROFILE` env vars
-before building to sign and notarize.)
+macOS: double-click the `.pkg` (unsigned → right-click → Open the first
+time); it installs **AutoDirector.app** into /Applications. Windows: run
+the `.exe` (SmartScreen → *More info → Run anyway*). Either way, the
+Control Room opens in your browser and walks you through setup.
+
+Or build locally: `./scripts/build_pkg.sh` on a Mac (set `APP_SIGN_ID` /
+`PKG_SIGN_ID` / `NOTARY_PROFILE` to sign and notarize), or
+`pyinstaller --onefile packaging/launch.py` anywhere.
+
+**Windows notes:** plain interface capture needs nothing extra (WASAPI
+shared mode). For in-OBS-only feeds use **VB-Cable** or **VoiceMeeter**
+as the monitoring device. Mix Engineer users: create MIDI ports named
+`AutoDirector MCU 1` / `AutoDirector MCU 2` in **loopMIDI** once.
 
 **Or as a Python package:**
 

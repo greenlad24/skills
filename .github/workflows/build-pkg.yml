@@ -45,35 +45,100 @@ jobs:
           path: AutoDirector-apple-silicon.pkg
           if-no-files-found: error
 
+  build-pkg-intel:
+    needs: test
+    runs-on: macos-15-intel # older / Intel Macs
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Build AutoDirector.pkg (Intel)
+        run: ./obs-auto-director/scripts/build_pkg.sh
+      - name: Rename with architecture
+        run: |
+          mv obs-auto-director/dist/AutoDirector.pkg \
+             AutoDirector-intel.pkg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AutoDirector-intel
+          path: AutoDirector-intel.pkg
+          if-no-files-found: error
+
+  build-windows:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Build AutoDirector.exe
+        shell: pwsh
+        run: |
+          cd obs-auto-director
+          python -m pip install --quiet pyinstaller .
+          pyinstaller --onefile --name AutoDirector `
+            --collect-all sounddevice `
+            --hidden-import websockets `
+            packaging/launch.py
+          Move-Item dist/AutoDirector.exe ../AutoDirector-windows.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AutoDirector-windows
+          path: AutoDirector-windows.exe
+          if-no-files-found: error
+
   release:
-    needs: build-pkg
+    needs: [build-pkg, build-pkg-intel, build-windows]
+    if: always() && needs.build-pkg.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: AutoDirector-apple-silicon
+          merge-multiple: true
       - name: Publish download release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: autodirector-latest
           name: "AutoDirector — latest build"
           prerelease: true
-          files: AutoDirector-apple-silicon.pkg
+          fail_on_unmatched_files: false
+          files: |
+            AutoDirector-apple-silicon.pkg
+            AutoDirector-intel.pkg
+            AutoDirector-windows.exe
           body: |
-            ## Install on your Mac (Apple Silicon)
+            ## Downloads
 
-            1. Download **AutoDirector-apple-silicon.pkg** below.
-            2. This build is unsigned: **right-click the .pkg → Open → Open**
-               (or `xattr -d com.apple.quarantine AutoDirector-apple-silicon.pkg`).
-            3. The installer puts **AutoDirector.app** into /Applications.
-            4. In OBS: *Tools → WebSocket Server Settings → Enable*.
-            5. Launch AutoDirector — the **Control Room** opens in your
-               browser. Follow Setup (Test connection pulls your scene
-               list), then in live mode run the 20-second calibration.
-            6. Grant microphone access when macOS asks — audio never
-               leaves your Mac.
+            | Your machine | Download |
+            |---|---|
+            | Mac — Apple Silicon (M1/M2/M3/M4) | **AutoDirector-apple-silicon.pkg** |
+            | Mac — Intel (older Macs, macOS 12+) | **AutoDirector-intel.pkg** |
+            | Windows 10/11 | **AutoDirector-windows.exe** |
 
-            Intel Macs: build locally with
-            `./obs-auto-director/scripts/build_pkg.sh` (needs Python 3.11).
+            ### macOS install
+            1. Unsigned build: **right-click the .pkg → Open → Open**
+               (or `xattr -d com.apple.quarantine <file>`).
+            2. Installs **AutoDirector.app** into /Applications.
+            3. In OBS: *Tools → WebSocket Server Settings → Enable*.
+            4. Launch AutoDirector — the **Control Room** opens in your
+               browser; follow Setup, then (live mode) run the 20-second
+               calibration. Grant microphone access when asked.
 
-            Updated automatically from the latest commit on the build branch.
+            ### Windows install
+            1. Run **AutoDirector-windows.exe** (SmartScreen: *More info →
+               Run anyway* — unsigned build). The Control Room opens in
+               your browser.
+            2. In OBS: *Tools → WebSocket Server Settings → Enable*.
+            3. Mix Engineer users: create MIDI ports named
+               `AutoDirector MCU 1` and `AutoDirector MCU 2` in
+               [loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html)
+               (free), and bind two Mackie Control devices to them in
+               your DAW. For in-OBS-only audio feeds use VB-Cable /
+               VoiceMeeter as the virtual device.
+
+            Works with any DAW that speaks Mackie Control: Studio One,
+            Cubase, Logic, REAPER, and more. Audio never leaves your
+            machine. Updated automatically from the latest commit.
