@@ -139,6 +139,28 @@ class TestVoiceChain:
         moved = chain.adapt(close_enough, speaking_now=False)
         assert "eq_high" not in moved and "eq_low" not in moved
 
+    def test_one_missing_filter_does_not_brick_the_chain(self):
+        # If a single filter kind can't be created (OBS rename, platform
+        # quirk), the rest of the chain must keep adapting.
+        obs = FakeOBS()
+        real_create = obs.create_filter
+
+        def create(source, name, kind, settings):
+            if kind == "basic_eq_filter":
+                return False  # pretend this OBS has no EQ
+            return real_create(source, name, kind, settings)
+
+        obs.create_filter = create
+        chain = VoiceChain(obs, "Mic A")
+        assert chain.ensure_filters() is True, \
+            "core chain must come up without the optional EQ"
+        snap = Snapshot(floor_db=-50.0, speech_db=-30.0, peak_db=-22.0,
+                        tilt_db=-30.0)  # tilt would normally trigger EQ
+        moved = chain.adapt(snap, speaking_now=False)
+        assert "gain_db" in moved, "gain must still adapt"
+        assert "eq_high" not in moved and "eq_low" not in moved, \
+            "missing EQ must be skipped, not retried into oblivion"
+
     def test_fail_safe_when_obs_down(self):
         obs = FakeOBS()
         obs.down = True

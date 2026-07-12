@@ -58,10 +58,15 @@ class ProgramChain:
             "master_comp_threshold": Rail("master_comp_threshold", -12.0,
                                           -24.0, -6.0, 0.5),
         }
+        self.available: set = set()
+        self._create_failed: set = set()
         self._loud_ema: Optional[float] = None
         self._tilt_ema: Optional[float] = None
 
     def ensure_filters(self) -> bool:
+        """Per-filter tolerant: a single unavailable filter kind must
+        never brick the whole chain — the others keep adapting and the
+        missing one's rails simply stay parked."""
         filters = self.obs.get_filters(self.source)
         if filters is None:
             return False
@@ -76,13 +81,17 @@ class ProgramChain:
             (F_LIMIT, K_LIMIT, {"threshold": self.cfg.limiter_threshold_db,
                                 "release_time": 100}),
         ]
-        ok = True
         for name, kind, settings in spec:
-            if name not in existing:
-                ok = self.obs.create_filter(self.source, name, kind,
-                                            settings) and ok
-        self.ensured = ok
-        return ok
+            if name in existing or self.obs.create_filter(
+                    self.source, name, kind, settings):
+                self.available.add(name)
+            elif name not in self._create_failed:
+                self._create_failed.add(name)
+                log.warning("program filter unavailable (%s / %s) — "
+                            "continuing without it", name, kind)
+        # Core = the safety pieces; EQ is a bonus.
+        self.ensured = F_COMP in self.available and F_LIMIT in self.available
+        return self.ensured
 
     # -- measurement + slow adaptation --------------------------------------
     def note_master(self, rms_db: float, tilt_db: float) -> None:
@@ -99,7 +108,7 @@ class ProgramChain:
             return {}
         moved: Dict[str, float] = {}
         cfg = self.cfg
-        if self._tilt_ema is not None:
+        if self._tilt_ema is not None and F_EQ in self.available:
             err = self._tilt_ema - cfg.target_tilt_db
             if abs(err) > cfg.eq_deadband_db:
                 corr = max(-0.25, min(0.25, -err / 12.0))
@@ -139,7 +148,8 @@ class ProgramChain:
     def _push(self, moved: Dict[str, float]) -> None:
         if not moved:
             return
-        if "master_eq_low" in moved or "master_eq_high" in moved:
+        if ("master_eq_low" in moved or "master_eq_high" in moved) \
+                and F_EQ in self.available:
             self.obs.set_filter_settings(self.source, F_EQ, {
                 "low": self.rails["master_eq_low"].value,
                 "high": self.rails["master_eq_high"].value})

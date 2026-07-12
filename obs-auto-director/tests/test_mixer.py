@@ -465,6 +465,26 @@ class TestProgramChain:
         assert chain.rails["master_eq_high"].value > 0.5
         assert chain.rails["master_eq_high"].value <= 3.0  # rail ceiling
 
+    def test_missing_eq_degrades_gracefully(self):
+        obs = FakeOBS()
+        obs.filters["S1 Mix"] = []
+        real_create = obs.create_filter
+
+        def create(source, name, kind, settings):
+            if kind == "basic_eq_filter":
+                return False
+            return real_create(source, name, kind, settings)
+
+        obs.create_filter = create
+        chain = ProgramChain(obs, "S1 Mix")
+        assert chain.ensure_filters() is True, \
+            "comp+limiter present -> chain must run without EQ"
+        for _ in range(200):
+            chain.note_master(-18.0, -26.0)
+        moved = chain.adapt()
+        assert "master_eq_high" not in moved and \
+            "master_eq_low" not in moved
+
     def test_deadband_leaves_good_mix_alone(self):
         obs = FakeOBS()
         obs.filters["S1 Mix"] = []

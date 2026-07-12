@@ -67,6 +67,8 @@ class VoiceChain:
         self.source = source
         self.cfg = cfg or ChainConfig()
         self.ensured = False
+        self.available: set = set()
+        self._create_failed: set = set()
         self.rails: Dict[str, Rail] = {
             "expander_threshold": Rail("expander_threshold", -45.0,
                                        lo=-60.0, hi=-25.0, max_step=1.0),
@@ -102,21 +104,29 @@ class VoiceChain:
             (F_LIMIT, K_LIMIT, {"threshold": cfg.limiter_threshold_db,
                                 "release_time": 60}),
         ]
-        ok = True
         for name, kind, settings in spec:
-            if name not in existing:
-                ok = self.obs.create_filter(self.source, name, kind,
-                                            settings) and ok
+            if name in existing or self.obs.create_filter(
+                    self.source, name, kind, settings):
+                self.available.add(name)
+            elif name not in self._create_failed:
+                self._create_failed.add(name)
+                log.warning("voice-chain filter unavailable (%s / %s) — "
+                            "continuing without it", name, kind)
         # Order: suppression + expander first; our output stages last —
         # the user's VSTs stay in the middle, untouched.
-        self.obs.set_filter_index(self.source, F_SUPPRESS, 0)
-        self.obs.set_filter_index(self.source, F_EXPANDER, 1)
+        if F_SUPPRESS in self.available:
+            self.obs.set_filter_index(self.source, F_SUPPRESS, 0)
+        if F_EXPANDER in self.available:
+            self.obs.set_filter_index(self.source, F_EXPANDER, 1)
         current = self.obs.get_filters(self.source) or []
         tail = len(current)
         for i, name in enumerate([F_GAIN, F_COMP, F_EQ, F_LIMIT]):
-            self.obs.set_filter_index(self.source, name, tail - 4 + i)
-        self.ensured = ok
-        return ok
+            if name in self.available:
+                self.obs.set_filter_index(self.source, name, tail - 4 + i)
+        # Core = gain staging + compression; anything else is a bonus a
+        # single missing filter must never take the whole chain down.
+        self.ensured = F_GAIN in self.available and F_COMP in self.available
+        return self.ensured
 
     # -- fast loop ---------------------------------------------------------
     def adapt(self, snap: Snapshot, speaking_now: bool) -> Dict[str, float]:
@@ -127,7 +137,8 @@ class VoiceChain:
         moved: Dict[str, float] = {}
 
         # Expander threshold: follow the room floor, never mid-sentence.
-        if not speaking_now and snap.floor_db > -85.0:
+        if F_EXPANDER in self.available and not speaking_now \
+                and snap.floor_db > -85.0:
             rail = self.rails["expander_threshold"]
             if rail.step_toward(snap.floor_db + cfg.expander_margin_db):
                 moved["expander_threshold"] = rail.value
@@ -144,7 +155,7 @@ class VoiceChain:
 
             # Auto-EQ: slow tilt correction with a deadband.
             err = snap.tilt_db - cfg.target_tilt_db
-            if abs(err) > cfg.eq_deadband_db:
+            if F_EQ in self.available and abs(err) > cfg.eq_deadband_db:
                 corr = max(-0.5, min(0.5, -err / 8.0))
                 lo_rail, hi_rail = self.rails["eq_low"], self.rails["eq_high"]
                 if hi_rail.step_toward(hi_rail.value + corr):
