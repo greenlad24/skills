@@ -72,7 +72,8 @@
     "wide_scene": "Two Shot",
     "voice_chain": {
       "enabled": true,
-      "target_speech_db": -20.0
+      "target_speech_db": -20.0,
+      "_comment": "speakers[].native_filters: false = VST mode (no native OBS filters; level automation only)"
     },
     "ai_review": {
       "enabled": true,

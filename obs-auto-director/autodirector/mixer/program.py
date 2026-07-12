@@ -41,6 +41,10 @@ class ProgramConfig:
     target_loud_db: float = -16.0   # streaming-loudness-ish program level
     comp_ratio: float = 1.6         # glue, not squash
     limiter_threshold_db: float = -1.5
+    # VST mode: create NO native OBS filters — the user's VST chain owns
+    # the program sound; we only ride the input volume toward the
+    # loudness target. (Their VST chain should include its own limiter.)
+    native_filters: bool = True
 
 
 class ProgramChain:
@@ -62,6 +66,12 @@ class ProgramChain:
         self._create_failed: set = set()
         self._loud_ema: Optional[float] = None
         self._tilt_ema: Optional[float] = None
+        if not self.cfg.native_filters:
+            self.rails["master_volume"] = Rail("master_volume", 0.0,
+                                               -6.0, 6.0, 0.25)
+            for p in ("master_eq_low", "master_eq_high",
+                      "master_comp_threshold"):
+                self.rails[p].frozen = True
 
     def ensure_filters(self) -> bool:
         """Per-filter tolerant: a single unavailable filter kind must
@@ -104,10 +114,19 @@ class ProgramChain:
 
     def adapt(self) -> Dict[str, float]:
         """Very slow corrective tick (~ every few seconds)."""
+        cfg = self.cfg
+        if not cfg.native_filters:
+            # VST mode: gentle loudness ride via input volume only.
+            moved: Dict[str, float] = {}
+            if self._loud_ema is not None:
+                rail = self.rails["master_volume"]
+                if rail.step_toward(cfg.target_loud_db - self._loud_ema):
+                    moved["master_volume"] = rail.value
+                    self.obs.set_input_volume(self.source, rail.value)
+            return moved
         if not self.ensured and not self.ensure_filters():
             return {}
         moved: Dict[str, float] = {}
-        cfg = self.cfg
         if self._tilt_ema is not None and F_EQ in self.available:
             err = self._tilt_ema - cfg.target_tilt_db
             if abs(err) > cfg.eq_deadband_db:
@@ -134,7 +153,10 @@ class ProgramChain:
             return 0.0
         applied = rail.nudge(delta)
         if applied:
-            self._push({param: rail.value})
+            if param == "master_volume":
+                self.obs.set_input_volume(self.source, rail.value)
+            else:
+                self._push({param: rail.value})
         return applied
 
     def measurements(self) -> dict:

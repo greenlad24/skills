@@ -46,7 +46,7 @@ log = logging.getLogger("autodirector.mixer")
 DEFAULT_MODEL = "claude-haiku-4-5-20251001"
 MAX_DELTA_PER_REVIEW = 3.0
 MASTER_PARAMS = ("master_eq_low", "master_eq_high",
-                 "master_comp_threshold")
+                 "master_comp_threshold", "master_volume")
 
 STEREO_MIX_PROMPT = """You are a broadcast A2 audio engineer riding faders
 on a live band streaming to YouTube. You hear ONLY the stereo program
@@ -129,8 +129,13 @@ class MixEngineer:
         self.reference: Dict[int, float] = {}
         self.master_channels = list(cfg.get("master_channels", []))
         prog_source = cfg.get("program_source", "")
-        self.program = ProgramChain(obs, prog_source) \
-            if (obs is not None and prog_source) else None
+        if obs is not None and prog_source:
+            from .program import ProgramConfig
+            pc = ProgramConfig(native_filters=bool(
+                cfg.get("program_native_filters", True)))
+            self.program = ProgramChain(obs, prog_source, pc)
+        else:
+            self.program = None
         # Control mode: "auto" moves faders over MCU; "advisory" posts
         # recommendations in the Control Room for the human to apply —
         # the zero-install tier (no loopMIDI/virtual ports needed). Auto

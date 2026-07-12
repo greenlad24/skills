@@ -57,6 +57,9 @@ class ChainConfig:
     expander_margin_db: float = 8.0   # threshold above measured floor
     comp_headroom_db: float = 6.0     # threshold below speech peaks
     limiter_threshold_db: float = -3.0
+    # VST mode: create NO native OBS filters (the user's VST chain owns
+    # tone/dynamics); automation rides the source's input volume only.
+    native_filters: bool = True
 
 
 class VoiceChain:
@@ -78,6 +81,13 @@ class VoiceChain:
             "eq_low": Rail("eq_low", 0.0, lo=-4.0, hi=4.0, max_step=0.5),
             "eq_high": Rail("eq_high", 0.0, lo=-4.0, hi=4.0, max_step=0.5),
         }
+        if not self.cfg.native_filters:
+            # VST mode: only level automation is legitimate — everything
+            # tonal/dynamic belongs to the user's VST chain. Freeze the
+            # rest so neither the fast loop nor the AI can move it.
+            for p in ("expander_threshold", "comp_threshold",
+                      "eq_low", "eq_high"):
+                self.rails[p].frozen = True
 
     # -- setup -----------------------------------------------------------
     def ensure_filters(self) -> bool:
@@ -131,6 +141,16 @@ class VoiceChain:
     # -- fast loop ---------------------------------------------------------
     def adapt(self, snap: Snapshot, speaking_now: bool) -> Dict[str, float]:
         """One control tick (~2 s cadence). Returns the params that moved."""
+        if not self.cfg.native_filters:
+            # VST mode: gain staging via input volume; nothing else.
+            moved: Dict[str, float] = {}
+            if snap.speech_db > -85.0:
+                rail = self.rails["gain_db"]
+                if rail.step_toward(self.cfg.target_speech_db
+                                    - snap.speech_db):
+                    moved["gain_db"] = rail.value
+                    self.obs.set_input_volume(self.source, rail.value)
+            return moved
         if not self.ensured and not self.ensure_filters():
             return {}
         cfg = self.cfg
@@ -183,6 +203,11 @@ class VoiceChain:
     # -- OBS writes ----------------------------------------------------------
     def _push(self, moved: Dict[str, float]) -> None:
         if not moved:
+            return
+        if not self.cfg.native_filters:
+            if "gain_db" in moved:
+                self.obs.set_input_volume(self.source,
+                                          self.rails["gain_db"].value)
             return
         if "expander_threshold" in moved:
             self.obs.set_filter_settings(self.source, F_EXPANDER,

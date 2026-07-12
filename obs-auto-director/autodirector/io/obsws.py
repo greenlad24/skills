@@ -207,6 +207,12 @@ class OBSClient:
         data = self.request("GetInputList") or {}
         return [i.get("inputName") for i in data.get("inputs", [])]
 
+    def set_input_volume(self, name: str, volume_db: float) -> bool:
+        """Ride an input's volume — the VST-safe control: works no matter
+        what filter chain (VST or native) the user runs on the source."""
+        return self.request("SetInputVolume", {
+            "inputName": name, "inputVolumeDb": float(volume_db)}) is not None
+
     # filters (adaptive voice chain)
     def get_filters(self, source: str) -> list:
         data = self.request("GetSourceFilterList",

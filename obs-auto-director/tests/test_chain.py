@@ -18,7 +18,14 @@ class FakeOBS:
             {"filterName": "My Fancy VST", "filterKind": "vst_filter"},
         ]}
         self.settings_calls = []
+        self.volume_calls = []
         self.down = False
+
+    def set_input_volume(self, name, volume_db):
+        if self.down:
+            return False
+        self.volume_calls.append((name, round(volume_db, 2)))
+        return True
 
     def get_filters(self, source):
         if self.down:
@@ -160,6 +167,27 @@ class TestVoiceChain:
         assert "gain_db" in moved, "gain must still adapt"
         assert "eq_high" not in moved and "eq_low" not in moved, \
             "missing EQ must be skipped, not retried into oblivion"
+
+    def test_vst_mode_rides_volume_and_touches_nothing_else(self):
+        # User runs VST plugins in OBS: we must create NO native filters
+        # and automate only the input volume.
+        obs = FakeOBS()
+        chain = VoiceChain(obs, "Mic A",
+                           ChainConfig(target_speech_db=-20.0,
+                                       native_filters=False))
+        snap = Snapshot(floor_db=-55.0, speech_db=-26.0, peak_db=-18.0,
+                        tilt_db=-30.0)
+        for _ in range(20):
+            chain.adapt(snap, speaking_now=False)
+        names = [f["filterName"] for f in obs.filters["Mic A"]]
+        assert names == ["My Fancy VST"], \
+            f"VST mode must not add filters, found {names}"
+        assert obs.settings_calls == []
+        assert obs.volume_calls, "gain staging must ride input volume"
+        assert obs.volume_calls[-1][1] == 6.0  # reached the +6 target
+        # tonal/dynamics rails are frozen against the AI too
+        assert chain.nudge("eq_high", 2.0) == 0.0
+        assert chain.nudge("comp_threshold", 2.0) == 0.0
 
     def test_fail_safe_when_obs_down(self):
         obs = FakeOBS()

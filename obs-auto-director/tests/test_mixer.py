@@ -485,6 +485,27 @@ class TestProgramChain:
         assert "master_eq_high" not in moved and \
             "master_eq_low" not in moved
 
+    def test_vst_mode_program_volume_ride_only(self):
+        from autodirector.mixer.program import ProgramConfig
+        obs = FakeOBS()
+        obs.filters["S1 Mix"] = []
+        obs.volume_calls = []
+        obs.set_input_volume = \
+            lambda name, db: obs.volume_calls.append((name, round(db, 2))) \
+            or True
+        chain = ProgramChain(obs, "S1 Mix",
+                             ProgramConfig(target_loud_db=-16.0,
+                                           native_filters=False))
+        for _ in range(400):
+            chain.note_master(-20.0, -12.0)  # 4 dB under target
+        for _ in range(30):
+            chain.adapt()
+        assert obs.filters["S1 Mix"] == [], "VST mode must add no filters"
+        assert obs.volume_calls, "loudness must ride input volume"
+        assert 3.5 <= obs.volume_calls[-1][1] <= 4.5
+        assert chain.nudge("master_eq_high", 1.0) == 0.0  # frozen in VST mode
+        assert chain.nudge("master_volume", 0.25) != 0.0
+
     def test_deadband_leaves_good_mix_alone(self):
         obs = FakeOBS()
         obs.filters["S1 Mix"] = []

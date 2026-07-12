@@ -277,8 +277,12 @@ class PodcastSpeaker:
                             attack_s=0.15, release_s=0.35)
         self.meter = SpeakerMeter()
         self.obs_source = cfg.get("obs_source", "")
-        self.chain = VoiceChain(obs, self.obs_source) \
-            if self.obs_source else None
+        if self.obs_source:
+            from .chain.fastloop import ChainConfig as _CC
+            self.chain = VoiceChain(obs, self.obs_source, _CC(
+                native_filters=bool(cfg.get("native_filters", True))))
+        else:
+            self.chain = None
         self.level_db = -90.0
         self.talking = False
 
