@@ -394,7 +394,7 @@ class PodcastEngine:
             for sp in self.speakers:
                 if sp.chain:
                     sp.chain.adapt(sp.meter.snapshot(), sp.talking)
-            if self.reviewer and self.reviewer.due():
+            if self.reviewer and self.reviewer.claim():
                 threading.Thread(target=self._run_review,
                                  daemon=True).start()
         return cuts
@@ -559,6 +559,9 @@ class Runtime:
             eng.note_external_scene(name)
 
     def _build_engine(self) -> None:
+        """Build into locals and commit atomically at the end — a partial
+        failure must never leave a half-installed engine running while
+        the UI reports an error."""
         from .io.capture import AudioCapture
         cfg = self.cfg
         cls_cfg = cfg.get("classifier", {})
@@ -566,72 +569,91 @@ class Runtime:
             os.path.expanduser(cls_cfg.get("model") or "") or None,
             os.path.expanduser(cls_cfg.get("class_map") or "") or None)
         mode = cfg.get("mode", "live")
-        if mode == "live":
-            lcfg = cfg.get("live", {})
-            if not lcfg.get("singer_scene"):
-                raise ValueError("setup needed: pick a singer scene")
-            capture = AudioCapture(device=lcfg.get("device"),
-                                   channels=int(lcfg.get("channels", 1)),
-                                   loopback=bool(lcfg.get("loopback")))
-            capture.start()
-            self.captures = {"live": capture}
-            self.engine = LiveEngine(lcfg, self.obs, capture, tagger=tagger)
-            mcfg = lcfg.get("mixer", {})
-            if mcfg.get("enabled"):
-                from .mixer import MixEngineer
-                mix_cap = AudioCapture(
-                    device=mcfg.get("device"),
-                    channels=int(mcfg.get("channels", 16)))
-                mix_cap.start()
-                self.captures["mixer"] = mix_cap
-                ai_cfg = mcfg.get("ai_review", {})
-                self.mixer = MixEngineer(
-                    mcfg, obs=self.obs,
-                    api_key=os.environ.get(
-                        ai_cfg.get("api_key_env", "ANTHROPIC_API_KEY"), ""))
-        else:
-            pcfg = cfg.get("podcast", {})
-            if not pcfg.get("speakers"):
-                raise ValueError("setup needed: add speakers")
-            captures = {}
-            for sp in pcfg["speakers"]:
-                key = sp["capture"] = sp.get("capture") or sp.get("device")
-                if key not in captures:
-                    captures[key] = AudioCapture(
-                        device=sp.get("device"),
-                        channels=int(sp.get("device_channels", 1)))
-                    captures[key].start()
-            self.captures = captures
-            self.engine = PodcastEngine(pcfg, self.obs, captures,
-                                        tagger=tagger)
+        captures: Dict[str, object] = {}
+        engine = None
+        mixer = None
+        try:
+            if mode == "live":
+                lcfg = cfg.get("live", {})
+                if not lcfg.get("singer_scene"):
+                    raise ValueError("setup needed: pick a singer scene")
+                capture = AudioCapture(device=lcfg.get("device"),
+                                       channels=int(lcfg.get("channels", 1)),
+                                       loopback=bool(lcfg.get("loopback")))
+                capture.start()
+                captures["live"] = capture
+                engine = LiveEngine(lcfg, self.obs, capture, tagger=tagger)
+                mcfg = lcfg.get("mixer", {})
+                if mcfg.get("enabled"):
+                    from .mixer import MixEngineer
+                    mix_cap = AudioCapture(
+                        device=mcfg.get("device"),
+                        channels=int(mcfg.get("channels", 16)))
+                    mix_cap.start()
+                    captures["mixer"] = mix_cap
+                    ai_cfg = mcfg.get("ai_review", {})
+                    mixer = MixEngineer(
+                        mcfg, obs=self.obs,
+                        api_key=os.environ.get(
+                            ai_cfg.get("api_key_env",
+                                       "ANTHROPIC_API_KEY"), ""))
+            else:
+                pcfg = cfg.get("podcast", {})
+                if not pcfg.get("speakers"):
+                    raise ValueError("setup needed: add speakers")
+                for sp in pcfg["speakers"]:
+                    key = sp["capture"] = sp.get("capture") or sp.get("device")
+                    if key not in captures:
+                        captures[key] = AudioCapture(
+                            device=sp.get("device"),
+                            channels=int(sp.get("device_channels", 1)))
+                        captures[key].start()
+                engine = PodcastEngine(pcfg, self.obs, captures,
+                                       tagger=tagger)
+        except Exception:
+            for cap in captures.values():
+                try:
+                    cap.stop()
+                except Exception:
+                    pass
+            raise
+        self.captures = captures
+        self.engine = engine
+        self.mixer = mixer
 
     def step(self) -> None:
-        mixer = self.mixer
-        eng = self.engine
-        if mixer is not None:
-            try:
-                cap = self.captures.get("mixer")
-                pcm = cap.read() if cap else None
-                if pcm is not None:
-                    mixer.process(pcm, cap.audio_clock)
-                    mixer.control_tick(cap.audio_clock)
-                if mixer.review_due():
-                    threading.Thread(target=mixer.review,
-                                     daemon=True).start()
-                if eng is not None and hasattr(eng, "stem_vocal_hint"):
-                    eng.stem_vocal_hint = mixer.vocal_activity()
-            except Exception:
-                log.exception("mixer step failed")
-        if eng is not None:
-            try:
-                eng.step()
-            except Exception:
-                log.exception("engine step failed")
+        with self._lock:  # never race a UI-triggered rebuild
+            mixer = self.mixer
+            eng = self.engine
+            if mixer is not None:
+                try:
+                    cap = self.captures.get("mixer")
+                    pcm = cap.read() if cap else None
+                    if pcm is not None:
+                        mixer.process(pcm, cap.audio_clock)
+                        mixer.control_tick(cap.audio_clock)
+                    if mixer.try_claim_review():
+                        threading.Thread(target=mixer.review,
+                                         daemon=True).start()
+                    if eng is not None and hasattr(eng, "stem_vocal_hint"):
+                        # A stalled stem capture must never pin the
+                        # director: the hint is only ground truth while
+                        # the mixer is actually hearing audio.
+                        eng.stem_vocal_hint = mixer.vocal_activity() \
+                            if (cap is not None and cap.alive()) else None
+                except Exception:
+                    log.exception("mixer step failed")
+            if eng is not None:
+                try:
+                    eng.step()
+                except Exception:
+                    log.exception("engine step failed")
 
     def shutdown(self) -> None:
-        self._stop_engine()
-        if self.obs is not None and not self.dry_run:
-            self.obs.stop()
+        with self._lock:
+            self._stop_engine()
+            if self.obs is not None and not self.dry_run:
+                self.obs.stop()
 
     # -- UI state ------------------------------------------------------------
     def ui_state(self) -> dict:

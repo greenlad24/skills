@@ -45,7 +45,10 @@ def parse_lcd_sysex(msg) -> Optional[tuple]:
     if len(msg) < 8 or msg[:4] != MCU_LCD_SYSEX or msg[5] != 0x12:
         return None
     offset = msg[6]
-    text = "".join(chr(b) for b in msg[7:-1] if 32 <= b < 127)
+    # Substitute (never drop) non-printable bytes: dropping would shift
+    # every following character across scribble-strip cells and smear
+    # channel names between strips — and names route fader moves.
+    text = "".join(chr(b) if 32 <= b < 127 else " " for b in msg[7:-1])
     return offset, text
 
 
@@ -74,10 +77,33 @@ class MidiPort:
 
     def _open_named(self, name: str) -> None:
         low = name.lower()
-        outs = self._out.get_ports()
-        ins = self._in.get_ports()
-        oi = next((i for i, p in enumerate(outs) if low in p.lower()), None)
-        ii = next((i for i, p in enumerate(ins) if low in p.lower()), None)
+
+        def pick(ports, kind):
+            # rtmidi may append a numeric index ("Name 3") — strip it for
+            # the exact comparison. Exact match first; a bare substring
+            # match would let "MCU 1" bind "MCU 10" or a stale duplicate.
+            def norm(p):
+                parts = p.lower().rsplit(" ", 1)
+                return parts[0] if len(parts) == 2 and \
+                    parts[1].isdigit() and not low.endswith(parts[1]) else \
+                    p.lower()
+            exact = [i for i, p in enumerate(ports)
+                     if p.lower() == low or norm(p) == low]
+            if len(exact) == 1:
+                return exact[0]
+            prefix = exact or [i for i, p in enumerate(ports)
+                               if p.lower().startswith(low)]
+            if len(prefix) == 1:
+                return prefix[0]
+            if len(prefix) > 1:
+                raise RuntimeError(
+                    f"Multiple MIDI {kind} ports match '{name}': "
+                    f"{[ports[i] for i in prefix]} — remove duplicates "
+                    f"(e.g. stale loopMIDI entries) and restart.")
+            return None
+
+        oi = pick(self._out.get_ports(), "output")
+        ii = pick(self._in.get_ports(), "input")
         if oi is None or ii is None:
             raise RuntimeError(
                 f"MIDI port '{name}' not found. On Windows, create ports "
@@ -128,8 +154,11 @@ class MCUFaders:
         self.positions: List[Optional[int]] = [None] * n_channels
         self.baseline: List[Optional[int]] = [None] * n_channels
         self.names: List[Optional[str]] = [None] * n_channels
+        self.error: Optional[str] = None
         self._lock = threading.Lock()
         self._ports = []
+        self._last_sent: dict = {}
+        self._daw_heard = False
         factory = port_factory or MidiPort
         n_ports = (n_channels + STRIPS_PER_PORT - 1) // STRIPS_PER_PORT
         try:
@@ -146,6 +175,7 @@ class MCUFaders:
                                            on_pb, on_lcd))
             self.available = True
         except Exception as e:
+            self.error = str(e)
             log.warning("MCU ports unavailable (%s) — mix control disabled, "
                         "analysis continues", e)
 
@@ -154,6 +184,10 @@ class MCUFaders:
         if 0 <= ch < self.n:
             with self._lock:
                 self.positions[ch] = value
+                # Loopback ports echo our own sends; only a value we did
+                # NOT just transmit proves the DAW is really wired up.
+                if value != self._last_sent.get(ch):
+                    self._daw_heard = True
 
     def _note_lcd(self, port_offset: int, text_offset: int,
                   text: str) -> None:
@@ -175,9 +209,10 @@ class MCUFaders:
                         self.names[ch] = cell
 
     def heard_from_daw(self) -> bool:
-        """True once Studio One has echoed at least one fader position —
-        the setup UI asks the user to wiggle a fader to confirm wiring."""
-        return any(p is not None for p in self.positions)
+        """True once the DAW has sent a fader position we didn't transmit
+        ourselves — the setup UI asks the user to wiggle a fader to
+        confirm wiring. Self-echoes on loopback ports don't count."""
+        return self._daw_heard
 
     def snapshot_baseline(self) -> int:
         """Capture current fader positions as the soundcheck baseline.
@@ -202,6 +237,8 @@ class MCUFaders:
         if base is None:
             return False
         pos = max(0, min(FADER_MAX, int(base + rel_db * UNITS_PER_DB)))
+        with self._lock:
+            self._last_sent[ch] = pos
         port = self._ports[ch // STRIPS_PER_PORT]
         port.send_pitchbend(ch % STRIPS_PER_PORT, pos)
         with self._lock:

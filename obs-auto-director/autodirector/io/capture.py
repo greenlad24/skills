@@ -71,35 +71,109 @@ class AudioCapture:
     def _start_loopback(self) -> None:
         """Windows: WASAPI loopback — capture any OUTPUT device (e.g. what
         OBS monitors to) natively, no virtual cable installed. The
-        capability ships inside the app (`soundcard` is bundled)."""
+        capability ships inside the app (`soundcard` is bundled).
+
+        Hardening (see docs/TEAM_REVIEW: loopback research):
+        * never capture 1 channel (documented soundcard/WASAPI garbage
+          bug) — capture >=2 and downmix
+        * render keep-alive silence into the endpoint so loopback packets
+          keep flowing during quiet moments; otherwise the watchdog would
+          read silence as 'audio dead' and freeze cuts, and the audio
+          clock would drift on soundcard's wall-clock zero-fill heuristic
+        * blocksize > numframes per the soundcard README
+        * COM objects created on the worker thread; exceptions logged
+        """
+        import logging
+        log = logging.getLogger("autodirector.capture")
         import soundcard as sc  # bundled on Windows builds
+
         spk = sc.get_speaker(str(self.device)) if self.device \
             else sc.default_speaker()
-        mic = sc.get_microphone(spk.name, include_loopback=True)
+        cap_ch = max(2, self.channels)
         self._loop_stop = threading.Event()
         stop = self._loop_stop
 
-        def _run():
-            with mic.recorder(samplerate=self.samplerate,
-                              channels=self.channels,
-                              blocksize=self.blocksize) as rec:
-                while not stop.is_set():
-                    data = rec.record(numframes=self.blocksize)
-                    with self._lock:
-                        self._chunks.append(np.asarray(data,
-                                                       dtype=np.float32))
-                    self._last_cb_t = time.monotonic()
-                    self.samples_captured += len(data)
+        # Keep-alive: silence into the endpoint keeps the render engine
+        # pumping (PortAudio #935 class of starvation). Best-effort — the
+        # soundcard >=0.4.3 zero-fill heuristic remains the fallback.
+        self._keepalive = None
+        try:
+            import sounddevice as sd
+            idx = next(
+                i for i, d in enumerate(sd.query_devices())
+                if d["max_output_channels"] > 0 and spk.name in d["name"]
+                and sd.query_hostapis(d["hostapi"])["name"]
+                == "Windows WASAPI")
+            self._keepalive = sd.OutputStream(
+                device=idx, samplerate=self.samplerate, channels=1,
+                dtype="float32",
+                callback=lambda out, f, t, s: out.fill(0.0))
+            self._keepalive.start()
+        except Exception:
+            self._keepalive = None
 
-        threading.Thread(target=_run, daemon=True,
-                         name="wasapi-loopback").start()
+        # Readiness handshake: device activation happens on the worker
+        # thread, but start() must not report success for a dead capture —
+        # rebuild()/the UI rely on start() raising synchronously.
+        ready = threading.Event()
+        state = {"error": None}
+
+        def _run():
+            try:
+                mic = sc.get_microphone(spk.name, include_loopback=True)
+                with mic.recorder(samplerate=self.samplerate,
+                                  channels=cap_ch,
+                                  blocksize=self.blocksize * 2) as rec:
+                    ready.set()
+                    while not stop.is_set():
+                        data = rec.record(numframes=self.blocksize)
+                        if self.channels == 1:
+                            data = data.mean(axis=1, keepdims=True)
+                        elif data.shape[1] > self.channels:
+                            data = data[:, :self.channels]
+                        with self._lock:
+                            self._chunks.append(
+                                np.ascontiguousarray(data,
+                                                     dtype=np.float32))
+                        self._last_cb_t = time.monotonic()
+                        self.samples_captured += len(data)
+            except Exception as e:
+                # alive() decays to False -> the app freezes cuts; leave
+                # a diagnostic and drop the running marker immediately.
+                log.exception("loopback capture thread died")
+                state["error"] = e
+                self._stream = None
+                ready.set()
+
+        self._loop_thread = threading.Thread(target=_run, daemon=True,
+                                             name="wasapi-loopback")
+        self._loop_thread.start()
+        if not ready.wait(timeout=5.0):
+            state["error"] = RuntimeError(
+                "loopback capture did not start within 5s")
+        if state["error"] is not None:
+            self.stop()
+            raise RuntimeError(
+                f"WASAPI loopback capture failed: {state['error']}")
         self._last_cb_t = time.monotonic()
         self._stream = "loopback"  # marks the capture as running
 
     def stop(self) -> None:
         if self._loop_stop is not None:
             self._loop_stop.set()
+            thread = getattr(self, "_loop_thread", None)
+            if thread is not None:
+                thread.join(timeout=2.0)  # record() returns within ~2 blocks
             self._loop_stop = None
+            self._loop_thread = None
+            keepalive = getattr(self, "_keepalive", None)
+            if keepalive is not None:
+                try:
+                    keepalive.stop()
+                    keepalive.close()
+                except Exception:
+                    pass
+                self._keepalive = None
             self._stream = None
             return
         if self._stream is not None:

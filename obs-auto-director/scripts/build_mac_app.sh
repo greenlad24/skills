@@ -15,10 +15,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-python3 -m pip install --quiet pyinstaller .
+python3 -m pip install --quiet pyinstaller '.[mixer]'
 pyinstaller --onefile --name autodirector \
   --collect-all sounddevice \
   --hidden-import websockets \
+  --hidden-import rtmidi \
   autodirector/app.py
 
 echo

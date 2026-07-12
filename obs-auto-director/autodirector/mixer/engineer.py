@@ -224,6 +224,17 @@ class MixEngineer:
         return (self.ai_enabled and self.baselined and not self.frozen_all
                 and (now - self._last_review) >= self._interval)
 
+    def try_claim_review(self, now: Optional[float] = None) -> bool:
+        """Atomically claim the next review slot BEFORE spawning the
+        review thread — a 50ms poll loop must never double-spawn while
+        the previous thread is still reaching its own timestamp write."""
+        now = time.time() if now is None else now
+        with self._review_lock:
+            if not self.review_due(now):
+                return False
+            self._last_review = now
+            return True
+
     def build_report(self) -> dict:
         snaps = self.analyzer.snapshots()
         stems = {}
@@ -370,6 +381,7 @@ class MixEngineer:
             })
         return {
             "midi_available": self.faders.available,
+            "midi_error": self.faders.error,
             "daw_heard": self.faders.heard_from_daw(),
             "control_mode": "advisory" if self.advisory else "auto",
             "baselined": self.baselined,

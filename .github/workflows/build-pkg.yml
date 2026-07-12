@@ -78,11 +78,13 @@ jobs:
         shell: pwsh
         run: |
           cd obs-auto-director
-          python -m pip install --quiet pyinstaller .
+          python -m pip install --quiet pyinstaller ".[mixer]"
           pyinstaller --onefile --name AutoDirector `
             --collect-all sounddevice `
             --collect-all soundcard `
             --hidden-import websockets `
+            --hidden-import rtmidi `
+            --hidden-import _cffi_backend `
             packaging/launch.py
           Move-Item dist/AutoDirector.exe ../AutoDirector-windows.exe
       - uses: actions/upload-artifact@v4

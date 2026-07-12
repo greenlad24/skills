@@ -176,10 +176,16 @@ Or build locally: `./scripts/build_pkg.sh` on a Mac (set `APP_SIGN_ID` /
 `PKG_SIGN_ID` / `NOTARY_PROFILE` to sign and notarize), or
 `pyinstaller --onefile packaging/launch.py` anywhere.
 
-**Windows notes:** plain interface capture needs nothing extra (WASAPI
-shared mode). For in-OBS-only feeds use **VB-Cable** or **VoiceMeeter**
-as the monitoring device. Mix Engineer users: create MIDI ports named
-`AutoDirector MCU 1` / `AutoDirector MCU 2` in **loopMIDI** once.
+**Zero-install:** everything except auto-fader MIDI and 16-ch stems
+needs *no additional software on any platform* — interface capture is
+native, in-OBS-only feeds use the **built-in WASAPI loopback** on
+Windows (no VB-Cable), and the Mix Engineer runs in **Advisory mode**
+(AI recommends, you ride the fader) wherever a MIDI path is absent.
+Full matrix, tiers, and the verified platform facts:
+[docs/ZERO_INSTALL.md](docs/ZERO_INSTALL.md). (loopMIDI remains an
+option for auto faders on older Windows only — Windows 11 24H2+ has a
+native virtual-MIDI path on the roadmap, and its rollout broke
+loopMIDI-class drivers.)
 
 **Or as a Python package:**
 

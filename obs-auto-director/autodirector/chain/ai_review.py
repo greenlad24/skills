@@ -88,6 +88,15 @@ class AIReviewer:
         return bool(self.api_key) and \
             (now - self._last_review_t) >= self.interval_s
 
+    def claim(self, now: Optional[float] = None) -> bool:
+        """Atomically claim the next review slot before spawning a
+        thread, so a fast poll loop cannot double-spawn reviews."""
+        now = time.time() if now is None else now
+        if not self.due(now):
+            return False
+        self._last_review_t = now
+        return True
+
     def build_report(self, snapshots: Dict[str, object],
                      noise_labels: Optional[Dict[str, float]] = None) -> dict:
         speakers = {}

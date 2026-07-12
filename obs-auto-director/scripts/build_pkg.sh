@@ -18,7 +18,9 @@ VERSION="2.0.0"
 IDENTIFIER="io.autodirector.app"
 
 echo "==> Installing build deps"
-python3 -m pip install --quiet pyinstaller .
+# '.[mixer]' matters: without it python-rtmidi is absent from the build
+# venv and every shipped installer has silently dead Mix Engineer MIDI.
+python3 -m pip install --quiet pyinstaller '.[mixer]'
 
 echo "==> Building AutoDirector.app with PyInstaller"
 rm -rf build dist
@@ -26,6 +28,7 @@ pyinstaller --noconfirm --windowed --name AutoDirector \
   --osx-bundle-identifier "$IDENTIFIER" \
   --collect-all sounddevice \
   --hidden-import websockets \
+  --hidden-import rtmidi \
   packaging/launch.py
 
 APP="dist/AutoDirector.app"

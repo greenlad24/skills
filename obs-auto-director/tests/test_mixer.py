@@ -96,6 +96,30 @@ class TestMCU:
         strip, val = FakePort.instances[1].sent[-1]
         assert strip == 0 and val == int(8000 - 2.0 * UNITS_PER_DB)
 
+    def test_lcd_nonprintables_keep_cell_alignment(self):
+        # 0x00 padding inside a cell must not shift later names between
+        # strips (names route AI fader moves — smearing is dangerous).
+        faders = MCUFaders(n_channels=16, port_factory=FakePort)
+        payload = [ord(c) for c in "Kick"] + [0x00, 0x00, 0x00] + \
+                  [ord(c) for c in "Snare  "]
+        msg = [0xF0, 0x00, 0x00, 0x66, 0x14, 0x12, 0x00] + payload + [0xF7]
+        off, text = parse_lcd_sysex(msg)
+        FakePort.instances[0].on_lcd(off, text)
+        assert faders.names[0] == "Kick"
+        assert faders.names[1] == "Snare"
+
+    def test_daw_heard_ignores_our_own_echo(self):
+        # loopMIDI-style loopback echoes our sends; only a value we did
+        # not transmit proves the DAW is wired.
+        faders = MCUFaders(n_channels=8, port_factory=FakePort)
+        faders.snapshot_baseline()
+        faders.set_rel_db(0, 2.0)
+        strip, sent_val = FakePort.instances[0].sent[-1]
+        FakePort.instances[0].on_pb(0, sent_val)   # our own echo
+        assert faders.heard_from_daw() is False
+        FakePort.instances[0].on_pb(0, sent_val + 40)  # a real DAW move
+        assert faders.heard_from_daw() is True
+
     def test_positions_clamped_to_fader_range(self):
         faders = MCUFaders(n_channels=8, port_factory=FakePort)
         FakePort.instances[0].on_pb(0, FADER_MAX - 10)
@@ -253,6 +277,15 @@ class TestMixEngineer:
         assert "Lead Vox" in sent["stems"]
         assert "vocal_masking_db" in sent
         assert "program_bus" in sent
+
+    def test_claim_review_is_single_shot(self):
+        # a 50ms poll loop must not double-spawn review threads
+        eng = self.make(transport=lambda *a: "{}")
+        self.prime(eng)
+        eng.snapshot_baseline()
+        assert eng.try_claim_review(now=1000.0) is True
+        assert eng.try_claim_review(now=1000.05) is False
+        assert eng.try_claim_review(now=1000.0 + eng._interval + 1) is True
 
     def test_review_not_due_without_baseline_or_when_frozen(self):
         eng = self.make(transport=lambda *a: "{}")
