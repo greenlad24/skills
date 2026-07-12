@@ -99,6 +99,11 @@ class MixEngineer:
         prog_source = cfg.get("program_source", "")
         self.program = ProgramChain(obs, prog_source) \
             if (obs is not None and prog_source) else None
+        # Control mode: "auto" moves faders over MCU; "advisory" posts
+        # recommendations in the Control Room for the human to apply —
+        # the zero-install tier (no loopMIDI/virtual ports needed). Auto
+        # degrades to advisory automatically when MIDI is unavailable.
+        self.control_mode = cfg.get("control_mode", "auto")
         self.frozen_all = False
         self.baselined = False
         self.ai_log: List[dict] = []
@@ -147,6 +152,10 @@ class MixEngineer:
 
     def vocal_activity(self) -> Optional[bool]:
         return self.analyzer.vocal_activity()
+
+    @property
+    def advisory(self) -> bool:
+        return self.control_mode == "advisory" or not self.faders.available
 
     # -- soundcheck ------------------------------------------------------------
     def snapshot_baseline(self) -> dict:
@@ -269,6 +278,18 @@ class MixEngineer:
                 ch = self._channel_by_name(adj["stem"])
                 if ch is None:
                     continue
+                if self.advisory:
+                    # Zero-install tier: recommend, don't move — the
+                    # human rides the fader.
+                    delta = max(-MAX_DELTA_PER_REVIEW,
+                                min(MAX_DELTA_PER_REVIEW,
+                                    adj["delta_db"]))
+                    applied.append({"t": now, "stem": adj["stem"],
+                                    "requested": adj["delta_db"],
+                                    "applied": 0.0, "suggested": delta,
+                                    "advisory": True,
+                                    "reason": adj.get("reason", "")})
+                    continue
                 got = self.nudge(ch, adj["delta_db"])
                 applied.append({"t": now, "stem": adj["stem"],
                                 "requested": adj["delta_db"],
@@ -350,6 +371,7 @@ class MixEngineer:
         return {
             "midi_available": self.faders.available,
             "daw_heard": self.faders.heard_from_daw(),
+            "control_mode": "advisory" if self.advisory else "auto",
             "baselined": self.baselined,
             "frozen_all": self.frozen_all,
             "ai_enabled": self.ai_enabled,

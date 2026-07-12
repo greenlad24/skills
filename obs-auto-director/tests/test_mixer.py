@@ -274,6 +274,70 @@ class TestMixEngineer:
         assert eng.analyzer.stems[1].role == "lead_vocal"
 
 
+class BrokenPortFactory:
+    """Simulates a platform where virtual MIDI ports can't be created."""
+
+    def __init__(self, *a, **k):
+        raise RuntimeError("no virtual MIDI on this platform")
+
+
+class TestAdvisoryMode:
+    def make(self, transport, control_mode=None, ports=BrokenPortFactory):
+        cfg = {"channels": 16, "program_source": "S1 Mix",
+               "stems": [{"channel": 0, "name": "Lead Vox"},
+                         {"channel": 1, "name": "Gtr L"}],
+               "ai_review": {"enabled": True, "interval_s": 60}}
+        if control_mode:
+            cfg["control_mode"] = control_mode
+        obs = FakeOBS()
+        obs.filters["S1 Mix"] = []
+        return MixEngineer(cfg, obs=obs, port_factory=ports,
+                           ai_transport=transport, api_key="k")
+
+    RESP = json.dumps({
+        "adjustments": [{"stem": "Lead Vox", "delta_db": 2.0,
+                         "reason": "vocal buried"}],
+        "master": [{"param": "master_eq_high", "delta": 0.5,
+                    "reason": "dull mix"}]})
+
+    def prime(self, eng):
+        audio = multich(6.0, {0: synth_vocal(6.0) * 0.4,
+                              1: synth_lead_guitar(6.0) * 0.4})
+        for s in range(0, len(audio), 4800):
+            eng.process(audio[s:s + 4800], s / SR)
+        eng.snapshot_baseline()
+
+    def test_no_midi_falls_back_to_advisory(self):
+        eng = self.make(lambda *a: self.RESP)
+        assert eng.faders.available is False
+        assert eng.advisory is True
+        self.prime(eng)
+        applied = eng.review(now=100.0)
+        stem = next(a for a in applied if a["stem"] == "Lead Vox")
+        assert stem["advisory"] is True and stem["suggested"] == 2.0
+        assert stem["applied"] == 0.0
+        assert eng.targets[0] == 0.0, "advisory must never move targets"
+        # OBS-side program sweetening still applies (zero-install path)
+        master = next(a for a in applied if a["stem"] == "PROGRAM")
+        assert master["applied"] > 0
+
+    def test_forced_advisory_with_working_midi(self):
+        eng = self.make(lambda *a: self.RESP, control_mode="advisory",
+                        ports=FakePort)
+        assert eng.faders.available is True
+        assert eng.advisory is True
+        self.prime(eng)
+        applied = eng.review(now=100.0)
+        stem = next(a for a in applied if a["stem"] == "Lead Vox")
+        assert stem["advisory"] is True
+        assert all(not p.sent for p in FakePort.instances), \
+            "advisory must never send MIDI"
+
+    def test_ui_reports_control_mode(self):
+        eng = self.make(lambda *a: "{}")
+        assert eng.ui_state()["control_mode"] == "advisory"
+
+
 class TestProgramChain:
     def test_creates_filters_and_corrects_tilt_gently(self):
         obs = FakeOBS()

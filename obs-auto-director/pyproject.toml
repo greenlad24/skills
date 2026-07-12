@@ -13,6 +13,9 @@ dependencies = [
     "numpy>=1.24",
     "sounddevice>=0.4.6",
     "websockets>=11",
+    # Windows: native WASAPI loopback (capture any output device with no
+    # virtual cable installed) — bundled into the .exe.
+    "soundcard>=0.4; sys_platform == 'win32'",
 ]
 
 [project.optional-dependencies]

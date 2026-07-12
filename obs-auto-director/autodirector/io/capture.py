@@ -30,14 +30,16 @@ class AudioCapture:
 
     def __init__(self, device: Optional[object] = None,
                  samplerate: int = 48000, channels: int = 1,
-                 blocksize: int = 1024):
+                 blocksize: int = 1024, loopback: bool = False):
         self.device = device
         self.samplerate = samplerate
         self.channels = channels
         self.blocksize = blocksize
+        self.loopback = loopback
         self._chunks: List[np.ndarray] = []
         self._lock = threading.Lock()
         self._stream = None
+        self._loop_stop: Optional[threading.Event] = None
         self._last_cb_t = 0.0
         self.samples_captured = 0
 
@@ -48,6 +50,9 @@ class AudioCapture:
         return str(sd.query_devices())
 
     def start(self) -> None:
+        if self.loopback:
+            self._start_loopback()
+            return
         import sounddevice as sd
 
         def _cb(indata, frames, time_info, status):
@@ -63,7 +68,40 @@ class AudioCapture:
         self._stream.start()
         self._last_cb_t = time.monotonic()
 
+    def _start_loopback(self) -> None:
+        """Windows: WASAPI loopback — capture any OUTPUT device (e.g. what
+        OBS monitors to) natively, no virtual cable installed. The
+        capability ships inside the app (`soundcard` is bundled)."""
+        import soundcard as sc  # bundled on Windows builds
+        spk = sc.get_speaker(str(self.device)) if self.device \
+            else sc.default_speaker()
+        mic = sc.get_microphone(spk.name, include_loopback=True)
+        self._loop_stop = threading.Event()
+        stop = self._loop_stop
+
+        def _run():
+            with mic.recorder(samplerate=self.samplerate,
+                              channels=self.channels,
+                              blocksize=self.blocksize) as rec:
+                while not stop.is_set():
+                    data = rec.record(numframes=self.blocksize)
+                    with self._lock:
+                        self._chunks.append(np.asarray(data,
+                                                       dtype=np.float32))
+                    self._last_cb_t = time.monotonic()
+                    self.samples_captured += len(data)
+
+        threading.Thread(target=_run, daemon=True,
+                         name="wasapi-loopback").start()
+        self._last_cb_t = time.monotonic()
+        self._stream = "loopback"  # marks the capture as running
+
     def stop(self) -> None:
+        if self._loop_stop is not None:
+            self._loop_stop.set()
+            self._loop_stop = None
+            self._stream = None
+            return
         if self._stream is not None:
             try:
                 self._stream.stop()

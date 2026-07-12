@@ -560,10 +560,13 @@ function mixerCard(){
     </div>`;
   }).join("");
   const mask = M.vocal_masking_db;
+  const advisory = M.control_mode === "advisory";
   return `<div class="card">
-    <h2>Mix engineer — Studio One <span class="spacer"></span>
-      <span class="pill"><span class="dot ${M.midi_available ?
-        (M.daw_heard ? "ok" : "warn") : "bad"}"></span>MIDI</span></h2>
+    <h2>Mix engineer <span class="chip">${advisory ?
+        "ADVISORY — you ride the faders" : "AUTO FADERS"}</span>
+      <span class="spacer"></span>
+      ${advisory ? "" : `<span class="pill"><span class="dot ${M.midi_available ?
+        (M.daw_heard ? "ok" : "warn") : "bad"}"></span>MIDI</span>`}</h2>
     <div class="mixbar">
       <button class="btn ${M.frozen_all ? "" : "danger"}"
         onclick="mixerAction('${M.frozen_all ? "unfreeze_all" : "freeze_all"}')">
@@ -617,13 +620,14 @@ function renderLog(){
     : '<div class="empty">No cuts yet — the director is watching.</div>';
   const aiEntries = S.mode === "podcast" ? (S.podcast.ai_log || [])
       : S.mixer ? (S.mixer.ai_log || []) : [];
-  $("aiLog").innerHTML = aiEntries.length ? aiEntries.map(e =>
-    `<div class="ai-entry"><div class="head mono">
+  $("aiLog").innerHTML = aiEntries.length ? aiEntries.map(e => {
+    const db = e.advisory ? +e.suggested : +e.applied;
+    return `<div class="ai-entry"><div class="head mono">
        ${e.speaker || e.stem} ·
        ${PARAM_LABEL[e.param] || e.param || "fader"}
-       ${e.applied >= 0 ? "+" : ""}${(+e.applied).toFixed(1)} dB</div>
-     <div class="why">${e.reason}</div></div>`).join("")
-    : '<div class="empty">No adjustments yet.</div>';
+       ${e.advisory ? "suggest " : ""}${db >= 0 ? "+" : ""}${db.toFixed(1)} dB</div>
+     <div class="why">${e.reason}</div></div>`;
+  }).join("") : '<div class="empty">No adjustments yet.</div>';
 }
 window.mixerAction = a => api.post("/api/mixer", {action: a});
 window.mixerFreezeStem = (ch, frozen) =>

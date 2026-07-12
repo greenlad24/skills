@@ -81,6 +81,7 @@ jobs:
           python -m pip install --quiet pyinstaller .
           pyinstaller --onefile --name AutoDirector `
             --collect-all sounddevice `
+            --collect-all soundcard `
             --hidden-import websockets `
             packaging/launch.py
           Move-Item dist/AutoDirector.exe ../AutoDirector-windows.exe

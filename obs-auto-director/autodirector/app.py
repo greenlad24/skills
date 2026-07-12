@@ -571,7 +571,8 @@ class Runtime:
             if not lcfg.get("singer_scene"):
                 raise ValueError("setup needed: pick a singer scene")
             capture = AudioCapture(device=lcfg.get("device"),
-                                   channels=int(lcfg.get("channels", 1)))
+                                   channels=int(lcfg.get("channels", 1)),
+                                   loopback=bool(lcfg.get("loopback")))
             capture.start()
             self.captures = {"live": capture}
             self.engine = LiveEngine(lcfg, self.obs, capture, tagger=tagger)

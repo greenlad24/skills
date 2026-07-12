@@ -17,8 +17,11 @@
     "vocal_in_dwell_s": 0.5,
     "vocal_out_dwell_s": 2.5,
 
+    "loopback": false,
+
     "mixer": {
       "enabled": false,
+      "control_mode": "auto",
       "device": "BlackHole 16ch",
       "channels": 16,
       "program_source": "Studio One Mix",
