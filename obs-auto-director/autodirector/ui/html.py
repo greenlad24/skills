@@ -493,7 +493,7 @@ function liveCards(){
 
 const PARAM_LABEL = {expander_threshold:"Gate thresh", gain_db:"Gain",
                      comp_threshold:"Comp thresh", eq_low:"EQ low",
-                     eq_high:"EQ high"};
+                     eq_high:"EQ high", knob:"VST knob"};
 function railRow(spk, p, v, bounds, frozen){
   const [lo, hi] = bounds;
   const pct = Math.max(0, Math.min(100, (v - lo) / (hi - lo) * 100));
@@ -559,6 +559,18 @@ function mixerCard(){
       </div>
     </div>`;
   }).join("");
+  const knobs = (M.knobs || []).map(k => `<div class="strip active">
+      <div class="nm">${k.name}<span class="role">VST KNOB</span></div>
+      <div class="fader">
+        <span class="fval mono">${k.offset_ticks > 0 ? "+" : ""}${k.offset_ticks} ticks</span>
+        ${Math.abs(k.target_ticks - k.offset_ticks) > 0.05 ?
+          `<span style="color:var(--muted)">→ ${k.target_ticks > 0 ? "+" : ""}${k.target_ticks}</span>` : ""}
+        <span style="margin-left:auto"></span>
+        <button class="lock ${k.frozen ? "frozen" : ""}"
+          onclick="mixerFreezeKnob('${k.name}', ${!k.frozen})">
+          ${k.frozen ? "🔒" : "🔓"}</button>
+      </div>
+    </div>`).join("");
   const mask = M.vocal_masking_db;
   const advisory = M.control_mode === "advisory";
   return `<div class="card">
@@ -584,6 +596,7 @@ function mixerCard(){
          the MCU wiring</span>` : ""}
     </div>
     <div class="strips">${strips}</div>
+    ${knobs ? `<div class="strips" style="margin-top:8px">${knobs}</div>` : ""}
   </div>`;
 }
 
@@ -624,16 +637,19 @@ function renderLog(){
       : S.mixer ? (S.mixer.ai_log || []) : [];
   $("aiLog").innerHTML = aiEntries.length ? aiEntries.map(e => {
     const db = e.advisory ? +e.suggested : +e.applied;
+    const unit = e.param === "knob" ? " ticks" : " dB";
     return `<div class="ai-entry"><div class="head mono">
        ${e.speaker || e.stem} ·
        ${PARAM_LABEL[e.param] || e.param || "fader"}
-       ${e.advisory ? "suggest " : ""}${db >= 0 ? "+" : ""}${db.toFixed(1)} dB</div>
+       ${e.advisory ? "suggest " : ""}${db >= 0 ? "+" : ""}${db.toFixed(1)}${unit}</div>
      <div class="why">${e.reason}</div></div>`;
   }).join("") : '<div class="empty">No adjustments yet.</div>';
 }
 window.mixerAction = a => api.post("/api/mixer", {action: a});
 window.mixerFreezeStem = (ch, frozen) =>
   api.post("/api/mixer", {action: "freeze_stem", channel: ch, frozen});
+window.mixerFreezeKnob = (name, frozen) =>
+  api.post("/api/mixer", {action: "freeze_knob", name, frozen});
 window.mixerSnapshot = async () => {
   const r = await api.post("/api/mixer", {action: "snapshot"});
   toast(`Soundcheck snapshot: ${r.faders_heard ?? 0} faders heard, ` +
