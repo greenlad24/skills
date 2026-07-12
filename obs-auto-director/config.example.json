@@ -38,6 +38,11 @@
         { "channel": 6, "name": "Snare" },
         { "channel": 7, "name": "Keys" }
       ],
+      "knobs": [
+        { "cc": 1, "name": "Vox Comp Threshold", "mode": "absolute" },
+        { "cc": 2, "name": "Vox Reverb Send", "mode": "absolute" }
+      ],
+      "_knobs_comment": "DAW plugin params you mapped via Studio One Control Link to CCs on the 'AutoDirector Params' MIDI device. The AI may tweak ONLY these, max ±6 ticks (of 127) per review, ±16 total from soundcheck.",
       "ai_review": {
         "enabled": true,
         "api_key_env": "ANTHROPIC_API_KEY",

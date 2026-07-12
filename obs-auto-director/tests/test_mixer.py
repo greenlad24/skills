@@ -28,10 +28,14 @@ class FakePort:
         self.on_pb = on_pitchbend
         self.on_lcd = on_lcd
         self.sent = []
+        self.ccs = []
         FakePort.instances.append(self)
 
     def send_pitchbend(self, strip, value):
         self.sent.append((strip, int(value)))
+
+    def send_cc(self, channel, cc, value):
+        self.ccs.append((channel, cc, int(value)))
 
     def close(self):
         pass
@@ -532,3 +536,170 @@ class TestDirectorStemHint:
         assert "Singer" in obs.scene_calls, \
             "stem ground truth must drive the director even when the " \
             "mix inference disagrees"
+
+class TestParamKnobs:
+    """Slight VST tweaks inside the DAW via Control-Link-mapped CCs."""
+
+    def make(self, mode="absolute", baseline_cc=64):
+        from autodirector.mixer.knobs import ParamKnobs
+        knobs = ParamKnobs(
+            [{"cc": 1, "name": "Vox Comp Threshold",
+              "mode": mode, "baseline_cc": baseline_cc},
+             {"cc": 2, "name": "Vox Reverb Send", "mode": mode}],
+            port_factory=FakePort)
+        port = next(p for p in FakePort.instances
+                    if p.name == "AutoDirector Params")
+        return knobs, port
+
+    def test_absolute_mode_slews_one_tick_per_control_tick(self):
+        knobs, port = self.make()
+        assert knobs.nudge("Vox Comp Threshold", 3) == 3.0
+        for _ in range(5):  # more ticks than needed — must stop at target
+            knobs.control_tick()
+        assert [v for (_, cc, v) in port.ccs if cc == 1] == [65, 66, 67], \
+            "one tick per control tick, parked at baseline+3"
+
+    def test_relative_mode_sends_binary_offset_increments(self):
+        knobs, port = self.make(mode="relative")
+        knobs.nudge("Vox Reverb Send", -2)
+        for _ in range(4):
+            knobs.control_tick()
+        assert [v for (_, cc, v) in port.ccs if cc == 2] == [63, 63], \
+            "relative maps get 64-1 per downward tick, nothing after"
+
+    def test_per_review_and_total_clamps(self):
+        knobs, port = self.make()
+        assert knobs.nudge("Vox Comp Threshold", 40) == 6.0, \
+            "a single review is capped at +-6 ticks"
+        assert knobs.nudge("Vox Comp Threshold", 6) == 6.0
+        assert knobs.nudge("Vox Comp Threshold", 6) == 4.0, \
+            "lifetime travel clamps at +-16 ticks from soundcheck"
+        for _ in range(30):
+            knobs.control_tick()
+        vals = [v for (_, cc, v) in port.ccs if cc == 1]
+        assert len(vals) == 16 and vals[-1] == 64 + 16
+
+    def test_freeze_blocks_nudges_and_movement(self):
+        knobs, port = self.make()
+        knobs.nudge("Vox Comp Threshold", 3)
+        assert knobs.freeze("Vox Comp Threshold") is True
+        knobs.control_tick()
+        assert port.ccs == [], "frozen knob must not emit CCs"
+        assert knobs.nudge("Vox Comp Threshold", 2) == 0.0
+        assert knobs.freeze("Nope") is False
+
+    def test_unmapped_knob_is_untouchable(self):
+        knobs, port = self.make()
+        assert knobs.nudge("Master Limiter Ceiling", 6) == 0.0
+        knobs.control_tick()
+        assert port.ccs == []
+
+    def test_reset_baseline_re_zeros_travel(self):
+        knobs, port = self.make()
+        knobs.nudge("Vox Comp Threshold", 6)
+        for _ in range(10):
+            knobs.control_tick()
+        knobs.reset_baseline()
+        assert knobs.nudge("Vox Comp Threshold", 6) == 6.0, \
+            "soundcheck resets the +-16 travel budget"
+        state = {k["name"]: k for k in knobs.ui_state()}
+        assert state["Vox Comp Threshold"]["offset_ticks"] == 0
+
+    def test_no_config_means_unavailable_and_inert(self):
+        from autodirector.mixer.knobs import ParamKnobs
+        knobs = ParamKnobs([], port_factory=FakePort)
+        assert knobs.available is False
+        assert knobs.nudge("anything", 3) == 0.0
+        knobs.control_tick()  # must not raise
+        assert knobs.report() == {}
+
+    def test_broken_port_degrades_gracefully(self):
+        from autodirector.mixer.knobs import ParamKnobs
+        knobs = ParamKnobs([{"cc": 1, "name": "Vox Comp Threshold"}],
+                           port_factory=BrokenPortFactory)
+        assert knobs.available is False and knobs.error
+        assert knobs.nudge("Vox Comp Threshold", 3) == 0.0
+        knobs.control_tick()  # must not raise
+
+
+class TestEngineerKnobs:
+    """AI review path: knob deltas from the model reach the DAW railed."""
+
+    RESP = json.dumps({
+        "adjustments": [],
+        "knobs": [
+            {"name": "Vox Comp Threshold", "delta_ticks": 3,
+             "reason": "vocal peaks poking out"},
+            {"name": "Vox Comp Threshold_TYPO", "delta_ticks": 3,
+             "reason": "unmapped — dropped"},
+            {"name": "Vox Reverb Send", "delta_ticks": 40,
+             "reason": "absurd — clamps to 6"},
+        ]})
+
+    def make(self, ports=FakePort):
+        cfg = {"channels": 16, "program_source": "S1 Mix",
+               "stems": [{"channel": 0, "name": "Lead Vox"},
+                         {"channel": 1, "name": "Gtr L"}],
+               "knobs": [{"cc": 1, "name": "Vox Comp Threshold"},
+                         {"cc": 2, "name": "Vox Reverb Send"}],
+               "ai_review": {"enabled": True, "interval_s": 60}}
+        obs = FakeOBS()
+        obs.filters["S1 Mix"] = []
+        return MixEngineer(cfg, obs=obs, port_factory=ports,
+                           ai_transport=lambda *a: self.RESP, api_key="k")
+
+    def prime(self, eng):
+        audio = multich(6.0, {0: synth_vocal(6.0) * 0.4,
+                              1: synth_lead_guitar(6.0) * 0.4})
+        for s in range(0, len(audio), 4800):
+            eng.process(audio[s:s + 4800], s / SR)
+        eng.snapshot_baseline()
+
+    def test_review_applies_railed_knob_deltas_then_slews(self):
+        eng = self.make()
+        self.prime(eng)
+        applied = eng.review(now=1000.0)
+        knob = {a["stem"]: a for a in applied if a.get("param") == "knob"}
+        assert knob["Vox Comp Threshold"]["applied"] == 3.0
+        assert knob["Vox Reverb Send"]["applied"] == 6.0  # clamped
+        assert "Vox Comp Threshold_TYPO" not in knob
+        port = next(p for p in FakePort.instances
+                    if p.name == "AutoDirector Params")
+        assert port.ccs == [], "review only sets targets — no CC jump"
+        for i in range(8):
+            eng.control_tick(1000.0 + 0.5 * (i + 1) + 0.01)
+        cc1 = [v for (_, cc, v) in port.ccs if cc == 1]
+        assert cc1 == [65, 66, 67], "slewed one tick per 0.5s"
+
+    def test_prompt_lists_mapped_knobs(self):
+        seen = {}
+
+        def transport(key, model, payload):
+            seen["payload"] = payload
+            return "{}"
+
+        eng = self.make()
+        eng._transport = transport
+        self.prime(eng)
+        eng.review(now=1000.0)
+        report = json.loads(seen["payload"]["messages"][0]["content"])
+        assert "Vox Comp Threshold" in report["plugin_knobs"]
+
+    def test_advisory_mode_suggests_but_never_sends(self):
+        eng = self.make(ports=BrokenPortFactory)
+        assert eng.advisory is True
+        self.prime(eng)
+        applied = eng.review(now=1000.0)
+        knob = {a["stem"]: a for a in applied if a.get("param") == "knob"}
+        assert knob["Vox Comp Threshold"]["advisory"] is True
+        assert knob["Vox Comp Threshold"]["applied"] == 0.0
+        assert knob["Vox Comp Threshold"]["suggested"] == 3.0
+        eng.control_tick(1000.6)
+        assert FakePort.instances == [], "no ports were ever opened"
+
+    def test_freeze_knob_endpoint_path(self):
+        eng = self.make()
+        assert eng.freeze_knob("Vox Comp Threshold", True) is True
+        assert eng.freeze_knob("Nope", True) is False
+        state = {k["name"]: k for k in eng.ui_state()["knobs"]}
+        assert state["Vox Comp Threshold"]["frozen"] is True

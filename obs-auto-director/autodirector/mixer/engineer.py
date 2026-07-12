@@ -37,6 +37,7 @@ from typing import Callable, Dict, List, Optional
 
 from ..chain.rails import Rail
 from .degraded import StereoMixAnalyzer
+from .knobs import ParamKnobs
 from .mcu import MCUFaders
 from .program import ProgramChain
 from .stems import StemAnalyzer, StemConfig, infer_role
@@ -66,9 +67,12 @@ Respond with ONLY a JSON object:
 Rules: the LEAD VOCAL fader only, max ±1.5 dB, and only on clear
 sustained masking evidence; named instrument-group trims max ±1.0 dB
 and only when masking is strongly positive AND side presence is high;
-master params (master_eq_low, master_eq_high, master_comp_threshold)
-for clear sustained tonal/loudness drift. When in doubt: empty lists —
-an untouched mix beats a wrongly touched one."""
+master params (master_eq_low, master_eq_high, master_comp_threshold,
+master_volume) for clear sustained tonal/loudness drift. If
+plugin_knobs are listed (DAW plugin parameters the user mapped for you),
+you may add "knobs": [{"name": str, "delta_ticks": int, "reason": str}]
+— max ±6 ticks of 127, SLIGHT tweaks only, on strong evidence. When in
+doubt: empty lists — an untouched mix beats a wrongly touched one."""
 
 MIX_SYSTEM_PROMPT = """You are a broadcast A2 audio engineer riding faders
 on a live band that streams to YouTube. The band is pre-mixed in a DAW;
@@ -87,7 +91,11 @@ Respond with ONLY a JSON object:
  "master": [{"param": str, "delta": float, "reason": str}, ...],
  "notes": str}
 Stem deltas: max ±3 dB per review. Master params: master_eq_low,
-master_eq_high (±3 total), master_comp_threshold. Recommend nothing when
+master_eq_high (±3 total), master_comp_threshold, master_volume. If
+plugin_knobs are listed (DAW plugin parameters the user mapped for
+you), you may add "knobs": [{"name": str, "delta_ticks": int,
+"reason": str}] — max ±6 ticks of 127, SLIGHT tweaks only, on strong
+evidence. Recommend nothing when
 the mix is fine — an empty answer is a good answer. Priorities:
 (1) the LEAD VOCAL sits on top: fix positive masking by lifting the
 vocal and/or trimming the crowding stems slightly; (2) undo source
@@ -121,6 +129,9 @@ class MixEngineer:
         self.degraded = StereoMixAnalyzer() if self.stereo_mode else None
         self.auto_baseline_s = float(cfg.get("auto_baseline_s", 45.0))
         self.faders = MCUFaders(n_channels=self.n,
+                                port_factory=port_factory)
+        # Slight VST tweaks inside the DAW, via Control-Link-mapped CCs.
+        self.knobs = ParamKnobs(cfg.get("knobs", []),
                                 port_factory=port_factory)
         self.rails: Dict[int, Rail] = {
             ch: Rail(f"fader:{ch}", 0.0, lo=-6.0, hi=6.0, max_step=0.5)
@@ -220,6 +231,7 @@ class MixEngineer:
         for ch in self.targets:
             self.targets[ch] = 0.0
             self.rails[ch].value = 0.0
+        self.knobs.reset_baseline()
         self.baselined = True
         return {"faders_heard": heard,
                 "stems_referenced": len(self.reference)}
@@ -245,6 +257,7 @@ class MixEngineer:
                 if abs(target - rail.value) >= 1e-3:
                     rail.step_toward(target)
                     self.faders.set_rel_db(ch, rail.value)
+            self.knobs.control_tick()  # same 0.5s cadence: ~2 ticks/s
         if self.program is not None and \
                 (clock - self._last_program) >= 5.0:
             self._last_program = clock
@@ -317,6 +330,7 @@ class MixEngineer:
                               if s.name and not s.name.startswith("Ch ")},
                 "program_bus": self.program.measurements()
                 if self.program is not None else None,
+                "plugin_knobs": self.knobs.report() or None,
             }
         snaps = self.analyzer.snapshots()
         stems = {}
@@ -345,6 +359,8 @@ class MixEngineer:
                   if masking is not None else None}
         if self.program is not None:
             report["program_bus"] = self.program.measurements()
+        if self.knobs.knobs:
+            report["plugin_knobs"] = self.knobs.report()
         return report
 
     def review(self, now: Optional[float] = None) -> List[dict]:
@@ -366,7 +382,7 @@ class MixEngineer:
             except Exception as e:
                 log.warning("mix review skipped (transport failed: %s)", e)
                 return []
-            stem_adj, master_adj = self._parse(text)
+            stem_adj, master_adj, knob_adj = self._parse(text)
             applied = []
             for adj in stem_adj:
                 ch = self._channel_by_name(adj["stem"])
@@ -403,6 +419,26 @@ class MixEngineer:
                                     "requested": adj["delta"],
                                     "applied": got,
                                     "reason": adj.get("reason", "")})
+            for adj in knob_adj:
+                if adj["name"] not in self.knobs.knobs:
+                    continue
+                if self.advisory or not self.knobs.available:
+                    from .knobs import MAX_TICKS_PER_REVIEW
+                    sug = max(-MAX_TICKS_PER_REVIEW,
+                              min(MAX_TICKS_PER_REVIEW, adj["delta_ticks"]))
+                    applied.append({"t": now, "stem": adj["name"],
+                                    "param": "knob",
+                                    "requested": adj["delta_ticks"],
+                                    "applied": 0.0, "advisory": True,
+                                    "suggested": sug,
+                                    "reason": adj.get("reason", "")})
+                    continue
+                got = self.knobs.nudge(adj["name"], adj["delta_ticks"])
+                applied.append({"t": now, "stem": adj["name"],
+                                "param": "knob",
+                                "requested": adj["delta_ticks"],
+                                "applied": got,
+                                "reason": adj.get("reason", "")})
             for entry in applied:
                 self.ai_log.insert(0, entry)
                 self._audit(entry)
@@ -413,12 +449,12 @@ class MixEngineer:
     def _parse(text: str) -> tuple:
         m = re.search(r"\{.*\}", text, re.DOTALL)
         if not m:
-            return [], []
+            return [], [], []
         try:
             data = json.loads(m.group(0))
         except json.JSONDecodeError:
-            return [], []
-        stems, master = [], []
+            return [], [], []
+        stems, master, knobs = [], [], []
         for adj in data.get("adjustments", []):
             if isinstance(adj, dict) and {"stem", "delta_db"} <= set(adj):
                 try:
@@ -433,7 +469,14 @@ class MixEngineer:
                     master.append(adj)
                 except (TypeError, ValueError):
                     pass
-        return stems, master
+        for adj in data.get("knobs", []):
+            if isinstance(adj, dict) and {"name", "delta_ticks"} <= set(adj):
+                try:
+                    adj["delta_ticks"] = float(adj["delta_ticks"])
+                    knobs.append(adj)
+                except (TypeError, ValueError):
+                    pass
+        return stems, master, knobs
 
     def _audit(self, entry: dict) -> None:
         log.info("MIX adjust: %s %+0.1f dB (%s)", entry.get("stem"),
@@ -478,8 +521,13 @@ class MixEngineer:
             "program": self.program.measurements()
             if self.program is not None else None,
             "stems": stems_ui,
+            "knobs": self.knobs.ui_state(),
             "ai_log": self.ai_log[:20],
         }
 
+    def freeze_knob(self, name: str, frozen: bool) -> bool:
+        return self.knobs.freeze(name, frozen)
+
     def close(self) -> None:
         self.faders.close()
+        self.knobs.close()

@@ -32,6 +32,43 @@ once, then every show is: open three apps, press play.
 4. Channel names appear in AutoDirector automatically (scribble-strip
    protocol); name your S1 channels normally ("Lead Vox", "Kick", ...).
 
+## 2b. Letting the AI tweak your S1 VSTs — very slightly (optional, 5 minutes)
+
+Your plugins live **inside Studio One**, and that's where they stay.
+AutoDirector never loads, replaces, or reprograms a VST — instead you
+map, once, the handful of parameters you're happy to have nudged, and
+the AI may touch **only those**, gently:
+
+1. With AutoDirector running, Studio One → *Preferences → External
+   Devices → Add… → New Control Surface*. Receive From:
+   **AutoDirector Params**. (This third port exists whenever a `knobs`
+   list is configured.)
+2. Open a plugin you want tweakable (say the vocal compressor). Right
+   click its Threshold knob → **Assign to Control Link**, then move the
+   matching CC once so S1 learns it. Map each parameter to its own CC
+   number (CC 1, CC 2, …).
+3. In AutoDirector's config, list what you mapped:
+
+   ```json
+   "knobs": [
+     { "cc": 1, "name": "Vox Comp Threshold" },
+     { "cc": 2, "name": "Vox Reverb Send" }
+   ]
+   ```
+
+That mapping is the consent boundary: an unmapped parameter cannot be
+touched, period. Movement discipline is deliberately timid — at
+soundcheck the current knob positions become the zero point, the AI may
+ask for at most **±6 ticks** (of 127) per review with a written reason,
+total travel is clamped to **±16 ticks (~12 %)** from soundcheck, moves
+are slewed ~2 ticks/second, and every knob has its own freeze lock in
+the Control Room. Set the plugin sound you want in soundcheck; the AI
+only keeps it sitting right as the show breathes.
+
+Tip: park mapped parameters near mid-travel at soundcheck if you can —
+Control Link CC maps are absolute, so `baseline_cc` (default 64)
+should roughly match where the mapped knob actually sits.
+
 ## 3. The mix feed AutoDirector listens to (pick one)
 
 | Your setup | Route |

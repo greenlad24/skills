@@ -161,6 +161,10 @@ class ControlRoomServer:
                         ok = mixer.freeze_stem(int(body.get("channel", -1)),
                                                bool(body.get("frozen", True)))
                         return self._json({"ok": ok}, 200 if ok else 404)
+                    if action == "freeze_knob":
+                        ok = mixer.freeze_knob(str(body.get("name", "")),
+                                               bool(body.get("frozen", True)))
+                        return self._json({"ok": ok}, 200 if ok else 404)
                     if action == "review_now":
                         import threading as _t
                         _t.Thread(target=mixer.review, daemon=True).start()
