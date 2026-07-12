@@ -50,6 +50,29 @@ loopback is stereo-only → Advisory tier.
   update** (TCC identifies by code signature). Developer ID signing +
   notarization becomes necessary the moment SCK/tap capture ships.
 
+## Fully automatic on macOS 11 (Big Sur) — the concrete story
+
+macOS has **native virtual MIDI on every version**, so auto-fader
+control works on 11.x with zero installs — Advisory mode was only ever
+the Windows no-MIDI fallback. The complete hands-free setup on 11.7:
+
+1. **Directing**: automatic (obs-websocket + shared-device capture).
+2. **Mix control**: automatic — MCU virtual ports, DAW binds Mackie
+   Control; ±6 dB rails from soundcheck.
+3. **Analysis**: `capture_channels: 2` puts the Mix Engineer in
+   **stereo-mix mode** — it listens to the same program feed OBS
+   broadcasts (whatever already carries S1 → OBS on the rig: an
+   existing BlackHole 2ch, interface loopback — CoreAudio devices are
+   multi-client, so AutoDirector opens it alongside OBS with nothing
+   new installed) and drives faders automatically on tighter,
+   role-limited rails: lead vocal ±1.5 dB on masking evidence,
+   named instrument trims ±1.0 dB, program sweetening in OBS as usual.
+4. **Auto-soundcheck**: if nobody presses "Soundcheck snapshot", the
+   engineer takes its own reference after ~45 s of the band audibly
+   playing. No buttons required, ever.
+
+The installer's minimum macOS is 11.0.
+
 ## Tiers (auto-detected, highest first)
 
 1. **Full stems + auto faders** — 16ch capturable device present

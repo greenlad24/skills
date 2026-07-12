@@ -39,7 +39,7 @@ echo "==> Patching Info.plist"
   "Add :NSMicrophoneUsageDescription string 'AutoDirector listens to your show audio to direct scene switching and manage voice processing. Audio never leaves this Mac.'" \
   "$PLIST" 2>/dev/null || true
 /usr/libexec/PlistBuddy -c \
-  "Add :LSMinimumSystemVersion string '12.0'" "$PLIST" 2>/dev/null || true
+  "Add :LSMinimumSystemVersion string '11.0'" "$PLIST" 2>/dev/null || true
 /usr/libexec/PlistBuddy -c \
   "Set :CFBundleShortVersionString $VERSION" "$PLIST" 2>/dev/null || true
 

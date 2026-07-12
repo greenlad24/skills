@@ -586,9 +586,13 @@ class Runtime:
                 mcfg = lcfg.get("mixer", {})
                 if mcfg.get("enabled"):
                     from .mixer import MixEngineer
+                    # capture_channels 2 = stereo program-mix analysis
+                    # (fully automatic mixing without stems); 16 = stems.
                     mix_cap = AudioCapture(
                         device=mcfg.get("device"),
-                        channels=int(mcfg.get("channels", 16)))
+                        channels=int(mcfg.get("capture_channels",
+                                              mcfg.get("channels", 16))),
+                        loopback=bool(mcfg.get("loopback")))
                     mix_cap.start()
                     captures["mixer"] = mix_cap
                     ai_cfg = mcfg.get("ai_review", {})

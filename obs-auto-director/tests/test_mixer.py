@@ -371,6 +371,85 @@ class TestAdvisoryMode:
         assert eng.ui_state()["control_mode"] == "advisory"
 
 
+class TestStereoMode:
+    """Fully automatic mixing from the stereo program mix (no stems) —
+    the macOS <=12 / no-special-interface path."""
+
+    RESP = json.dumps({
+        "adjustments": [
+            {"stem": "Lead Vox", "delta_db": 3.0, "reason": "masked"},
+            {"stem": "Gtr L", "delta_db": -3.0, "reason": "crowding"},
+        ],
+        "master": [{"param": "master_eq_high", "delta": 0.5,
+                    "reason": "dull"}]})
+
+    def make(self, transport, auto_baseline=4.0):
+        cfg = {"channels": 16, "capture_channels": 2,
+               "program_source": "S1 Mix",
+               "auto_baseline_s": auto_baseline,
+               "stems": [{"channel": 0, "name": "Lead Vox"},
+                         {"channel": 2, "name": "Gtr L"}],
+               "ai_review": {"enabled": True, "interval_s": 60}}
+        obs = FakeOBS()
+        obs.filters["S1 Mix"] = []
+        return MixEngineer(cfg, obs=obs, port_factory=FakePort,
+                           ai_transport=transport, api_key="k")
+
+    def feed(self, eng, mono, start=0.0):
+        stereo = np.stack([mono, mono], axis=1)
+        for s in range(0, len(stereo), 4800):
+            eng.process(stereo[s:s + 4800], start + s / SR)
+        return start + len(mono) / SR
+
+    def test_stereo_mode_detected_and_no_false_ground_truth(self):
+        eng = self.make(lambda *a: "{}")
+        assert eng.stereo_mode is True
+        assert eng.vocal_activity() is None, \
+            "stereo mix must not masquerade as stem ground truth"
+
+    def test_auto_baseline_kicks_in(self):
+        eng = self.make(lambda *a: "{}")
+        assert eng.baselined is False
+        clock = self.feed(eng, synth_instrumental(6.0, seed=91) * 0.5)
+        eng.control_tick(clock)
+        assert eng.baselined is True, \
+            "completely-automatic mode must soundcheck itself"
+
+    def test_masking_estimate_from_program_mix(self):
+        eng = self.make(lambda *a: "{}")
+        # vocal-forward section, then instrumental-only section
+        clock = self.feed(eng, synth_vocal(6.0, seed=92) * 0.5)
+        self.feed(eng, synth_instrumental(6.0, seed=93) * 0.5, start=clock)
+        m = eng.degraded.masking_db()
+        assert m is not None, "needs both vocal-in and band-only evidence"
+        report = eng.build_report()
+        assert report["analysis_mode"] == "stereo"
+        assert "Lead Vox" in report["fader_map"]
+
+    def test_review_clamps_by_role_and_moves_faders(self):
+        calls = {}
+
+        def transport(key, model, payload):
+            calls["payload"] = payload
+            return self.RESP
+
+        eng = self.make(transport)
+        FakePort.instances[0].on_pb(0, 9000)
+        clock = self.feed(eng, synth_vocal(6.0, seed=94) * 0.5)
+        eng.control_tick(clock)  # auto-baseline
+        assert eng.baselined
+        applied = eng.review(now=500.0)
+        by = {a["stem"]: a for a in applied}
+        assert by["Lead Vox"]["applied"] == 1.5   # vocal rail: +-1.5
+        assert by["Gtr L"]["applied"] == -1.0     # instrument rail: +-1.0
+        assert by["PROGRAM"]["applied"] > 0       # master sweetening auto
+        sent = json.loads(calls["payload"]["messages"][0]["content"])
+        assert sent["analysis_mode"] == "stereo"
+        assert calls["payload"]["system"].startswith(
+            "You are a broadcast A2 audio engineer riding faders\n"
+            "on a live band streaming to YouTube. You hear ONLY")
+
+
 class TestProgramChain:
     def test_creates_filters_and_corrects_tilt_gently(self):
         obs = FakeOBS()

@@ -36,6 +36,7 @@ import time
 from typing import Callable, Dict, List, Optional
 
 from ..chain.rails import Rail
+from .degraded import StereoMixAnalyzer
 from .mcu import MCUFaders
 from .program import ProgramChain
 from .stems import StemAnalyzer, StemConfig, infer_role
@@ -46,6 +47,28 @@ DEFAULT_MODEL = "claude-haiku-4-5-20251001"
 MAX_DELTA_PER_REVIEW = 3.0
 MASTER_PARAMS = ("master_eq_low", "master_eq_high",
                  "master_comp_threshold")
+
+STEREO_MIX_PROMPT = """You are a broadcast A2 audio engineer riding faders
+on a live band streaming to YouTube. You hear ONLY the stereo program
+mix (no per-channel stems), so act with extra restraint.
+
+You receive: vocal confidence, a vocal masking proxy in dB (positive =
+the band crowds the lead vocal's 2-5 kHz region; estimated by comparing
+vocal-in vs instrumental-only moments), side-channel presence energy
+(lead vocals are center-panned, so side energy is band crowd), program
+loudness/tilt/crest vs the soundcheck reference, and the fader map with
+instrument names.
+
+Respond with ONLY a JSON object:
+{"adjustments": [{"stem": str, "delta_db": float, "reason": str}, ...],
+ "master": [{"param": str, "delta": float, "reason": str}, ...],
+ "notes": str}
+Rules: the LEAD VOCAL fader only, max ±1.5 dB, and only on clear
+sustained masking evidence; named instrument-group trims max ±1.0 dB
+and only when masking is strongly positive AND side presence is high;
+master params (master_eq_low, master_eq_high, master_comp_threshold)
+for clear sustained tonal/loudness drift. When in doubt: empty lists —
+an untouched mix beats a wrongly touched one."""
 
 MIX_SYSTEM_PROMPT = """You are a broadcast A2 audio engineer riding faders
 on a live band that streams to YouTube. The band is pre-mixed in a DAW;
@@ -88,6 +111,15 @@ class MixEngineer:
                 channel=ch, name=name,
                 role=s.get("role") or infer_role(name)))
         self.analyzer = StemAnalyzer(stems)
+        # Stereo mode: no stems available (capture is the program mix
+        # itself). Fader strips/names still exist over MCU; analysis
+        # comes from StereoMixAnalyzer and automatic moves run on
+        # tighter, role-limited rails.
+        self.stereo_mode = (int(cfg.get("capture_channels",
+                                        cfg.get("channels", 16))) <= 2
+                            or cfg.get("analysis_mode") == "stereo")
+        self.degraded = StereoMixAnalyzer() if self.stereo_mode else None
+        self.auto_baseline_s = float(cfg.get("auto_baseline_s", 45.0))
         self.faders = MCUFaders(n_channels=self.n,
                                 port_factory=port_factory)
         self.rails: Dict[int, Rail] = {
@@ -121,6 +153,13 @@ class MixEngineer:
 
     # -- audio ingest --------------------------------------------------------
     def process(self, pcm, clock: float) -> None:
+        if self.stereo_mode:
+            self.degraded.process(pcm, clock)
+            self._sync_names()
+            if self.program is not None and self.degraded._loud is not None:
+                self.program.note_master(
+                    self.degraded._loud, self.degraded._tilt or 0.0)
+            return
         self.analyzer.process(pcm, clock)
         self._sync_names()
         if self.program is not None and self.master_channels \
@@ -151,6 +190,10 @@ class MixEngineer:
                     stem.role = stem.role or infer_role(name)
 
     def vocal_activity(self) -> Optional[bool]:
+        if self.stereo_mode:
+            # The stereo mix is the same feed the director already
+            # analyzes — no false "ground truth" from here.
+            return None
         return self.analyzer.vocal_activity()
 
     @property
@@ -160,12 +203,15 @@ class MixEngineer:
     # -- soundcheck ------------------------------------------------------------
     def snapshot_baseline(self) -> dict:
         heard = self.faders.snapshot_baseline()
-        snaps = self.analyzer.snapshots()
         self.reference = {}
-        for stem in self.analyzer.stems:
-            s = snaps.get(stem.name)
-            if s and s.loud_db > -85.0:
-                self.reference[stem.channel] = s.loud_db
+        if self.stereo_mode:
+            self.degraded.set_reference()
+        else:
+            snaps = self.analyzer.snapshots()
+            for stem in self.analyzer.stems:
+                s = snaps.get(stem.name)
+                if s and s.loud_db > -85.0:
+                    self.reference[stem.channel] = s.loud_db
         for ch in self.targets:
             self.targets[ch] = 0.0
             self.rails[ch].value = 0.0
@@ -177,6 +223,14 @@ class MixEngineer:
     def control_tick(self, clock: float) -> None:
         if self.frozen_all:
             return
+        # Completely automatic operation: take the soundcheck snapshot
+        # ourselves once the band has been audibly playing for a while
+        # and nobody pressed the button.
+        if (not self.baselined and self.auto_baseline_s > 0
+                and self.stereo_mode
+                and self.degraded.active_seconds >= self.auto_baseline_s):
+            info = self.snapshot_baseline()
+            log.info("auto soundcheck snapshot taken (%s)", info)
         if self.baselined and (clock - self._last_control) >= 0.5:
             self._last_control = clock
             for ch, rail in self.rails.items():
@@ -235,7 +289,30 @@ class MixEngineer:
             self._last_review = now
             return True
 
+    def _role_of(self, channel: int) -> str:
+        for s in self.analyzer.stems:
+            if s.channel == channel:
+                return s.role
+        return ""
+
+    def _stereo_max_delta(self, channel: int) -> float:
+        return 1.5 if self._role_of(channel) == "lead_vocal" else 1.0
+
     def build_report(self) -> dict:
+        if self.stereo_mode:
+            return {
+                "analysis_mode": "stereo",
+                "program": self.degraded.measurements(),
+                "fader_map": {s.name: {"role": s.role,
+                                       "offset_db": round(
+                                           self.targets.get(s.channel, 0.0),
+                                           1),
+                                       "frozen": self.rails[s.channel].frozen}
+                              for s in self.analyzer.stems
+                              if s.name and not s.name.startswith("Ch ")},
+                "program_bus": self.program.measurements()
+                if self.program is not None else None,
+            }
         snaps = self.analyzer.snapshots()
         stems = {}
         for stem in self.analyzer.stems:
@@ -277,7 +354,8 @@ class MixEngineer:
                     transport = _default_transport
                 text = transport(self._api_key, self._model, {
                     "model": self._model, "max_tokens": 1024,
-                    "system": MIX_SYSTEM_PROMPT,
+                    "system": STEREO_MIX_PROMPT if self.stereo_mode
+                    else MIX_SYSTEM_PROMPT,
                     "messages": [{"role": "user",
                                   "content": json.dumps(report)}]})
             except Exception as e:
@@ -289,19 +367,20 @@ class MixEngineer:
                 ch = self._channel_by_name(adj["stem"])
                 if ch is None:
                     continue
+                # Stereo mode: tighter, role-limited automatic rails —
+                # a mix-level analysis earns smaller moves than stems do.
+                limit = self._stereo_max_delta(ch) if self.stereo_mode \
+                    else MAX_DELTA_PER_REVIEW
+                delta = max(-limit, min(limit, adj["delta_db"]))
                 if self.advisory:
-                    # Zero-install tier: recommend, don't move — the
-                    # human rides the fader.
-                    delta = max(-MAX_DELTA_PER_REVIEW,
-                                min(MAX_DELTA_PER_REVIEW,
-                                    adj["delta_db"]))
+                    # Recommend, don't move — the human rides the fader.
                     applied.append({"t": now, "stem": adj["stem"],
                                     "requested": adj["delta_db"],
                                     "applied": 0.0, "suggested": delta,
                                     "advisory": True,
                                     "reason": adj.get("reason", "")})
                     continue
-                got = self.nudge(ch, adj["delta_db"])
+                got = self.nudge(ch, delta)
                 applied.append({"t": now, "stem": adj["stem"],
                                 "requested": adj["delta_db"],
                                 "applied": got,
@@ -365,7 +444,8 @@ class MixEngineer:
     # -- UI -----------------------------------------------------------------------
     def ui_state(self) -> dict:
         snaps = self.analyzer.snapshots()
-        masking = self.analyzer.masking_score()
+        masking = self.degraded.masking_db() if self.stereo_mode \
+            else self.analyzer.masking_score()
         stems_ui = []
         for stem in self.analyzer.stems:
             s = snaps.get(stem.name)
@@ -384,6 +464,7 @@ class MixEngineer:
             "midi_error": self.faders.error,
             "daw_heard": self.faders.heard_from_daw(),
             "control_mode": "advisory" if self.advisory else "auto",
+            "analysis_mode": "stereo" if self.stereo_mode else "stems",
             "baselined": self.baselined,
             "frozen_all": self.frozen_all,
             "ai_enabled": self.ai_enabled,

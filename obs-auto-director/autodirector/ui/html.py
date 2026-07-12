@@ -564,6 +564,8 @@ function mixerCard(){
   return `<div class="card">
     <h2>Mix engineer <span class="chip">${advisory ?
         "ADVISORY — you ride the faders" : "AUTO FADERS"}</span>
+      ${M.analysis_mode === "stereo" ?
+        '<span class="chip">STEREO MIX ANALYSIS</span>' : ""}
       <span class="spacer"></span>
       ${advisory ? "" : `<span class="pill"><span class="dot ${M.midi_available ?
         (M.daw_heard ? "ok" : "warn") : "bad"}"></span>MIDI</span>`}</h2>

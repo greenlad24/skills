@@ -24,6 +24,8 @@
       "control_mode": "auto",
       "device": "BlackHole 16ch",
       "channels": 16,
+      "capture_channels": 16,
+      "auto_baseline_s": 45,
       "program_source": "Studio One Mix",
       "master_channels": [14, 15],
       "stems": [
