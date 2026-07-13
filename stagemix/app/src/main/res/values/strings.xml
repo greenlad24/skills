@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">StageMix AI</string>
+    <string name="svc_channel">StageMix engine</string>
+    <string name="svc_running">Watching the stage mix</string>
+</resources>

@@ -1,0 +1,72 @@
+name: Build StageMix APK
+
+on:
+  push:
+    branches: ["**"]
+    paths: ["stagemix/**", ".github/workflows/stagemix-android.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: stagemix
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Engine unit tests
+        run: ./gradlew :engine:test --console=plain
+
+      - name: Build release APK
+        env:
+          ANDROID_HOME: /usr/local/lib/android/sdk
+        run: ./gradlew :app:assembleRelease --console=plain
+
+      - name: Rename APK
+        run: cp app/build/outputs/apk/release/app-release.apk StageMix.apk
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: StageMix-apk
+          path: stagemix/StageMix.apk
+
+      - name: Update rolling release
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref_name, 'claude/')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: stagemix-latest
+          name: StageMix AI — latest build
+          prerelease: true
+          files: stagemix/StageMix.apk
+          body: |
+            ## StageMix AI — on-stage auto mix engineer (Android)
+
+            Install: download **StageMix.apk** on the tablet, open it, and
+            allow "install unknown apps" for your browser/file manager when
+            asked. Updates install right over the old version.
+
+            1. Put the tablet on the same network as the Midas M18
+               (same Wi-Fi Mixing Station uses).
+            2. Open StageMix → enter the mixer's IP → Connect.
+            3. At soundcheck: get the wedges right by hand (Mixing Station
+               works alongside — both talk to the mixer), then press
+               **Soundcheck snapshot**.
+            4. Flip **MIXING** on. StageMix nudges monitor sends back toward
+               your soundcheck when levels drift — slow bounded boosts,
+               fast cuts, vocal-priority ducking, and it freezes itself
+               whenever anything looks unsafe.
+
+            The mixer keeps your last mix if the app ever disconnects —
+            fail-safe by design.
