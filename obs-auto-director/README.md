@@ -12,6 +12,20 @@ OBS, no virtual cables for most setups.
 
 ![Control Room — live show](docs/img/ui_live.png)
 
+## Guided onboarding — with a video for every part
+
+First launch opens a **step-by-step setup guide** that walks you through
+every connection: enabling the OBS WebSocket server, building your
+scenes, routing the audio feed, wiring Studio One's faders and Control
+Link knobs, calibrating, and going live on YouTube. Every step shows
+exactly what to click (`Tools → WebSocket Server Settings`, …), verifies
+itself **live** against the running engine (OBS connected? scenes found?
+Studio One talking?), and carries curated **YouTube walkthrough videos**
+that play right inside the guide. Re-run it any time from the **🧭
+Guide** button.
+
+![Onboarding — connect OBS](docs/img/onboarding_obs.png)
+
 ## The Control Room
 
 Launch the app and the **Control Room** opens in your browser — a

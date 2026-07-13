@@ -83,6 +83,19 @@ class TestControlRoom:
         code, _ = http("POST", base + "/api/active", {"active": False})
         assert code == 409  # no engine yet
 
+    def test_page_includes_onboarding_wizard(self, server):
+        srv, rt, base = server
+        code, page = http("GET", base + "/")
+        assert code == 200
+        # guided setup shipped: wizard shell, guide button, video cards
+        assert 'id="wiz"' in page and 'id="btnGuide"' in page
+        assert "openWizard" in page
+        assert "img.youtube.com" in page and "youtube.com/watch" in page
+        # every curated step is present
+        for step in ("Connect OBS", "Build your shots", "Audio feed",
+                     "Go live", "Control Link"):
+            assert step in page, f"missing onboarding step content: {step}"
+
     def test_config_roundtrip(self, server, tmp_path):
         srv, rt, base = server
         code, cfg = http("GET", base + "/api/config")

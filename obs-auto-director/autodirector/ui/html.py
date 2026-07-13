@@ -291,6 +291,7 @@ kbd{background:var(--inset);border:1px solid var(--line-2);border-bottom-width:2
       <span class="label">DIRECTING</span>
       <span class="track"><span class="knob"></span></span>
     </div>
+    <button class="iconbtn" id="btnGuide" title="Guided setup with videos">🧭 Guide</button>
     <button class="iconbtn" id="btnSetup">⚙︎ Setup</button>
   </div>
 </header>
@@ -604,7 +605,8 @@ function setupHero(){
   return `<div class="card setup-hero">
     <h1>Welcome to AutoDirector</h1>
     <p>${S.error ? "⚠︎ " + S.error : "Let’s wire up OBS and your audio."}</p>
-    <button class="btn" onclick="openSetup()">Open setup</button>
+    <button class="btn" onclick="openWizard(0)">🧭 Start guided setup</button>
+    <button class="btn ghost" onclick="openSetup()">Manual setup</button>
   </div>`;
 }
 
@@ -832,3 +834,11 @@ tick();
 </body>
 </html>
 """
+
+# Guided onboarding wizard (step-by-step setup with live checks and
+# YouTube walkthroughs) lives in its own module; splice it in before
+# </body> so it shares the page's styles, helpers and state.
+from .onboarding import ONBOARDING_SNIPPET  # noqa: E402
+
+CONTROL_ROOM_HTML = CONTROL_ROOM_HTML.replace(
+    "</body>", ONBOARDING_SNIPPET + "\n</body>")
