@@ -1,0 +1,12 @@
+{
+  "name": "vibration-poster-studio",
+  "version": "1.0.0",
+  "description": "Local poster designer + Instagram/Facebook scheduler for the Vibration live music bar",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

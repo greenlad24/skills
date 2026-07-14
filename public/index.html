@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vibration Poster Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='48' fill='%23111'/><text x='50' y='68' font-size='58' text-anchor='middle' fill='%23d4af37' font-family='Georgia'>V</text></svg>" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">V</div>
+      <div class="brand-text">
+        <div class="brand-name">VIBRATION</div>
+        <div class="brand-sub">Poster Studio</div>
+      </div>
+    </div>
+    <div class="week-picker">
+      <button class="ghost" id="week-prev" title="Previous week">‹</button>
+      <div class="week-label" id="week-label">—</div>
+      <button class="ghost" id="week-next" title="Next week">›</button>
+      <input type="date" id="week-date" title="Jump to a week" />
+    </div>
+    <div class="top-actions">
+      <button class="ghost" id="btn-voice">🎙 Voice</button>
+      <button class="ghost" id="btn-settings">⚙ Settings</button>
+    </div>
+  </header>
+
+  <nav class="day-tabs" id="day-tabs"></nav>
+
+  <main id="main"></main>
+
+  <!-- Lightbox -->
+  <div class="modal-backdrop hidden" id="lightbox">
+    <div class="lightbox-inner">
+      <img id="lightbox-img" alt="poster preview" />
+      <div class="lightbox-actions" id="lightbox-actions"></div>
+    </div>
+  </div>
+
+  <!-- Settings modal -->
+  <div class="modal-backdrop hidden" id="settings-modal">
+    <div class="modal">
+      <div class="modal-head"><h2>Settings</h2><button class="ghost close" data-close="settings-modal">✕</button></div>
+      <div class="modal-body" id="settings-body"></div>
+    </div>
+  </div>
+
+  <!-- Voice modal -->
+  <div class="modal-backdrop hidden" id="voice-modal">
+    <div class="modal">
+      <div class="modal-head"><h2>Caption voice</h2><button class="ghost close" data-close="voice-modal">✕</button></div>
+      <div class="modal-body" id="voice-body"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
