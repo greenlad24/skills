@@ -9,6 +9,8 @@ const { STYLE_PRESETS, VARIANT_TAKES, buildPosterPrompt } = require('./lib/promp
 const openai = require('./lib/openaiClient');
 const pinterest = require('./lib/pinterest');
 const postiz = require('./lib/postiz');
+const buffer = require('./lib/buffer');
+const imagehost = require('./lib/imagehost');
 
 const PORT = process.env.PORT || 5713;
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -94,7 +96,12 @@ function localIso(dateStr, timeStr) {
 
 function redactedSettings(s) {
   const mask = (k) => (k ? `set (…${k.slice(-4)})` : '');
-  return { ...s, openaiApiKey: mask(s.openaiApiKey), postizApiKey: mask(s.postizApiKey) };
+  return {
+    ...s,
+    openaiApiKey: mask(s.openaiApiKey),
+    postizApiKey: mask(s.postizApiKey),
+    bufferApiKey: mask(s.bufferApiKey),
+  };
 }
 
 // Collect the reference images attached to a generation call, with a manifest
@@ -316,27 +323,56 @@ route('PUT', /^\/api\/settings$/, async (m, body) => {
   for (const k of Object.keys(db.settings)) {
     if (!(k in s)) continue;
     // Ignore masked key round-trips.
-    if ((k === 'openaiApiKey' || k === 'postizApiKey') && /^set \(/.test(s[k])) continue;
+    if (['openaiApiKey', 'postizApiKey', 'bufferApiKey'].includes(k) && /^set \(/.test(s[k])) continue;
     db.settings[k] = s[k];
   }
   store.save();
   return { settings: redactedSettings(db.settings) };
 });
 
-route('GET', /^\/api\/postiz\/integrations$/, async () => {
+// List connected channels from whichever scheduler is selected.
+route('GET', /^\/api\/channels$/, async () => {
   const db = store.load();
-  const integrations = await postiz.listIntegrations(
-    db.settings.postizApiKey || process.env.POSTIZ_API_KEY,
-    db.settings
-  );
-  return { integrations };
+  let channels;
+  if (db.settings.scheduler === 'postiz') {
+    channels = await postiz.listIntegrations(db.settings.postizApiKey || process.env.POSTIZ_API_KEY, db.settings);
+  } else {
+    channels = await buffer.listChannels(db.settings.bufferApiKey || process.env.BUFFER_API_KEY);
+  }
+  return { channels };
 });
 
 // Schedule the winners: { days: ['tuesday', ...], platforms: ['instagram','facebook'] }
+// Schedule one platform's post through the selected provider. Returns a post id.
+async function schedulePost(db, { platform, text, localImage, postizMedia, publicImageUrl, scheduledTime }) {
+  const s = db.settings;
+  const channelId = platform === 'instagram' ? s.instagramIntegrationId : s.facebookIntegrationId;
+  if (!channelId) throw new Error(`${platform} channel not set (Settings → Load my channels)`);
+
+  if (s.scheduler === 'postiz') {
+    const post = await postiz.createPost(s.postizApiKey || process.env.POSTIZ_API_KEY, s, {
+      integration: {
+        id: channelId,
+        identifier: (platform === 'instagram' ? s.instagramIdentifier : s.facebookIdentifier) || platform,
+      },
+      text,
+      media: [postizMedia],
+      scheduledTime,
+    });
+    return post?.[0]?.postId || post?.id || 'submitted';
+  }
+  const post = await buffer.createPost(s.bufferApiKey || process.env.BUFFER_API_KEY, {
+    channelId,
+    text,
+    imageUrl: publicImageUrl,
+    dueAt: scheduledTime,
+  });
+  return post?.id || 'submitted';
+}
+
 route('POST', /^\/api\/week\/([\d-]+)\/schedule$/, async (m, body) => {
   const db = store.load();
   const week = store.getWeek(m[1]);
-  const apiKey = db.settings.postizApiKey || process.env.POSTIZ_API_KEY;
   const platforms = body.platforms || ['instagram', 'facebook'];
   const wanted = body.days || store.DAY_KEYS;
   const results = [];
@@ -350,32 +386,28 @@ route('POST', /^\/api\/week\/([\d-]+)\/schedule$/, async (m, body) => {
       if (!day.captions.instagram && !day.captions.facebook) throw new Error('no captions generated');
       const timeStr = db.settings.postTimes[dayKey] || db.settings.defaultPostTime;
       const scheduledTime = localIso(day.date, timeStr);
-      const media = await postiz.uploadMedia(apiKey, db.settings, store.filePath(day.winner));
+      const localImage = store.filePath(day.winner);
+
+      // Make the poster reachable for the provider (once per day, reused by both platforms).
+      let postizMedia = null;
+      let publicImageUrl = null;
+      if (db.settings.scheduler === 'postiz') {
+        postizMedia = await postiz.uploadMedia(db.settings.postizApiKey || process.env.POSTIZ_API_KEY, db.settings, localImage);
+      } else {
+        publicImageUrl = await imagehost.uploadPublicImage(db.settings, localImage);
+      }
       r.steps.push('poster uploaded');
       day.scheduled = day.scheduled || {};
       day.scheduled.at = scheduledTime;
 
-      if (platforms.includes('instagram')) {
-        if (!db.settings.instagramIntegrationId) throw new Error('Instagram channel not set (Settings)');
-        const post = await postiz.createPost(apiKey, db.settings, {
-          integration: { id: db.settings.instagramIntegrationId, identifier: db.settings.instagramIdentifier || 'instagram' },
-          text: day.captions.instagram || day.captions.facebook,
-          media: [media],
-          scheduledTime,
-        });
-        day.scheduled.instagram = { postId: post?.[0]?.postId || post?.id || 'submitted', at: scheduledTime };
-        r.steps.push('instagram scheduled');
-      }
-      if (platforms.includes('facebook')) {
-        if (!db.settings.facebookIntegrationId) throw new Error('Facebook channel not set (Settings)');
-        const post = await postiz.createPost(apiKey, db.settings, {
-          integration: { id: db.settings.facebookIntegrationId, identifier: db.settings.facebookIdentifier || 'facebook' },
-          text: day.captions.facebook || day.captions.instagram,
-          media: [media],
-          scheduledTime,
-        });
-        day.scheduled.facebook = { postId: post?.[0]?.postId || post?.id || 'submitted', at: scheduledTime };
-        r.steps.push('facebook scheduled');
+      for (const platform of ['instagram', 'facebook']) {
+        if (!platforms.includes(platform)) continue;
+        const text = platform === 'instagram'
+          ? day.captions.instagram || day.captions.facebook
+          : day.captions.facebook || day.captions.instagram;
+        const postId = await schedulePost(db, { platform, text, localImage, postizMedia, publicImageUrl, scheduledTime });
+        day.scheduled[platform] = { postId, at: scheduledTime };
+        r.steps.push(`${platform} scheduled`);
       }
       r.ok = true;
       store.save();

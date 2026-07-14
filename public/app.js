@@ -594,7 +594,11 @@ function renderSettings() {
     <div class="settings-note">Keys are stored only on this computer (in the app's <b>data/</b> folder). Nothing runs on a server.</div>
     <div class="grid2">
       <div class="field"><label>OpenAI API key</label><input id="st-openai" type="password" placeholder="sk-…" value="${esc(s.openaiApiKey)}"></div>
-      <div class="field"><label>Postiz API key</label><input id="st-postiz" type="password" placeholder="Postiz → Settings → Public API" value="${esc(s.postizApiKey)}"></div>
+      <div class="field"><label>Scheduling service</label>
+        <select id="st-scheduler">
+          <option value="buffer" ${s.scheduler !== 'postiz' ? 'selected' : ''}>Buffer (free plan: 3 channels)</option>
+          <option value="postiz" ${s.scheduler === 'postiz' ? 'selected' : ''}>Postiz</option>
+        </select></div>
     </div>
     <div class="grid3">
       <div class="field"><label>Poster quality</label>
@@ -619,13 +623,40 @@ function renderSettings() {
     </div>
 
     <hr class="settings-sep">
-    <h3 style="margin:0 0 4px">Social channels (Postiz)</h3>
-    <div class="settings-note">
-      Connect Instagram & your Facebook page inside <a href="https://platform.postiz.com" target="_blank">Postiz</a> first
-      (self-hosted works too — set the base URL below), then load your channels here and click
-      "→ Instagram" / "→ Facebook" on the right ones.
+    <h3 style="margin:0 0 4px">Scheduling & channels</h3>
+
+    <div id="st-buffer-block">
+      <div class="settings-note">
+        <b>Buffer setup (free):</b> create an account at <a href="https://buffer.com" target="_blank">buffer.com</a>,
+        connect your Instagram (must be a professional/business account) and your Facebook page —
+        the free plan includes 3 channels. Then generate an API key under
+        <b>Buffer → Settings → API</b> and paste it here.
+      </div>
+      <div class="field"><label>Buffer API key</label><input id="st-buffer" type="password" placeholder="Buffer → Settings → API" value="${esc(s.bufferApiKey)}"></div>
+      <div class="settings-note">
+        <b>Image hosting (free, required for Buffer):</b> Buffer downloads the poster from a URL,
+        so the app publishes it via a free <a href="https://cloudinary.com" target="_blank">Cloudinary</a> account:
+        Settings → Upload → Upload presets → Add preset → Signing mode "Unsigned". Paste your
+        cloud name and preset name below.
+      </div>
+      <div class="grid2">
+        <div class="field"><label>Cloudinary cloud name</label><input id="st-cld-name" value="${esc(s.cloudinaryCloudName)}"></div>
+        <div class="field"><label>Cloudinary upload preset</label><input id="st-cld-preset" value="${esc(s.cloudinaryUploadPreset)}"></div>
+      </div>
     </div>
-    <div class="field"><label>Postiz API base URL</label><input id="st-postiz-url" placeholder="https://api.postiz.com/public/v1" value="${esc(s.postizBaseUrl)}"></div>
+
+    <div id="st-postiz-block">
+      <div class="settings-note">
+        <b>Postiz setup:</b> connect Instagram & your Facebook page inside
+        <a href="https://platform.postiz.com" target="_blank">Postiz</a> (self-hosted works too — set the base URL),
+        then create an API key under Settings → Public API.
+      </div>
+      <div class="grid2">
+        <div class="field"><label>Postiz API key</label><input id="st-postiz" type="password" placeholder="Postiz → Settings → Public API" value="${esc(s.postizApiKey)}"></div>
+        <div class="field"><label>Postiz API base URL</label><input id="st-postiz-url" placeholder="https://api.postiz.com/public/v1" value="${esc(s.postizBaseUrl)}"></div>
+      </div>
+    </div>
+
     <button id="st-load-accts">Load my channels</button>
     <div id="st-accts"></div>
     <input type="hidden" id="st-ig-ident" value="${esc(s.instagramIdentifier)}">
@@ -663,17 +694,26 @@ function renderSettings() {
     renderSettings();
   };
 
+  // Show only the selected scheduler's config block.
+  const syncSchedulerBlocks = () => {
+    const isBuffer = $('#st-scheduler', body).value === 'buffer';
+    $('#st-buffer-block', body).style.display = isBuffer ? '' : 'none';
+    $('#st-postiz-block', body).style.display = isBuffer ? 'none' : '';
+  };
+  $('#st-scheduler', body).onchange = syncSchedulerBlocks;
+  syncSchedulerBlocks();
+
   $('#st-load-accts', body).onclick = async (e) => {
     e.target.disabled = true;
     e.target.textContent = 'Loading…';
     const box = $('#st-accts', body);
     try {
-      // Save the API key + base URL first so the server can use them.
+      // Save the API keys first so the server can use them.
       await saveSettings();
-      const out = await api('GET', '/api/postiz/integrations');
-      const channels = Array.isArray(out.integrations) ? out.integrations : [];
+      const out = await api('GET', '/api/channels');
+      const channels = Array.isArray(out.channels) ? out.channels : [];
       if (!channels.length) {
-        box.innerHTML = `<div class="acct-list">No channels found — connect Instagram & your Facebook page in Postiz first.</div>`;
+        box.innerHTML = `<div class="acct-list">No channels found — connect Instagram & your Facebook page in your scheduling service first.</div>`;
       } else {
         box.innerHTML = `<div class="acct-list">${channels.map((c) => `
           <div style="display:flex;align-items:center;gap:10px;margin:4px 0">
@@ -706,6 +746,10 @@ function renderSettings() {
     const out = await api('PUT', '/api/settings', {
       settings: {
         openaiApiKey: $('#st-openai', body).value.trim(),
+        scheduler: $('#st-scheduler', body).value,
+        bufferApiKey: $('#st-buffer', body).value.trim(),
+        cloudinaryCloudName: $('#st-cld-name', body).value.trim(),
+        cloudinaryUploadPreset: $('#st-cld-preset', body).value.trim(),
         postizApiKey: $('#st-postiz', body).value.trim(),
         postizBaseUrl: $('#st-postiz-url', body).value.trim() || 'https://api.postiz.com/public/v1',
         imageQuality: $('#st-quality', body).value,
