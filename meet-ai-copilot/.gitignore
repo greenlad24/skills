@@ -1,0 +1,6 @@
+# local secrets / packaging artifacts
+*.pem
+*.zip
+.env
+.DS_Store
+node_modules/

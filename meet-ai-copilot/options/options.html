@@ -1,0 +1,106 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Meet AI Copilot — Settings</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <img src="../icons/icon48.png" width="34" height="34" alt="" />
+        <div>
+          <h1>Meet AI Copilot</h1>
+          <p class="sub">A private meeting copilot. Reads Google Meet's live captions locally and drafts Claude-powered answers when a question is aimed at you.</p>
+        </div>
+      </header>
+
+      <section class="notice">
+        <strong>Consent & recording laws.</strong> Transcribing a conversation is
+        regulated in many places (two-party-consent US states, GDPR in the EU, and
+        elsewhere). This tool captures locally on your machine, but it's on you to
+        get consent where it's required. It doesn't join the call as a bot and adds
+        nothing the other participants can see.
+      </section>
+
+      <section>
+        <h2>Connection</h2>
+        <div class="f">
+          <label for="apiKey">Anthropic API key</label>
+          <input id="apiKey" type="password" placeholder="sk-ant-…" autocomplete="off" />
+          <p class="hint">Get one at console.anthropic.com. Stored with <code>chrome.storage.local</code> in this browser only — never sent anywhere but Anthropic's API.</p>
+        </div>
+        <div class="f">
+          <label for="userName">Your display name in Meet</label>
+          <input id="userName" type="text" placeholder="e.g. Jake Austin" />
+          <p class="hint">Must match the name Meet shows for you, so the copilot knows which lines are yours.</p>
+        </div>
+      </section>
+
+      <section>
+        <h2>You</h2>
+        <div class="f">
+          <label for="userContext">About you (used to tailor answers)</label>
+          <textarea id="userContext" rows="5" placeholder="Role, company, projects, areas you're expected to speak to, positions you hold, links/numbers you often cite…"></textarea>
+          <p class="hint">The more specific this is, the more the drafted answers sound like you and get the facts right.</p>
+        </div>
+        <div class="f">
+          <label for="language">Answer language</label>
+          <select id="language">
+            <option value="auto">Match the conversation</option>
+            <option value="English">English</option>
+            <option value="Spanish">Spanish</option>
+            <option value="French">French</option>
+            <option value="German">German</option>
+            <option value="Portuguese">Portuguese</option>
+            <option value="Hebrew">Hebrew</option>
+          </select>
+        </div>
+      </section>
+
+      <section>
+        <h2>Models & cost</h2>
+        <div class="grid">
+          <div class="f">
+            <label for="answerModel">Answer model</label>
+            <select id="answerModel">
+              <option value="claude-sonnet-5">Sonnet 5 — balanced (recommended)</option>
+              <option value="claude-haiku-4-5">Haiku 4.5 — cheapest & fastest</option>
+              <option value="claude-opus-4-8">Opus 4.8 — highest quality</option>
+              <option value="claude-fable-5">Fable 5 — most capable</option>
+            </select>
+          </div>
+          <div class="f">
+            <label for="gateModel">Gate model</label>
+            <select id="gateModel">
+              <option value="claude-haiku-4-5">Haiku 4.5 (recommended)</option>
+              <option value="claude-sonnet-5">Sonnet 5</option>
+            </select>
+          </div>
+        </div>
+        <label class="chk"><input type="checkbox" id="useGate" /> Use the cheap gate — a quick Haiku pass decides whether the pricier model runs. Cuts cost a lot; leave on.</label>
+        <label class="chk"><input type="checkbox" id="autoSuggest" /> Auto-suggest — also chime in on things you could elaborate on, not just direct questions.</label>
+        <label class="chk"><input type="checkbox" id="autoCaptions" /> Auto-enable Meet captions when they're off (clicks the CC button for you).</label>
+        <div class="grid">
+          <div class="f">
+            <label for="minSecondsBetweenCalls">Min seconds between paid calls</label>
+            <input id="minSecondsBetweenCalls" type="number" min="0" max="60" />
+            <p class="hint">Throttles spend. Direct questions to you bypass this.</p>
+          </div>
+          <div class="f">
+            <label for="maxTranscriptChars">Transcript context (characters)</label>
+            <input id="maxTranscriptChars" type="number" min="1000" max="40000" step="500" />
+            <p class="hint">Rolling window sent to Claude. Smaller = cheaper.</p>
+          </div>
+        </div>
+        <p class="hint cost">Typical spend with the recommended setup (Haiku gate → Sonnet 5 answers, streaming): roughly <strong>$1.50–$2.00 per 30-minute meeting</strong> with ~8–10 questions. Caption capture itself is free — no speech-to-text bill.</p>
+      </section>
+
+      <div class="bar">
+        <button id="save" class="primary">Save settings</button>
+        <span class="saved" id="saved">Saved ✓</span>
+      </div>
+    </div>
+    <script src="options.js"></script>
+  </body>
+</html>
