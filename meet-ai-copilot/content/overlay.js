@@ -7,7 +7,7 @@
   let rootEl, dotEl, statusEl;
   let answersEl, transcriptEl, interimEl, askInput, badgeEl;
   const cards = new Map(); // id -> { el, answerEl, modelEl }
-  let activeTab = "transcript";
+  let activeTab = "answers";
   let unseenAnswers = 0;
 
   function build() {
@@ -25,11 +25,18 @@
           <button class="mc-btn" id="mc-hide" title="Hide (toggle from the toolbar icon)">✕</button>
         </div>
         <div class="mc-tabs">
-          <button class="mc-tab mc-active" data-tab="transcript">Transcript</button>
-          <button class="mc-tab" data-tab="answers">Answers <span class="mc-badge" id="mc-badge"></span></button>
+          <button class="mc-tab mc-active" data-tab="answers">Answers <span class="mc-badge" id="mc-badge"></span></button>
+          <button class="mc-tab" data-tab="transcript">Transcript</button>
         </div>
         <div class="mc-body">
-          <div class="mc-pane mc-active" id="mc-transcript">
+          <div class="mc-pane mc-active" id="mc-answers">
+            <div class="mc-empty" id="mc-aempty">
+              When someone asks you something — or there's a moment worth adding to —
+              value-packed bullet points stream in here. You can also just ask below.
+              <br><br>Switch to <b>Transcript</b> to watch the live captions.
+            </div>
+          </div>
+          <div class="mc-pane" id="mc-transcript">
             <div class="mc-empty" id="mc-tempty">
               Waiting for Google Meet captions…<br><br>
               Make sure captions are <b>on</b> (the <b>CC</b> button at the bottom of Meet).
@@ -37,12 +44,6 @@
             </div>
             <div class="mc-feed" id="mc-feed"></div>
             <div class="mc-interim" id="mc-interim"></div>
-          </div>
-          <div class="mc-pane" id="mc-answers">
-            <div class="mc-empty" id="mc-aempty">
-              When someone asks you something — or there's a moment worth adding to —
-              a suggested answer streams in here. You can also just ask below.
-            </div>
           </div>
         </div>
         <div class="mc-footer">

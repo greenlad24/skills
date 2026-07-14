@@ -104,6 +104,7 @@ area found yet), "turn on CC" (found it, but captions are off), "listening…"
 | API key | Your Anthropic key. Stored in `chrome.storage.local`, this browser only. |
 | Your name in Meet | Distinguishes your lines from everyone else's. |
 | About you | Context injected into the prompt so answers are accurate and in-voice. |
+| Answer language | "Match the conversation" (default) or force one — Russian, English, Spanish, French, German, Portuguese, Hebrew. Capture and question detection are language-neutral and work in Russian and other languages out of the box. |
 | Answer model | Sonnet 5 (default), Haiku 4.5, Opus 4.8, or Fable 5. |
 | Cheap gate | Haiku decides whether to answer. Big cost saver — leave on. |
 | Auto-suggest | Also chime in on things you could elaborate on, not just questions. |
