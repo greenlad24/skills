@@ -78,10 +78,45 @@
       t.onclick = () => switchTab(t.dataset.tab);
     });
 
-    makeDraggable(rootEl.querySelector("#mc-header"), rootEl);
+    makeDraggable(rootEl);
 
-    // Restore the saved font scale.
-    chrome.storage.local.get({ panelScale: 1 }).then((s) => applyScale(s.panelScale));
+    // Double-click the header to snap back to the bottom-right.
+    rootEl.querySelector("#mc-header").addEventListener("dblclick", resetPosition);
+
+    // Restore saved font scale + position.
+    chrome.storage.local.get({ panelScale: 1, panelPos: null }).then((s) => {
+      applyScale(s.panelScale);
+      if (s.panelPos) applyPosition(s.panelPos.left, s.panelPos.top);
+    });
+
+    // Keep it on-screen if the window shrinks.
+    window.addEventListener("resize", () => clampIntoView());
+  }
+
+  function applyPosition(left, top) {
+    const r = rootEl.getBoundingClientRect();
+    const w = r.width || 360;
+    const l = Math.max(0, Math.min(left, window.innerWidth - w));
+    const t = Math.max(0, Math.min(top, window.innerHeight - 40));
+    rootEl.style.left = l + "px";
+    rootEl.style.top = t + "px";
+    rootEl.style.right = "auto";
+    rootEl.style.bottom = "auto";
+  }
+
+  function clampIntoView() {
+    if (!rootEl || rootEl.classList.contains("mc-hidden")) return;
+    const r = rootEl.getBoundingClientRect();
+    if (rootEl.style.left === "" || rootEl.style.left === "auto") return; // still default-anchored
+    applyPosition(r.left, r.top);
+  }
+
+  function resetPosition() {
+    rootEl.style.left = "auto";
+    rootEl.style.top = "auto";
+    rootEl.style.right = "16px";
+    rootEl.style.bottom = "76px";
+    chrome.storage.local.remove("panelPos");
   }
 
   let scale = 1;
@@ -234,26 +269,50 @@
     rootEl.classList.toggle("mc-hidden");
   }
 
-  function makeDraggable(handle, target) {
+  // Whole panel is a drag surface. We only skip interactive controls (so
+  // buttons/inputs still work) and the bottom-right resize grip.
+  function makeDraggable(target) {
+    const SKIP = "button, input, select, textarea, a, label";
     let sx, sy, ox, oy, dragging = false;
-    handle.addEventListener("mousedown", (e) => {
-      if (e.target.tagName === "BUTTON") return;
+
+    target.addEventListener("mousedown", (e) => {
+      if (e.button !== 0) return;
+      if (e.target.closest(SKIP)) return;
+      const r = target.getBoundingClientRect();
+      // leave the ~20px bottom-right corner to the native resize handle
+      if (e.clientX > r.right - 20 && e.clientY > r.bottom - 20) return;
       dragging = true;
       sx = e.clientX;
       sy = e.clientY;
-      const r = target.getBoundingClientRect();
       ox = r.left;
       oy = r.top;
-      e.preventDefault();
-    });
-    window.addEventListener("mousemove", (e) => {
-      if (!dragging) return;
-      target.style.left = ox + (e.clientX - sx) + "px";
-      target.style.top = oy + (e.clientY - sy) + "px";
+      // switch from bottom/right anchoring to top/left so it follows the mouse
+      target.style.left = r.left + "px";
+      target.style.top = r.top + "px";
       target.style.right = "auto";
       target.style.bottom = "auto";
+      document.body.style.userSelect = "none";
+      e.preventDefault();
     });
-    window.addEventListener("mouseup", () => (dragging = false));
+
+    window.addEventListener("mousemove", (e) => {
+      if (!dragging) return;
+      const r = target.getBoundingClientRect();
+      let nl = ox + (e.clientX - sx);
+      let nt = oy + (e.clientY - sy);
+      nl = Math.max(0, Math.min(nl, window.innerWidth - r.width));
+      nt = Math.max(0, Math.min(nt, window.innerHeight - 40)); // keep header reachable
+      target.style.left = nl + "px";
+      target.style.top = nt + "px";
+    });
+
+    window.addEventListener("mouseup", () => {
+      if (!dragging) return;
+      dragging = false;
+      document.body.style.userSelect = "";
+      const r = target.getBoundingClientRect();
+      chrome.storage.local.set({ panelPos: { left: r.left, top: r.top } });
+    });
   }
 
   MC.overlay = {

@@ -4,14 +4,14 @@
 #mc-root {
   position: fixed;
   right: 16px;
-  bottom: 96px;
+  bottom: 76px;
   z-index: 2147483000;
   --mc-scale: 1;
   font-family: "Google Sans", Roboto, system-ui, sans-serif;
   font-size: calc(17px * var(--mc-scale));
   width: calc(380px * var(--mc-scale));
   max-width: 96vw;
-  max-height: 85vh;
+  max-height: 78vh;
   color: #e8e8ef;
   --mc-bg: rgba(24, 24, 34, 0.96);
   --mc-accent: #7c6cf5;
@@ -34,7 +34,7 @@
   flex-direction: column;
   overflow: hidden;
   height: 100%;
-  max-height: 85vh;
+  max-height: 78vh;
 }
 
 .mc-header {
@@ -145,8 +145,13 @@
   animation: mc-in 0.18s ease-out;
 }
 @keyframes mc-in { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
-.mc-card-q { font-size: 0.78em; color: #a5adc6; margin-bottom: 0.4em; font-style: italic; }
-.mc-card-a { font-size: 0.95em; line-height: 1.5; white-space: pre-wrap; }
+.mc-card-q { font-size: 0.82em; color: #a5adc6; margin-bottom: 0.45em; font-style: italic; }
+.mc-card-a {
+  font-size: 1.15em; /* answers are the point — keep them large (A+/A- scales further) */
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 .mc-card-meta {
   margin-top: 0.45em;
   display: flex;
