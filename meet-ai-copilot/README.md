@@ -77,11 +77,23 @@ model to Haiku for near-free, or to Opus/Fable for maximum quality.
 1. Join a Google Meet call.
 2. Turn on captions (the **CC** button) — or leave "Auto-enable captions" on and the
    extension clicks it for you.
-3. The panel docks bottom-right and shows a green dot when it's live. When someone
-   asks you something, a suggested answer streams in. Copy it, riff on it, or ignore
-   it. You can also type a question into the panel to ask Claude about the meeting
-   directly.
-4. Toggle the panel with the toolbar icon's **Show / hide panel** button.
+3. The panel docks bottom-right. It has two tabs:
+   - **Transcript** — the live caption feed. Text streams in here (faded while a
+     person is still talking, solid once the line is finalized) as it's captured.
+     This is the fastest way to confirm capture is working.
+   - **Answers** — Claude's streamed suggestions. A badge shows unseen ones. When
+     someone asks you something, a suggested answer streams in; copy it, riff on
+     it, or ignore it. You can also type a question in the box at the bottom to ask
+     Claude about the meeting directly.
+4. Panel controls, in the header:
+   - **A− / A+** — make everything bigger or smaller (remembered across calls).
+   - **▾ / ▸** — collapse to just the header bar, or expand back.
+   - **✕** — hide it (bring it back with the toolbar icon's **Show / hide panel**).
+   - Drag the **header** to move it; drag the **bottom-right corner** to resize.
+
+**Status dot / label** tells you what's happening: "waiting for Meet" (no caption
+area found yet), "turn on CC" (found it, but captions are off), "listening…"
+(attached, waiting for speech), "live" (capturing), "thinking" (calling Claude).
 
 ---
 

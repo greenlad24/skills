@@ -21,6 +21,7 @@
   let observer = null;
   let reattachTimer = null;
   let scanTimer = null;
+  let hasCaptured = false; // have we ever seen caption text?
 
   // Current in-progress utterance.
   let buf = null; // { el, speaker, text, base, timer }
@@ -87,6 +88,11 @@
     } else if (region && !region.isConnected) {
       detachObserver();
       region = null;
+    } else if (region && !hasCaptured) {
+      // Region is attached but no text yet — captions are probably still off.
+      // Keep trying to enable them (safe: only clicks the "off" CC icon).
+      if (MC.settings.autoCaptions) tryEnableCaptions();
+      if (MC.onCaptureState) MC.onCaptureState("captions-off");
     }
   }
 
@@ -111,16 +117,26 @@
     return { speaker: "", text: raw.replace(/\s+/g, " ").trim() };
   }
 
-  // Leaf caption blocks under the region; the active one is the last.
+  // The active caption is the LAST leaf block under the region. A "block" is an
+  // element whose innerText parses to a caption line; a leaf is one that doesn't
+  // contain another such block. Prefer blocks that carry a speaker name; fall
+  // back to any text-bearing leaf. This survives Meet wrapping words in spans.
   function activeBlock() {
     if (!region) return null;
-    const nodes = region.querySelectorAll("div, span");
-    let last = null;
-    for (const el of nodes) {
-      if (el.childElementCount > 4) continue;
+    const named = [];
+    const texted = [];
+    for (const el of region.querySelectorAll("*")) {
       const p = parseRow(el);
       if (!p || !p.text || p.text.length < 2) continue;
-      last = { el, speaker: p.speaker, text: p.text };
+      const rec = { el, speaker: p.speaker, text: p.text };
+      texted.push(rec);
+      if (p.speaker) named.push(rec);
+    }
+    const pool = named.length ? named : texted;
+    let last = null;
+    for (const c of pool) {
+      const isAncestor = pool.some((o) => o !== c && c.el.contains(o.el));
+      if (!isAncestor) last = c; // document order => last leaf is the active one
     }
     return last;
   }
@@ -161,6 +177,13 @@
 
     clearTimeout(buf.timer);
     buf.timer = setTimeout(flush, FINALIZE_MS);
+
+    // Stream the in-progress line to the panel so the user sees it live.
+    const remainder = buf.text.startsWith(buf.base)
+      ? buf.text.slice(buf.base.length)
+      : buf.text;
+    if (MC.onInterim)
+      MC.onInterim({ speaker: buf.speaker, text: remainder.trim(), isSelf: isSelf(buf.speaker) });
   }
 
   function flush() {
@@ -178,6 +201,7 @@
     const name = (speaker || "").trim();
     const self = isSelf(name);
     const utt = { speaker: name, text, isSelf: self, ts: Date.now() };
+    hasCaptured = true;
     MC.transcript.push(utt);
     if (MC.transcript.length > 400) MC.transcript.shift();
     MC.log("utterance", self ? "(you)" : name || "?", "→", text);

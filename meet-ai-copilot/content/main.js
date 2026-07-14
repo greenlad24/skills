@@ -57,10 +57,11 @@
 
   MC.onUtterance = (utt) => {
     if (!MC.settings.enabled) return;
-    if (!MC.settings.apiKey) {
-      MC.overlay.setStatus("add API key", "warn");
-      return;
-    }
+    // Always show the finalized line in the transcript feed — even with no key.
+    MC.overlay.pushTranscriptLine(utt.speaker, utt.text, utt.isSelf);
+    MC.overlay.setStatus("live", "live");
+
+    if (!MC.settings.apiKey) return; // captured, just can't answer yet
     const cand = MC.detector.evaluate(utt, {
       autoSuggest: MC.settings.autoSuggest,
     });
@@ -127,9 +128,15 @@
 
   // ---- Capture status ---------------------------------------------------
 
+  MC.onInterim = (u) => {
+    MC.overlay.setInterim(u.speaker, u.text, u.isSelf);
+  };
+
   MC.onCaptureState = (state) => {
-    if (state === "capturing") MC.overlay.setStatus("live", "live");
+    if (state === "capturing") MC.overlay.setStatus("listening…", "live");
     else if (state === "waiting-for-captions")
+      MC.overlay.setStatus("waiting for Meet", "warn");
+    else if (state === "captions-off")
       MC.overlay.setStatus("turn on CC", "warn");
     else if (state === "stopped") MC.overlay.setStatus("off", "");
   };
