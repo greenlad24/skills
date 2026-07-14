@@ -25,6 +25,7 @@
       <input type="date" id="week-date" title="Jump to a week" />
     </div>
     <div class="top-actions">
+      <button class="ghost" id="btn-onboarding">🧭 Setup</button>
       <button class="ghost" id="btn-voice">🎙 Voice</button>
       <button class="ghost" id="btn-settings">⚙ Settings</button>
     </div>
@@ -47,6 +48,13 @@
     <div class="modal">
       <div class="modal-head"><h2>Settings</h2><button class="ghost close" data-close="settings-modal">✕</button></div>
       <div class="modal-body" id="settings-body"></div>
+    </div>
+  </div>
+
+  <!-- Onboarding wizard -->
+  <div class="modal-backdrop hidden" id="onboarding-modal">
+    <div class="modal onboarding">
+      <div class="modal-body" id="onboarding-body"></div>
     </div>
   </div>
 

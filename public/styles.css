@@ -246,6 +246,36 @@ main { max-width: 1280px; margin: 0 auto; padding: 0 26px 90px; }
 .acct-list { font-size: 13px; line-height: 1.8; background: var(--bg-2); border-radius: 10px; padding: 12px 14px; margin-top: 10px; }
 .acct-list code { color: var(--gold-soft); cursor: pointer; }
 
+/* ---------- onboarding ---------- */
+.modal.onboarding { width: min(640px, 94vw); }
+.ob-dots { display: flex; gap: 8px; justify-content: center; margin: 20px 0 6px; }
+.ob-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--line); transition: all .2s; }
+.ob-dot.active { background: var(--gold); box-shadow: 0 0 8px var(--gold); }
+.ob-dot.done { background: var(--ink-faint); }
+.ob-step h2 { color: var(--gold-soft); font-size: 24px; margin: 6px 0 4px; text-align: center; }
+.ob-step .ob-sub { text-align: center; color: var(--ink-faint); font-size: 13px; margin-bottom: 18px; }
+.ob-hero {
+  width: 74px; height: 74px; border-radius: 50%; margin: 4px auto 10px;
+  background: radial-gradient(circle at 35% 30%, #3b352a, #16130e 70%);
+  border: 1px solid var(--gold); color: var(--gold);
+  display: grid; place-items: center; font-family: 'Marcellus', serif; font-size: 42px;
+  box-shadow: 0 0 26px rgba(212, 175, 55, 0.3) inset;
+}
+.ob-list { margin: 0 0 16px; padding: 0; list-style: none; }
+.ob-list li { display: flex; gap: 10px; align-items: flex-start; padding: 7px 0; font-size: 13.5px; color: var(--ink-dim); line-height: 1.55; }
+.ob-list li .n {
+  flex: 0 0 22px; height: 22px; border-radius: 50%; background: var(--panel-2);
+  border: 1px solid var(--line); color: var(--gold-soft); font-size: 11px; font-weight: 700;
+  display: grid; place-items: center; margin-top: 1px;
+}
+.ob-list li.done .n { background: var(--gold); color: #191509; border-color: var(--gold); }
+.ob-list a { color: var(--gold-soft); }
+.ob-nav { display: flex; justify-content: space-between; align-items: center; margin-top: 20px; }
+.ob-nav .spacer { flex: 1; }
+.ob-skip { color: var(--ink-faint); font-size: 12.5px; background: none; border: none; text-decoration: underline; }
+.ob-skip:hover { color: var(--ink-dim); }
+.ob-check { color: var(--ok); font-size: 12.5px; margin-top: 8px; }
+
 /* ---------- lightbox ---------- */
 .lightbox-inner { display: flex; flex-direction: column; align-items: center; gap: 14px; max-height: 94vh; }
 #lightbox-img { max-height: 84vh; max-width: 92vw; border-radius: 10px; box-shadow: var(--shadow); }

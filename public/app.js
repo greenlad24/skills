@@ -822,5 +822,238 @@ function renderVoice() {
   };
 }
 
+// ---------- onboarding wizard ----------
+const OB = { step: 0 };
+$('#btn-onboarding').onclick = () => { OB.step = 0; renderOnboarding(); openModal('onboarding-modal'); };
+
+async function obSave(fields) {
+  const out = await api('PUT', '/api/settings', { settings: fields });
+  S.settings = out.settings;
+}
+
+function obShell(inner, { title, sub, showBack = true, nextLabel = 'Next →', onNext, hero } = {}) {
+  const body = $('#onboarding-body');
+  const total = 7;
+  body.innerHTML = `
+    <div class="ob-dots">${Array.from({ length: total }, (_, i) =>
+      `<span class="ob-dot ${i === OB.step ? 'active' : i < OB.step ? 'done' : ''}"></span>`).join('')}</div>
+    <div class="ob-step">
+      ${hero ? '<div class="ob-hero">V</div>' : ''}
+      <h2>${title}</h2>
+      ${sub ? `<div class="ob-sub">${sub}</div>` : ''}
+      <div id="ob-inner">${inner}</div>
+      <div class="ob-nav">
+        ${showBack ? '<button class="ghost" id="ob-back">← Back</button>' : '<span></span>'}
+        <span class="spacer"></span>
+        <button class="ob-skip" id="ob-skip">skip setup for now</button>
+        <button class="primary" id="ob-next" style="margin-left:14px">${nextLabel}</button>
+      </div>
+    </div>`;
+  const back = $('#ob-back', body);
+  if (back) back.onclick = () => { OB.step = Math.max(0, OB.step - 1); renderOnboarding(); };
+  $('#ob-skip', body).onclick = async () => {
+    await obSave({ onboarded: true }).catch(() => {});
+    closeModal('onboarding-modal');
+    toast('You can reopen the guide anytime with 🧭 Setup');
+  };
+  $('#ob-next', body).onclick = async (e) => {
+    e.target.disabled = true;
+    try {
+      if (onNext) await onNext(body);
+      OB.step += 1;
+      renderOnboarding();
+    } catch (err) {
+      toast(err.message, true, 8000);
+      e.target.disabled = false;
+    }
+  };
+  return body;
+}
+
+function obField(id, label, value, placeholder, type = 'text') {
+  return `<div class="field" style="margin-bottom:12px"><label>${label}</label>
+    <input id="${id}" type="${type}" value="${esc(value || '')}" placeholder="${esc(placeholder || '')}"></div>`;
+}
+
+function renderOnboarding() {
+  const s = S.settings;
+  switch (OB.step) {
+    case 0:
+      obShell(
+        `<ul class="ob-list">
+          <li><span class="n">1</span><span>Every week you design 5 posters (Tue–Sat): upload the performer's photo, pick a style, type the details — the app generates 3 designer-grade variations and you pick the winner.</span></li>
+          <li><span class="n">2</span><span>Captions are written in <b>your</b> voice, learned from your past posts.</span></li>
+          <li><span class="n">3</span><span>One click schedules the whole week to Instagram + Facebook.</span></li>
+        </ul>
+        <div class="settings-note">You'll need about 30 minutes and these free accounts: OpenAI (~$4/week of image credit), Buffer, Cloudinary. The guide walks you through each. The full manual lives in <b>SETUP.md</b> in the app folder.</div>`,
+        { title: 'Welcome to your Poster Studio', sub: 'a 6-step setup, done once', showBack: false, nextLabel: "Let's set up →", hero: true }
+      );
+      break;
+
+    case 1:
+      obShell(
+        `<ul class="ob-list">
+          <li><span class="n">1</span><span>Sign up / log in at <a href="https://platform.openai.com" target="_blank">platform.openai.com</a></span></li>
+          <li><span class="n">2</span><span><b>Billing:</b> Settings → Billing → add ~$10 credit (a week of posters ≈ $4).</span></li>
+          <li><span class="n">3</span><span><b>Verify organization:</b> Settings → Organization → Verification. Required for the image model — without it, generation fails.</span></li>
+          <li><span class="n">4</span><span><a href="https://platform.openai.com/api-keys" target="_blank">Create an API key</a> and paste it below.</span></li>
+        </ul>` + obField('ob-openai', 'OpenAI API key', s.openaiApiKey, 'sk-…', 'password'),
+        {
+          title: 'Step 1 · OpenAI', sub: 'this generates the posters',
+          onNext: async (b) => obSave({ openaiApiKey: $('#ob-openai', b).value.trim() }),
+        }
+      );
+      break;
+
+    case 2:
+      obShell(
+        `<ul class="ob-list">
+          <li><span class="n">1</span><span><b>Facebook Page:</b> the bar needs a Page (not just a profile). Create one on Facebook → Menu → Pages if needed.</span></li>
+          <li><span class="n">2</span><span><b>Instagram professional:</b> Instagram app → profile → ≡ → Settings → Account type and tools → <b>Switch to professional account</b> → Business (free).</span></li>
+          <li><span class="n">3</span><span><b>Link them:</b> Instagram → Edit profile → Page → connect your Facebook Page.</span></li>
+        </ul>
+        <div class="settings-note">Automatic posting only works with a professional Instagram linked to a Facebook Page — this is a Meta rule, not the app's.</div>`,
+        { title: 'Step 2 · Instagram & Facebook', sub: 'prepare the accounts (free)' }
+      );
+      break;
+
+    case 3:
+      obShell(
+        `<ul class="ob-list">
+          <li><span class="n">1</span><span>Sign up at <a href="https://buffer.com" target="_blank">buffer.com</a> — the free plan includes 3 channels (you need 2).</span></li>
+          <li><span class="n">2</span><span><b>Channels → Connect channel:</b> connect your Instagram and your Facebook Page.</span></li>
+          <li><span class="n">3</span><span>Avatar (top right) → <b>Settings → API</b> → Generate API key → paste below.</span></li>
+        </ul>` + obField('ob-buffer', 'Buffer API key', s.bufferApiKey, 'from Buffer → Settings → API', 'password'),
+        {
+          title: 'Step 3 · Buffer', sub: 'this does the actual posting — free',
+          onNext: async (b) => obSave({ scheduler: 'buffer', bufferApiKey: $('#ob-buffer', b).value.trim() }),
+        }
+      );
+      break;
+
+    case 4:
+      obShell(
+        `<ul class="ob-list">
+          <li><span class="n">1</span><span>Sign up free at <a href="https://cloudinary.com" target="_blank">cloudinary.com</a> (no card).</span></li>
+          <li><span class="n">2</span><span>Your <b>cloud name</b> is on the dashboard (short word like <code>dq2abcxyz</code>).</span></li>
+          <li><span class="n">3</span><span>Gear icon → <b>Upload</b> tab → Upload presets → <b>Add upload preset</b> → Signing mode <b>Unsigned</b> → Save. Note the preset name.</span></li>
+        </ul>` +
+        obField('ob-cld-name', 'Cloudinary cloud name', s.cloudinaryCloudName, 'e.g. dq2abcxyz') +
+        obField('ob-cld-preset', 'Cloudinary upload preset', s.cloudinaryUploadPreset, 'e.g. ml_default'),
+        {
+          title: 'Step 4 · Cloudinary', sub: 'free image hosting Buffer needs to fetch your posters',
+          onNext: async (b) => obSave({
+            cloudinaryCloudName: $('#ob-cld-name', b).value.trim(),
+            cloudinaryUploadPreset: $('#ob-cld-preset', b).value.trim(),
+          }),
+        }
+      );
+      break;
+
+    case 5: {
+      const body = obShell(
+        `<div class="settings-note">Click the button — your Buffer channels appear. Then press "→ Instagram" next to your Instagram and "→ Facebook" next to your Page.</div>
+        <button id="ob-load">Load my channels</button>
+        <div id="ob-channels"></div>
+        <div class="ob-check" id="ob-assigned"></div>`,
+        { title: 'Step 5 · Pick your channels', sub: 'tell the app where to post' }
+      );
+      const refreshAssigned = () => {
+        const a = [];
+        if (S.settings.instagramIntegrationId) a.push('✓ Instagram set');
+        if (S.settings.facebookIntegrationId) a.push('✓ Facebook set');
+        $('#ob-assigned', body).textContent = a.join('   ');
+      };
+      refreshAssigned();
+      $('#ob-load', body).onclick = async (e) => {
+        e.target.disabled = true; e.target.textContent = 'Loading…';
+        try {
+          const out = await api('GET', '/api/channels');
+          const channels = out.channels || [];
+          $('#ob-channels', body).innerHTML = `<div class="acct-list">${channels.map((c) => `
+            <div style="display:flex;align-items:center;gap:10px;margin:4px 0">
+              <b>${esc(c.identifier || '?')}</b> ${esc(c.name || '')}
+              <button data-ch="ig" data-id="${esc(c.id)}" data-ident="${esc(c.identifier || '')}" style="padding:3px 10px;font-size:11.5px">→ Instagram</button>
+              <button data-ch="fb" data-id="${esc(c.id)}" data-ident="${esc(c.identifier || '')}" style="padding:3px 10px;font-size:11.5px">→ Facebook</button>
+            </div>`).join('') || 'No channels found — connect them in Buffer first.'}</div>`;
+          $$('button[data-ch]', body).forEach((btn) => (btn.onclick = async () => {
+            const f = btn.dataset.ch === 'ig'
+              ? { instagramIntegrationId: btn.dataset.id, instagramIdentifier: btn.dataset.ident || 'instagram' }
+              : { facebookIntegrationId: btn.dataset.id, facebookIdentifier: btn.dataset.ident || 'facebook' };
+            await obSave(f);
+            refreshAssigned();
+            toast('Channel set');
+          }));
+        } catch (err) {
+          $('#ob-channels', body).innerHTML = `<div class="acct-list" style="color:var(--danger)">${esc(err.message)}</div>`;
+        } finally {
+          e.target.disabled = false; e.target.textContent = 'Load my channels';
+        }
+      };
+      break;
+    }
+
+    case 6: {
+      const body = obShell(
+        `<div class="settings-note"><b>Logo:</b> upload your circular V logo (transparent PNG is best) — it's attached to every generation so the badge comes out exact.</div>
+        <div style="display:flex;gap:12px;align-items:center;margin-bottom:16px">
+          <button id="ob-logo">Upload logo</button><span id="ob-logo-status" class="ob-check">${S.brand.logoFile ? '✓ logo uploaded' : ''}</span>
+        </div>
+        <div class="settings-note"><b>Your caption voice:</b> paste 5–15 past captions below, separated by a line with just <b>---</b>, and press Learn.</div>
+        <div class="field"><textarea id="ob-voice" style="min-height:120px" placeholder="🔥 This Saturday…&#10;---&#10;Next caption…"></textarea></div>
+        <div style="display:flex;gap:12px;align-items:center">
+          <button id="ob-learn">Learn my voice</button>
+          <span id="ob-voice-status" class="ob-check">${S.voice.hasProfile ? `✓ learned from ${S.voice.examplesCount} captions` : ''}</span>
+        </div>`,
+        {
+          title: 'Step 6 · Brand & voice', sub: 'make it unmistakably Vibration',
+          nextLabel: 'Finish ✓',
+          onNext: async () => {
+            await obSave({ onboarded: true });
+            closeModal('onboarding-modal');
+            toast('Setup complete — pick a day and start designing!');
+            renderAll();
+          },
+        }
+      );
+      $('#ob-logo', body).onclick = async () => {
+        const [f] = await pickFiles({ multiple: false });
+        if (!f) return;
+        const out = await api('POST', '/api/brand/logo', { dataUrl: await readFileAsDataUrl(f) });
+        S.brand = out.brand;
+        $('#ob-logo-status', body).textContent = '✓ logo uploaded';
+      };
+      $('#ob-learn', body).onclick = async (e) => {
+        const captions = $('#ob-voice', body).value;
+        if (!captions.trim()) return toast('Paste some captions first', true);
+        e.target.disabled = true; e.target.textContent = 'Analyzing…';
+        try {
+          const out = await api('POST', '/api/voice/analyze', { captions });
+          S.voice = out.voice;
+          $('#ob-voice-status', body).textContent = `✓ learned from ${out.voice.examplesCount} captions`;
+        } catch (err) {
+          toast(err.message, true, 8000);
+        } finally {
+          e.target.disabled = false; e.target.textContent = 'Learn my voice';
+        }
+      };
+      break;
+    }
+
+    default: {
+      obSave({ onboarded: true }).catch(() => {});
+      closeModal('onboarding-modal');
+    }
+  }
+}
+
 // ---------- go ----------
-boot().catch((e) => toast('Could not start: ' + e.message, true, 10000));
+boot()
+  .then(() => {
+    if (!S.settings.onboarded) {
+      OB.step = 0;
+      renderOnboarding();
+      openModal('onboarding-modal');
+    }
+  })
+  .catch((e) => toast('Could not start: ' + e.message, true, 10000));

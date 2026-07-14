@@ -26,6 +26,10 @@ Every week you build five posters (Tuesday → Saturday):
 
 ## One-time setup (Windows)
 
+> The app opens a **built-in setup wizard** on first launch that walks through all of this
+> interactively (reopen anytime with 🧭 Setup). **SETUP.md** in this folder is the full
+> step-by-step manual with click paths and troubleshooting.
+
 1. Install **Node.js LTS** from <https://nodejs.org> (just click Next-Next-Finish).
 2. Double-click **`start.bat`** in this folder. Your browser opens the studio at
    `http://localhost:5713`. (No `npm install` needed — the app has zero dependencies.)
