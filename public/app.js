@@ -594,7 +594,7 @@ function renderSettings() {
     <div class="settings-note">Keys are stored only on this computer (in the app's <b>data/</b> folder). Nothing runs on a server.</div>
     <div class="grid2">
       <div class="field"><label>OpenAI API key</label><input id="st-openai" type="password" placeholder="sk-…" value="${esc(s.openaiApiKey)}"></div>
-      <div class="field"><label>Blotato API key</label><input id="st-blotato" type="password" placeholder="from blotato.com → Settings → API" value="${esc(s.blotatoApiKey)}"></div>
+      <div class="field"><label>Postiz API key</label><input id="st-postiz" type="password" placeholder="Postiz → Settings → Public API" value="${esc(s.postizApiKey)}"></div>
     </div>
     <div class="grid3">
       <div class="field"><label>Poster quality</label>
@@ -619,17 +619,20 @@ function renderSettings() {
     </div>
 
     <hr class="settings-sep">
-    <h3 style="margin:0 0 4px">Social accounts (Blotato)</h3>
+    <h3 style="margin:0 0 4px">Social channels (Postiz)</h3>
     <div class="settings-note">
-      Connect Instagram & Facebook inside <a href="https://my.blotato.com" target="_blank">your Blotato dashboard</a> first,
-      then load them here. Facebook needs both the account ID and the Page ID.
+      Connect Instagram & your Facebook page inside <a href="https://platform.postiz.com" target="_blank">Postiz</a> first
+      (self-hosted works too — set the base URL below), then load your channels here and click
+      "→ Instagram" / "→ Facebook" on the right ones.
     </div>
-    <button id="st-load-accts">Load my connected accounts</button>
+    <div class="field"><label>Postiz API base URL</label><input id="st-postiz-url" placeholder="https://api.postiz.com/public/v1" value="${esc(s.postizBaseUrl)}"></div>
+    <button id="st-load-accts">Load my channels</button>
     <div id="st-accts"></div>
-    <div class="grid3" style="margin-top:14px">
-      <div class="field"><label>Instagram account ID</label><input id="st-ig" value="${esc(s.instagramAccountId)}"></div>
-      <div class="field"><label>Facebook account ID</label><input id="st-fb" value="${esc(s.facebookAccountId)}"></div>
-      <div class="field"><label>Facebook Page ID</label><input id="st-fbpage" value="${esc(s.facebookPageId)}"></div>
+    <input type="hidden" id="st-ig-ident" value="${esc(s.instagramIdentifier)}">
+    <input type="hidden" id="st-fb-ident" value="${esc(s.facebookIdentifier)}">
+    <div class="grid2" style="margin-top:14px">
+      <div class="field"><label>Instagram channel ID</label><input id="st-ig" value="${esc(s.instagramIntegrationId)}"></div>
+      <div class="field"><label>Facebook channel ID</label><input id="st-fb" value="${esc(s.facebookIntegrationId)}"></div>
     </div>
 
     <hr class="settings-sep">
@@ -665,27 +668,35 @@ function renderSettings() {
     e.target.textContent = 'Loading…';
     const box = $('#st-accts', body);
     try {
-      // Save the API key first so the server can use it.
+      // Save the API key + base URL first so the server can use them.
       await saveSettings();
-      const out = await api('GET', '/api/blotato/accounts');
-      const accounts = Array.isArray(out.accounts) ? out.accounts : [];
-      if (!accounts.length) {
-        box.innerHTML = `<div class="acct-list">No accounts found — connect Instagram & Facebook in the Blotato dashboard first.</div>`;
+      const out = await api('GET', '/api/postiz/integrations');
+      const channels = Array.isArray(out.integrations) ? out.integrations : [];
+      if (!channels.length) {
+        box.innerHTML = `<div class="acct-list">No channels found — connect Instagram & your Facebook page in Postiz first.</div>`;
       } else {
-        box.innerHTML = `<div class="acct-list">${accounts.map((a) => {
-          const subs = (a.subaccounts || []).map((sa) => ` · page <code data-fill="fbpage" data-v="${esc(sa.id)}">${esc(sa.id)}</code> ${esc(sa.name || '')}`).join('');
-          return `<div><b>${esc(a.platform)}</b> ${esc(a.username || a.fullname || '')} — id <code data-fill="${a.platform === 'instagram' ? 'ig' : a.platform === 'facebook' ? 'fb' : ''}" data-v="${esc(a.id)}">${esc(a.id)}</code>${subs}</div>`;
-        }).join('')}<div style="color:var(--ink-faint);margin-top:6px">click an id to fill the fields below</div></div>`;
-        $$('code[data-fill]', box).forEach((c) => (c.onclick = () => {
-          const map = { ig: '#st-ig', fb: '#st-fb', fbpage: '#st-fbpage' };
-          if (map[c.dataset.fill]) $(map[c.dataset.fill], body).value = c.dataset.v;
+        box.innerHTML = `<div class="acct-list">${channels.map((c) => `
+          <div style="display:flex;align-items:center;gap:10px;margin:4px 0">
+            <b>${esc(c.identifier || '?')}</b> ${esc(c.name || '')} <span style="color:var(--ink-faint)">· ${esc(c.id)}</span>
+            <button data-use="ig" data-id="${esc(c.id)}" data-ident="${esc(c.identifier || '')}" style="padding:3px 10px;font-size:11.5px">→ Instagram</button>
+            <button data-use="fb" data-id="${esc(c.id)}" data-ident="${esc(c.identifier || '')}" style="padding:3px 10px;font-size:11.5px">→ Facebook</button>
+          </div>`).join('')}</div>`;
+        $$('button[data-use]', box).forEach((b) => (b.onclick = () => {
+          if (b.dataset.use === 'ig') {
+            $('#st-ig', body).value = b.dataset.id;
+            $('#st-ig-ident', body).value = b.dataset.ident || 'instagram';
+          } else {
+            $('#st-fb', body).value = b.dataset.id;
+            $('#st-fb-ident', body).value = b.dataset.ident || 'facebook';
+          }
+          toast('Channel set — remember to Save settings');
         }));
       }
     } catch (err) {
       box.innerHTML = `<div class="acct-list" style="color:var(--danger)">${esc(err.message)}</div>`;
     } finally {
       e.target.disabled = false;
-      e.target.textContent = 'Load my connected accounts';
+      e.target.textContent = 'Load my channels';
     }
   };
 
@@ -695,15 +706,17 @@ function renderSettings() {
     const out = await api('PUT', '/api/settings', {
       settings: {
         openaiApiKey: $('#st-openai', body).value.trim(),
-        blotatoApiKey: $('#st-blotato', body).value.trim(),
+        postizApiKey: $('#st-postiz', body).value.trim(),
+        postizBaseUrl: $('#st-postiz-url', body).value.trim() || 'https://api.postiz.com/public/v1',
         imageQuality: $('#st-quality', body).value,
         captionModel: $('#st-capmodel', body).value.trim() || 'gpt-4.1',
         defaultPostTime: $('#st-posttime', body).value || '17:00',
         venueName: $('#st-venue', body).value.trim() || 'Vibration',
         venueBlurb: $('#st-blurb', body).value,
-        instagramAccountId: $('#st-ig', body).value.trim(),
-        facebookAccountId: $('#st-fb', body).value.trim(),
-        facebookPageId: $('#st-fbpage', body).value.trim(),
+        instagramIntegrationId: $('#st-ig', body).value.trim(),
+        instagramIdentifier: $('#st-ig-ident', body).value.trim() || 'instagram',
+        facebookIntegrationId: $('#st-fb', body).value.trim(),
+        facebookIdentifier: $('#st-fb-ident', body).value.trim() || 'facebook',
         postTimes,
       },
     });

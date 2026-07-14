@@ -8,7 +8,7 @@ const store = require('./lib/store');
 const { STYLE_PRESETS, VARIANT_TAKES, buildPosterPrompt } = require('./lib/prompt');
 const openai = require('./lib/openaiClient');
 const pinterest = require('./lib/pinterest');
-const blotato = require('./lib/blotato');
+const postiz = require('./lib/postiz');
 
 const PORT = process.env.PORT || 5713;
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -94,7 +94,7 @@ function localIso(dateStr, timeStr) {
 
 function redactedSettings(s) {
   const mask = (k) => (k ? `set (…${k.slice(-4)})` : '');
-  return { ...s, openaiApiKey: mask(s.openaiApiKey), blotatoApiKey: mask(s.blotatoApiKey) };
+  return { ...s, openaiApiKey: mask(s.openaiApiKey), postizApiKey: mask(s.postizApiKey) };
 }
 
 // Collect the reference images attached to a generation call, with a manifest
@@ -316,24 +316,27 @@ route('PUT', /^\/api\/settings$/, async (m, body) => {
   for (const k of Object.keys(db.settings)) {
     if (!(k in s)) continue;
     // Ignore masked key round-trips.
-    if ((k === 'openaiApiKey' || k === 'blotatoApiKey') && /^set \(/.test(s[k])) continue;
+    if ((k === 'openaiApiKey' || k === 'postizApiKey') && /^set \(/.test(s[k])) continue;
     db.settings[k] = s[k];
   }
   store.save();
   return { settings: redactedSettings(db.settings) };
 });
 
-route('GET', /^\/api\/blotato\/accounts$/, async () => {
+route('GET', /^\/api\/postiz\/integrations$/, async () => {
   const db = store.load();
-  const accounts = await blotato.listAccounts(db.settings.blotatoApiKey || process.env.BLOTATO_API_KEY);
-  return { accounts };
+  const integrations = await postiz.listIntegrations(
+    db.settings.postizApiKey || process.env.POSTIZ_API_KEY,
+    db.settings
+  );
+  return { integrations };
 });
 
 // Schedule the winners: { days: ['tuesday', ...], platforms: ['instagram','facebook'] }
 route('POST', /^\/api\/week\/([\d-]+)\/schedule$/, async (m, body) => {
   const db = store.load();
   const week = store.getWeek(m[1]);
-  const apiKey = db.settings.blotatoApiKey || process.env.BLOTATO_API_KEY;
+  const apiKey = db.settings.postizApiKey || process.env.POSTIZ_API_KEY;
   const platforms = body.platforms || ['instagram', 'facebook'];
   const wanted = body.days || store.DAY_KEYS;
   const results = [];
@@ -347,36 +350,31 @@ route('POST', /^\/api\/week\/([\d-]+)\/schedule$/, async (m, body) => {
       if (!day.captions.instagram && !day.captions.facebook) throw new Error('no captions generated');
       const timeStr = db.settings.postTimes[dayKey] || db.settings.defaultPostTime;
       const scheduledTime = localIso(day.date, timeStr);
-      const mediaUrl = await blotato.uploadMedia(apiKey, store.filePath(day.winner));
-      r.steps.push('media uploaded');
+      const media = await postiz.uploadMedia(apiKey, db.settings, store.filePath(day.winner));
+      r.steps.push('poster uploaded');
       day.scheduled = day.scheduled || {};
       day.scheduled.at = scheduledTime;
 
       if (platforms.includes('instagram')) {
-        if (!db.settings.instagramAccountId) throw new Error('Instagram account ID not set (Settings)');
-        const post = await blotato.createPost(apiKey, {
-          platform: 'instagram',
-          accountId: db.settings.instagramAccountId,
+        if (!db.settings.instagramIntegrationId) throw new Error('Instagram channel not set (Settings)');
+        const post = await postiz.createPost(apiKey, db.settings, {
+          integration: { id: db.settings.instagramIntegrationId, identifier: db.settings.instagramIdentifier || 'instagram' },
           text: day.captions.instagram || day.captions.facebook,
-          mediaUrls: [mediaUrl],
+          media: [media],
           scheduledTime,
         });
-        day.scheduled.instagram = { submissionId: post?.postSubmissionId || post?.id || 'submitted', at: scheduledTime };
+        day.scheduled.instagram = { postId: post?.[0]?.postId || post?.id || 'submitted', at: scheduledTime };
         r.steps.push('instagram scheduled');
       }
       if (platforms.includes('facebook')) {
-        if (!db.settings.facebookAccountId || !db.settings.facebookPageId) {
-          throw new Error('Facebook account/page ID not set (Settings)');
-        }
-        const post = await blotato.createPost(apiKey, {
-          platform: 'facebook',
-          accountId: db.settings.facebookAccountId,
-          pageId: db.settings.facebookPageId,
+        if (!db.settings.facebookIntegrationId) throw new Error('Facebook channel not set (Settings)');
+        const post = await postiz.createPost(apiKey, db.settings, {
+          integration: { id: db.settings.facebookIntegrationId, identifier: db.settings.facebookIdentifier || 'facebook' },
           text: day.captions.facebook || day.captions.instagram,
-          mediaUrls: [mediaUrl],
+          media: [media],
           scheduledTime,
         });
-        day.scheduled.facebook = { submissionId: post?.postSubmissionId || post?.id || 'submitted', at: scheduledTime };
+        day.scheduled.facebook = { postId: post?.[0]?.postId || post?.id || 'submitted', at: scheduledTime };
         r.steps.push('facebook scheduled');
       }
       r.ok = true;

@@ -18,7 +18,7 @@ Every week you build five posters (Tuesday → Saturday):
    format. Click your favourite to crown it the winner.
 5. **Captions & schedule** — captions for Instagram and Facebook are written **in your own
    voice** (teach it once via 🎙 Voice → paste your past captions). Then, from the Week
-   overview, one click schedules the whole week to Instagram + Facebook via Blotato — each
+   overview, one click schedules the whole week to Instagram + Facebook via Postiz — each
    poster goes out on its own day at your chosen time.
 
 ---
@@ -31,10 +31,13 @@ Every week you build five posters (Tuesday → Saturday):
 3. Open **⚙ Settings** in the app and fill in:
    - **OpenAI API key** — from <https://platform.openai.com/api-keys>. Your OpenAI
      *organization must be verified* to use `gpt-image-1` (Settings → Organization → Verify).
-   - **Blotato API key** — from <https://my.blotato.com> → Settings → API keys.
-   - In the Blotato dashboard, **connect your Instagram and Facebook accounts**, then click
-     **"Load my connected accounts"** in the app's settings and click the IDs to fill the
-     fields (Facebook needs both the account ID and the Page ID).
+   - **Postiz API key** — in Postiz go to Settings → Public API and generate a key. Works
+     with Postiz cloud (<https://platform.postiz.com>) or your own self-hosted Postiz — for
+     self-hosted, set the API base URL in the app's settings to
+     `https://your-postiz-domain/api/public/v1`.
+   - In Postiz, **connect your Instagram account and your Facebook page** as channels, then
+     click **"Load my channels"** in the app's settings and press "→ Instagram" /
+     "→ Facebook" next to the right ones.
    - Upload your **circular V logo** (transparent PNG is best) — it is attached to every
      generation so the badge comes out exact.
 4. Open **🎙 Voice**, paste 5–15 of your favourite past captions separated by `---`, and click
@@ -57,9 +60,10 @@ generate → pick → schedule.
 - **Pinterest search** uses Pinterest's public endpoints from your machine; if Pinterest
   changes something and search fails, you can always upload a reference image or paste any
   image URL instead — generation quality is identical.
-- **Blotato media upload** first tries sending the poster as a data URL to `/v2/media` and
-  falls back to their presigned-upload flow. If scheduling errors mention media, check
-  <https://help.blotato.com> — endpoints occasionally evolve.
+- **Postiz scheduling** uses the public API (`/integrations`, `/upload`, `/posts`) with your
+  key in the `Authorization` header. Note the create-post endpoint is rate-limited (~90
+  requests/hour) — a full week is only ~10 requests, so this never matters in practice. Docs:
+  <https://docs.postiz.com/public-api>.
 - **Where is everything stored?** `data/db.json` (settings, weeks, captions) and
   `data/files/` (all images). Back up that folder and you've backed up everything. It is
   git-ignored, so keys never end up in the repository.
@@ -73,7 +77,7 @@ server.js            zero-dependency HTTP server (Node 18+)
 lib/prompt.js        the brand system + style presets + 3 creative takes
 lib/openaiClient.js  gpt-image-1 generation, caption/voice models
 lib/pinterest.js     keyword → style reference search
-lib/blotato.js       media upload + Instagram/Facebook scheduling
+lib/postiz.js        media upload + Instagram/Facebook scheduling via Postiz
 public/              the studio UI
 assets/style-presets your past posters, used as style anchors
 ```
