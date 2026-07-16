@@ -12,10 +12,17 @@
      holo.start();                 // begin the render loop
      holo.stop();
      await holo.setPortrait(url);  // load a user photo, build holo channels
-     holo.setPlaceholder();        // built-in generic stylized face
+     holo.setPlaceholder();        // built-in generic stylized figure
+     holo.setFaceBox([x,y,w,h]);   // v2: locate the head in a full-body portrait
      holo.speak(analyserNode);     // drive the mouth from live audio amplitude
      holo.stopSpeaking();
      holo.isReady();               // portrait/placeholder prepared?
+
+   v2 note — full-body figures: the portrait may now be a whole standing figure,
+   not just a head. `setFaceBox([x,y,w,h])` (normalized 0..1, from /api/config's
+   `face_box`) tells the renderer where the head is, so lip-sync/blink land on the
+   face instead of the hardcoded head-shot region. `[0,0,1,1]` == a head-shot and
+   reproduces the exact v1 behaviour.
    ========================================================================== */
 
 export function createHologram(canvas) {
@@ -35,13 +42,52 @@ export function createHologram(canvas) {
   // Logical (CSS) size of the face buffers. Kept modest for Intel GPUs.
   let W = 480, H = 640;
 
-  // Region of the face treated as the mouth/jaw, in normalized [0..1] coords.
-  // Tuned for a typical head-and-shoulders portrait; also matches placeholder.
-  const MOUTH = { cx: 0.5, cy: 0.72, w: 0.30, h: 0.16, jawTop: 0.66 };
-  const EYES  = { cy: 0.44, h: 0.07 };
+  // ---- Head/face targeting (v2) --------------------------------------------
+  // `faceBox` locates the head within the (possibly full-body) portrait in
+  // normalized [0..1] image coords: {x,y,w,h}. Default is the whole frame, which
+  // == a head-and-shoulders shot and reproduces v1 exactly.
+  let faceBox = { x: 0, y: 0, w: 1, h: 1 };
+
+  // The mouth/jaw + eye regions are DERIVED from faceBox each time it changes,
+  // expressed (like v1) in whole-image normalized coords so the render loop is
+  // unchanged. The fractions below are relative to the head box:
+  //   eyes  ≈ upper third of the head   (FR_EYE_Y)
+  //   mouth ≈ lower third of the head   (FR_MOUTH_Y)
+  //   jaw slice runs jawTop..jawBot of the head box (only the chin hinges).
+  // TUNABLE — retune these if lip-sync/blink drift off a particular portrait:
+  const FR_EYE_Y   = 0.44;  // eye band centre, fraction down the head box
+  const FR_EYE_H   = 0.07;  // eye band height, fraction of head box height
+  const FR_MOUTH_Y = 0.72;  // mouth centre, fraction down the head box
+  const FR_MOUTH_W = 0.30;  // mouth width, fraction of head box width
+  const FR_MOUTH_H = 0.16;  // mouth height, fraction of head box height
+  const FR_JAW_TOP = 0.66;  // top of the hinging jaw slice (fraction of head box)
+  const FR_JAW_BOT = 1.02;  // bottom of the jaw slice (just past the chin)
+
+  // Filled by computeRegions(); shape matches v1's MOUTH/EYES constants.
+  let MOUTH = { cx: 0.5, cy: 0.72, w: 0.30, h: 0.16, jawTop: 0.66, jawBot: 1 };
+  let EYES  = { cy: 0.44, h: 0.07 };
+
+  function computeRegions() {
+    const { x, y, w, h } = faceBox;
+    MOUTH = {
+      cx: x + w * 0.5,
+      cy: y + h * FR_MOUTH_Y,
+      w:  w * FR_MOUTH_W,
+      h:  h * FR_MOUTH_H,
+      jawTop: y + h * FR_JAW_TOP,
+      jawBot: Math.min(1, y + h * FR_JAW_BOT),
+    };
+    EYES = { cy: y + h * FR_EYE_Y, h: h * FR_EYE_H };
+  }
+  computeRegions();
+
+  // A head-shot fills (nearly) the whole frame; a full-body figure does not.
+  // Used to pick between the head placeholder and the standing-figure placeholder.
+  function isHeadShot() { return faceBox.w >= 0.85 && faceBox.h >= 0.85; }
 
   // State ---------------------------------------------------------------------
   let ready = false;
+  let usingPlaceholder = false; // true while the built-in figure is displayed
   let currentSource = null; // last image/canvas used, so we can re-bake on resize
   let running = false;
   let rafId = 0;
@@ -149,10 +195,122 @@ export function createHologram(canvas) {
     fctx.globalCompositeOperation = 'source-over';
   }
 
-  /* ---- Built-in placeholder face (generic, non-specific) ---------------- */
-  // Drawn in grayscale then run through the same holo pipeline, so it matches
-  // the real-portrait look. No real person is depicted.
+  /* ---- Built-in placeholder (generic, non-specific) ---------------------- */
+  // Drawn in grayscale then run through the same holo pipeline so it matches the
+  // real-portrait look. No real person is depicted. For a full-body face box we
+  // draw a standing robed figure; for a head-shot box we draw the v1 head.
   function drawPlaceholderSource() {
+    return isHeadShot() ? drawHeadPlaceholder() : drawBodyPlaceholder(faceBox);
+  }
+
+  // Full-body standing figure — a generic robed "librarian" silhouette. Its head
+  // is positioned to match `fb` so the derived mouth/eye regions land on it.
+  function drawBodyPlaceholder(fb) {
+    const c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    const p = c.getContext('2d');
+    p.fillStyle = '#000';
+    p.fillRect(0, 0, W, H);
+
+    const cx      = W * (fb.x + fb.w / 2);
+    const headCy  = H * (fb.y + fb.h / 2);
+    const headRx  = W * fb.w * 0.46;
+    const headRy  = H * fb.h * 0.48;
+
+    const shoulderY   = headCy + headRy * 1.35;
+    const hemY        = H * 0.995;
+    const shoulderHalf = headRx * 2.5;
+    const hemHalf      = headRx * 3.7;
+    const midY        = (shoulderY + hemY) / 2;
+
+    // Robe / gown body: shoulders tapering out to a wide hem, vertical glow.
+    const bodyGrad = p.createLinearGradient(0, shoulderY, 0, hemY);
+    bodyGrad.addColorStop(0, '#a2a2a2');
+    bodyGrad.addColorStop(0.45, '#767676');
+    bodyGrad.addColorStop(1, '#101010');
+    p.fillStyle = bodyGrad;
+    p.beginPath();
+    p.moveTo(cx - shoulderHalf, shoulderY);
+    p.quadraticCurveTo(cx - shoulderHalf * 1.02, midY, cx - hemHalf, hemY);
+    p.lineTo(cx + hemHalf, hemY);
+    p.quadraticCurveTo(cx + shoulderHalf * 1.02, midY, cx + shoulderHalf, shoulderY);
+    p.closePath();
+    p.fill();
+
+    // Rounded shoulders / cowl over the top of the robe.
+    p.fillStyle = bodyGrad;
+    ellipse(p, cx, shoulderY, shoulderHalf, headRy * 0.9); p.fill();
+
+    // Centre fold shadow + side shading to hint arms/depth (subtractive).
+    p.save();
+    p.globalCompositeOperation = 'multiply';
+    const fold = p.createLinearGradient(cx - hemHalf, 0, cx + hemHalf, 0);
+    fold.addColorStop(0.0, 'rgba(255,255,255,1)');
+    fold.addColorStop(0.18, 'rgba(70,70,70,1)');   // left arm shadow
+    fold.addColorStop(0.5, 'rgba(150,150,150,1)'); // lit centre
+    fold.addColorStop(0.82, 'rgba(70,70,70,1)');   // right arm shadow
+    fold.addColorStop(1.0, 'rgba(255,255,255,1)');
+    p.fillStyle = fold;
+    p.fillRect(cx - hemHalf, shoulderY, hemHalf * 2, hemY - shoulderY);
+    p.restore();
+
+    // Neck.
+    p.fillStyle = '#6a6a6a';
+    ellipse(p, cx, headCy + headRy * 0.85, headRx * 0.42, headRy * 0.45); p.fill();
+
+    // Head + face, then eyes/nose/mouth positioned from the head-box fractions.
+    drawFace(p, cx, headCy, headRx, headRy, fb);
+    return c;
+  }
+
+  // Shared face drawing (head oval, brow, glowing eyes, nose, closed mouth).
+  // Eye/mouth Y placement mirrors FR_EYE_Y / FR_MOUTH_Y so they land under the
+  // derived lip-sync regions.
+  function drawFace(p, cx, cy, rx, ry, fb) {
+    const grad = p.createRadialGradient(cx, cy, rx * 0.2, cx, cy, ry * 1.15);
+    grad.addColorStop(0, '#dcdcdc');
+    grad.addColorStop(0.55, '#8c8c8c');
+    grad.addColorStop(1, '#101010');
+    p.fillStyle = grad;
+    ellipse(p, cx, cy, rx, ry); p.fill();
+
+    // Brow ridge shadow.
+    p.strokeStyle = 'rgba(0,0,0,0.4)';
+    p.lineWidth = ry * 0.06;
+    p.beginPath();
+    p.arc(cx, cy - ry * 0.05, rx * 0.7, Math.PI * 1.15, Math.PI * 1.85);
+    p.stroke();
+
+    // Eyes — placed at FR_EYE_Y of the head box.
+    const eyeY = cy + ry * (FR_EYE_Y - 0.5) * 2;
+    const eyeDX = rx * 0.42, eyeR = rx * 0.14;
+    for (const sx of [-1, 1]) {
+      const ex = cx + sx * eyeDX;
+      const eg = p.createRadialGradient(ex, eyeY, 0, ex, eyeY, eyeR);
+      eg.addColorStop(0, '#ffffff');
+      eg.addColorStop(0.6, '#bfbfbf');
+      eg.addColorStop(1, '#202020');
+      p.fillStyle = eg;
+      ellipse(p, ex, eyeY, eyeR, eyeR * 0.7); p.fill();
+    }
+
+    // Nose highlight.
+    const noseY = cy + ry * (0.60 - 0.5) * 2;
+    p.fillStyle = 'rgba(200,200,200,0.6)';
+    ellipse(p, cx, noseY, rx * 0.08, ry * 0.16); p.fill();
+
+    // Closed mouth line at FR_MOUTH_Y (the lip-sync opens it).
+    const mouthY = cy + ry * (FR_MOUTH_Y - 0.5) * 2;
+    p.strokeStyle = 'rgba(210,210,210,0.7)';
+    p.lineWidth = Math.max(2, ry * 0.03);
+    p.beginPath();
+    p.moveTo(cx - rx * 0.34, mouthY);
+    p.quadraticCurveTo(cx, mouthY + ry * 0.10, cx + rx * 0.34, mouthY);
+    p.stroke();
+  }
+
+  // v1 head-and-shoulders placeholder (used when face_box == full frame).
+  function drawHeadPlaceholder() {
     const c = document.createElement('canvas');
     c.width = W; c.height = H;
     const p = c.getContext('2d');
@@ -219,6 +377,7 @@ export function createHologram(canvas) {
       img.onload = () => {
         const ok = buildChannels(img);
         if (!ok) { setPlaceholder(); resolve(false); return; }
+        usingPlaceholder = false;
         ready = true;
         resolve(true);
       };
@@ -228,8 +387,26 @@ export function createHologram(canvas) {
   }
 
   function setPlaceholder() {
+    usingPlaceholder = true;
     buildChannels(drawPlaceholderSource());
     ready = true;
+  }
+
+  // v2: point lip-sync/blink at the head within a full-body portrait.
+  // Accepts [x,y,w,h] normalized (0..1). Safe to call before or after loading a
+  // portrait; if the built-in placeholder is showing it is re-baked so the
+  // head/figure matches the new box.
+  function setFaceBox(box) {
+    if (!Array.isArray(box) || box.length !== 4) return;
+    let [x, y, w, h] = box.map(Number);
+    if (![x, y, w, h].every((n) => isFinite(n))) return;
+    w = Math.max(0.02, Math.min(1, w));
+    h = Math.max(0.02, Math.min(1, h));
+    x = Math.max(0, Math.min(1 - w, x));
+    y = Math.max(0, Math.min(1 - h, y));
+    faceBox = { x, y, w, h };
+    computeRegions();
+    if (usingPlaceholder) setPlaceholder(); // re-draw the figure for the new box
   }
 
   /* ---- Public: lip-sync control ----------------------------------------- */
@@ -303,10 +480,19 @@ export function createHologram(canvas) {
     let dx = (cw - dw) / 2;
     let dy = (ch - dh) / 2;
 
-    // Slow float/sway + breathing (also compositor-cheap since it's one blit).
-    const floatY = prefersReduced ? 0 : Math.sin(t * 0.9) * ch * 0.012;
-    const swayX  = prefersReduced ? 0 : Math.sin(t * 0.6 + 1) * cw * 0.006;
+    // Standing idle life (all one cheap blit): a gentle vertical float, a slow
+    // side-to-side weight shift, and a breathing swell. Breathing scales the
+    // figure a hair while keeping the feet planted (grow upward from the base),
+    // so a full-body Vox looks alive without the pedestal drifting.
+    const floatY = prefersReduced ? 0 : Math.sin(t * 0.55) * ch * 0.008;
+    const swayX  = prefersReduced ? 0 : (Math.sin(t * 0.33) + Math.sin(t * 0.21 + 2) * 0.4) * cw * 0.006;
     dy += floatY; dx += swayX;
+
+    if (!prefersReduced) {
+      const breath = (Math.sin(t * 0.7) * 0.5 + 0.5) * 0.012; // 0..1.2% swell
+      const bh = dh * breath;
+      dh += bh; dy -= bh; // feet stay planted on the pedestal
+    }
 
     // Glitch: horizontal jump + brief RGB split re-blit.
     if (glitch > 0) dx += (Math.random() - 0.5) * glitch * cw * 0.05;
@@ -357,22 +543,23 @@ export function createHologram(canvas) {
     const mh  = dh * MOUTH.h;
     const drop = open * dh * 0.055; // how far the jaw hinges down
 
-    // 1) Jaw slice. Source = lower face of the STATIC buffer (buffer coords).
+    // 1) Jaw slice. Source = the chin band of the STATIC buffer (buffer coords).
+    //    v2: the slice is bounded to jawTop..jawBot of the HEAD box, so on a
+    //    full-body figure only the chin hinges — the torso/robe stays put.
     if (open > 0.02) {
       const sy = H * MOUTH.jawTop;
-      const sh = H - sy;
-      const scaleX = dw / W;
-      const sdx = dx;                       // dest x aligns with full face
-      const sdy = dy + (H * MOUTH.jawTop) * (dh / H);
-      const sdw = W * scaleX;
-      const sdh = sh * (dh / H) * (1 + open * 0.10);
+      const sh = Math.max(1, H * MOUTH.jawBot - sy);
+      const sdy = dy + sy * (dh / H);
+      const destSh = sh * (dh / H);
+      const sdh = destSh * (1 + open * 0.10);
       ctx.save();
       ctx.globalAlpha = 0.9;
-      // Clip to the lower region so the shifted slice can't cover the eyes.
+      // Clip to just the chin band (+ the drop) so the shifted slice can neither
+      // cover the eyes above nor bleed onto the body below.
       ctx.beginPath();
-      ctx.rect(dx, sdy - dh * 0.01, dw, dh);
+      ctx.rect(dx, sdy - dh * 0.01, dw, destSh + drop + dh * 0.04);
       ctx.clip();
-      ctx.drawImage(face, 0, sy, W, sh, sdx, sdy + drop, sdw, sdh);
+      ctx.drawImage(face, 0, sy, W, sh, dx, sdy + drop, dw, sdh);
       ctx.restore();
     }
 
@@ -455,7 +642,7 @@ export function createHologram(canvas) {
 
   return {
     start, stop,
-    setPortrait, setPlaceholder,
+    setPortrait, setPlaceholder, setFaceBox,
     speak, stopSpeaking,
     isReady: () => ready,
   };

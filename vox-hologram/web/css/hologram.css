@@ -192,12 +192,34 @@ html, body {
   background: radial-gradient(ellipse at 50% 42%, transparent 55%, rgba(2, 7, 10, 0.55) 100%);
 }
 
+/* ---- Projector pedestal / plinth (the film's wheeled projector base) ---- */
+.pedestal {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: min(66%, 360px);
+  margin-top: -4px;
+  pointer-events: none;
+}
+/* The glowing lens the beam emits from, sitting on top of the rings. */
+.pedestal-emitter {
+  width: 46%;
+  height: 12px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center,
+      var(--cyan-bright), var(--cyan) 40%, rgba(63, 185, 201, 0.15) 75%, transparent 100%);
+  box-shadow: 0 0 18px rgba(127, 246, 255, 0.85), 0 0 40px rgba(63, 185, 201, 0.5);
+  margin-bottom: 2px;
+  animation: emitterPulse 4s ease-in-out infinite;
+}
+@keyframes emitterPulse { 0%,100% { opacity: 0.8; } 50% { opacity: 1; } }
+
 /* Projector base rings. */
 .projector-base {
   position: relative;
-  width: min(60%, 320px);
+  width: 100%;
   height: 26px;
-  margin-top: -6px;
 }
 .ring {
   position: absolute; left: 50%; top: 50%;
@@ -210,6 +232,40 @@ html, body {
 .ring-2 { width: 70%;  height: 16px; opacity: 0.6; animation: ringPulse 4s ease-in-out infinite 0.6s; }
 .ring-3 { width: 42%;  height: 10px; opacity: 0.4; animation: ringPulse 4s ease-in-out infinite 1.2s; }
 @keyframes ringPulse { 0%,100% { opacity: 0.25; } 50% { opacity: 0.8; } }
+
+/* The physical plinth: a trapezoid column, a base plate, and two wheels —
+   all cheap gradients/box-shadows, evoking the wheeled library projector. */
+.pedestal-column {
+  width: 34%;
+  height: 22px;
+  margin-top: 2px;
+  background: linear-gradient(180deg,
+      rgba(63, 185, 201, 0.35), rgba(10, 44, 51, 0.55));
+  border: 1px solid rgba(127, 246, 255, 0.35);
+  border-top: 0;
+  border-radius: 0 0 6px 6px;
+  -webkit-clip-path: polygon(14% 0, 86% 0, 100% 100%, 0 100%);
+          clip-path: polygon(14% 0, 86% 0, 100% 100%, 0 100%);
+  box-shadow: inset 0 0 12px rgba(127, 246, 255, 0.2);
+}
+.pedestal-plate {
+  width: 58%;
+  height: 8px;
+  border-radius: 40% / 60%;
+  background: linear-gradient(180deg, rgba(127, 246, 255, 0.4), rgba(10, 44, 51, 0.7));
+  box-shadow: 0 0 14px rgba(63, 185, 201, 0.5);
+}
+.pedestal-wheel {
+  position: absolute;
+  bottom: -3px;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  border: 1px solid rgba(127, 246, 255, 0.5);
+  background: radial-gradient(circle at 40% 35%, rgba(127, 246, 255, 0.5), rgba(10, 44, 51, 0.8));
+  box-shadow: 0 0 8px rgba(63, 185, 201, 0.6);
+}
+.pedestal-wheel--l { left: 24%; }
+.pedestal-wheel--r { right: 24%; }
 
 /* ---- Console (transcript + composer) ----------------------------------- */
 .console {
@@ -311,6 +367,21 @@ html, body {
 .btn:focus-visible { outline: 2px solid var(--cyan-bright); outline-offset: 2px; }
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
+/* Web-sources toggle: dim when OFF, glowing cyan when ON. */
+.btn-web { padding: 0.5rem 0.7rem; letter-spacing: 0.18em; opacity: 0.6; }
+.btn-web.is-on {
+  opacity: 1;
+  color: var(--cyan-bright);
+  border-color: var(--cyan);
+  background: rgba(63, 185, 201, 0.22);
+  box-shadow: var(--glow);
+}
+.btn-web::before {
+  content: "◈ ";
+  font-size: 0.7em;
+  vertical-align: middle;
+}
+
 .btn-mic { padding: 0.45rem 0.6rem; font-size: 1rem; line-height: 1; }
 .btn-mic.recording {
   color: var(--danger);
@@ -319,6 +390,268 @@ html, body {
   animation: recPulse 1s ease-in-out infinite;
 }
 @keyframes recPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.55; } }
+
+/* ==========================================================================
+   v2 — Floating holographic source/web panels
+   Translucent cyan cards that materialize beside Vox. Effects are all
+   transform/opacity/gradient/box-shadow so they stay smooth on Intel GPUs.
+   ========================================================================== */
+
+/* Overlay layer covering the stage; columns flank the projector. The layer and
+   columns ignore pointer events so Vox stays interactive; cards re-enable them. */
+.holo-panels {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  overflow: hidden;
+}
+.holo-panels__col {
+  position: absolute;
+  top: 2%;
+  bottom: 6%;
+  width: clamp(180px, 24vw, 264px);
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.2rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+  pointer-events: none;
+  scrollbar-width: thin;
+  scrollbar-color: var(--cyan-dim) transparent;
+}
+.holo-panels__col::-webkit-scrollbar { width: 6px; }
+.holo-panels__col::-webkit-scrollbar-thumb { background: var(--cyan-dim); border-radius: 6px; }
+.holo-panels__col--left  { left: 0;  align-items: flex-start; }
+.holo-panels__col--right { right: 0; align-items: flex-end; }
+
+/* A card. Outer element carries the drag transform; inner .panel__frame carries
+   the appear/dismiss animation so the two never fight over `transform`. */
+.panel {
+  width: 100%;
+  pointer-events: auto;
+  will-change: transform;
+}
+.panel__frame {
+  position: relative;
+  border: 1px solid rgba(127, 246, 255, 0.5);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(6, 30, 38, 0.82), rgba(3, 16, 21, 0.82));
+  box-shadow:
+    0 0 14px rgba(127, 246, 255, 0.28),
+    inset 0 0 22px rgba(10, 44, 51, 0.6);
+  -webkit-backdrop-filter: blur(1px);
+          backdrop-filter: blur(1px);
+  overflow: hidden;
+  opacity: 0;                 /* revealed by the is-in animation */
+}
+.panel.is-in  .panel__frame { animation: panelIn  0.52s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+.panel.is-out .panel__frame { animation: panelOut 0.34s ease-in forwards; }
+.panel.is-dragging { z-index: 10; }
+.panel.is-dragging .panel__frame {
+  box-shadow: 0 0 22px rgba(127, 246, 255, 0.5), inset 0 0 22px rgba(10, 44, 51, 0.6);
+}
+
+/* Per-kind accents: source = amber tick of a citation, reader = fuller body,
+   image = tighter frame. */
+.panel--source .panel__label { color: var(--cyan-bright); }
+.panel--reader .panel__frame { box-shadow: 0 0 16px rgba(127, 246, 255, 0.32), inset 0 0 22px rgba(10, 44, 51, 0.6); }
+.panel--image  .panel__body  { padding: 0.35rem; }
+
+/* Materialize (holo flicker + slide/scale) and dismiss. */
+@keyframes panelIn {
+  0%   { opacity: 0;    transform: translateY(10px) scale(0.92); }
+  35%  { opacity: 0.65; }
+  48%  { opacity: 0.2;  }                        /* flicker */
+  62%  { opacity: 0.9;  transform: translateY(0)    scale(1.01); }
+  78%  { opacity: 0.5;  }                        /* flicker */
+  100% { opacity: 1;    transform: translateY(0)    scale(1); }
+}
+@keyframes panelOut {
+  0%   { opacity: 1;   transform: translateY(0) scale(1); }
+  35%  { opacity: 0.4; }
+  55%  { opacity: 0.7; }
+  100% { opacity: 0;   transform: translateY(-8px) scale(0.95); }
+}
+
+/* Corner registration ticks. */
+.panel__tick {
+  position: absolute;
+  width: 9px; height: 9px;
+  border: 1px solid var(--cyan);
+  opacity: 0.8;
+  pointer-events: none;
+}
+.panel__tick--tl { top: 3px;    left: 3px;    border-right: 0; border-bottom: 0; }
+.panel__tick--tr { top: 3px;    right: 3px;   border-left: 0;  border-bottom: 0; }
+.panel__tick--bl { bottom: 3px; left: 3px;    border-right: 0; border-top: 0; }
+.panel__tick--br { bottom: 3px; right: 3px;   border-left: 0;  border-top: 0; }
+
+/* Scanline texture over the whole card. */
+.panel__scan {
+  position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(
+      to bottom,
+      rgba(0, 0, 0, 0)     0px,
+      rgba(0, 0, 0, 0)     2px,
+      rgba(0, 20, 24, 0.35) 3px,
+      rgba(0, 20, 24, 0.35) 4px);
+  mix-blend-mode: multiply;
+}
+
+/* Labelled title bar (the film's "SCIENCE FICTION — FILM" header). */
+.panel__titlebar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.5rem;
+  background: linear-gradient(90deg, rgba(63, 185, 201, 0.28), rgba(10, 44, 51, 0.15));
+  border-bottom: 1px solid rgba(127, 246, 255, 0.35);
+  cursor: grab;
+  touch-action: none;             /* let pointer-drag own the gesture */
+}
+.panel.is-dragging .panel__titlebar { cursor: grabbing; }
+.panel__label {
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--cyan-bright);
+  white-space: nowrap;
+}
+.panel__host {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.58rem;
+  letter-spacing: 0.06em;
+  color: var(--cyan-dim);
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.panel__close {
+  flex: 0 0 auto;
+  width: 18px; height: 18px;
+  line-height: 1;
+  padding: 0;
+  font-size: 0.9rem;
+  color: var(--cyan);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.panel__close:hover { color: var(--cyan-bright); background: rgba(127, 246, 255, 0.15); }
+
+/* Card body. */
+.panel__body {
+  position: relative;
+  padding: 0.5rem;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--cyan);
+}
+.panel__thumb {
+  display: block;
+  width: 100%;
+  max-height: 96px;
+  object-fit: cover;
+  border-radius: 4px;
+  margin-bottom: 0.4rem;
+  opacity: 0.9;
+}
+.panel__title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--cyan-bright);
+  text-shadow: 0 0 6px rgba(127, 246, 255, 0.3);
+  margin-bottom: 0.25rem;
+}
+.panel__title--reader { font-size: 0.82rem; }
+.panel__snippet {
+  margin: 0.2rem 0 0.4rem;
+  color: var(--cyan);
+  opacity: 0.9;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.panel__muted { color: var(--cyan-dim); font-style: italic; }
+
+/* Reader scroll region + gallery. */
+.panel__text {
+  max-height: 40vh;
+  overflow-y: auto;
+  padding-right: 0.3rem;
+  scrollbar-width: thin;
+  scrollbar-color: var(--cyan-dim) transparent;
+}
+.panel__text::-webkit-scrollbar { width: 6px; }
+.panel__text::-webkit-scrollbar-thumb { background: var(--cyan-dim); border-radius: 6px; }
+.panel__text p { margin: 0 0 0.5rem; }
+.panel__gallery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.4rem;
+}
+.panel__img {
+  width: calc(50% - 0.15rem);
+  height: 60px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid rgba(127, 246, 255, 0.25);
+  opacity: 0.9;
+}
+.panel__img--tile { width: 100%; height: auto; max-height: 220px; }
+.panel__caption {
+  margin-top: 0.35rem;
+  font-size: 0.7rem;
+  color: var(--cyan-dim);
+  text-align: center;
+}
+.panel__iframe {
+  width: 100%;
+  height: 42vh;
+  border: 1px solid rgba(127, 246, 255, 0.3);
+  border-radius: 4px;
+  background: #02070a;
+  margin-bottom: 0.4rem;
+}
+
+/* Actions (View / Live page / Open). */
+.panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+.panel__btn {
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--cyan-bright);
+  background: rgba(10, 44, 51, 0.7);
+  border: 1px solid var(--cyan-dim);
+  border-radius: 5px;
+  padding: 0.3rem 0.6rem;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+.panel__btn:hover { background: rgba(63, 185, 201, 0.25); box-shadow: var(--glow); }
+.panel__btn:focus-visible { outline: 2px solid var(--cyan-bright); outline-offset: 2px; }
+.panel__link { display: inline-flex; align-items: center; }
+
+/* Very narrow viewports: let cards overlay a bit more compactly. */
+@media (max-width: 720px) {
+  .holo-panels__col { width: clamp(150px, 42vw, 200px); }
+}
 
 /* ---- Wake gate --------------------------------------------------------- */
 .wake-gate {
@@ -353,7 +686,11 @@ html, body {
 /* ---- Accessibility: honour reduced-motion ------------------------------ */
 @media (prefers-reduced-motion: reduce) {
   .bg-grid, .beam, .holo-frame, .holo-scanlines, .holo-flicker,
-  .ring, .wake-orb { animation: none !important; }
+  .ring, .wake-orb, .pedestal-emitter { animation: none !important; }
+  /* Panels: skip the flicker but stay fully visible (the is-in animation would
+     otherwise leave them at its opacity:0 start frame). */
+  .panel.is-in  .panel__frame { animation: none !important; opacity: 1; transform: none; }
+  .panel.is-out .panel__frame { animation: none !important; opacity: 0; }
 }
 
 /* ---- Narrow / short screens ------------------------------------------- */

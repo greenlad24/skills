@@ -23,23 +23,38 @@
   </header>
 
   <main class="stage">
-    <!-- The hologram projector. hologram.js owns the canvas; the rings/beam
-         and scanlines/flicker overlays are CSS so they cost the GPU nothing. -->
+    <!-- The hologram projector. hologram.js owns the canvas; the rings/beam,
+         pedestal and scanlines/flicker overlays are CSS so they cost the GPU
+         nothing. v2: a full-body standing figure on a projector pedestal. -->
     <div class="projector">
       <div class="beam" aria-hidden="true"></div>
       <div class="holo-frame">
         <canvas id="holo-canvas" class="holo-canvas"
-                role="img" aria-label="Holographic face of Vox"></canvas>
+                role="img" aria-label="Holographic figure of Vox"></canvas>
         <div class="holo-scanlines" aria-hidden="true"></div>
         <div class="holo-flicker" aria-hidden="true"></div>
         <div class="holo-vignette" aria-hidden="true"></div>
       </div>
-      <div class="projector-base" aria-hidden="true">
-        <span class="ring ring-1"></span>
-        <span class="ring ring-2"></span>
-        <span class="ring ring-3"></span>
+
+      <!-- Projector pedestal/plinth: the film's wheeled projector base. The
+           emitter lens throws the beam (above) up to the figure. -->
+      <div class="pedestal" aria-hidden="true">
+        <span class="pedestal-emitter"></span>
+        <div class="projector-base">
+          <span class="ring ring-1"></span>
+          <span class="ring ring-2"></span>
+          <span class="ring ring-3"></span>
+        </div>
+        <span class="pedestal-column"></span>
+        <span class="pedestal-plate"></span>
+        <span class="pedestal-wheel pedestal-wheel--l"></span>
+        <span class="pedestal-wheel pedestal-wheel--r"></span>
       </div>
     </div>
+
+    <!-- v2: floating holographic source/web panels. panels.js builds the
+         left/right columns inside this overlay so cards flank Vox's face. -->
+    <div id="holo-panels" class="holo-panels" aria-live="polite"></div>
   </main>
 
   <!-- Conversation console: glowing terminal / HUD. -->
@@ -54,6 +69,9 @@
       <input id="prompt" class="prompt" type="text" name="prompt"
              placeholder="Ask Vox anything…" autocomplete="off"
              autocapitalize="sentences" spellcheck="true" />
+      <button id="web-toggle" class="btn btn-web" type="button"
+              title="Consult the library's web records" aria-pressed="true"
+              aria-label="Toggle web sources" hidden>WEB</button>
       <button id="mic-btn" class="btn btn-mic" type="button"
               title="Hold to speak" aria-label="Hold to speak" hidden>
         <span class="mic-glyph" aria-hidden="true">◉</span>

@@ -6,6 +6,7 @@
    ========================================================================== */
 
 import { createHologram } from './hologram.js';
+import { createPanels } from './panels.js';
 
 /* ---- DOM refs ----------------------------------------------------------- */
 const $ = (id) => document.getElementById(id);
@@ -18,6 +19,8 @@ const els = {
   prompt:    $('prompt'),
   sendBtn:   $('send-btn'),
   micBtn:    $('mic-btn'),
+  webToggle: $('web-toggle'),
+  panels:    $('holo-panels'),
   wakeGate:  $('wake-gate'),
   wakeBtn:   $('wake-btn'),
   wakeNote:  $('wake-note'),
@@ -29,6 +32,7 @@ const state = {
   history: [],        // rolling [{role,content}] — excludes system prompt
   busy: false,        // a chat turn is in flight
   awake: false,       // audio unlocked by a user gesture
+  web: true,          // v2: consult web sources (only meaningful if web_ready)
 };
 
 let audioCtx = null;      // Web Audio graph
@@ -39,6 +43,9 @@ let activeSource = null;   // currently-playing AudioBufferSourceNode
 const holo = createHologram(els.canvas);
 holo.setPlaceholder();     // draw *something* immediately, before config lands
 holo.start();
+
+// v2: floating holographic source/web panels (columns flank Vox's face).
+const panels = createPanels(els.panels);
 
 /* ==========================================================================
    Boot
@@ -62,13 +69,28 @@ async function init() {
 }
 
 function applyConfig(cfg) {
-  // Portrait vs placeholder.
+  // v2: point lip-sync/blink at the head. Must precede the portrait/placeholder
+  // draw so the standing-figure placeholder is built for the right head box.
+  if (cfg.face_box) holo.setFaceBox(cfg.face_box);
+
+  // Portrait vs placeholder (a full-body standing figure when no portrait).
   if (cfg.portrait_present && cfg.portrait_url) {
     holo.setPortrait(cfg.portrait_url).then((ok) => {
       if (!ok) holo.setPlaceholder();
     });
   } else {
     holo.setPlaceholder();
+  }
+
+  // v2: web-sources toggle. Hidden entirely unless the backend reports web_ready;
+  // defaults ON. When off (or web_ready:false) we send web:false and get no panels.
+  if (cfg.web_ready) {
+    els.webToggle.hidden = false;
+    setWeb(true);
+    els.webToggle.addEventListener('click', () => setWeb(!state.web));
+  } else {
+    els.webToggle.hidden = true;
+    state.web = false;
   }
 
   // Mic only if STT is ready AND the browser can record.
@@ -168,6 +190,9 @@ async function send(raw) {
   addLine('user', 'You', text);
   state.history.push({ role: 'user', content: text });
 
+  // Fresh turn → clear the previous answer's holo source cards.
+  panels.clear();
+
   setBusy(true);
   const name = (state.config && state.config.name) || 'Vox';
   const lineEl = addLine('vox', name, '');
@@ -203,7 +228,7 @@ async function streamChat(message, onToken) {
   const res = await fetch('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
-    body: JSON.stringify({ message, history: historyForSend() }),
+    body: JSON.stringify({ message, history: historyForSend(), web: !!state.web }),
   });
   if (!res.ok) throw new Error('chat ' + res.status);
 
@@ -271,6 +296,11 @@ function handleEvent(evt, onToken) {
   catch (e) { return {}; } // ignore keep-alives / malformed
   if (obj.type === 'token') {
     if (obj.text) onToken(obj.text);
+    return {};
+  }
+  // v2: a holographic source/web card materializes beside Vox as he speaks.
+  if (obj.type === 'panel') {
+    if (obj.panel) { try { panels.add(obj.panel); } catch (e) {} }
     return {};
   }
   if (obj.type === 'done') return { done: true, text: obj.text || '' };
@@ -480,6 +510,15 @@ function setBusy(b) {
 function setStatus(text, cls) {
   els.status.textContent = text;
   els.status.className = 'statusline' + (cls ? ' ' + cls : '');
+}
+// v2: reflect the web-sources toggle in state + button styling.
+function setWeb(on) {
+  state.web = !!on;
+  els.webToggle.setAttribute('aria-pressed', state.web ? 'true' : 'false');
+  els.webToggle.classList.toggle('is-on', state.web);
+  els.webToggle.title = state.web
+    ? 'Web records ON — Vox consults the library'
+    : 'Web records OFF — Vox answers from local knowledge';
 }
 function showBanner(text) {
   els.banner.textContent = text;
