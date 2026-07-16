@@ -77,6 +77,30 @@ browser: play WAV + AnalyserNode amplitude ─▶ mouth openness ─▶ hologram
 (optional) mic ─▶ POST /api/stt ─▶ stt.py ─▶ whisper.cpp ─▶ text ─▶ back to /api/chat
 ```
 
+## v2 — full-body figure + holographic source panels
+
+Faithful to the film's library scene, v2 adds:
+
+- **Full-body standing Vox** on a projector pedestal (translucent figure, not just
+  a head). The portrait may now be a full-body image; a `face_box` (from
+  `/api/config`, env `VOX_FACE_BOX`) locates the head so lip-sync/blink still land
+  on the face. A stylized standing-figure placeholder ships for first launch.
+- **Floating holographic panels** that materialize beside Vox as he speaks —
+  citation cards, expanded "reader" views of pages, and image tiles — mirroring
+  the film's "AUTHORS — WELLS, H.G." and "SCIENCE FICTION — FILM" cards.
+- **A web layer** (`server/web.py`): dependency-free search + page fetch (`httpx`
+  + stdlib `html.parser`). On each turn (when `web_ready`), the backend searches,
+  fetches top results, **grounds** Vox's answer on their snippets, and streams
+  `panel` frames so the cards appear in sync with his narration.
+
+Local vs. web boundary: **the brain (LLM) stays 100% local and offline.** Only the
+optional *sources* feature reaches the internet — exactly like Vox consulting the
+library's records. With no internet (or `VOX_WEB=0`), the app runs fully offline
+and Vox answers from the local model's own knowledge, with no panels.
+
+The lip-sync stays real-time and compute-free (browser amplitude → mouth); no
+neural video anywhere, keeping it smooth on Intel Big Sur.
+
 ## Non-negotiables
 
 - 100% local. No network calls at runtime except to the local LLM server.
