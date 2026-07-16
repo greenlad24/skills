@@ -1,0 +1,80 @@
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="dark" />
+<title>VOX — Compendium of all human knowledge</title>
+<link rel="stylesheet" href="/css/hologram.css" />
+
+<!--
+  VOX — local holographic librarian front-end.
+  100% offline. No frameworks, no CDN, no build step. Vanilla ES modules.
+  Structure:  [wake gate] over [stage: hologram] + [console: transcript + input].
+-->
+
+<div id="app" class="app" aria-hidden="false">
+
+  <!-- Ambient background: drifting grid + vignette (pure CSS). -->
+  <div class="bg-grid" aria-hidden="true"></div>
+  <div class="bg-vignette" aria-hidden="true"></div>
+
+  <header class="titlebar">
+    <h1 class="brand" aria-label="VOX">V<span class="brand-o">O</span>X</h1>
+    <p class="subtitle">Compendium of all human knowledge</p>
+    <p id="statusline" class="statusline" role="status" aria-live="polite">Initialising…</p>
+  </header>
+
+  <main class="stage">
+    <!-- The hologram projector. hologram.js owns the canvas; the rings/beam
+         and scanlines/flicker overlays are CSS so they cost the GPU nothing. -->
+    <div class="projector">
+      <div class="beam" aria-hidden="true"></div>
+      <div class="holo-frame">
+        <canvas id="holo-canvas" class="holo-canvas"
+                role="img" aria-label="Holographic face of Vox"></canvas>
+        <div class="holo-scanlines" aria-hidden="true"></div>
+        <div class="holo-flicker" aria-hidden="true"></div>
+        <div class="holo-vignette" aria-hidden="true"></div>
+      </div>
+      <div class="projector-base" aria-hidden="true">
+        <span class="ring ring-1"></span>
+        <span class="ring ring-2"></span>
+        <span class="ring ring-3"></span>
+      </div>
+    </div>
+  </main>
+
+  <!-- Conversation console: glowing terminal / HUD. -->
+  <section class="console" aria-label="Conversation">
+    <div id="transcript" class="transcript" role="log" aria-live="polite" tabindex="0"></div>
+
+    <div id="banner" class="banner" hidden></div>
+
+    <form id="composer" class="composer" autocomplete="off">
+      <label class="sr-only" for="prompt">Ask Vox</label>
+      <span class="prompt-caret" aria-hidden="true">&gt;</span>
+      <input id="prompt" class="prompt" type="text" name="prompt"
+             placeholder="Ask Vox anything…" autocomplete="off"
+             autocapitalize="sentences" spellcheck="true" />
+      <button id="mic-btn" class="btn btn-mic" type="button"
+              title="Hold to speak" aria-label="Hold to speak" hidden>
+        <span class="mic-glyph" aria-hidden="true">◉</span>
+      </button>
+      <button id="send-btn" class="btn btn-send" type="submit">Send</button>
+    </form>
+  </section>
+
+  <!-- Autoplay / audio-enable gate. Blocks until the first user gesture so the
+       browser will allow Vox's voice to play. -->
+  <div id="wake-gate" class="wake-gate" role="dialog" aria-modal="true"
+       aria-label="Awaken Vox">
+    <div class="wake-inner">
+      <div class="wake-orb" aria-hidden="true"></div>
+      <h2 class="wake-title">VOX</h2>
+      <p class="wake-text">Compendium of all human knowledge</p>
+      <button id="wake-btn" class="btn btn-wake" type="button">Awaken Vox</button>
+      <p id="wake-note" class="wake-note"></p>
+    </div>
+  </div>
+
+</div>
+
+<script type="module" src="/js/app.js"></script>
