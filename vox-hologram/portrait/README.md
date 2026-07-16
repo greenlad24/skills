@@ -16,16 +16,32 @@ web/assets/portrait.png
 `portrait.jpg`, `portrait.jpeg`, `portrait.webp`. Reload the browser tab after
 adding or changing it.
 
-> No portrait? VOX ships a built-in stylized placeholder face, so the app still
-> runs on first launch. Add your own whenever you like.
+> No portrait? VOX ships a built-in stylized standing-figure placeholder, so the
+> app still runs on first launch. Add your own whenever you like.
+
+## Full-body figure or head-and-shoulders? (set `VOX_FACE_BOX` to match)
+
+VOX v2 projects a **full-body standing Vox** on a pedestal, but it works with either
+kind of photo — you just tell VOX where the head is via the `VOX_FACE_BOX`
+environment variable (a normalized `x,y,w,h` box, 0..1) so lip-sync and blinking land
+on the face:
+
+- **Full-body photo** — full figure on a plain/dark background, head near the
+  **top-center** of the frame. **Keep the default `VOX_FACE_BOX`**; it already expects
+  the head at the top of a full-body portrait. This is the intended v2 look.
+- **Head-and-shoulders photo** — a square-ish bust that fills the frame. Run VOX with
+  **`VOX_FACE_BOX=0,0,1,1`** so the whole image is treated as the face.
+
+Either way the file lives at the same path, `web/assets/portrait.png`.
 
 ## What makes a good hologram portrait
 
 The effect is a flickering, semi-transparent, cyan-tinted "projection" of your
 face. It looks best when the source photo is clean and centered:
 
-- **Square-ish crop**, face centered, filling most of the frame
-  (head-and-shoulders). Very wide or very tall images get cropped oddly.
+- **Framing to match your `VOX_FACE_BOX`:** a full-body figure with the head near
+  the top-center (default box), or a square-ish head-and-shoulders crop filling the
+  frame (`VOX_FACE_BOX=0,0,1,1`). Very wide images get cropped oddly.
 - **Front-facing**, looking roughly at the camera. Profiles look strange when lit
   as a hologram.
 - **Even, bright lighting.** Soft, flat light beats dramatic shadows — the shader
