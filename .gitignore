@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Models & voices (downloaded by setup, never committed — too large)
+vox-hologram/models/
+vox-hologram/voices/
+*.gguf
+*.onnx
+*.bin
+*.pt
+*.pth
+
+# User-supplied face portrait (personal; user drops their own)
+vox-hologram/web/assets/portrait.*
+vox-hologram/portrait/*.png
+vox-hologram/portrait/*.jpg
+vox-hologram/portrait/*.jpeg
+vox-hologram/portrait/*.webp
+
+# Runtime
+vox-hologram/server/__pycache__/
+*.log
+.DS_Store
+
+# Generated audio cache
+vox-hologram/cache/
