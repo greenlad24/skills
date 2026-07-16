@@ -48,7 +48,7 @@ fetch() {
     warn "curl not found — cannot download $label."
     [ "$required" = "1" ] && return 1 || return 0
   fi
-  info "Downloading $label…"
+  info "Downloading ${label}..."
   info "  from $url"
   tmp="$dest.partial"
   if curl -fL --retry 3 --retry-delay 2 -o "$tmp" "$url"; then
