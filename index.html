@@ -197,12 +197,13 @@
   .card-title{font-size:13px;font-weight:600;color:var(--text);line-height:1.4;margin-bottom:11px;outline:none;border-radius:5px}
   .card-title[contenteditable="true"]{background:var(--orange-soft);box-shadow:0 0 0 2px var(--orange);padding:2px 4px;margin:-2px -4px 9px;cursor:text}
   .card-img{width:100%;height:120px;border-radius:10px;margin-bottom:11px;background-size:cover;background-position:center}
-  .card-foot{display:flex;align-items:center;justify-content:space-between}
-  .card-members{display:flex;align-items:center;gap:6px}
-  .member{display:flex;align-items:center;gap:5px}
-  .member .nm{font-size:10.5px;color:var(--muted);font-weight:500;white-space:nowrap}
-  .card-stats{display:flex;align-items:center;gap:12px;color:var(--muted-2)}
-  .stat{display:flex;align-items:center;gap:4px;font-size:11px;font-weight:500}
+  .card-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px;padding-top:11px;border-top:1px solid var(--line)}
+  .card-members{display:flex;align-items:center;min-width:0}
+  .card-members .av{margin-left:-7px;box-shadow:0 0 0 2px #fff}
+  .card-members .av:first-child{margin-left:0}
+  .member-name{font-size:11px;color:var(--muted);font-weight:500;white-space:nowrap;margin-left:8px;overflow:hidden;text-overflow:ellipsis}
+  .card-stats{display:flex;align-items:center;gap:14px;color:var(--muted-2);flex:0 0 auto}
+  .stat{display:flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600}
   .stat svg{width:14px;height:14px}
   .add-card{
     display:flex;align-items:center;justify-content:center;gap:7px;padding:12px;
@@ -429,8 +430,10 @@ function tagHTML(t){
   if(t.ic) return `<span class="tag ${t.cls}">${t.ic} ${t.txt}</span>`;
   return `<span class="tag ${t.cls}">${t.txt}</span>`;
 }
-function memberHTML(name){
-  return `<div class="member"><div class="av s" style="background:${avatarBg[name]||'#ccc'}">${initials(name)}</div><span class="nm">${name}</span></div>`;
+function membersHTML(names){
+  const avs = names.map(n=>`<div class="av s" style="background:${avatarBg[n]||'#ccc'}" title="${n}">${initials(n)}</div>`).join("");
+  const label = names.length===1 ? names[0] : `${names[0].split(" ")[0]} +${names.length-1}`;
+  return `<div class="card-members">${avs}<span class="member-name">${label}</span></div>`;
 }
 function cardHTML(c){
   return `<div class="card" draggable="true" data-id="${c.id}">
@@ -441,7 +444,7 @@ function cardHTML(c){
     <div class="card-title" data-title>${escapeHtml(c.title)}</div>
     ${c.img?`<div class="card-img" style="background-image:url(&quot;${c.img}&quot;)"></div>`:""}
     <div class="card-foot">
-      <div class="card-members">${c.members.map(memberHTML).join("")}</div>
+      ${membersHTML(c.members)}
       <div class="card-stats"><span class="stat">${commentIcon}${c.a}</span><span class="stat">${docIcon}${c.b}</span></div>
     </div>
   </div>`;
