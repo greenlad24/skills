@@ -270,7 +270,18 @@ function parseChatCommand(body, now, opts = {}) {
   }
   const rest = trig[2].trim();
 
-  const idx = rest.indexOf(':');
+  // Find the message separator ':' — the first colon that is NOT part of a
+  // clock time (HH:MM), i.e. whose following character is not a digit. This
+  // lets times like "18:00" or "9:30am" live in the schedule spec. Falls back
+  // to the first colon if every colon looks time-like.
+  let idx = -1;
+  for (let i = 0; i < rest.length; i++) {
+    if (rest[i] === ':' && !/\d/.test(rest[i + 1] || '')) {
+      idx = i;
+      break;
+    }
+  }
+  if (idx === -1) idx = rest.indexOf(':');
   if (idx === -1) {
     return {
       ok: false,

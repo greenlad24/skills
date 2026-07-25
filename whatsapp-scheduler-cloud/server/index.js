@@ -11,7 +11,7 @@ const express = require('express');
 const { getProvider } = require('./providers');
 const store = require('./store');
 const scheduler = require('./scheduler');
-const { isWeekend, parseChatCommand } = require('./schedule-logic');
+const { createInboundHandler } = require('./inbound');
 
 // --- Tiny inline .env loader (no dotenv dependency) --------------------------
 // Reads a `.env` file from the current working directory if present and sets
@@ -61,40 +61,10 @@ async function main() {
   });
 
   // Inbound chat commands: parse, persist, and reply with a confirmation.
-  provider.onInboundCommand(async ({ body, fromChatNumber }) => {
-    const parsed = parseChatCommand(body, Date.now(), {
-      defaultChatNumber: fromChatNumber,
-    });
-    if (!parsed.ok) {
-      return '⚠️ ' + (parsed.error || 'Could not understand that command.');
-    }
-    const record = {
-      id: store.makeId(),
-      to: parsed.to,
-      toDisplay: parsed.toDisplay || parsed.to,
-      text: parsed.text,
-      when: parsed.when,
-      status: 'pending',
-      provider: provider.name,
-      source: 'chat',
-      createdAt: Date.now(),
-    };
-    await store.insert(record);
-
-    const whenDate = new Date(parsed.when);
-    let reply = '✅ Scheduled for ' + whenDate.toLocaleString();
-    // Weekend nudge — still schedule what they asked, but suggest Monday.
-    if (isWeekend(whenDate)) {
-      const dayName = whenDate.toLocaleDateString(undefined, { weekday: 'long' });
-      reply +=
-        "\n📅 That's a " +
-        dayName +
-        ' — reply with `/schedule monday 9am: ' +
-        parsed.text +
-        '` to send Monday instead.';
-    }
-    return reply;
-  });
+  // The handler itself lives in ./inbound so it can be unit-tested.
+  provider.onInboundCommand(
+    createInboundHandler({ store, providerName: provider.name }),
+  );
 
   // --- Express app ----------------------------------------------------------
   const app = express();

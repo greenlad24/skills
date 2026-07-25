@@ -1,8 +1,13 @@
 'use strict';
 
 /*
- * WhatsApp Cloud Scheduler — PWA front-end.
- * Talks to the /api/* JSON API defined in SPEC.md.
+ * WhatsApp Cloud Scheduler — status / QR / read-only list page.
+ * The product itself is the in-chat `/schedule` command; this page only:
+ *   (a) shows the QR to link a personal device (polls /api/status every 3s),
+ *   (b) confirms "Connected as <me>" + shows the command how-to, and
+ *   (c) lists pending scheduled messages with a Cancel action.
+ * Talks to /api/status, /api/messages, POST /api/messages/:id/cancel,
+ * DELETE /api/messages/:id.
  */
 
 // ---------------------------------------------------------------------------
@@ -27,7 +32,6 @@ const API = {
     if (res.status === 401) {
       API.setToken('');
       showScreen('screen-token');
-      startStatusFlow(); // re-evaluate once a token is entered
       throw new Error('Unauthorized');
     }
     let data = {};
@@ -59,7 +63,6 @@ function showScreen(id) {
 let statusTimer = null;
 let listTimer = null;
 let appInitialized = false;
-let suggestData = null;
 
 function stopStatusPoll() {
   if (statusTimer) {
@@ -71,13 +74,6 @@ function stopStatusPoll() {
 function startStatusPoll() {
   if (statusTimer) return; // idempotent
   statusTimer = setInterval(startStatusFlow, 3000);
-}
-
-function stopListPoll() {
-  if (listTimer) {
-    clearInterval(listTimer);
-    listTimer = null;
-  }
 }
 
 function startListPoll() {
@@ -111,9 +107,10 @@ async function startStatusFlow() {
     return;
   }
 
-  // Connected (or business provider ready).
+  // Connected (or a business provider that is ready).
   stopStatusPoll();
   showScreen('screen-app');
+  setConnectedTitle(status);
   await initApp();
 }
 
@@ -123,6 +120,14 @@ function updateProviderBadge(status) {
   badge.hidden = false;
   badge.textContent = status.provider;
   badge.classList.toggle('connected', !!status.connected);
+}
+
+function setConnectedTitle(status) {
+  const title = document.getElementById('connected-title');
+  if (!title) return;
+  title.textContent = status.me
+    ? '✅ Connected as ' + status.me
+    : '✅ Connected';
 }
 
 function showQr(status) {
@@ -154,107 +159,17 @@ document.getElementById('token-form').addEventListener('submit', (e) => {
 });
 
 // ---------------------------------------------------------------------------
-// App init (composer + list). Runs once.
+// App init (read-only list). Runs once.
 // ---------------------------------------------------------------------------
 async function initApp() {
   if (appInitialized) return;
   appInitialized = true;
-
-  wireComposer();
-  await loadSuggest();
   await loadMessages();
   startListPoll();
 }
 
-async function loadSuggest() {
-  try {
-    suggestData = await API.call('/api/suggest');
-  } catch (_e) {
-    suggestData = null;
-    return;
-  }
-  const whenInput = document.getElementById('when-input');
-  whenInput.value = isoToLocalInput(suggestData.defaultSend);
-
-  const banner = document.getElementById('weekend-banner');
-  const reason = document.getElementById('weekend-reason');
-  if (suggestData.isWeekend) {
-    reason.textContent = suggestData.reason || 'It is the weekend.';
-    banner.hidden = false;
-  } else {
-    banner.hidden = true;
-  }
-}
-
-function wireComposer() {
-  const form = document.getElementById('composer');
-  const sendNowBtn = document.getElementById('send-now-btn');
-  const useMonday = document.getElementById('use-monday');
-
-  form.addEventListener('submit', (e) => {
-    e.preventDefault();
-    submitComposer(false);
-  });
-
-  sendNowBtn.addEventListener('click', () => submitComposer(true));
-
-  useMonday.addEventListener('click', () => {
-    if (suggestData && suggestData.suggested) {
-      document.getElementById('when-input').value = isoToLocalInput(
-        suggestData.suggested,
-      );
-    }
-  });
-}
-
-async function submitComposer(sendImmediately) {
-  const to = document.getElementById('to-input').value.trim();
-  const text = document.getElementById('text-input').value.trim();
-  const whenVal = document.getElementById('when-input').value;
-  const errEl = document.getElementById('composer-error');
-  errEl.hidden = true;
-
-  if (!to || !text || !whenVal) {
-    showComposerError('Please fill in recipient, message and time.');
-    return;
-  }
-
-  // datetime-local is local wall-clock; convert to an absolute epoch ms.
-  const whenMs = new Date(whenVal).getTime();
-  if (!Number.isFinite(whenMs)) {
-    showComposerError('Invalid date/time.');
-    return;
-  }
-
-  try {
-    const { message } = await API.call('/api/messages', {
-      method: 'POST',
-      body: JSON.stringify({ to, text, when: whenMs }),
-    });
-    if (sendImmediately && message && message.id) {
-      await API.call('/api/messages/' + encodeURIComponent(message.id) + '/send-now', {
-        method: 'POST',
-      });
-      toast('Sending now…');
-    } else {
-      toast('Scheduled ✅');
-    }
-    document.getElementById('text-input').value = '';
-    await loadSuggest();
-    await loadMessages();
-  } catch (err) {
-    showComposerError(err.message || 'Could not schedule.');
-  }
-}
-
-function showComposerError(msg) {
-  const errEl = document.getElementById('composer-error');
-  errEl.textContent = msg;
-  errEl.hidden = false;
-}
-
 // ---------------------------------------------------------------------------
-// Messages list
+// Messages list (read-only + Cancel)
 // ---------------------------------------------------------------------------
 async function loadMessages() {
   let data;
@@ -274,7 +189,12 @@ function renderMessages(messages) {
   const empty = document.getElementById('empty-state');
   const count = document.getElementById('list-count');
 
-  count.textContent = messages.length ? messages.length + ' total' : '';
+  const pendingCount = messages.filter((m) => m.status === 'pending').length;
+  count.textContent = pendingCount
+    ? pendingCount + ' pending · ' + messages.length + ' total'
+    : messages.length
+      ? messages.length + ' total'
+      : '';
   empty.hidden = messages.length > 0;
 
   list.innerHTML = '';
@@ -308,24 +228,25 @@ function renderItem(m) {
 
   const when = document.createElement('div');
   when.className = 'message-when muted small';
-  when.textContent = formatWhen(m.when) + (m.source === 'chat' ? ' · via chat' : '');
+  when.textContent =
+    formatWhen(m.when) + (m.source === 'chat' ? ' · via chat' : '');
   if (m.status === 'failed' && m.error) {
     when.textContent += ' · ' + m.error;
   }
 
-  const actions = document.createElement('div');
-  actions.className = 'message-actions';
-
-  if (m.status === 'pending') {
-    actions.appendChild(actionBtn('Cancel', 'btn-ghost', () => cancelMsg(m.id)));
-  }
-  actions.appendChild(actionBtn('Send now', 'btn-ghost', () => sendNowMsg(m.id)));
-  actions.appendChild(actionBtn('Remove', 'btn-ghost btn-danger', () => removeMsg(m.id)));
-
   li.appendChild(head);
   li.appendChild(body);
   li.appendChild(when);
-  li.appendChild(actions);
+
+  if (m.status === 'pending') {
+    const actions = document.createElement('div');
+    actions.className = 'message-actions';
+    actions.appendChild(
+      actionBtn('Cancel', 'btn-ghost btn-danger', () => cancelMsg(m.id)),
+    );
+    li.appendChild(actions);
+  }
+
   return li;
 }
 
@@ -350,50 +271,9 @@ async function cancelMsg(id) {
   }
 }
 
-async function sendNowMsg(id) {
-  try {
-    await API.call('/api/messages/' + encodeURIComponent(id) + '/send-now', {
-      method: 'POST',
-    });
-    toast('Sending now…');
-    await loadMessages();
-  } catch (err) {
-    toast(err.message || 'Failed');
-  }
-}
-
-async function removeMsg(id) {
-  try {
-    await API.call('/api/messages/' + encodeURIComponent(id), {
-      method: 'DELETE',
-    });
-    toast('Removed');
-    await loadMessages();
-  } catch (err) {
-    toast(err.message || 'Failed');
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-function isoToLocalInput(iso) {
-  const d = new Date(iso);
-  if (!Number.isFinite(d.getTime())) return '';
-  const pad = (n) => String(n).padStart(2, '0');
-  return (
-    d.getFullYear() +
-    '-' +
-    pad(d.getMonth() + 1) +
-    '-' +
-    pad(d.getDate()) +
-    'T' +
-    pad(d.getHours()) +
-    ':' +
-    pad(d.getMinutes())
-  );
-}
-
 function formatWhen(ms) {
   try {
     return new Date(ms).toLocaleString();
