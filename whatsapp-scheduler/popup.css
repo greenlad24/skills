@@ -1,0 +1,86 @@
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  width: 360px;
+  max-height: 520px;
+  font-family: "Segoe UI", Helvetica, Arial, sans-serif;
+  color: #111b21;
+  background: #f7f8fa;
+}
+.hdr {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px;
+  background: #00a884;
+  color: #fff;
+}
+.hdr h1 { margin: 0; font-size: 16px; font-weight: 600; }
+.hdr-icon { font-size: 18px; }
+
+.weekend-banner {
+  margin: 12px 12px 0;
+  padding: 10px 12px;
+  background: #fff5d6;
+  border: 1px solid #f2e08a;
+  color: #6a5a10;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.list { list-style: none; margin: 0; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.item {
+  background: #fff;
+  border: 1px solid #e9edef;
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+.item-info { min-width: 0; flex: 1; }
+.item-top { display: flex; align-items: center; gap: 8px; }
+.item-chat { font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item-text {
+  font-size: 13px;
+  color: #3b4a54;
+  margin: 3px 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.item-when { font-size: 12px; color: #667781; }
+.item-error { font-size: 12px; color: #d93025; margin-top: 3px; }
+
+.badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 10px;
+}
+.badge-pending { background: #e7f0ff; color: #1a56c4; }
+.badge-sent { background: #e7f7f1; color: #007a61; }
+.badge-failed { background: #fdecea; color: #d93025; }
+
+.item-actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+.btn {
+  border: none;
+  border-radius: 7px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn-send { background: #00a884; color: #fff; }
+.btn-del { background: #e9edef; color: #3b4a54; }
+.btn:disabled { opacity: 0.6; cursor: default; }
+
+.empty { padding: 24px 20px; color: #667781; font-size: 13px; text-align: center; line-height: 1.5; }
+.foot { padding: 12px 16px; border-top: 1px solid #e9edef; text-align: center; }
+.foot a { color: #00a884; font-size: 13px; text-decoration: none; font-weight: 600; }
+.foot a:hover { text-decoration: underline; }

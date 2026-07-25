@@ -1,0 +1,156 @@
+/* WhatsApp Message Scheduler — in-page styles */
+
+.wams-schedule-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin: 0 2px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #54656f;
+  cursor: pointer;
+  border-radius: 50%;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.wams-schedule-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: #00a884;
+}
+
+@media (prefers-color-scheme: dark) {
+  .wams-schedule-btn { color: #aebac1; }
+  .wams-schedule-btn:hover { background: rgba(255, 255, 255, 0.08); color: #00a884; }
+}
+
+/* Overlay + modal */
+.wams-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  background: rgba(11, 20, 26, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "Segoe UI", Helvetica, Arial, sans-serif;
+}
+.wams-modal {
+  width: 420px;
+  max-width: calc(100vw - 32px);
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  animation: wams-pop 0.15s ease;
+}
+@keyframes wams-pop {
+  from { transform: scale(0.96); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+.wams-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 18px;
+  background: #00a884;
+  color: #fff;
+}
+.wams-header h2 { flex: 1; margin: 0; font-size: 17px; font-weight: 600; }
+.wams-clock { font-size: 20px; }
+.wams-close {
+  border: none;
+  background: transparent;
+  color: #fff;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.wams-body { padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+.wams-field { display: flex; flex-direction: column; gap: 6px; }
+.wams-label { font-size: 12px; font-weight: 600; color: #54656f; text-transform: uppercase; letter-spacing: 0.03em; }
+.wams-modal input,
+.wams-modal textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #d1d7db;
+  border-radius: 8px;
+  padding: 9px 11px;
+  font-size: 14px;
+  font-family: inherit;
+  color: #111b21;
+  background: #fff;
+}
+.wams-modal input:focus,
+.wams-modal textarea:focus { outline: none; border-color: #00a884; box-shadow: 0 0 0 2px rgba(0, 168, 132, 0.15); }
+.wams-modal textarea { resize: vertical; }
+
+.wams-weekend {
+  background: #fff5d6;
+  border: 1px solid #f2e08a;
+  color: #6a5a10;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.wams-suggest {
+  border: none;
+  background: #00a884;
+  color: #fff;
+  border-radius: 6px;
+  padding: 3px 9px;
+  font-size: 13px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.wams-error { color: #d93025; font-size: 13px; }
+
+.wams-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 18px;
+  border-top: 1px solid #eee;
+  background: #f7f8fa;
+}
+.wams-footer button {
+  border: none;
+  border-radius: 8px;
+  padding: 9px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.wams-cancel { background: #e9edef; color: #3b4a54; }
+.wams-send-now { background: #e7f7f1; color: #007a61; }
+.wams-schedule { background: #00a884; color: #fff; }
+.wams-footer button:disabled { opacity: 0.6; cursor: default; }
+
+.wams-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translate(-50%, 20px);
+  background: #111b21;
+  color: #fff;
+  padding: 11px 18px;
+  border-radius: 8px;
+  font-family: "Segoe UI", Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  z-index: 2147483000;
+  opacity: 0;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.wams-toast-in { opacity: 1; transform: translate(-50%, 0); }
+
+@media (prefers-color-scheme: dark) {
+  .wams-modal { background: #233138; color: #e9edef; }
+  .wams-body .wams-label { color: #8696a0; }
+  .wams-modal input,
+  .wams-modal textarea { background: #2a3942; border-color: #374248; color: #e9edef; }
+  .wams-footer { background: #1d282e; border-top-color: #2a3942; }
+  .wams-cancel { background: #2a3942; color: #d1d7db; }
+}
