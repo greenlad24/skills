@@ -5,6 +5,10 @@ TikTok-Shop-compliant Thai short video, with exactly one human approval gate.
 Everything runs on your machine via Docker Compose; the only outbound traffic is to the
 third-party AI/posting APIs you configure (and **none** in `DRY_RUN` mode).
 
+> **On a Mac?** For a guided, one-command install see **[ONBOARDING.md](ONBOARDING.md)**
+> (`make install` handles Homebrew, Docker, `.env`, build, and start for you). The rest
+> of this file is the platform-agnostic reference.
+
 ## Prerequisites
 
 - Docker + Docker Compose
@@ -16,6 +20,8 @@ third-party AI/posting APIs you configure (and **none** in `DRY_RUN` mode).
 cp .env.example .env        # then fill in API keys + avatar/voice IDs
 docker compose up -d --build   # or: make up
 ```
+
+Mac users can skip the manual steps above and run `make install` (see ONBOARDING.md).
 
 Services and ports:
 
