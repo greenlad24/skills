@@ -21,5 +21,9 @@ pydantic>=2.6,<3.0
 pydantic-settings>=2.2,<3.0
 python-dotenv>=1.0,<2.0
 
+# --- LLM (real adapter; unused in DRY_RUN) ---
+# Reference real provider: app/core/adapters/real/anthropic_llm.py
+anthropic>=0.40
+
 # --- Test ---
 pytest>=8.0,<9.0

@@ -50,11 +50,25 @@ def register_real(capability: str, provider_key: str, factory: Callable[[], Any]
     _REAL_REGISTRY[capability][provider_key] = factory
 
 
+def _load_real_adapters() -> None:
+    """Import the real-adapter package so its register_real(...) calls run.
+
+    Done lazily (only outside DRY_RUN) so vendor SDKs are never imported during
+    dry-run development/tests. Import errors are swallowed here — a genuinely
+    missing provider surfaces as the clear NotImplementedError in _resolve.
+    """
+    try:
+        import app.core.adapters.real  # noqa: F401
+    except Exception:  # noqa: BLE001 — a broken/absent real adapter shouldn't crash resolution
+        pass
+
+
 def _resolve(capability: str, provider_key: str) -> Any:
     """Return an instance of the fake (DRY_RUN) or the registered real provider."""
     if settings.DRY_RUN:
         return FAKE_PROVIDERS[capability]()
 
+    _load_real_adapters()
     factories = _REAL_REGISTRY.get(capability, {})
     factory = factories.get(provider_key)
     if factory is None:
