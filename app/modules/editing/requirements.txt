@@ -1,0 +1,41 @@
+# EDITING & CAPTIONS module (spec §04) dependency fragment.
+# Concatenated + pip-installed by the Dockerfile on top of the root requirements.txt.
+# (Do NOT edit the root requirements.txt — declare module deps here.)
+#
+# --- 4A viral re-cut engine ---
+ffmpeg-python>=0.2.0        # filtergraph helpers / ffprobe wrappers
+moviepy>=1.0.3              # EDL bookkeeping (ordering/trim/ramp), QA convenience
+librosa>=0.10.1            # beat detection + BPM->frame cut-sync
+soundfile>=0.12.1          # audio IO for librosa / VO slicing
+auto-editor>=23.0.0        # VO silence tightening (keep-ranges JSON, not final render)
+scenedetect>=0.6.2         # PySceneDetect — QA-only cut-count check (never in render path)
+numpy>=1.24                # array math (librosa dependency; pinned for reproducibility)
+#
+# --- 4B Thai captions ---
+# WhisperX pulls torch/torchaudio (the Thai acoustic align-model). Heavy; install may be
+# CPU or CUDA depending on the image. Pinned loosely so the Dockerfile can resolve a wheel.
+whisperx>=3.1.1            # ASR + forced alignment (Thonburian Whisper usable as the ASR)
+pythainlp>=4.0.0          # newmm word segmentation + Trie custom dict (NO splitting on spaces)
+#
+# --- 4C compliance overlay ---
+Pillow>=10.0.0             # optional PNG disclosure plate (alternative to the libass badge)
+#
+# ============================================================================
+# SYSTEM / APT DEPENDENCIES (installed by the Dockerfile, NOT pip — listed here for the
+# integration owner to wire into the Dockerfile fragment concatenation):
+#
+#   ffmpeg  — MUST be built with:
+#       --enable-libass  (libass >= 0.17, built with libunibreak + wrap_unicode for
+#                         correct Thai line-breaking)
+#       --enable-libx264
+#       --enable-libfreetype --enable-libfribidi --enable-libharfbuzz  (Thai shaping)
+#       AAC encoder
+#     (Debian's stock `ffmpeg` package usually satisfies these; verify libass >= 0.17
+#      and `ffmpeg -filters | grep subtitles`.)
+#   libass9 / libass-dev, libunibreak1, libharfbuzz0b, libfribidi0, libfreetype6
+#   fonts-noto-cjk is NOT enough — install a Thai font and register it in fontconfig:
+#       fonts-thai-tlwg  AND/OR  Noto Sans Thai (fonts-noto) copied into
+#       /usr/share/fonts/thai/  then `fc-cache -f`
+#   PySceneDetect/OpenCV (QA) needs: libgl1  libglib2.0-0
+#   auto-editor / librosa need ffmpeg (above) on PATH.
+# ============================================================================

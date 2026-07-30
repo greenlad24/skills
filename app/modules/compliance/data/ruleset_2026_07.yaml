@@ -1,0 +1,59 @@
+# AutoUGC-TH compliance ruleset — versioned config data (§6.0 principle 5).
+#
+# ⚠️ NOT LEGAL ADVICE. This YAML mirrors app/modules/compliance/ruleset.py so that
+# counsel can review the taxonomy, category rules, disclosure copy, and jurisdiction
+# map without reading Python. When PyYAML is installed this file is loaded as an
+# override (ruleset.load_yaml_overrides()); otherwise the Python defaults apply.
+#
+# Every ComplianceRecord pins ruleset_version so a decision is reproducible later.
+ruleset_version: "2026.07.0"
+classifier_prompt_version: "cc-2026.07.0"
+active_ruleset_versions:
+  - "2026.07.0"
+
+disclosure_copy:
+  medium_th: "เนื้อหาที่สร้างด้วย AI"
+  medium_en: "AI-generated"
+  endorser_th: "ผู้นำเสนอเป็นอวาตาร์ AI"
+  endorser_en: "Presenter is an AI avatar"
+  min_first_seconds: 3.0
+  min_height_frac: 0.04
+  min_contrast_ratio: 4.5
+
+# §6A.3 category-restricted AI imagery. Unknown/unmapped -> restricted (fail safe).
+category_rules:
+  beauty:      { id: TT-CAT-1, restricted: true, embellishment_profile: none, efficacy_hard_block: true }
+  cosmetics:   { id: TT-CAT-1, restricted: true, embellishment_profile: none, efficacy_hard_block: true }
+  supplements: { id: TT-CAT-2, restricted: true, embellishment_profile: none, efficacy_hard_block: true }
+  health:      { id: TT-CAT-2, restricted: true, embellishment_profile: none, efficacy_hard_block: true }
+  baby:        { id: TT-CAT-3, restricted: true, embellishment_profile: none, efficacy_hard_block: true }
+  maternity:   { id: TT-CAT-3, restricted: true, embellishment_profile: none, efficacy_hard_block: true }
+  electronics: { id: TT-CAT-4, restricted: true, embellishment_profile: none, efficacy_hard_block: false }
+  general:     { id: TT-CAT-0, restricted: false, embellishment_profile: conservative, efficacy_hard_block: false }
+
+# §6E jurisdiction -> control map.
+jurisdiction_map:
+  - regime: "TikTok Shop policy (2026)"
+    obligation: "Real-env, motion, face+product, >=3s dynamic; AI-voice ban livestream-only; disclosure; category limits."
+    controls: [TT-FORM-1..5, TT-DISC-1..3, TT-CAT-1..4, CHK-1, CHK-2, CHK-3, CHK-7, CHK-9]
+  - regime: "US FTC — Testimonials/Reviews Rule (2024)"
+    obligation: "No fake/unsubstantiated testimonials (~$51,744/violation); clear AI/endorser disclosure."
+    controls: [6B, CHK-4, CHK-5, CHK-6, dual-disclosure-6C.2]
+  - regime: "EU AI Act — Art. 50 (from 2 Aug 2026)"
+    obligation: "Transparency: mark AI-generated content & synthetic media."
+    controls: [TT-DISC-1, endorser-disclosure-6C.2, TT-DISC-3, CHK-1, CHK-3]
+  - regime: "Thai OCPB (Consumer Protection)"
+    obligation: "Ban false/exaggerated ads; visible AI label."
+    controls: [6B, TT-DISC-1, CHK-1, CHK-4, CHK-5]
+  - regime: "Thai FDA (cosmetics/food/health advertising)"
+    obligation: "No unapproved efficacy/whitening/anti-aging/health claims."
+    controls: [6B-EFFICACY_HEALTH-hard-block, TT-CAT-1, TT-CAT-2, TT-CAT-3, CHK-5]
+  - regime: "Thai PDPA"
+    obligation: "Biometric & voice data -> explicit consent."
+    controls: [ConsentRecord.biometric_explicit_consent, ConsentRecord.voice_licensed, consent_valid(), CHK-8]
+  - regime: "ELVIS Act (voice/likeness)"
+    obligation: "Tool liability for unauthorized voice/likeness."
+    controls: [subject_is_operator, identity_verified, TT-FORM-5]
+  - regime: "NO FAKES Act (forward-compat)"
+    obligation: "Consent verification + takedown/revocation."
+    controls: [revocation-path-6C.1, takedown-endpoint, retro-flag-published-posts]

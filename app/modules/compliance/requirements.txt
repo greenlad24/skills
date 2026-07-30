@@ -1,0 +1,5 @@
+# Compliance module dependency fragment (installed on top of the root requirements.txt).
+# The engine is intentionally near-stdlib so it stays importable/testable anywhere.
+# PyYAML is optional: it only enables loading data/ruleset_2026_07.yaml as a config
+# override; without it the embedded Python defaults in ruleset.py apply.
+PyYAML>=6.0
