@@ -1,0 +1,22 @@
+# RESEARCH module dependency fragment (spec 02).
+# Declared here, NOT installed into the root requirements.txt. The Dockerfile
+# concatenates every app/modules/*/requirements.txt and pip-installs the result.
+#
+# All of these are lazy-imported inside the "real" code paths only; the module
+# imports, py_compiles, and its DRY_RUN/stub paths + unit tests run WITHOUT them.
+
+# --- 2A Product research ---
+httpx>=0.27                # image download + Shopify .json probe (real path)
+Pillow>=10.0               # image decode/verify + 1080-wide normalize
+imagehash>=4.3             # perceptual-hash de-dupe of hero shots
+
+# --- 2B Swipe engine: media + ML ---
+yt-dlp>=2024.1             # download top TikTok videos (no-watermark where supported)
+faster-whisper>=1.0        # Thonburian Whisper ASR runtime (Thai fine-tuned Whisper)
+pythainlp>=5.0             # Thai word segmentation (newmm) + keyword/claim analysis
+scenedetect>=0.6           # PySceneDetect ContentDetector for pacing/edit rhythm
+numpy>=1.26                # frame sampling / scoring helpers
+
+# NOTE on ffmpeg: audio extraction (`ffmpeg -i in.mp4 -ac 1 -ar 16000 audio.wav`)
+# shells out to the ffmpeg BINARY, installed at the OS layer in the Dockerfile,
+# not via pip.
