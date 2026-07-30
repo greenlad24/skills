@@ -1,0 +1,91 @@
+# AutoUGC-TH — local single-operator stack. `docker compose up` brings up everything.
+#
+# Ports (host:container):
+#   api        8000  -> FastAPI REST + WebSocket + OpenAPI docs at /docs
+#   frontend   3000  -> React SPA (placeholder until the frontend module ships)
+#   postgres   5432  -> canonical state (local debugging only)
+#   redis      6379  -> Celery broker + result backend
+#   minio      9000  -> S3 API for media   |  9001 -> MinIO console
+#
+# Persistence volumes: pgdata (DB), mediadata (rendered media), redisdata (queue best-effort).
+
+x-backend-env: &backend-env
+  env_file: [.env]
+
+services:
+  api:
+    build: .
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    <<: *backend-env
+    ports: ["8000:8000"]
+    volumes:
+      - ./:/app
+      - mediadata:/data/media
+    depends_on:
+      - postgres
+      - redis
+      - minio
+
+  worker:
+    build: .
+    # Autodiscovers app.core.queue tasks AND app/modules/*/tasks.py (see queue.py).
+    command: celery -A app.core.queue:celery_app worker -Q default,generation -c 4 --loglevel=info
+    <<: *backend-env
+    volumes:
+      - ./:/app
+      - mediadata:/data/media
+    depends_on:
+      - postgres
+      - redis
+      - minio
+
+  beat:
+    build: .
+    command: celery -A app.core.queue:celery_app beat --loglevel=info
+    <<: *backend-env
+    volumes:
+      - ./:/app
+    depends_on:
+      - redis
+
+  frontend:
+    # Placeholder: the React SPA is owned by the frontend module. Until it ships,
+    # this serves a static holding page so `docker compose up` yields a full stack.
+    image: nginx:alpine
+    ports: ["3000:80"]
+    volumes:
+      - ./frontend/placeholder:/usr/share/nginx/html:ro
+    depends_on:
+      - api
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-autougc}
+      POSTGRES_USER: ${POSTGRES_USER:-autougc}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports: ["5432:5432"]
+
+  redis:
+    image: redis:7
+    command: redis-server --appendonly yes
+    volumes:
+      - redisdata:/data
+    ports: ["6379:6379"]
+
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-change-me}
+    volumes:
+      - mediadata:/data
+    ports: ["9000:9000", "9001:9001"]
+
+volumes:
+  pgdata:
+  mediadata:
+  redisdata:

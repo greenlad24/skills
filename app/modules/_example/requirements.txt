@@ -1,0 +1,5 @@
+# Example module dependency fragment.
+# List ONLY deps this module needs beyond the root requirements.txt.
+# The Dockerfile concatenates every app/modules/*/requirements.txt and pip-installs them,
+# so a module declares its own deps without editing the root file.
+# (empty for the stub)

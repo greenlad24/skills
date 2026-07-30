@@ -1,0 +1,24 @@
+# Secrets — never commit the real env file (.env.example is the committed contract)
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Test / tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local data / media / db
+/data/
+*.sqlite3
+*.db

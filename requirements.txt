@@ -1,0 +1,25 @@
+# AutoUGC-TH — root core dependencies (P0 foundation).
+# Business-logic modules declare their OWN deps in app/modules/<name>/requirements.txt;
+# the Dockerfile concatenates those fragments on top of this file.
+
+# --- Web / API ---
+fastapi>=0.110,<1.0
+uvicorn[standard]>=0.29,<1.0
+httpx>=0.27,<1.0
+
+# --- Task queue ---
+celery>=5.3,<6.0
+redis>=5.0,<6.0
+
+# --- Database / ORM / migrations ---
+sqlalchemy>=2.0,<3.0
+alembic>=1.13,<2.0
+psycopg2-binary>=2.9,<3.0
+
+# --- Config / validation ---
+pydantic>=2.6,<3.0
+pydantic-settings>=2.2,<3.0
+python-dotenv>=1.0,<2.0
+
+# --- Test ---
+pytest>=8.0,<9.0

@@ -1,0 +1,31 @@
+[project]
+name = "autougc-th"
+version = "0.1.0"
+description = "AutoUGC-TH — local single-operator TikTok-Shop UGC video factory (P0 foundation)."
+requires-python = ">=3.11"
+readme = "RUNNING.md"
+
+# Runtime deps are pinned in requirements.txt (root) so the Dockerfile can
+# concatenate per-module requirement fragments on top. This block mirrors the
+# core set for tooling that reads pyproject.
+dependencies = [
+    "fastapi>=0.110,<1.0",
+    "uvicorn[standard]>=0.29,<1.0",
+    "httpx>=0.27,<1.0",
+    "celery>=5.3,<6.0",
+    "redis>=5.0,<6.0",
+    "sqlalchemy>=2.0,<3.0",
+    "alembic>=1.13,<2.0",
+    "psycopg2-binary>=2.9,<3.0",
+    "pydantic>=2.6,<3.0",
+    "pydantic-settings>=2.2,<3.0",
+    "python-dotenv>=1.0,<2.0",
+    "pytest>=8.0,<9.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
