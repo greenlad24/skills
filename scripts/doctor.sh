@@ -35,8 +35,11 @@ command -v brew >/dev/null 2>&1 && pass "Homebrew" || warn "Homebrew not install
 head "Docker"
 if command -v docker >/dev/null 2>&1; then pass "docker CLI ($(docker --version 2>/dev/null))"
 else fail "docker CLI not found — run: bash scripts/install-mac.sh"; fi
-if docker info >/dev/null 2>&1; then pass "Docker engine running"
-else fail "Docker engine not running — open Docker Desktop"; fi
+if docker info >/dev/null 2>&1; then pass "container engine running"
+else
+  if command -v colima >/dev/null 2>&1; then fail "engine not running — start it: colima start"
+  else fail "engine not running — open Docker Desktop (or on older Macs: colima start)"; fi
+fi
 docker compose version >/dev/null 2>&1 && pass "Docker Compose v2" || fail "Docker Compose v2 missing"
 
 head "Configuration"

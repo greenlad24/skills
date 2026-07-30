@@ -11,10 +11,15 @@ charges), so you can click through the whole pipeline before adding a single API
 Open **Terminal**, `cd` into this project folder, and run:
 
 ```bash
-make install
+bash scripts/install-mac.sh
 ```
 
-That runs `scripts/install-mac.sh`, which is **idempotent** (safe to run again) and does:
+> **Why not `make install`?** A brand-new Mac doesn't have `make` yet — it comes with
+> Apple's Command Line Tools. Running the script directly needs nothing pre-installed.
+> The script installs Homebrew (which pulls in the Command Line Tools), so **after this
+> first run the `make …` shortcuts below all work** (`make start`, `make keys`, etc.).
+
+This script is **idempotent** (safe to run again) and does:
 
 1. Installs **Homebrew** if you don't have it.
 2. Installs **Docker Desktop** and waits for the engine to start.
@@ -109,6 +114,31 @@ plus a bottom-line verdict.
 | Want a clean slate | `docker compose down -v` wipes all data/volumes (irreversible), then `make install`. |
 
 ---
+
+## Older Macs (e.g. a 2015 model)
+
+Docker Desktop's current versions **require macOS 13+**, and a 2015 Mac tops out at
+**macOS Monterey (12)** — so the latest Docker Desktop won't install. That's fine: the
+installer automatically detects an older macOS and uses **Colima** instead — a
+lightweight, Docker-compatible engine that runs well on older Intel hardware. You don't
+have to do anything differently; `bash scripts/install-mac.sh` handles it.
+
+If you ever want to run it by hand:
+
+```bash
+brew install colima docker docker-compose
+colima start --cpu 2 --memory 4 --disk 30     # start the engine (once per login)
+docker compose up -d --build                  # start the app
+# ... later:
+docker compose down                           # stop the app
+colima stop                                    # stop the engine
+```
+
+**Performance:** everything works, just a little slower. The heavy AI generation runs in
+the **cloud** (fal / HeyGen / ElevenLabs), so your Mac only orchestrates and does light
+local video assembly — well within a 2015 Mac's reach. Give the engine ~4 GB RAM
+(`--memory 4`); 8 GB+ total on the Mac is comfortable. The free **DRY_RUN** first run does
+no real processing, so it's snappy.
 
 ## What's installed / where things live
 

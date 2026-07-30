@@ -68,30 +68,51 @@ fi
 command -v brew >/dev/null 2>&1 || die "Homebrew installed but not on PATH. Open a new terminal and re-run."
 
 # --------------------------------------------------------------------------- #
-# 2. Docker Desktop
+# 2. Container engine
+#    Docker Desktop needs macOS 13+. Older Macs (e.g. a 2015 model, which tops out
+#    at macOS 12 Monterey) get Colima — a lightweight Docker-compatible engine that
+#    runs well on older Intel hardware. If an engine is already running, we use it.
 # --------------------------------------------------------------------------- #
-step "Checking Docker"
-if ! command -v docker >/dev/null 2>&1; then
-  warn "Docker not found — installing Docker Desktop…"
-  brew install --cask docker || die "Docker install failed. Install Docker Desktop manually from docker.com."
-  ok "Docker Desktop installed"
-fi
+step "Checking the container engine"
 
-# Start the Docker engine if the daemon isn't responding, then wait for it.
-if ! docker info >/dev/null 2>&1; then
-  info "Starting Docker Desktop…"
-  open -a Docker || warn "Could not auto-open Docker Desktop — please launch it from Applications."
-  printf '  %swaiting for the Docker engine%s' "$DIM" "$RST"
+_wait_for_engine() {
+  printf '  %swaiting for the container engine%s' "$DIM" "$RST"
   for _ in $(seq 1 90); do
-    if docker info >/dev/null 2>&1; then break; fi
+    if docker info >/dev/null 2>&1; then printf '\n'; return 0; fi
     printf '.'; sleep 2
   done
-  printf '\n'
-  docker info >/dev/null 2>&1 || die "Docker engine did not start. Open Docker Desktop, finish first-run setup, then re-run this script."
-fi
-ok "Docker engine running ($(docker --version))"
+  printf '\n'; return 1
+}
 
-docker compose version >/dev/null 2>&1 || die "Docker Compose v2 not available. Update Docker Desktop."
+if docker info >/dev/null 2>&1; then
+  ok "A container engine is already running"
+else
+  macos_major="$(sw_vers -productVersion 2>/dev/null | cut -d. -f1)"; macos_major="${macos_major:-0}"
+
+  if command -v colima >/dev/null 2>&1; then
+    info "Starting Colima…"
+    colima start --cpu 2 --memory 4 --disk 30 || warn "colima start reported an issue; continuing to health check…"
+  elif [[ "$macos_major" -ge 13 ]]; then
+    info "macOS $macos_major → using Docker Desktop"
+    command -v docker >/dev/null 2>&1 || brew install --cask docker \
+      || die "Docker Desktop install failed. Install it manually from docker.com."
+    open -a Docker || warn "Could not auto-open Docker Desktop — launch it from Applications."
+  else
+    warn "macOS $macos_major detected — Docker Desktop needs macOS 13+. Using Colima (lightweight engine)."
+    brew install colima docker docker-compose \
+      || die "Colima install failed. See ONBOARDING.md → 'Older Macs'."
+    # Make 'docker compose' (v2 plugin) available for the brew docker-compose binary.
+    mkdir -p "$HOME/.docker/cli-plugins"
+    ln -sfn "$(brew --prefix)/bin/docker-compose" "$HOME/.docker/cli-plugins/docker-compose" 2>/dev/null || true
+    info "Starting Colima (first boot downloads a small Linux VM)…"
+    colima start --cpu 2 --memory 4 --disk 30 || die "colima start failed. Try: colima start --cpu 2 --memory 4"
+  fi
+
+  _wait_for_engine || die "Container engine did not come up. If on an old Mac, run 'colima start' manually, then re-run."
+fi
+ok "Container engine running ($(docker --version 2>/dev/null))"
+
+docker compose version >/dev/null 2>&1 || die "Docker Compose v2 not available. See ONBOARDING.md → 'Older Macs'."
 ok "Docker Compose available"
 
 # --------------------------------------------------------------------------- #
