@@ -1,0 +1,7 @@
+# Generation module dependency fragment (concatenated + installed by the Dockerfile).
+# List ONLY deps beyond the root requirements.txt.
+#
+# jsonschema powers the OPTIONAL formal draft-2020-12 validation of the §3A.4
+# script schema (schema.py). The module's built-in validator enforces every
+# load-bearing rule without it, so this is a hardening dependency, not a hard one.
+jsonschema>=4.20,<5

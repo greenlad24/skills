@@ -5,11 +5,23 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1
 
-# System deps: build tools for psycopg2, plus ffmpeg for the editing module.
+# System deps:
+#  - build-essential/libpq-dev: psycopg2
+#  - ffmpeg: editing module render + caption burn (Debian ffmpeg ships libass
+#    with libunibreak/harfbuzz/fribidi/freetype shaping — required for Thai)
+#  - fonts-thai-tlwg: Thai fonts (Sarabun etc.) so tone marks/vowels render
+#    (base + combining marks); Noto CJK alone is insufficient for Thai
+#  - fontconfig: fc-cache so libass can find the Thai font
+#  - libgl1/libglib2.0-0: OpenCV backing PySceneDetect (swipe pacing QA)
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         libpq-dev \
         ffmpeg \
+        fonts-thai-tlwg \
+        fontconfig \
+        libgl1 \
+        libglib2.0-0 \
+    && fc-cache -f \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

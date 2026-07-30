@@ -135,9 +135,11 @@ def run_research(job_id: str, *, session=None) -> dict:
         transition(job, JobState.SCRIPTING)
         db.commit()
 
-        # enqueue next stage best-effort (broker may be absent locally)
+        # enqueue next stage best-effort (broker may be absent locally).
+        # generation.run owns the SCRIPTING+GENERATING stages (there is no
+        # separate scripting.run task); it advances SCRIPTING->GENERATING->EDITING.
         try:
-            celery_app.send_task("scripting.run", kwargs={"job_id": str(job.id)})
+            celery_app.send_task("generation.run", kwargs={"job_id": str(job.id)})
         except Exception:  # noqa: BLE001
             pass
 

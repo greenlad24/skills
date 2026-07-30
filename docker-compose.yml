@@ -49,12 +49,11 @@ services:
       - redis
 
   frontend:
-    # Placeholder: the React SPA is owned by the frontend module. Until it ships,
-    # this serves a static holding page so `docker compose up` yields a full stack.
-    image: nginx:alpine
+    # React/Vite SPA: node build -> nginx serve. nginx.conf proxies /api and /ws
+    # to the api service (see frontend/nginx.conf). For hot-reload dev, run
+    # `npm run dev` in ./frontend instead (Vite proxies to localhost:8000).
+    build: ./frontend
     ports: ["3000:80"]
-    volumes:
-      - ./frontend/placeholder:/usr/share/nginx/html:ro
     depends_on:
       - api
 
