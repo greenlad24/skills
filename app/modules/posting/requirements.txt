@@ -1,0 +1,5 @@
+# Posting & winner-loop module deps beyond core.
+# The module deliberately relies only on the Python stdlib + what core already pins
+# (fastapi, sqlalchemy, pydantic, celery). Similarity scoring uses a stdlib trigram
+# Jaccard so no embedding/vector dependency is required. Keep this fragment empty
+# unless a hard new dependency is genuinely needed.
