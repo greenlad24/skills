@@ -90,6 +90,8 @@ else
   macos_major="$(sw_vers -productVersion 2>/dev/null | cut -d. -f1)"; macos_major="${macos_major:-0}"
 
   if command -v colima >/dev/null 2>&1; then
+    # On Intel/older Macs Colima uses the QEMU VM backend, which needs the qemu binary.
+    brew list qemu >/dev/null 2>&1 || brew install qemu || warn "could not install qemu; colima may fail to start"
     info "Starting Colima…"
     colima start --cpu 2 --memory 4 --disk 30 || warn "colima start reported an issue; continuing to health check…"
   elif [[ "$macos_major" -ge 13 ]]; then
@@ -99,7 +101,8 @@ else
     open -a Docker || warn "Could not auto-open Docker Desktop — launch it from Applications."
   else
     warn "macOS $macos_major detected — Docker Desktop needs macOS 13+. Using Colima (lightweight engine)."
-    brew install colima docker docker-compose \
+    # qemu is the VM backend Colima uses on Intel/older Macs.
+    brew install colima docker docker-compose qemu \
       || die "Colima install failed. See ONBOARDING.md → 'Older Macs'."
     # Make 'docker compose' (v2 plugin) available for the brew docker-compose binary.
     mkdir -p "$HOME/.docker/cli-plugins"

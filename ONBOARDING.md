@@ -108,6 +108,7 @@ plus a bottom-line verdict.
 | Symptom | Fix |
 |---|---|
 | "Docker engine did not start" | Open **Docker Desktop** from Applications, finish its first-run setup, then `make install` again. |
+| `qemu-img not found` / `cannot use vmType: 'qemu'` (old/Intel Mac) | Colima needs QEMU: `brew install qemu`, then `colima start --cpu 2 --memory 4 --disk 30`. |
 | Browser opens but the page is blank / "can't connect" | Give it ~30s (first boot), then refresh. Check `make logs`. |
 | "port 3000 (or 8000/5432) in use" | Another app owns that port. Stop it, or stop this stack with `make stop` and retry. `make doctor` names the conflict. |
 | App runs but makes fake videos | You're in DRY_RUN. Run `make keys`, add keys, choose live mode, `make restart`. |
@@ -126,7 +127,7 @@ have to do anything differently; `bash scripts/install-mac.sh` handles it.
 If you ever want to run it by hand:
 
 ```bash
-brew install colima docker docker-compose
+brew install colima docker docker-compose qemu   # qemu = the VM backend Colima needs on Intel Macs
 colima start --cpu 2 --memory 4 --disk 30     # start the engine (once per login)
 docker compose up -d --build                  # start the app
 # ... later:
