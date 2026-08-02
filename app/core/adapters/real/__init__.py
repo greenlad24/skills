@@ -19,7 +19,8 @@ HeyGen (avatar), ElevenLabs (tts), Apify/Firecrawl (scraper), PostPeer (posting)
 
 from __future__ import annotations
 
-# Importing the module runs its register_real(...) call.
+# Importing each module runs its register_real(...) call.
 from app.core.adapters.real import anthropic_llm  # noqa: F401
+from app.core.adapters.real import wan_comfyui  # noqa: F401  (free Wan video via ComfyUI)
 
-__all__ = ["anthropic_llm"]
+__all__ = ["anthropic_llm", "wan_comfyui"]

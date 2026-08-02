@@ -61,6 +61,17 @@ class Settings(BaseSettings):
     HEYGEN_AVATAR_ID: str = ""
     ELEVENLABS_VOICE_ID: str = ""
 
+    # --- Free/self-hosted video (Wan via ComfyUI) ---
+    # Set VIDEOGEN_PROVIDER=wan_comfyui and point this at a ComfyUI server:
+    # a free Kaggle/Colab GPU (see notebooks/wan_comfyui_kaggle.ipynb) or a rented GPU.
+    COMFYUI_URL: str = ""
+    # ComfyUI "API-format" workflow JSON with placeholder tokens (see the sample).
+    # Empty => the bundled sample template is used.
+    COMFYUI_WORKFLOW_PATH: str = ""
+    COMFYUI_FPS: int = 16
+    COMFYUI_POLL_SECONDS: int = 5
+    COMFYUI_TIMEOUT_SECONDS: int = 900
+
     # --- Guards & run mode ---
     DRY_RUN: bool = True
     PER_VIDEO_COST_BUDGET_USD: float = 5.00
