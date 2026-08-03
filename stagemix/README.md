@@ -1,61 +1,71 @@
 # StageMix AI 🎚️
 
-An **on-stage auto mix engineer** for the Midas M18 / MR18 (and the
-Behringer X-Air family), running on an Android tablet — right next to
-Mixing Station.
+The **FOH autopilot** for the Midas M18 / MR18 (X-Air family), on an
+Android tablet next to Mixing Station. It **leads the main mix all
+night** — no soundcheck ritual required — and **never touches the six
+monitor buses**: monitors stay 100 % human, in Mixing Station, always.
 
-It watches the mixer's own channel meters and, when the balance drifts
-from your soundcheck (the guitarist turns up, the singer fatigues), it
-nudges the **monitor sends** back toward the mix you approved — slowly,
-within hard feedback-safe limits, with every move logged and reversible.
+## The deal: it leads the mains, you own the monitors
 
-## Why it talks to the mixer directly (not to Mixing Station)
+- The only mixer parameter the engine can write is the **channel fader**
+  (`/ch/NN/mix/fader` — the mains path). Bus sends have no
+  representation in the engine at all; "never mix the monitors" is an
+  architectural invariant with its own test, not a setting.
+- Keep monitor sends **pre-fader** (the console default) and the
+  autopilot's fader moves never reach the wedges.
+- Flip **MIXING** on and it takes over: the current fader positions
+  become its authority bounds (−12 … +6 dB around them, absolute fader
+  ceiling +2 dB), it listens for ~20 seconds, then it mixes.
+- **Hand back the mains** restores the exact takeover faders in one tap.
 
-Mixing Station's control APIs exist **only in its desktop version** —
-the Android app exposes nothing another app can call (verified from the
-official docs). So StageMix speaks the mixer's native X-Air OSC protocol
-over UDP port 10024, the same protocol Mixing Station itself uses. Both
-apps are just clients of the M18: move a fader in Mixing Station and
-StageMix sees it; StageMix nudges a send and Mixing Station's screen
-follows. Nothing is ever in anyone's way.
+## How it leads without a soundcheck
 
-## Fully automatic, fully offline
-
-The tablet lives on the **M18's own Wi-Fi** — no internet, no venue
-network. StageMix is built for exactly that: on launch it **finds the
-mixer itself** (broadcast discovery on the mixer's AP), reconnects
-through Wi-Fi hiccups automatically (the engine freezes while meters
-are stale and resumes when packets flow again), and every algorithm —
-level engine and Channel Doctor — runs 100 % locally on the tablet.
-Nothing phones home; nothing needs the internet, ever. Running on the
-same tablet as Mixing Station also costs **zero extra Wi-Fi clients**
-on the M18's 4-client AP limit — one device, two apps.
-
-## The balance ladder — a good-sounding mix, held at all times
-
-StageMix understands the band as a pyramid and keeps every layer in
-its place, using the ratios **you** set at soundcheck:
+The engine carries a built-in **balance pyramid** for the band and
+steers each channel's *contribution to the mains* toward it,
+cross-adaptively, using the console's pre-fader meters (20×/second,
+fully offline on the mixer's own Wi-Fi):
 
 ```
-        MAIN VOCAL          on top, always
-      BACKING VOCAL         in the mix, under the lead
-   SOLO GTR · SAX · HARMONICA   featured lines
-      RHYTHM GTR (when present) · CONGAS
-           PIANO / KEYS
-   ▂▄█  KICK + BASS / SYNTH BASS  █▄▂   dominant foundation
+        MAIN VOCAL          on top, always   (+1 over the foundation)
+      BACKING VOCAL         in the mix       (−2)
+   SOLO GTR · SAX · HARMONICA   featured     (−3)
+      RHYTHM GTR · second electric           (−5)
+        CONGAS · SNARE · OVERHEADS           (−6)
+           PIANO / KEYS  (low-mid bed)       (−4)
+   ▂▄█  KICK + BASS DI + DI2 SYNTH BASS  █▄▂  dominant foundation (0)
 ```
 
-Roles are read automatically from your console's channel names
-("Kick", "SynBass", "Piano", "Rhythm Gtr", "Solo Gtr", "Sax",
-"Harmonica", "Congas", "BVox", "Lead Vox"). Corrections are
-**relational**: each layer is held to its soundcheck ratio against the
-live kick+bass anchor. So the whole band swelling together in an
-encore is *not* drift — nothing moves; but a rhythm guitar creeping up
-over the piano, a backing vocal starting to compete with the lead, or
-the sax getting buried during a feature is pulled back to its place —
-slowly, within the same ±3/−9 dB rails. If the foundation sags, it's
-lifted (capped), and the layers above ease down with it so the
-foundation stays dominant either way.
+Pre-fader metering means it hears the true sources regardless of its
+own moves: contribution ≈ source loudness + fader, and every fader is
+steered so contributions sit at their pyramid heights relative to the
+live kick+bass anchor. The band swelling together moves the anchor —
+ratios intact, nothing re-mixed. A hot solo guitar gets seated; a
+buried vocal gets lifted (bounded); the foundation stays dominant.
+
+## Built for the open stage
+
+The place and the players change all night — the engine follows the
+**ensemble**, not a fixed band:
+
+- **Singer + acoustic guitar open the night** (guitar on Guitar DI or
+  ch 11/13): with no rhythm section, the anchor cascades to the
+  accompaniment — the voice sits on top of the guitar at the right
+  gap, just the two of them, mixed like a duo should be.
+- **Piano/vocal duet** (both ch 9 and 10 on mic): a genuine duet is
+  detected (both mics strongly on) and BOTH voices sit near the top
+  together instead of one being tucked to backing height.
+- **A drummer joins — no bass player**: the lineup change is detected
+  within seconds, logged, and the **piano covers the low end** — its
+  pyramid height rises and the Channel Doctor lifts its low EQ band
+  toward the rail, filling the missing bass frequencies.
+- **The bass player arrives 5 minutes later**: detected, the piano
+  hands the low end back (EQ returns to neutral, height returns), the
+  foundation takes the anchor, full-band pyramid engages — all through
+  the fast lane, all logged.
+
+Every lineup change opens the fast lane so the new balance settles in
+seconds, not minutes — and the same bounds, budgets and freezes hold
+through all of it.
 
 ## Responsive in the moment — offline
 
@@ -97,11 +107,10 @@ redesigns the sound.
 
 | Automated (bounded) | Never touched |
 |---|---|
-| Bus send levels (monitor wedges) | Main LR mix |
-| Idle-channel easing (−6 dB after 60 s silence, restore on return) | Preamp/headamp gain |
-| Vocal-priority ducking (cuts the band in the singer's wedge) | EQ band freq/Q/type, comp ratio/attack/release |
-| Channel Doctor: per-channel EQ band **gains** (±2 dB from soundcheck, RTA-measured) | FX, routing, phantom, anything not snapshotted |
-| Channel Doctor: comp **threshold** (±4 dB, restores soundcheck GR profile) | |
+| Channel faders → the MAIN mix | **All 6 monitor buses — ever** |
+| Idle-channel easing + fast rejoin | Main LR master fader |
+| Vocal-priority ducking (cut-only, in the mains) | Preamp/headamp gain |
+| Channel Doctor: EQ band gains ±2 dB, comp threshold ±4 dB (from takeover settings) | EQ freq/Q/type, comp ratio/attack/release, FX, routing |
 
 ### The Channel Doctor (per-channel EQ + compression)
 
@@ -139,13 +148,16 @@ The rails, from live-sound research (see `docs/ARCHITECTURE.md`):
 
 ## Show flow
 
-1. Tablet on the mixer's network (wired-router Wi-Fi beats the M18's
-   internal 2.4 GHz AP — standard advice for any X-Air rig).
-2. Ring out the wedges as usual, build the mixes in Mixing Station.
-3. StageMix → Connect → **Soundcheck snapshot** (it reads the current
-   send levels off the console as the reference).
-4. Flip **MIXING** on. Watch the engine log; freeze anything you'd
-   rather own.
+1. Tablet on the M18's Wi-Fi. Open StageMix — it finds the mixer and
+   reads your channel names by itself.
+2. Rough the faders in anywhere sane (or don't — the bounds protect
+   you either way). Mix your monitors in Mixing Station as usual.
+3. Flip **MIXING** on. It takes over the mains, listens ~20 s, then
+   leads the night: pyramid balance, lead-vocal follow between Vocal
+   Center / Vocal Piano / channel 11, singer-register adaptation,
+   idle easing, duck-the-band-not-the-vocal, freeze-on-anything-odd.
+4. Your monitors never move unless you move them. **Hand back the
+   mains** any time.
 
 ## Building
 

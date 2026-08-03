@@ -1,7 +1,6 @@
 package com.stagemix.app
 
 import android.content.Context
-import com.stagemix.engine.BusConfig
 import com.stagemix.engine.ChannelConfig
 import com.stagemix.engine.Decision
 import com.stagemix.engine.Role
@@ -55,7 +54,6 @@ object AppState {
         /** The band's rig is the default; console names refine it. */
         val channels: List<ChannelConfig> =
             com.stagemix.engine.defaultRigProfile(),
-        val buses: List<BusConfig> = emptyList(),   // which wedges to manage
     )
 
     val config = MutableStateFlow(Config())
@@ -68,12 +66,6 @@ object AppState {
             c.channels.forEach { ch ->
                 put(JSONObject().put("i", ch.index).put("n", ch.name)
                     .put("r", ch.role.name))
-            }
-        })
-        o.put("buses", JSONArray().apply {
-            c.buses.forEach { b ->
-                put(JSONObject().put("i", b.index).put("n", b.name)
-                    .put("v", b.vocalChannel ?: -1))
             }
         })
         ctx.getSharedPreferences("stagemix", Context.MODE_PRIVATE)
@@ -92,15 +84,8 @@ object AppState {
                 chs.add(ChannelConfig(c.getInt("i"), c.getString("n"),
                     Role.valueOf(c.getString("r"))))
             }
-            val buses = ArrayList<BusConfig>()
-            val jb = o.getJSONArray("buses")
-            for (i in 0 until jb.length()) {
-                val b = jb.getJSONObject(i)
-                buses.add(BusConfig(b.getInt("i"), b.getString("n"),
-                    b.getInt("v").takeIf { it >= 0 }))
-            }
             config.value = Config(o.optString("ip"),
-                if (chs.isEmpty()) Config().channels else chs, buses)
+                if (chs.isEmpty()) Config().channels else chs)
         } catch (e: Exception) {
             // corrupted prefs -> defaults; never crash on startup
         }

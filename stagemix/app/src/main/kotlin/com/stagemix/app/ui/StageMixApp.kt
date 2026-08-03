@@ -44,7 +44,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.stagemix.app.AppState
 import com.stagemix.app.MixerService
-import com.stagemix.engine.BusConfig
 import com.stagemix.engine.ChannelConfig
 import com.stagemix.engine.Role
 
@@ -98,11 +97,7 @@ fun ConnectScreen() {
         Button(
             enabled = conn != AppState.Conn.CONNECTING,
             onClick = {
-                AppState.config.value = cfg.copy(
-                    mixerIp = "",
-                    buses = cfg.buses.ifEmpty {
-                        (0 until 6).map { BusConfig(it, "Bus ${it + 1}") }
-                    })
+                AppState.config.value = cfg.copy(mixerIp = "")
                 AppState.save(ctx)
                 MixerService.cmd(ctx, MixerService.ACTION_CONNECT, "ip" to "")
             },
@@ -122,11 +117,7 @@ fun ConnectScreen() {
         OutlinedButton(
             enabled = conn != AppState.Conn.CONNECTING && ip.isNotBlank(),
             onClick = {
-                AppState.config.value = cfg.copy(
-                    mixerIp = ip,
-                    buses = cfg.buses.ifEmpty {
-                        (0 until 6).map { BusConfig(it, "Bus ${it + 1}") }
-                    })
+                AppState.config.value = cfg.copy(mixerIp = ip)
                 AppState.save(ctx)
                 MixerService.cmd(ctx, MixerService.ACTION_CONNECT, "ip" to ip)
             },
@@ -216,11 +207,11 @@ fun ConsoleScreen() {
                 onClick = { MixerService.cmd(ctx, MixerService.ACTION_SNAPSHOT) },
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (snap) Panel2 else Accent),
-            ) { Text(if (snap) "Soundcheck ✓ (retake)" else "Soundcheck snapshot",
+            ) { Text(if (snap) "Re-baseline (bounds = now)" else "Take over the mains",
                      color = if (snap) Ink else Bg) }
             OutlinedButton(onClick = {
                 MixerService.cmd(ctx, MixerService.ACTION_REVERT)
-            }) { Text("Revert to soundcheck") }
+            }) { Text("Hand back the mains") }
             Button(
                 onClick = {
                     MixerService.cmd(ctx, MixerService.ACTION_FREEZE_ALL,

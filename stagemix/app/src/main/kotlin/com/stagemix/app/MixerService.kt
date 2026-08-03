@@ -60,10 +60,13 @@ class MixerService : Service() {
                 acquireLocks()
                 connect(intent.getStringExtra("ip") ?: return START_NOT_STICKY)
             }
-            ACTION_SNAPSHOT -> scope.launch { takeSnapshot() }
+            ACTION_SNAPSHOT -> scope.launch { takeoverNow() }  // re-baseline
             ACTION_REVERT -> scope.launch { revert() }
-            ACTION_DIRECTING -> AppState.directing.value =
-                intent.getBooleanExtra("on", false)
+            ACTION_DIRECTING -> {
+                val on = intent.getBooleanExtra("on", false)
+                AppState.directing.value = on
+                if (on) scope.launch { takeoverNow() }
+            }
             ACTION_FREEZE_ALL -> {
                 val on = intent.getBooleanExtra("on", true)
                 engine?.frozenAll = on
@@ -135,7 +138,7 @@ class MixerService : Service() {
                 mixerAddr = InetSocketAddress(InetAddress.getByName(ip), PORT)
 
                 val cfg = AppState.config.value
-                engine = StageEngine(cfg.channels, cfg.buses)
+                engine = StageEngine(cfg.channels)
                 doctor = ToneDoctor(cfg.channels.map { it.index },
                     cfg.channels.associate { it.index to it.role })
                 AppState.snapshotTaken.value = false
@@ -226,7 +229,9 @@ class MixerService : Service() {
                 lastTick = t
                 AppState.holdReason.value = e.holdReason(t)
                 val directing = AppState.directing.value
-                if (directing && e.snapshotTaken) {
+                if (directing) {
+                    // the ONLY writes the engine can produce are channel
+                    // faders (mains) — monitor buses are human territory
                     for (w in e.tick(t)) {
                         send(OscMessage(w.address,
                             listOf(FaderLaw.dbToFloat(w.levelDb))))
@@ -235,6 +240,11 @@ class MixerService : Service() {
                     e.tick(t) // keep state warm; writes discarded when paused
                 }
                 doctor?.let { d ->
+                    // ensemble hook: while drums play without a bass, the
+                    // piano channels fill the low end (EQ low band lift)
+                    for (ch in AppState.config.value.channels)
+                        if (ch.role == com.stagemix.engine.Role.KEYS)
+                            d.setLowFill(ch.index, e.keysLowFill)
                     if (directing && AppState.doctorOn.value) {
                         for (w in d.tick(e.activeChannels(),
                                 upAllowed = e.boostsAllowed(t),
@@ -285,7 +295,6 @@ class MixerService : Service() {
 
     private fun publishStrips(t: Double) {
         val e = engine ?: return
-        val viewBus = e.buses.firstOrNull()?.index ?: 0
         AppState.strips.value = AppState.config.value.channels.map { ch ->
             val st = e.state[ch.index]
             val tone = doctor?.offsets(ch.index)
@@ -296,13 +305,13 @@ class MixerService : Service() {
                 levelDb = st?.lastLevelDb ?: -128f,
                 active = st?.active ?: false,
                 frozen = st?.frozen ?: false,
-                offsetDb = e.offsetDb(ch.index, viewBus),
-                targetDb = e.targetDb(ch.index, viewBus),
+                offsetDb = e.offsetDb(ch.index),
+                targetDb = e.targetDb(ch.index),
                 eqOffsetDb = tone?.first?.maxByOrNull { kotlin.math.abs(it) } ?: 0f,
                 thrOffsetDb = tone?.second ?: 0f,
             )
         }
-        AppState.snapshotTaken.value = e.snapshotTaken
+        AppState.snapshotTaken.value = e.ready
     }
 
     // ------------------------------------------------------------------
@@ -345,21 +354,18 @@ class MixerService : Service() {
     }
 
     /**
-     * Soundcheck snapshot: enquire every managed send's current level,
-     * then hand the map to the engine as the reference mix.
+     * Takeover (no soundcheck ritual): read the CURRENT channel fader
+     * positions — they become the autopilot's authority bounds — plus
+     * the current EQ/comp settings as the doctor's anchors. Monitor
+     * buses are never read for automation and never written, period.
      */
-    private suspend fun takeSnapshot() {
+    private suspend fun takeoverNow() {
         val e = engine ?: return
         pending.clear()
-        val wanted = HashMap<String, Pair<Int, Int>>()
         val chans = AppState.config.value.channels
-        for (ch in chans) for (b in e.buses) {
-            val addr = "/ch/%02d/mix/%02d/level".format(ch.index + 1, b.index + 1)
-            wanted[addr] = ch.index to b.index
-            send(OscMessage(addr, emptyList()))
-        }
-        // doctor anchors: current EQ band gains + comp threshold
         for (ch in chans) {
+            send(OscMessage("/ch/%02d/mix/fader".format(ch.index + 1),
+                emptyList()))
             for (b in 1..4)
                 send(OscMessage("/ch/%02d/eq/%d/g".format(ch.index + 1, b),
                     emptyList()))
@@ -367,18 +373,22 @@ class MixerService : Service() {
                 emptyList()))
         }
         withTimeoutOrNull(3000) {
-            while (pending.size < wanted.size) delay(50)
+            while (chans.any {
+                    !pending.containsKey(
+                        "/ch/%02d/mix/fader".format(it.index + 1)) })
+                delay(50)
         }
-        val sends = HashMap<Pair<Int, Int>, Float>()
-        for ((addr, key) in wanted) {
-            pending[addr]?.let { sends[key] = FaderLaw.floatToDb(it) }
+        val faders = HashMap<Int, Float>()
+        for (ch in chans) {
+            pending["/ch/%02d/mix/fader".format(ch.index + 1)]
+                ?.let { faders[ch.index] = FaderLaw.floatToDb(it) }
         }
-        if (sends.isEmpty()) {
+        if (faders.isEmpty()) {
             AppState.lastError.value =
-                "Snapshot failed — no send levels received from the mixer"
+                "Takeover failed — no fader positions received from the mixer"
             return
         }
-        e.takeSnapshot(sends, now())
+        e.takeover(faders, now())
         doctor?.let { d ->
             for (ch in chans) {
                 val gains = FloatArray(4) { b ->
@@ -400,7 +410,7 @@ class MixerService : Service() {
 
     private fun revert() {
         val e = engine ?: return
-        for (w in e.revertToSnapshot(now()))
+        for (w in e.revertToBaseline(now()))
             send(OscMessage(w.address, listOf(FaderLaw.dbToFloat(w.levelDb))))
         doctor?.let { d ->
             for (ch in d.state.keys)
