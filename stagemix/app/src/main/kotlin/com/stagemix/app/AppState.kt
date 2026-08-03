@@ -58,6 +58,59 @@ object AppState {
 
     val config = MutableStateFlow(Config())
 
+    /** Cross-night learning surface. */
+    val health = MutableStateFlow<com.stagemix.engine.StageEngine.MixHealth?>(null)
+    val nightsCount = MutableStateFlow(0)
+    val tasteSummary = MutableStateFlow("")
+    val lastNightSummary = MutableStateFlow("")
+
+    fun saveBias(ctx: Context, bias: Map<com.stagemix.engine.Role, Float>) {
+        val o = JSONObject()
+        for ((r, v) in bias) if (kotlin.math.abs(v) > 0.01f)
+            o.put(r.name, v.toDouble())
+        ctx.getSharedPreferences("stagemix", Context.MODE_PRIVATE)
+            .edit().putString("bias", o.toString()).apply()
+        tasteSummary.value = summarizeBias(bias)
+    }
+
+    fun loadBias(ctx: Context): Map<com.stagemix.engine.Role, Float> {
+        val raw = ctx.getSharedPreferences("stagemix", Context.MODE_PRIVATE)
+            .getString("bias", null) ?: return emptyMap()
+        return try {
+            val o = JSONObject(raw)
+            val out = HashMap<com.stagemix.engine.Role, Float>()
+            for (k in o.keys())
+                out[com.stagemix.engine.Role.valueOf(k)] =
+                    o.getDouble(k).toFloat()
+            tasteSummary.value = summarizeBias(out)
+            out
+        } catch (e: Exception) { emptyMap() }
+    }
+
+    private fun summarizeBias(bias: Map<com.stagemix.engine.Role, Float>): String =
+        bias.filterValues { kotlin.math.abs(it) > 0.01f }.entries
+            .sortedByDescending { kotlin.math.abs(it.value) }
+            .joinToString(" · ") {
+                "${it.key.name.lowercase().replace('_', ' ')} %+.1f"
+                    .format(it.value)
+            }
+
+    fun saveNight(ctx: Context, h: com.stagemix.engine.StageEngine.MixHealth) {
+        val p = ctx.getSharedPreferences("stagemix", Context.MODE_PRIVATE)
+        val n = p.getInt("nights", 0) + 1
+        val summary = "night $n: vocal on top ${h.vocalOnTopPct}% · " +
+                "in place ${h.inPlacePct}% · ${h.overrides} overrides"
+        p.edit().putInt("nights", n).putString("last_night", summary).apply()
+        nightsCount.value = n
+        lastNightSummary.value = summary
+    }
+
+    fun loadNights(ctx: Context) {
+        val p = ctx.getSharedPreferences("stagemix", Context.MODE_PRIVATE)
+        nightsCount.value = p.getInt("nights", 0)
+        lastNightSummary.value = p.getString("last_night", "") ?: ""
+    }
+
     fun save(ctx: Context) {
         val c = config.value
         val o = JSONObject()

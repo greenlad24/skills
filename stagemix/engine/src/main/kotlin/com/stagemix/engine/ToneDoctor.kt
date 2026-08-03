@@ -37,6 +37,10 @@ data class DoctorSettings(
     val thrStepDb: Float = 0.25f,
     val bandTauSec: Float = 20f,        // RTA band EMA
     val grTauSec: Float = 20f,
+    // harshness guard: 2-6 kHz towering over the channel's own body
+    val harshThresholdDb: Float = 6f,
+    val harshMaxCutDb: Float = 2f,
+    val harshTauSec: Float = 8f,        // reacts in seconds, not minutes
 )
 
 class ToneDoctor(
@@ -69,6 +73,8 @@ class ToneDoctor(
         var compEnabled = true
         /** drums-without-bass: this (keys) channel fills the low end */
         var lowFill = false
+        /** harshness score: 2-6 kHz vs the channel's own body (EMA) */
+        var harshEma: Float? = null
     }
 
     val state = channelIndices.associateWith { ChState() }
@@ -109,6 +115,15 @@ class ToneDoctor(
         else FloatArray(4) { live[it] + alpha * (bands[it] - live[it]) }
         // lazy reference: first full measurement after snapshot anchors it
         if (snapshotTaken && st.refBands == null) st.refBands = st.liveBands
+        // harshness: 2-6 kHz (bins ~66..82) vs the channel's own body
+        // (~120 Hz-1.6 kHz, bins 26..60). ABSOLUTE, unlike the drift
+        // reference — a channel that ARRIVES harsh is still harsh.
+        var hi = 0f; var body = 0f
+        for (i in 66..82) hi += bins[i]
+        for (i in 26..60) body += bins[i]
+        val harsh = hi / 17f - body / 35f
+        val ha = (3f / settings.harshTauSec).coerceIn(0.01f, 1f)
+        st.harshEma = st.harshEma?.let { it + ha * (harsh - it) } ?: harsh
     }
 
     /**
@@ -185,6 +200,21 @@ class ToneDoctor(
                     if (b == 0 && st.lowFill)
                         t = (t + settings.eqMaxDb)
                             .coerceIn(-settings.eqMaxDb, settings.eqMaxDb)
+                    // harshness guard (cut-only, high-mid band): shrill
+                    // guitar amps, piercing harmonica, edgy vocal mics —
+                    // softened up to the rail, released when it passes.
+                    // Foundation & percussion excluded (kick click and
+                    // cymbals are bright by nature).
+                    if (b == 2 && st.role != Role.FOUNDATION &&
+                        st.role != Role.PERCUSSION) {
+                        val over = (st.harshEma ?: -99f) -
+                                settings.harshThresholdDb
+                        if (over > 0f) {
+                            val cut = -over.coerceAtMost(settings.harshMaxCutDb)
+                            t = minOf(t, cut)
+                                .coerceIn(-settings.eqMaxDb, settings.eqMaxDb)
+                        }
+                    }
                     st.eqTarget[b] = t
                 }
             }

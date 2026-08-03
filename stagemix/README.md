@@ -67,6 +67,41 @@ Every lineup change opens the fast lane so the new balance settles in
 seconds, not minutes — and the same bounds, budgets and freezes hold
 through all of it.
 
+## It proves itself, listens to you, and improves every night
+
+**Audition it (shadow mode):** take over the mains without flipping
+MIXING on and it watches, decides, and logs every move it *would*
+make — touching nothing. Judge it for a set before trusting it.
+
+**MIX HEALTH, live:** the console header shows how it's actually
+doing — % of time the lead vocal sits on top, % of channels at their
+pyramid height, and how many times a human had to out-mix it. Not a
+feeling; a number.
+
+**Three kinds of feedback it recognizes:**
+1. **Your faders are feedback.** Grab any fader (here or in Mixing
+   Station) while it's mixing: it instantly adopts your position as
+   the new baseline, keeps its hands off that channel for 2 minutes —
+   and *learns a small bounded lesson* from the disagreement.
+2. **The feedback bar:** 👍 "Sounds great" or one-tap chips — vocal
+   louder/softer, more/less guitar, more/less piano, more low end,
+   less percussion, softer sax/harp. Each nudges its built-in taste
+   (bounded ±3 dB per role) and is logged in plain language.
+3. **The room's feedback:** a howl recognizer runs on the console's
+   RTA (a narrow towering *parked* peak — music moves, howls don't):
+   it freezes all boosts instantly and shows the frequency to notch.
+   And a **harshness guard** watches every mic and guitar for shrill
+   2–6 kHz energy towering over the channel's own body — easing that
+   channel's high-mids down (cut-only, max 2 dB) until it passes.
+   Cymbals and kick click are exempt by design.
+
+**It continues from last night.** Everything it learns — feedback
+chips and override lessons — is saved on the tablet and reloaded at
+the next connect, and each night's health summary is kept: the console
+greets you with "NIGHT 12 · learned: vocal +2 · guitars −1" and last
+night's score. Every night starts where the last one ended, bounded
+so ten bad taps can never push any taste past ±3 dB.
+
 ## Responsive in the moment — offline
 
 Perception is real time: the console streams its meters 20×/second and

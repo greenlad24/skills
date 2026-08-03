@@ -180,6 +180,7 @@ class ChannelState(val cfg: ChannelConfig) {
     var idleRamped = false
     var vocalAct = 0f
     var fastUntil = 0.0
+    var overrideUntil = 0.0          // human out-mixed us: hands off
     var offset = 0f                  // slewed fader offset from baseline
     var target = 0f
     var duckDb = 0f
@@ -207,6 +208,99 @@ class StageEngine(
     var hasDrums = false; private set     // kick / percussion playing
     /** drums but no bass -> the piano fills the low end */
     val keysLowFill: Boolean get() = hasDrums && !hasBass
+
+    /**
+     * Taste learned from the operator's feedback (👍/👎 chips): bounded
+     * per-role nudges on the built-in pyramid, persisted by the app.
+     */
+    val pyramidBias = HashMap<Role, Float>()
+    var overrideCount = 0; private set
+
+    // mix-health rolling scores (EMAs over ~5 min of ticks)
+    private var vocalOnTopEma = 1f
+    private var inPlaceEma = 1f
+    private var healthTicks = 0
+
+    data class MixHealth(
+        val vocalOnTopPct: Int,   // % of time the lead sits on top
+        val inPlacePct: Int,      // % of active channels at their height
+        val overrides: Int,       // times a human out-mixed us (adopted)
+        val ticks: Int,           // decision cycles since takeover
+    )
+
+    fun health() = MixHealth(
+        (vocalOnTopEma * 100).toInt().coerceIn(0, 100),
+        (inPlaceEma * 100).toInt().coerceIn(0, 100),
+        overrideCount, healthTicks)
+
+    /**
+     * Operator feedback chips -> persistent, bounded taste adjustments.
+     * Returns a human description of what was learned.
+     */
+    fun applyFeedback(kind: String, tSec: Double): String {
+        fun nudge(role: Role, d: Float): Float {
+            val v = ((pyramidBias[role] ?: 0f) + d).coerceIn(-3f, 3f)
+            pyramidBias[role] = v
+            return v
+        }
+        val what = when (kind) {
+            "good" -> "noted — keeping this taste"
+            "vocal_up" -> "lead vocal now %+.0f dB vs stock"
+                .format(nudge(Role.VOCAL, +1f))
+            "vocal_down" -> "lead vocal now %+.0f dB vs stock"
+                .format(nudge(Role.VOCAL, -1f))
+            "gtr_down" -> "guitars now %+.0f dB vs stock".format(
+                min(nudge(Role.SOLO_GTR, -1f), nudge(Role.RHYTHM_GTR, -1f)))
+            "gtr_up" -> "guitars now %+.0f dB vs stock".format(
+                max(nudge(Role.SOLO_GTR, +1f), nudge(Role.RHYTHM_GTR, +1f)))
+            "keys_up" -> "piano now %+.0f dB vs stock"
+                .format(nudge(Role.KEYS, +1f))
+            "keys_down" -> "piano now %+.0f dB vs stock"
+                .format(nudge(Role.KEYS, -1f))
+            "low_up" -> {
+                // low end weak = foundation more dominant: every layer
+                // steps down half a dB relative to it
+                for (r in listOf(Role.KEYS, Role.PERCUSSION, Role.RHYTHM_GTR,
+                    Role.SOLO_GTR, Role.COLOR, Role.BACKING_VOCAL,
+                    Role.VOCAL, Role.INSTRUMENT)) nudge(r, -0.5f)
+                "foundation more dominant (everything else −0.5 dB)"
+            }
+            "perc_down" -> "percussion now %+.0f dB vs stock"
+                .format(nudge(Role.PERCUSSION, -1f))
+            "color_down" -> "sax/harmonica now %+.0f dB vs stock"
+                .format(nudge(Role.COLOR, -1f))
+            else -> return "unknown feedback"
+        }
+        log(tSec, "feedback", null, 0f, "you said '$kind' — $what")
+        return what
+    }
+
+    /**
+     * A human moved a fader we manage while we were mixing. The human
+     * wins twice: their position is adopted as the new baseline (hands
+     * off that channel for a while), AND the disagreement teaches the
+     * pyramid a small, bounded lesson — so every correction makes the
+     * next night's mix start closer to your taste.
+     */
+    fun operatorOverride(ch: Int, faderDb: Float, tSec: Double) {
+        val st = state[ch] ?: return
+        val disagreement = faderDb - ((st.baselineDb ?: faderDb) + st.offset)
+        st.baselineDb = faderDb
+        st.offset = 0f; st.target = 0f; st.duckDb = 0f
+        st.overrideUntil = tSec + 120.0
+        overrideCount++
+        var learned = ""
+        if (st.role.inLadder() && abs(disagreement) >= 1f) {
+            val lesson = disagreement.coerceIn(-0.5f, 0.5f)
+            val v = ((pyramidBias[st.role] ?: 0f) + lesson).coerceIn(-3f, 3f)
+            pyramidBias[st.role] = v
+            learned = " — learned: ${st.role.name.lowercase()} taste " +
+                    "now %+.1f dB".format(v)
+        }
+        log(tSec, "override", ch, disagreement,
+            "${st.cfg.name} — you moved it %+.1f dB; adopting your level, "
+                .format(disagreement) + "holding off 2 min$learned")
+    }
 
     private var lastMeterT = -1.0
     private var lastTickT = -1.0
@@ -354,6 +448,7 @@ class StageEngine(
         val (anchor, anchorPyr) = anchorContribution()
         for ((idx, st) in state) {
             if (st.frozen || st.role == Role.TALK) continue
+            if (tSec < st.overrideUntil) continue  // human owns it right now
             val base = st.baselineDb ?: continue
             val idleFor = tSec - st.lastActiveT
             if (idleFor > settings.idleRampAfterSec) {
@@ -382,14 +477,14 @@ class StageEngine(
             val height = when {
                 (st.role == Role.VOCAL || st.role == Role.BACKING_VOCAL) ->
                     when {
-                        idx == leadVocal -> pyramid[Role.VOCAL] ?: 1f
+                        idx == leadVocal -> height(Role.VOCAL)
                         st.vocalAct > 0.55f && (lead?.vocalAct ?: 0f) > 0.55f ->
-                            (pyramid[Role.VOCAL] ?: 1f) - 1f   // duet partner
-                        else -> pyramid[Role.BACKING_VOCAL] ?: -2f
+                            height(Role.VOCAL) - 1f   // duet partner
+                        else -> height(Role.BACKING_VOCAL)
                     }
                 st.role == Role.KEYS && keysLowFill ->
-                    (pyramid[Role.KEYS] ?: -4f) + 2f  // fill the missing bass
-                else -> pyramid[st.role] ?: -4f
+                    height(Role.KEYS) + 2f  // fill the missing bass
+                else -> height(st.role)
             }
             val tgt: Float = if (st.role == Role.FOUNDATION || anchor == null) {
                 // the foundation anchors the mix (and anchor-less moments
@@ -434,10 +529,13 @@ class StageEngine(
             val leadContrib = leadPre + leadBase + lead.offset
             val bandContrib = band.map {
                 it.preEma!! + it.baselineDb!! + it.offset }.average().toFloat()
-            val wantGap = (pyramid[Role.VOCAL] ?: 1f) -
-                    band.map { pyramid[it.role] ?: -4f }.average().toFloat()
+            val wantGap = height(Role.VOCAL) -
+                    band.map { height(it.role) }.average().toFloat()
             val gap = leadContrib - bandContrib
             val needDuck = gap < wantGap - settings.duckTriggerDb
+            // health sample: is the lead where it belongs?
+            val hOk = if (gap >= wantGap - settings.duckTriggerDb) 1f else 0f
+            vocalOnTopEma += 0.02f * (hOk - vocalOnTopEma)
             for (st in band) {
                 if (needDuck) {
                     val want = -min(settings.duckMaxDb, wantGap - gap)
@@ -453,12 +551,28 @@ class StageEngine(
             }
         }
 
+        // health sample: fraction of active channels sitting at their
+        // targets (inside the deadband)
+        run {
+            var ok = 0; var n = 0
+            for (st in state.values) {
+                if (!st.active || st.role == Role.TALK ||
+                    st.baselineDb == null) continue
+                n++
+                if (kotlin.math.abs(st.target - st.offset) <=
+                    settings.deadbandDb + 0.5f) ok++
+            }
+            if (n > 0) inPlaceEma += 0.02f * (ok.toFloat() / n - inPlaceEma)
+            healthTicks++
+        }
+
         // -- 3. slew + rails + budget -> fader writes ---------------------
         val writes = ArrayList<FaderWrite>()
         var boostUsed = state.values.sumOf {
             max(0f, it.offset).toDouble() }.toFloat()
         for ((_, st) in state) {
             if (st.frozen || st.role == Role.TALK) continue
+            if (tSec < st.overrideUntil) continue
             val base = st.baselineDb ?: continue
             val tgt = (st.target + st.duckDb)
                 .coerceIn(-settings.maxBelowBaselineDb,
@@ -496,6 +610,10 @@ class StageEngine(
         return pre - (st.takeRef ?: pre)
     }
 
+    /** Pyramid height including the taste learned from feedback. */
+    private fun height(role: Role): Float =
+        (pyramid[role] ?: -4f) + (pyramidBias[role] ?: 0f)
+
     private fun isBassName(name: String): Boolean {
         val n = name.lowercase()
         return listOf("bass", "di 2", "di2", "sub", "808").any { it in n }
@@ -509,7 +627,7 @@ class StageEngine(
             val base = st.baselineDb ?: continue
             if (st.heardSec < settings.minHeardSec) continue
             sum += pre + base + st.offset
-            pyr += pyramid[st.role] ?: -4f
+            pyr += height(st.role)
             n++
         }
         return if (n > 0) (sum / n) to (pyr / n) else null
@@ -531,7 +649,7 @@ class StageEngine(
             lead.heardSec >= settings.minHeardSec) {
             val pre = lead.preEma; val base = lead.baselineDb
             if (pre != null && base != null)
-                return (pre + base + lead.offset) to (pyramid[Role.VOCAL] ?: 1f)
+                return (pre + base + lead.offset) to height(Role.VOCAL)
         }
         return null to 0f
     }

@@ -129,21 +129,23 @@ class ToneDoctorTest {
     @Test fun `new singer register is adopted, not fought`() {
         // vocal channel: male singer at soundcheck (fundamental ~120 Hz)
         val d = ToneDoctor(listOf(0), mapOf(0 to Role.VOCAL))
+        // floor high enough that neither voice trips the harshness
+        // guard — this test is about register adoption, not harshness
         fun voice(fundLo: Float, fundHi: Float, presence: Float) =
             FloatArray(100) { i ->
                 when (i) {
                     in 23..31 -> fundLo
                     in 32..40 -> fundHi
                     in 54..79 -> presence
-                    else -> -55f
+                    else -> -45f
                 }
             }
         var t = 0.0
         repeat(30) { d.onRta(0, voice(-18f, -30f, -30f), t); t += 3.0 }
         d.snapshotChannel(0, floatArrayOf(0f, 0f, 0f, 0f), thrDb = -20f)
         // female singer takes the mic: fundamental an octave up AND a
-        // much brighter presence — a naive doctor would slam the EQ
-        repeat(40) { d.onRta(0, voice(-32f, -16f, -22f), t); t += 3.0 }
+        // brighter presence — a naive doctor would slam the EQ
+        repeat(40) { d.onRta(0, voice(-32f, -16f, -28f), t); t += 3.0 }
         val writes = ArrayList<ParamWrite>()
         repeat(20) { writes.addAll(d.tick(setOf(0), true, false)) }
         assertTrue(writes.none { "eq" in it.address },

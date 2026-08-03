@@ -44,12 +44,18 @@ class MixerService : Service() {
     private var mixerAddr: InetSocketAddress? = null
     private var engine: StageEngine? = null
     private var doctor: ToneDoctor? = null
+    private val watchdog = com.stagemix.engine.FeedbackWatchdog()
+    private var lastVeto = false
     private var wifiLock: WifiManager.WifiLock? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var loopJob: Job? = null
 
     /** parameter enquiry replies parked here by address */
     private val pending = ConcurrentHashMap<String, Float>()
+    /** last fader value we sent per channel (dB) */
+    private val lastSent = ConcurrentHashMap<Int, Float>()
+    /** true while takeoverNow() is collecting enquiry replies */
+    @Volatile private var collecting = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -80,6 +86,13 @@ class MixerService : Service() {
             }
             ACTION_DOCTOR -> AppState.doctorOn.value =
                 intent.getBooleanExtra("on", true)
+            ACTION_FEEDBACK -> {
+                val kind = intent.getStringExtra("kind") ?: return START_NOT_STICKY
+                engine?.let { e ->
+                    e.applyFeedback(kind, now())
+                    AppState.saveBias(this, e.pyramidBias)
+                }
+            }
             ACTION_DISCONNECT -> shutdown()
         }
         return START_NOT_STICKY
@@ -138,7 +151,12 @@ class MixerService : Service() {
                 mixerAddr = InetSocketAddress(InetAddress.getByName(ip), PORT)
 
                 val cfg = AppState.config.value
-                engine = StageEngine(cfg.channels)
+                engine = StageEngine(cfg.channels).also { eng ->
+                    // continue from last night's progress
+                    eng.pyramidBias.putAll(
+                        AppState.loadBias(this@MixerService))
+                }
+                AppState.loadNights(this@MixerService)
                 doctor = ToneDoctor(cfg.channels.map { it.index },
                     cfg.channels.associate { it.index to it.role })
                 AppState.snapshotTaken.value = false
@@ -269,12 +287,22 @@ class MixerService : Service() {
                 }
             }
             "/meters/4" -> {
-                // 100-bin RTA — attribute to the focused channel once the
-                // analyzer has had a moment to settle on it
-                if (rtaFocus >= 0 && t - rtaFocusT > 0.5) {
-                    m.blobArg(0)?.let { Meters.decode(it) }?.let { bins ->
-                        doctor?.onRta(rtaFocus, bins, t)
+                m.blobArg(0)?.let { Meters.decode(it) }?.let { bins ->
+                    // every RTA frame feeds the howl recognizer — a howl
+                    // circulates acoustically, so any open mic hears it
+                    watchdog.onRta(bins, t)
+                    if (watchdog.vetoActive != lastVeto) {
+                        lastVeto = watchdog.vetoActive
+                        e.watchdogVeto = watchdog.vetoActive
+                        AppState.lastError.value = if (watchdog.vetoActive)
+                            "⚠ FEEDBACK suspected ~${watchdog.lastFreqHz} Hz " +
+                            "— boosts frozen; notch it on the GEQ"
+                        else null
                     }
+                    // channel attribution for the doctor needs the
+                    // analyzer settled on its focus source
+                    if (rtaFocus >= 0 && t - rtaFocusT > 0.5)
+                        doctor?.onRta(rtaFocus, bins, t)
                 }
             }
             "/meters/6" -> {
@@ -288,7 +316,21 @@ class MixerService : Service() {
             }
             else -> {
                 // parameter enquiry replies / other-client changes
-                (m.args.firstOrNull() as? Float)?.let { pending[m.address] = it }
+                val v = m.args.firstOrNull() as? Float
+                if (v != null) {
+                    pending[m.address] = v
+                    // /xremotenfb means our own writes are never echoed —
+                    // a fader update arriving here is a HUMAN move (or
+                    // another client). While mixing, the human wins.
+                    if (!collecting && AppState.directing.value && e.ready) {
+                        Regex("^/ch/(\\d\\d)/mix/fader$")
+                            .find(m.address)?.let { match ->
+                                val ch = match.groupValues[1].toInt() - 1
+                                e.operatorOverride(ch, FaderLaw.floatToDb(v), t)
+                                lastSent.remove(ch)
+                            }
+                    }
+                }
             }
         }
     }
@@ -312,6 +354,7 @@ class MixerService : Service() {
             )
         }
         AppState.snapshotTaken.value = e.ready
+        AppState.health.value = e.health()
     }
 
     // ------------------------------------------------------------------
@@ -476,6 +519,12 @@ class MixerService : Service() {
     }
 
     private fun shutdown() {
+        // the night ends: bank what we learned + how it went
+        engine?.let { e ->
+            AppState.saveBias(this, e.pyramidBias)
+            val h = e.health()
+            if (h.ticks > 600) AppState.saveNight(this, h)  // >10 min mixed
+        }
         AppState.conn.value = AppState.Conn.DISCONNECTED
         AppState.directing.value = false
         loopJob?.cancel()
@@ -503,6 +552,7 @@ class MixerService : Service() {
         const val ACTION_FREEZE_ALL = "com.stagemix.FREEZE_ALL"
         const val ACTION_FREEZE_CH = "com.stagemix.FREEZE_CH"
         const val ACTION_DOCTOR = "com.stagemix.DOCTOR"
+        const val ACTION_FEEDBACK = "com.stagemix.FEEDBACK"
 
         fun cmd(ctx: Context, action: String, vararg extras: Pair<String, Any>) {
             val i = Intent(ctx, MixerService::class.java).setAction(action)

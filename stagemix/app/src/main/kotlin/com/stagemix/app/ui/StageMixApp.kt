@@ -169,6 +169,10 @@ fun ConsoleScreen() {
     val directing by AppState.directing.collectAsState()
     val doctorOn by AppState.doctorOn.collectAsState()
     val frozenAll by AppState.frozenAll.collectAsState()
+    val health by AppState.health.collectAsState()
+    val nights by AppState.nightsCount.collectAsState()
+    val taste by AppState.tasteSummary.collectAsState()
+    val lastNight by AppState.lastNightSummary.collectAsState()
 
     Column(Modifier.fillMaxSize().padding(14.dp)) {
         // ---- header bar
@@ -191,8 +195,13 @@ fun ConsoleScreen() {
                 MixerService.cmd(ctx, MixerService.ACTION_DOCTOR, "on" to it)
             })
             Spacer(Modifier.width(14.dp))
-            Text(if (directing) "MIXING — AUTO" else "PAUSED",
-                color = if (directing) Live else Muted,
+            Text(
+                when {
+                    directing -> "MIXING — AUTO"
+                    snap -> "SHADOW — watching only"
+                    else -> "PAUSED"
+                },
+                color = if (directing) Live else if (snap) Warn else Muted,
                 fontWeight = FontWeight.Bold, fontSize = 13.sp)
             Spacer(Modifier.width(8.dp))
             Switch(checked = directing, onCheckedChange = {
@@ -221,7 +230,64 @@ fun ConsoleScreen() {
                     containerColor = if (frozenAll) Ok else Bad),
             ) { Text(if (frozenAll) "▶ Resume" else "⏸ FREEZE ALL", color = Bg) }
         }
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(8.dp))
+
+        // ---- mix health + cross-night learning line
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            health?.let { h ->
+                Text("MIX HEALTH", color = Muted, fontSize = 10.sp,
+                    letterSpacing = 2.sp)
+                Spacer(Modifier.width(8.dp))
+                Text("vocal on top ${h.vocalOnTopPct}%",
+                    color = if (h.vocalOnTopPct >= 85) Ok else Warn,
+                    fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                Spacer(Modifier.width(10.dp))
+                Text("in place ${h.inPlacePct}%",
+                    color = if (h.inPlacePct >= 85) Ok else Warn,
+                    fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                Spacer(Modifier.width(10.dp))
+                Text("${h.overrides} overrides", color = Ink2, fontSize = 12.sp,
+                    fontFamily = FontFamily.Monospace)
+            }
+            Spacer(Modifier.weight(1f))
+            if (nights > 0 || taste.isNotBlank()) {
+                Text(buildString {
+                    if (nights > 0) append("NIGHT ${nights + 1}")
+                    if (taste.isNotBlank()) append("  ·  learned: $taste")
+                }, color = Accent, fontSize = 11.sp)
+            }
+        }
+        if (lastNight.isNotBlank()) {
+            Text(lastNight, color = Muted, fontSize = 10.sp)
+        }
+        Spacer(Modifier.height(8.dp))
+
+        // ---- feedback bar: teach it your taste, one tap at a time
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(listOf(
+                "good" to "👍 Sounds great",
+                "vocal_up" to "Vocal louder",
+                "vocal_down" to "Vocal softer",
+                "gtr_down" to "Less guitar",
+                "gtr_up" to "More guitar",
+                "keys_up" to "More piano",
+                "keys_down" to "Less piano",
+                "low_up" to "More low end",
+                "perc_down" to "Less percussion",
+                "color_down" to "Softer sax/harp",
+            ), key = { it.first }) { (kind, label) ->
+                OutlinedButton(
+                    onClick = {
+                        MixerService.cmd(ctx, MixerService.ACTION_FEEDBACK,
+                            "kind" to kind)
+                    },
+                    contentPadding = androidx.compose.foundation.layout
+                        .PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                ) { Text(label, fontSize = 11.sp,
+                         color = if (kind == "good") Ok else Ink2) }
+            }
+        }
+        Spacer(Modifier.height(10.dp))
 
         Row(Modifier.weight(1f)) {
             // ---- strips
