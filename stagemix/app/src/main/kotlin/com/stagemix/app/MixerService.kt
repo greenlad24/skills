@@ -291,7 +291,7 @@ class MixerService : Service() {
             AppState.StripUi(
                 channel = ch.index,
                 name = AppState.mixerChannelNames.value[ch.index] ?: ch.name,
-                role = ch.role,
+                role = st?.role ?: ch.role,
                 levelDb = st?.lastLevelDb ?: -128f,
                 active = st?.active ?: false,
                 frozen = st?.frozen ?: false,
@@ -328,6 +328,16 @@ class MixerService : Service() {
         }
         if (names.isNotEmpty()) AppState.mixerChannelNames.value = names
         if (busNames.isNotEmpty()) AppState.busNames.value = busNames
+        // Automatic balance-ladder roles from the console's own channel
+        // names ("Kick", "SynBass", "Piano", "Sax", "BVox"...). Manual
+        // overrides (non-INSTRUMENT in config) are respected.
+        val e = engine ?: return
+        for ((ch, name) in names) {
+            val cfgRole = AppState.config.value.channels
+                .firstOrNull { it.index == ch }?.role
+            if (cfgRole == null || cfgRole == com.stagemix.engine.Role.INSTRUMENT)
+                e.setRole(ch, com.stagemix.engine.inferRole(name))
+        }
     }
 
     /**

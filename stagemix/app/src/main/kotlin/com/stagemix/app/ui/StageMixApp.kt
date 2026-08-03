@@ -290,10 +290,19 @@ fun Strip(s: AppState.StripUi) {
         Text(s.name, color = Ink, fontSize = 12.sp, fontWeight = FontWeight.Bold,
             maxLines = 1)
         Text(
-            when (s.role) { Role.VOCAL -> "VOCAL"; Role.TALK -> "TALK"
-                            else -> "INST" },
-            color = if (s.role == Role.VOCAL) Live else Muted, fontSize = 9.sp,
-            letterSpacing = 1.sp)
+            when (s.role) {
+                Role.FOUNDATION -> "FOUND"; Role.KEYS -> "KEYS"
+                Role.PERCUSSION -> "PERC"; Role.RHYTHM_GTR -> "RHYTHM"
+                Role.SOLO_GTR -> "SOLO"; Role.COLOR -> "COLOR"
+                Role.BACKING_VOCAL -> "BVOX"; Role.VOCAL -> "VOCAL"
+                Role.TALK -> "TALK"; else -> "INST"
+            },
+            color = when (s.role) {
+                Role.VOCAL -> Live
+                Role.BACKING_VOCAL -> Warn
+                Role.FOUNDATION -> Accent
+                else -> Muted
+            }, fontSize = 9.sp, letterSpacing = 1.sp)
         Spacer(Modifier.height(6.dp))
         // VU
         Box(

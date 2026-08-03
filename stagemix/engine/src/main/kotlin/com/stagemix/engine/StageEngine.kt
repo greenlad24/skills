@@ -30,7 +30,54 @@ import kotlin.math.min
  *  - Everything is bounded, logged, reversible (revert-to-snapshot).
  */
 
-enum class Role { VOCAL, INSTRUMENT, TALK }
+/**
+ * Balance-ladder roles, bottom to top:
+ *   FOUNDATION  kick + bass / synth bass — the dominant anchor
+ *   KEYS        piano / keys, sitting on the foundation
+ *   PERCUSSION  congas / hand percussion, with the rhythm layer
+ *   RHYTHM_GTR  rhythm guitar (when present)
+ *   SOLO_GTR    solo guitar
+ *   COLOR       featured melodic color — sax, harmonica, horns
+ *   BACKING_VOCAL  in the mix, under the main vocal
+ *   VOCAL       main vocal on top
+ * INSTRUMENT = unclassified (absolute drift correction only);
+ * TALK = speech mics (never part of the ladder).
+ *
+ * The ladder's exact heights come from YOUR soundcheck — roles decide
+ * which channels anchor the pyramid, which duck for the vocal, and how
+ * strips are labeled; the ratios themselves are whatever you mixed.
+ */
+enum class Role {
+    FOUNDATION, KEYS, PERCUSSION, RHYTHM_GTR, SOLO_GTR, COLOR,
+    BACKING_VOCAL, VOCAL, INSTRUMENT, TALK;
+
+    /** Ladder members hold a ratio to the foundation anchor. */
+    fun inLadder(): Boolean = this != INSTRUMENT && this != TALK
+}
+
+/** Infer a ladder role from a console channel name ("Kick", "SynBass"…). */
+fun inferRole(name: String): Role {
+    val n = name.lowercase()
+    fun has(vararg keys: String) = keys.any { it in n }
+    return when {
+        has("talk", "tb ", "announce", "speech") -> Role.TALK
+        // harmonica BEFORE backing vocals: "harm" alone means harmonies
+        has("harmonica", "blues harp", "sax", "horn", "trumpet", "flute",
+            "tromb") -> Role.COLOR
+        has("bgv", "bvox", "backing", "back ", "choir", "harmony",
+            "harm ") -> Role.BACKING_VOCAL
+        has("vox", "vocal", "sing", "voice", "lead v") -> Role.VOCAL
+        has("conga", "congo", "bongo", "perc", "cajon", "shaker",
+            "timbale", "tamb") -> Role.PERCUSSION
+        // bass family before keys so "synth bass" never lands in keys
+        has("kick", "bass", "sub", "808") -> Role.FOUNDATION
+        has("piano", "keys", "keyb", "rhodes", "organ", "synth",
+            "pad") -> Role.KEYS
+        has("solo", "lead g") -> Role.SOLO_GTR
+        has("rhythm", "ac g", "acoustic", "gtr", "guitar") -> Role.RHYTHM_GTR
+        else -> Role.INSTRUMENT
+    }
+}
 
 data class ChannelConfig(
     val index: Int,              // 0-based (ch 1 = 0)
@@ -83,7 +130,9 @@ data class SendWrite(val channel: Int, val bus: Int, val levelDb: Float) {
 }
 
 class ChannelState(val cfg: ChannelConfig) {
+    var role: Role = cfg.role        // mutable: console names refine it
     var refDb: Float? = null         // soundcheck loudness reference (EMA)
+    var ratioRef: Float? = null      // soundcheck (this - foundation) ratio
     var liveEma: Float? = null       // running active-only loudness EMA
     var active = false
     var lastActiveT = 0.0
@@ -164,9 +213,20 @@ class StageEngine(
             st.refDb = st.liveEma
             st.idleRamped = false
         }
+        // Balance-ladder references: each layer's soundcheck ratio to
+        // the foundation (kick + bass) anchor. The pyramid you mixed IS
+        // the target; the engine holds these ratios from now on.
+        val anchorRef = foundationLevel { it.refDb }
+        for (st in state.values) {
+            st.ratioRef = if (anchorRef != null && st.role.inLadder()
+                && st.role != Role.FOUNDATION && st.refDb != null)
+                st.refDb!! - anchorRef else null
+        }
         snapshotTaken = true
         log(tSec, "revert", null, null, 0f, "soundcheck snapshot taken " +
-                "(${sends.size} sends, ${state.values.count { it.refDb != null }} refs)")
+                "(${sends.size} sends, ${state.values.count { it.refDb != null }} refs" +
+                (if (anchorRef != null) ", pyramid anchored to foundation)"
+                 else ", no foundation channels — absolute mode)"))
     }
 
     /** Full reset to the human-approved mix. Returns the writes to send. */
@@ -224,7 +284,18 @@ class StageEngine(
                     "${st.cfg.name} back — restoring to soundcheck level")
             }
             if (!st.active) continue
-            val drift = live - ref                    // + means got louder
+            // Balance ladder: layers correct RELATIVE to the live
+            // foundation, so the whole band breathing together is not
+            // "drift" — only a layer leaving its place in the pyramid
+            // is. Foundation itself (and unclassified channels) anchor
+            // on absolute soundcheck level.
+            val anchorLive = if (st.role.inLadder()
+                && st.role != Role.FOUNDATION) foundationLevel {
+                    if (it.active) it.liveEma else null } else null
+            val ratioRef = st.ratioRef
+            val drift = if (anchorLive != null && ratioRef != null)
+                (live - anchorLive) - ratioRef       // + = above its layer
+            else live - ref                          // + means got louder
             if (abs(drift) <= settings.deadbandDb) {
                 forEachSend(idx) { k ->
                     if (!st.idleRamped && abs(target[k] ?: 0f) > 0.01f
@@ -250,7 +321,9 @@ class StageEngine(
             val vRef = v.refDb; val vLive = v.liveEma
             if (vRef == null || vLive == null) continue
             val band = state.values.filter {
-                it.cfg.index != vIdx && it.cfg.role == Role.INSTRUMENT &&
+                it.cfg.index != vIdx && it.role != Role.VOCAL &&
+                        it.role != Role.BACKING_VOCAL &&
+                        it.role != Role.TALK &&
                         it.active && it.refDb != null && it.liveEma != null
             }
             if (band.isEmpty()) continue
@@ -322,6 +395,22 @@ class StageEngine(
     }
 
     // ------------------------------------------------------------------
+    /** Mean level of active foundation channels via the given getter. */
+    private inline fun foundationLevel(get: (ChannelState) -> Float?): Float? {
+        var sum = 0f; var n = 0
+        for (st in state.values) if (st.role == Role.FOUNDATION) {
+            val v = get(st) ?: continue
+            sum += v; n++
+        }
+        return if (n > 0) sum / n else null
+    }
+
+    fun setRole(ch: Int, role: Role): Boolean {
+        val st = state[ch] ?: return false
+        st.role = role
+        return true
+    }
+
     fun freezeChannel(ch: Int, frozen: Boolean): Boolean {
         val st = state[ch] ?: return false
         st.frozen = frozen

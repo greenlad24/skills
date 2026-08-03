@@ -31,6 +31,32 @@ Nothing phones home; nothing needs the internet, ever. Running on the
 same tablet as Mixing Station also costs **zero extra Wi-Fi clients**
 on the M18's 4-client AP limit — one device, two apps.
 
+## The balance ladder — a good-sounding mix, held at all times
+
+StageMix understands the band as a pyramid and keeps every layer in
+its place, using the ratios **you** set at soundcheck:
+
+```
+        MAIN VOCAL          on top, always
+      BACKING VOCAL         in the mix, under the lead
+   SOLO GTR · SAX · HARMONICA   featured lines
+      RHYTHM GTR (when present) · CONGAS
+           PIANO / KEYS
+   ▂▄█  KICK + BASS / SYNTH BASS  █▄▂   dominant foundation
+```
+
+Roles are read automatically from your console's channel names
+("Kick", "SynBass", "Piano", "Rhythm Gtr", "Solo Gtr", "Sax",
+"Harmonica", "Congas", "BVox", "Lead Vox"). Corrections are
+**relational**: each layer is held to its soundcheck ratio against the
+live kick+bass anchor. So the whole band swelling together in an
+encore is *not* drift — nothing moves; but a rhythm guitar creeping up
+over the piano, a backing vocal starting to compete with the lead, or
+the sax getting buried during a feature is pulled back to its place —
+slowly, within the same ±3/−9 dB rails. If the foundation sags, it's
+lifted (capped), and the layers above ease down with it so the
+foundation stays dominant either way.
+
 ## What it automates — and what it never touches
 
 | Automated (bounded) | Never touched |
