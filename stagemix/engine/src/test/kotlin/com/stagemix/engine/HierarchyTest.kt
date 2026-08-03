@@ -133,6 +133,36 @@ class HierarchyTest {
             "backing vocal must not be ducked with the band")
     }
 
+    @Test fun `singer switches mics mid-song - lead follows within seconds`() {
+        val e = engine()
+        var t = soundcheck(e)
+        assertEquals(5, e.leadVocal, "soundcheck lead is Vocal Center")
+        // main singer stops, second singer (bvox mic, ch 6) carries the
+        // song — bvox sits 6 dB under the lead's soundcheck ratio
+        val switched = checkLevels.copyOf().also {
+            it[5] = -80f          // lead mic silent
+            it[6] = -26f          // second singer singing (their level)
+        }
+        val (writes, t2) = run(e, switched, t, 40.0)
+        assertEquals(6, e.leadVocal, "lead must follow to the singing mic")
+        assertTrue(e.decisions.any { it.kind == "lead" },
+            "lead switch must be logged")
+        // the new lead gets pushed toward the TOP height (boost, capped)
+        val bv = writes.filter { it.channel == 6 }
+        assertTrue(bv.isNotEmpty(), "new lead must be lifted to the top")
+        assertTrue(bv.all { it.levelDb <= -10f + 3.01f }, "still railed")
+        assertTrue(t2 - t <= 41.0, "switch + lift all inside 40 s of audio")
+    }
+
+    @Test fun `lead does not flap between singers on a shared chorus`() {
+        val e = engine()
+        var t = soundcheck(e)
+        // both singing together — lead must stay put (hysteresis)
+        val both = checkLevels.copyOf().also { it[6] = -22f }
+        run(e, both, t, 60.0)
+        assertEquals(5, e.leadVocal, "shared singing must not steal the lead")
+    }
+
     @Test fun `role inference covers the whole band`() {
         assertEquals(Role.FOUNDATION, inferRole("Bass Drum"))
         assertEquals(Role.FOUNDATION, inferRole("Synth Bass"))
@@ -149,5 +179,35 @@ class HierarchyTest {
         assertEquals(Role.PERCUSSION, inferRole("Congos"))
         assertEquals(Role.TALK, inferRole("Talkback"))
         assertEquals(Role.INSTRUMENT, inferRole("Ch 12"))
+    }
+
+    @Test fun `role inference matches the user's actual console names`() {
+        assertEquals(Role.FOUNDATION, inferRole("Kick Drum"))
+        assertEquals(Role.PERCUSSION, inferRole("Snare"))
+        assertEquals(Role.PERCUSSION, inferRole("Overheads"))
+        assertEquals(Role.FOUNDATION, inferRole("Bass Mic"))
+        assertEquals(Role.SOLO_GTR, inferRole("Guitar AMP"))
+        assertEquals(Role.RHYTHM_GTR, inferRole("Guitar DI"))
+        assertEquals(Role.VOCAL, inferRole("Vocal Center"))
+        assertEquals(Role.VOCAL, inferRole("Vocal Piano"))
+        assertEquals(Role.FOUNDATION, inferRole("Bass DI"))
+        assertEquals(Role.FOUNDATION, inferRole("DI2"))
+        assertEquals(Role.FOUNDATION, inferRole("DI 2"))
+        assertEquals(Role.COLOR, inferRole("Saxophone"))
+        assertEquals(Role.COLOR, inferRole("Flute"))
+        assertEquals(Role.COLOR, inferRole("Harmonica"))
+        assertEquals(Role.PERCUSSION, inferRole("Congo 2"))
+    }
+
+    @Test fun `default rig profile is complete and sane`() {
+        val rig = defaultRigProfile()
+        assertEquals(16, rig.size)
+        assertEquals(Role.VOCAL, rig[8].role)      // Vocal Center
+        assertEquals(Role.VOCAL, rig[9].role)      // Vocal Piano
+        assertEquals(Role.BACKING_VOCAL, rig[10].role)
+        assertEquals(Role.FOUNDATION, rig[0].role) // Kick
+        assertEquals(Role.FOUNDATION, rig[11].role) // Bass DI
+        assertEquals(Role.FOUNDATION, rig[13].role) // DI2
+        assertEquals(Role.COLOR, rig[15].role)     // Harmonica
     }
 }

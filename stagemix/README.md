@@ -57,6 +57,42 @@ slowly, within the same ±3/−9 dB rails. If the foundation sags, it's
 lifted (capped), and the layers above ease down with it so the
 foundation stays dominant either way.
 
+## Responsive in the moment — offline
+
+Perception is real time: the console streams its meters 20×/second and
+its RTA continuously, all on the mixer's own Wi-Fi, no internet ever.
+The engine understands *what changed* and reacts on the right clock:
+
+- **The song moves to another mic** (Vocal Center → Vocal Piano → the
+  channel-11 mic, even mid-song): lead-follow notices within seconds,
+  gives the singing mic the **top of the pyramid**, tucks the others to
+  the backing height, and re-aims the vocal-priority ducking at the new
+  lead. Hysteresis stops it flapping on shared choruses.
+- **A different singer takes the mic**: register detection (male vs
+  female fundamental, from the vocal channel's RTA) makes the Channel
+  Doctor **adopt the new voice's sound as its own reference** instead
+  of "correcting" it toward the previous singer — and it remembers each
+  singer's reference for when they return.
+- **A silent channel wakes up** (overheads plugged in, harmonica after
+  five songs): a **fast lane** (≈2 dB/s) restores it to its
+  soundcheck-approved level, because targets the human approved are
+  safe at speed. Only movement *beyond* the soundcheck ever creeps.
+- Cuts were always fast (3 dB/s); ducking reacts within a couple of
+  seconds; freezes are instant.
+
+## The band, channel by channel
+
+This rig ships as the built-in default profile (console names refine it
+automatically): Kick (1) and Bass DI (12) + DI2 synth bass (14) are the
+foundation; Snare (2), Overheads (3, usually dark), Congas (11/13) the
+percussion layer; Piano stereo (6+7) in the low-mids behind the singer;
+Guitar Amp (5) as the solo guitar, Guitar DI (8) as the second
+electric; Vocal Center (9) the lead, Vocal Piano (10) the second
+singer, channel 11 doubling as third voice; Sax/Flute (15) and
+Harmonica (16) as featured color. Reverbs/FX stay yours — set them at
+soundcheck; the engine balances and the doctor holds tone, it never
+redesigns the sound.
+
 ## What it automates — and what it never touches
 
 | Automated (bounded) | Never touched |

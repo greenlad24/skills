@@ -136,7 +136,8 @@ class MixerService : Service() {
 
                 val cfg = AppState.config.value
                 engine = StageEngine(cfg.channels, cfg.buses)
-                doctor = ToneDoctor(cfg.channels.map { it.index })
+                doctor = ToneDoctor(cfg.channels.map { it.index },
+                    cfg.channels.associate { it.index to it.role })
                 AppState.snapshotTaken.value = false
 
                 // verify the mixer is there
@@ -335,8 +336,11 @@ class MixerService : Service() {
         for ((ch, name) in names) {
             val cfgRole = AppState.config.value.channels
                 .firstOrNull { it.index == ch }?.role
-            if (cfgRole == null || cfgRole == com.stagemix.engine.Role.INSTRUMENT)
-                e.setRole(ch, com.stagemix.engine.inferRole(name))
+            if (cfgRole == null || cfgRole == com.stagemix.engine.Role.INSTRUMENT) {
+                val r = com.stagemix.engine.inferRole(name)
+                e.setRole(ch, r)
+                doctor?.setRole(ch, r)
+            }
         }
     }
 
@@ -382,7 +386,8 @@ class MixerService : Service() {
                         ?.let { it * 30f - 15f } ?: 0f
                 }
                 val haveEq = (0 until 4).any {
-                    "/ch/%02d/eq/%d/g".format(ch.index + 1, it + 1) in pending
+                    pending.containsKey(
+                        "/ch/%02d/eq/%d/g".format(ch.index + 1, it + 1))
                 }
                 val thr = pending["/ch/%02d/dyn/thr".format(ch.index + 1)]
                     ?.let { it * 60f - 60f }

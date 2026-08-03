@@ -68,16 +68,45 @@ fun inferRole(name: String): Role {
             "harm ") -> Role.BACKING_VOCAL
         has("vox", "vocal", "sing", "voice", "lead v") -> Role.VOCAL
         has("conga", "congo", "bongo", "perc", "cajon", "shaker",
-            "timbale", "tamb") -> Role.PERCUSSION
-        // bass family before keys so "synth bass" never lands in keys
-        has("kick", "bass", "sub", "808") -> Role.FOUNDATION
+            "timbale", "tamb", "snare", "overhead", "oh ", "tom",
+            "hat") -> Role.PERCUSSION
+        // bass family before keys so "synth bass" never lands in keys;
+        // "DI 2"/"DI2" is this rig's synth-bass channel
+        has("kick", "bass", "sub", "808", "di 2", "di2") -> Role.FOUNDATION
         has("piano", "keys", "keyb", "rhodes", "organ", "synth",
             "pad") -> Role.KEYS
-        has("solo", "lead g") -> Role.SOLO_GTR
+        has("solo", "lead g", "amp") -> Role.SOLO_GTR
         has("rhythm", "ac g", "acoustic", "gtr", "guitar") -> Role.RHYTHM_GTR
         else -> Role.INSTRUMENT
     }
 }
+
+/**
+ * The user's rig, channel by channel — used as the default profile so
+ * the app understands the band even before console names are read:
+ * 1 Kick, 2 Snare, 3 Overheads, 4 Bass Mic, 5 Guitar Amp (solo),
+ * 6+7 Piano stereo, 8 Guitar DI (2nd electric), 9 Vocal Center (lead),
+ * 10 Vocal Piano (2nd singer), 11 Congo / 3rd singer, 12 Bass DI,
+ * 13 Congo 2, 14 DI2 (synth bass), 15 Sax/Flute, 16 Harmonica.
+ */
+fun defaultRigProfile(): List<ChannelConfig> = listOf(
+    ChannelConfig(0, "Kick Drum", Role.FOUNDATION),
+    ChannelConfig(1, "Snare", Role.PERCUSSION),
+    ChannelConfig(2, "Overheads", Role.PERCUSSION),
+    ChannelConfig(3, "Bass Mic", Role.FOUNDATION),
+    ChannelConfig(4, "Guitar Amp", Role.SOLO_GTR),
+    ChannelConfig(5, "Piano L", Role.KEYS),
+    ChannelConfig(6, "Piano R", Role.KEYS),
+    ChannelConfig(7, "Guitar DI", Role.RHYTHM_GTR),
+    ChannelConfig(8, "Vocal Center", Role.VOCAL),
+    ChannelConfig(9, "Vocal Piano", Role.VOCAL),
+    ChannelConfig(10, "Congo / Vox 3", Role.BACKING_VOCAL),
+    ChannelConfig(11, "Bass DI", Role.FOUNDATION),
+    ChannelConfig(12, "Congo 2", Role.PERCUSSION),
+    ChannelConfig(13, "DI2 Synth Bass", Role.FOUNDATION),
+    ChannelConfig(14, "Sax / Flute", Role.COLOR),
+    ChannelConfig(15, "Harmonica", Role.COLOR),
+)
 
 data class ChannelConfig(
     val index: Int,              // 0-based (ch 1 = 0)
@@ -112,6 +141,14 @@ data class EngineSettings(
     val duckMaxDb: Float = 4f,
     val duckTriggerDb: Float = 3f,       // ratio worse than snapshot by this
     val restoreVelocityDb: Float = 6f,   // toward snapshot after idle (per s)
+    // Responsiveness: when the SITUATION changes (lead singer switches
+    // mics, an idle channel wakes up), converging on soundcheck-derived
+    // targets is safe at speed — the values are human-approved. Only
+    // creeping BEYOND the soundcheck stays slow.
+    val fastWindowSec: Float = 6f,
+    val fastBoostPerSecDb: Float = 2f,
+    val vocalActTauSec: Float = 2.5f,    // how fast we notice a singer
+    val leadHoldSec: Float = 5f,         // min time between lead switches
 )
 
 /** One engine decision, for the on-screen activity feed / audit log. */
@@ -139,6 +176,8 @@ class ChannelState(val cfg: ChannelConfig) {
     var lastLevelDb = -128f
     var frozen = false               // per-channel human lock
     var idleRamped = false
+    var vocalAct = 0f                // singing-now score (vocal group)
+    var fastUntil = 0.0              // situation-change fast-lane window
 }
 
 class StageEngine(
@@ -161,6 +200,12 @@ class StageEngine(
     var snapshotTaken = false; private set
     var frozenAll = false
     var watchdogVeto = false          // external feedback watchdog authority
+
+    /** Which vocal mic carries the song right now (lead-follow). */
+    var leadVocal: Int? = null; private set
+    private var topRatioRef: Float? = null      // the lead's pyramid height
+    private var backingRatioRef: Float? = null  // where non-leads sit
+    private var lastLeadSwitch = 0.0
 
     private var lastMeterT = -1.0
     private var lastTickT = -1.0
@@ -187,6 +232,12 @@ class StageEngine(
                 val alpha = (0.05f / settings.emaTauSec).coerceIn(0f, 1f)
                 st.liveEma = st.liveEma?.let { it + alpha * (db - it) } ?: db
                 mean += db; n += 1
+            }
+            // singing-now score for the vocal group (fast tau — this is
+            // how quickly a mid-song singer switch is noticed)
+            if (st.role == Role.VOCAL || st.role == Role.BACKING_VOCAL) {
+                val a = (0.05f / settings.vocalActTauSec).coerceIn(0f, 1f)
+                st.vocalAct += a * ((if (st.active) 1f else 0f) - st.vocalAct)
             }
             if (db > settings.clipFreezeDb)
                 clipHoldUntil = tSec + settings.clipHoldSec
@@ -222,6 +273,19 @@ class StageEngine(
                 && st.role != Role.FOUNDATION && st.refDb != null)
                 st.refDb!! - anchorRef else null
         }
+        // Vocal group heights: the loudest vocal ratio at soundcheck is
+        // "the lead's place on top"; the next one down is where any
+        // non-lead vocal sits. Lead-follow swaps WHO gets the top spot.
+        val vocalRatios = state.values
+            .filter { it.role == Role.VOCAL || it.role == Role.BACKING_VOCAL }
+            .mapNotNull { it.ratioRef }.sortedDescending()
+        topRatioRef = vocalRatios.firstOrNull()
+        backingRatioRef = vocalRatios.getOrNull(1)
+            ?: topRatioRef?.minus(3f)
+        leadVocal = state.values.firstOrNull {
+            (it.role == Role.VOCAL || it.role == Role.BACKING_VOCAL) &&
+                    it.ratioRef != null && it.ratioRef == topRatioRef
+        }?.cfg?.index
         snapshotTaken = true
         log(tSec, "revert", null, null, 0f, "soundcheck snapshot taken " +
                 "(${sends.size} sends, ${state.values.count { it.refDb != null }} refs" +
@@ -261,6 +325,32 @@ class StageEngine(
         if (!anyMotionAllowed(tSec)) return emptyList()
         val up = upwardAllowed(tSec)
 
+        // -- 0. lead-vocal follow: whoever carries the song gets the top
+        // of the pyramid, switchable mid-song with hysteresis ------------
+        run {
+            val top = topRatioRef ?: return@run
+            val group = state.values.filter {
+                it.role == Role.VOCAL || it.role == Role.BACKING_VOCAL }
+            if (group.size < 2 || tSec - lastLeadSwitch < settings.leadHoldSec)
+                return@run
+            val cur = leadVocal?.let { state[it] }
+            val cand = group.maxByOrNull { it.vocalAct } ?: return@run
+            if (cand.cfg.index != leadVocal && cand.vocalAct > 0.6f
+                && (cur == null || cur.vocalAct < 0.3f)) {
+                leadVocal = cand.cfg.index
+                lastLeadSwitch = tSec
+                // a singer we never heard at soundcheck still gets the
+                // lead height — soundcheck-derived, so safe to adopt
+                if (cand.ratioRef == null) cand.ratioRef = top
+                // situation changed: open the fast lane for the whole
+                // vocal group to settle the new balance quickly
+                for (st in group) st.fastUntil = tSec + settings.fastWindowSec
+                log(tSec, "lead", cand.cfg.index, null, 0f,
+                    "${cand.cfg.name} is carrying the song — giving them " +
+                    "the lead balance")
+            }
+        }
+
         // -- 1. drift correction targets ---------------------------------
         for ((idx, st) in state) {
             if (st.frozen) continue
@@ -280,6 +370,8 @@ class StageEngine(
             if (st.idleRamped && st.active) {
                 st.idleRamped = false
                 forEachSend(idx) { k -> target[k] = 0f }
+                // channel woke up: fast lane back to its approved level
+                st.fastUntil = tSec + settings.fastWindowSec
                 log(tSec, "restore", idx, null, 0f,
                     "${st.cfg.name} back — restoring to soundcheck level")
             }
@@ -292,7 +384,17 @@ class StageEngine(
             val anchorLive = if (st.role.inLadder()
                 && st.role != Role.FOUNDATION) foundationLevel {
                     if (it.active) it.liveEma else null } else null
-            val ratioRef = st.ratioRef
+            // vocal group: the current lead is held at the TOP height,
+            // everyone else at the backing height — this is what makes
+            // "balance between singers perfect at all times" true even
+            // when they trade the lead mid-song
+            val isVocalGroup = st.role == Role.VOCAL ||
+                    st.role == Role.BACKING_VOCAL
+            val ratioRef = if (isVocalGroup && topRatioRef != null) {
+                if (st.cfg.index == leadVocal) topRatioRef
+                else st.ratioRef?.coerceAtMost(
+                    backingRatioRef ?: st.ratioRef!!) ?: backingRatioRef
+            } else st.ratioRef
             val drift = if (anchorLive != null && ratioRef != null)
                 (live - anchorLive) - ratioRef       // + = above its layer
             else live - ref                          // + means got louder
@@ -315,8 +417,10 @@ class StageEngine(
         }
 
         // -- 2. vocal priority: cut-only ducking per wedge ----------------
+        // the CURRENT lead singer is the priority voice, wherever the
+        // song moved (Vocal Center, Vocal Piano, or channel 11)
         for (bus in buses) {
-            val vIdx = bus.vocalChannel ?: continue
+            val vIdx = leadVocal ?: bus.vocalChannel ?: continue
             val v = state[vIdx] ?: continue
             val vRef = v.refDb; val vLive = v.liveEma
             if (vRef == null || vLive == null) continue
@@ -363,10 +467,17 @@ class StageEngine(
             var step = if (tgt > cur) {
                 if (!up) 0f
                 else {
+                    // Responsive fast lane: after a situation change
+                    // (lead switch, channel wake-up) converge quickly
+                    // while still at-or-below the soundcheck level;
+                    // creeping past the snapshot always crawls.
+                    val fast = tSec < st.fastUntil && cur < 0f
+                    val rate = if (fast) settings.fastBoostPerSecDb
+                               else settings.boostPerSecDb
                     // per-bus upward budget
                     val used = busBoostUsed.getOrDefault(k.second, currentBusBoost(k.second, k.first))
                     val room = (settings.busBoostBudgetDb - used).coerceAtLeast(0f)
-                    min(min((settings.boostPerSecDb * dt).toFloat(), tgt - cur),
+                    min(min((rate * dt).toFloat(), tgt - cur),
                         max(0f, room - max(0f, cur)))
                 }
             } else {

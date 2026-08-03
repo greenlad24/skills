@@ -41,9 +41,11 @@ data class DoctorSettings(
 
 class ToneDoctor(
     channelIndices: List<Int>,
+    roles: Map<Int, Role> = emptyMap(),
     val settings: DoctorSettings = DoctorSettings(),
 ) {
     class ChState {
+        var role: Role = Role.INSTRUMENT
         // soundcheck anchors
         var eqSnapshotDb: FloatArray? = null    // 4 band gains, dB
         var thrSnapshotDb: Float? = null
@@ -52,6 +54,11 @@ class ToneDoctor(
         // live measurement
         var liveBands: FloatArray? = null
         var grEma: Float? = null
+        // singer register (vocal channels): 0 = low/male fundamental,
+        // 1 = high/female — each keeps its OWN spectral reference so a
+        // singer swap is adapted to, never fought
+        var register = 0
+        val regRefs = HashMap<Int, FloatArray?>()
         // automation offsets (current, slewed) and targets
         val eqOffset = FloatArray(4)
         val eqTarget = FloatArray(4)
@@ -65,11 +72,31 @@ class ToneDoctor(
     val state = channelIndices.associateWith { ChState() }
     var snapshotTaken = false; private set
 
+    init {
+        for ((ch, r) in roles) state[ch]?.role = r
+    }
+
+    fun setRole(ch: Int, role: Role) { state[ch]?.role = role }
+
     // ------------------------------------------------------------------
     /** 100-bin RTA frame (dB) attributed to one channel by the service. */
     fun onRta(ch: Int, bins: FloatArray, tSec: Double) {
         val st = state[ch] ?: return
         if (bins.size < 100) return
+        // Vocal channels: detect the singer's register from where the
+        // fundamental lives. A register change means a DIFFERENT SINGER
+        // (or a real range shift) — swap to that register's own
+        // reference instead of "correcting" the new voice toward the
+        // old one. First sighting of a register adopts its sound as-is.
+        if (st.role == Role.VOCAL || st.role == Role.BACKING_VOCAL) {
+            val reg = vocalRegister(bins)
+            if (reg != null && reg != st.register) {
+                st.regRefs[st.register] = st.refBands
+                st.register = reg
+                st.refBands = st.regRefs[reg]
+                st.liveBands = null   // fresh measurement for this voice
+            }
+        }
         val bands = foldBands(bins)
         val alpha = (3f / settings.bandTauSec).coerceIn(0.01f, 1f)
         val live = st.liveBands
@@ -77,6 +104,23 @@ class ToneDoctor(
         else FloatArray(4) { live[it] + alpha * (bands[it] - live[it]) }
         // lazy reference: first full measurement after snapshot anchors it
         if (snapshotTaken && st.refBands == null) st.refBands = st.liveBands
+    }
+
+    /**
+     * Register from the RTA's low bins (10 bins/octave from 20 Hz):
+     * ~bins 23-31 span ≈ 98-170 Hz (male fundamentals), 32-40 span
+     * ≈ 180-320 Hz (female). 3 dB margin = hysteresis.
+     */
+    private fun vocalRegister(bins: FloatArray): Int? {
+        var lo = 0f; var hi = 0f
+        for (i in 23..31) lo += bins[i]
+        for (i in 32..40) hi += bins[i]
+        lo /= 9f; hi /= 9f
+        return when {
+            lo > hi + 3f -> 0
+            hi > lo + 3f -> 1
+            else -> null
+        }
     }
 
     /** Comp gain reduction (negative dB) for one channel. */
@@ -97,6 +141,7 @@ class ToneDoctor(
         st.eqSnapshotDb = eqGainsDb?.copyOf()
         st.thrSnapshotDb = thrDb
         st.refBands = st.liveBands?.copyOf()
+        st.regRefs[st.register] = st.refBands
         st.refGr = st.grEma
         st.eqOffset.fill(0f); st.eqTarget.fill(0f)
         st.thrOffset = 0f; st.thrTarget = 0f

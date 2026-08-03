@@ -52,9 +52,9 @@ object AppState {
     // ------------------------------------------------------------ config
     data class Config(
         val mixerIp: String = "",
-        val channels: List<ChannelConfig> = (0 until 16).map {
-            ChannelConfig(it, "Ch ${it + 1}")
-        },
+        /** The band's rig is the default; console names refine it. */
+        val channels: List<ChannelConfig> =
+            com.stagemix.engine.defaultRigProfile(),
         val buses: List<BusConfig> = emptyList(),   // which wedges to manage
     )
 
