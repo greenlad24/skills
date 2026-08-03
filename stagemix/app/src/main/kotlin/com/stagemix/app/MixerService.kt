@@ -16,6 +16,7 @@ import com.stagemix.engine.FaderLaw
 import com.stagemix.engine.Meters
 import com.stagemix.engine.OscMessage
 import com.stagemix.engine.StageEngine
+import com.stagemix.engine.ToneDoctor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -42,6 +43,7 @@ class MixerService : Service() {
     private var socket: DatagramSocket? = null
     private var mixerAddr: InetSocketAddress? = null
     private var engine: StageEngine? = null
+    private var doctor: ToneDoctor? = null
     private var wifiLock: WifiManager.WifiLock? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var loopJob: Job? = null
@@ -68,21 +70,65 @@ class MixerService : Service() {
                 AppState.frozenAll.value = on
             }
             ACTION_FREEZE_CH -> {
-                engine?.freezeChannel(intent.getIntExtra("ch", -1),
-                    intent.getBooleanExtra("on", true))
+                val ch = intent.getIntExtra("ch", -1)
+                val on = intent.getBooleanExtra("on", true)
+                engine?.freezeChannel(ch, on)
+                doctor?.state?.get(ch)?.frozen = on
             }
+            ACTION_DOCTOR -> AppState.doctorOn.value =
+                intent.getBooleanExtra("on", true)
             ACTION_DISCONNECT -> shutdown()
         }
         return START_NOT_STICKY
     }
 
     // ------------------------------------------------------------------
-    private fun connect(ip: String) {
+    /**
+     * Broadcast /xinfo on the local network (the M18's own AP included)
+     * and return the first mixer that answers. Fully offline.
+     */
+    private fun discover(timeoutSec: Double = 3.0): String? {
+        return try {
+            DatagramSocket().use { s ->
+                s.broadcast = true
+                s.soTimeout = 300
+                val probe = OscMessage("/xinfo", emptyList()).encode()
+                s.send(DatagramPacket(probe, probe.size,
+                    InetAddress.getByName("255.255.255.255"), PORT))
+                val start = now()
+                while (now() - start < timeoutSec) {
+                    try {
+                        val buf = ByteArray(1024)
+                        val p = DatagramPacket(buf, buf.size)
+                        s.receive(p)
+                        val m = OscMessage.decode(buf.copyOf(p.length))
+                        if (m?.address == "/xinfo")
+                            return p.address.hostAddress
+                    } catch (e: Exception) { /* timeout tick */ }
+                }
+                null
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "discovery failed: ${e.message}")
+            null
+        }
+    }
+
+    private fun connect(ipWanted: String) {
         AppState.conn.value = AppState.Conn.CONNECTING
         AppState.lastError.value = null
         loopJob?.cancel()
         loopJob = scope.launch {
             try {
+                // Empty IP -> find the mixer ourselves (tablet lives on
+                // the M18's own Wi-Fi; the console answers broadcasts).
+                val ip = ipWanted.ifBlank { discover() ?: "" }
+                if (ip.isBlank()) {
+                    AppState.conn.value = AppState.Conn.DISCONNECTED
+                    AppState.lastError.value =
+                        "No mixer found — is the tablet on the M18's Wi-Fi?"
+                    return@launch
+                }
                 socket?.close()
                 val s = DatagramSocket().apply { soTimeout = 200 }
                 socket = s
@@ -90,6 +136,7 @@ class MixerService : Service() {
 
                 val cfg = AppState.config.value
                 engine = StageEngine(cfg.channels, cfg.buses)
+                doctor = ToneDoctor(cfg.channels.map { it.index })
                 AppState.snapshotTaken.value = false
 
                 // verify the mixer is there
@@ -113,6 +160,7 @@ class MixerService : Service() {
                     return@launch
                 }
                 AppState.conn.value = AppState.Conn.CONNECTED
+                AppState.config.value = cfg.copy(mixerIp = ip)
                 fetchNames()
                 runLoop()
             } catch (e: Exception) {
@@ -123,23 +171,61 @@ class MixerService : Service() {
         }
     }
 
-    /** The whole show loop: keep-alives, meters, engine ticks, writes. */
+    /**
+     * The whole show loop: keep-alives, meters, RTA round-robin, engine
+     * + doctor ticks, writes. Wi-Fi hiccups (common on the M18's own
+     * 2.4 GHz AP) are survived in place: UDP is connectionless, the
+     * engine freezes itself while meters are stale, and the keep-alives
+     * re-establish everything the moment packets flow again.
+     */
     private suspend fun runLoop() {
         var lastKeepalive = 0.0
         var lastTick = 0.0
-        while (scope.isActive && AppState.conn.value == AppState.Conn.CONNECTED) {
+        var lastRx = now()
+        var rtaFocus = -1
+        var rtaFocusT = 0.0
+        while (scope.isActive && AppState.conn.value != AppState.Conn.DISCONNECTED) {
             val t = now()
             if (t - lastKeepalive > 5.0) {
                 lastKeepalive = t
                 send(OscMessage("/xremotenfb", emptyList()))
                 send(OscMessage("/meters", listOf("/meters/${Meters.BANK_INPUTS}")))
+                send(OscMessage("/meters", listOf("/meters/4")))  // RTA
+                send(OscMessage("/meters", listOf("/meters/6")))  // dynamics
             }
-            receiveOnce()?.let { handle(it, t) }
+            val m = receiveOnce()
+            if (m != null) {
+                lastRx = t
+                if (AppState.conn.value == AppState.Conn.CONNECTING)
+                    AppState.conn.value = AppState.Conn.CONNECTED
+                handle(m, t, rtaFocus, rtaFocusT)
+            } else if (t - lastRx > 10.0 &&
+                       AppState.conn.value == AppState.Conn.CONNECTED) {
+                // radio dropout: show it, keep trying — engine is frozen
+                // by meter staleness already
+                AppState.conn.value = AppState.Conn.CONNECTING
+                AppState.lastError.value = "Mixer silent — waiting for Wi-Fi…"
+            }
             val e = engine ?: continue
+            // RTA round-robin: park the console's RTA on each active
+            // channel for ~3 s so the doctor hears everyone regularly.
+            if (t - rtaFocusT > 3.0) {
+                val active = e.activeChannels().sorted()
+                if (active.isNotEmpty()) {
+                    val next = active[(active.indexOf(rtaFocus) + 1)
+                        .mod(active.size)]
+                    if (next != rtaFocus) {
+                        rtaFocus = next
+                        send(OscMessage("/-stat/rta/source", listOf(rtaFocus)))
+                    }
+                    rtaFocusT = t
+                }
+            }
             if (t - lastTick >= 1.0) {
                 lastTick = t
                 AppState.holdReason.value = e.holdReason(t)
-                if (AppState.directing.value && e.snapshotTaken) {
+                val directing = AppState.directing.value
+                if (directing && e.snapshotTaken) {
                     for (w in e.tick(t)) {
                         send(OscMessage(w.address,
                             listOf(FaderLaw.dbToFloat(w.levelDb))))
@@ -147,18 +233,46 @@ class MixerService : Service() {
                 } else {
                     e.tick(t) // keep state warm; writes discarded when paused
                 }
+                doctor?.let { d ->
+                    if (directing && AppState.doctorOn.value) {
+                        for (w in d.tick(e.activeChannels(),
+                                upAllowed = e.boostsAllowed(t),
+                                frozenAll = e.frozenAll)) {
+                            send(OscMessage(w.address, listOf(w.value)))
+                        }
+                    }
+                }
                 publishStrips(t)
                 AppState.decisions.value = e.decisions.toList()
             }
         }
     }
 
-    private fun handle(m: OscMessage, t: Double) {
+    private fun handle(m: OscMessage, t: Double, rtaFocus: Int,
+                       rtaFocusT: Double) {
         val e = engine ?: return
-        when {
-            m.address.startsWith("/meters/") -> {
+        when (m.address) {
+            "/meters/${Meters.BANK_INPUTS}" -> {
                 m.blobArg(0)?.let { Meters.decode(it) }?.let { levels ->
                     e.onMeters(levels, t)
+                }
+            }
+            "/meters/4" -> {
+                // 100-bin RTA — attribute to the focused channel once the
+                // analyzer has had a moment to settle on it
+                if (rtaFocus >= 0 && t - rtaFocusT > 0.5) {
+                    m.blobArg(0)?.let { Meters.decode(it) }?.let { bins ->
+                        doctor?.onRta(rtaFocus, bins, t)
+                    }
+                }
+            }
+            "/meters/6" -> {
+                // dynamics bank: assumed layout [gate GR, comp GR] per
+                // channel (verify against your firmware — the doctor's
+                // sanity gates discard implausible values either way)
+                m.blobArg(0)?.let { Meters.decode(it) }?.let { v ->
+                    if (v.size >= 32) for (ch in 0 until 16)
+                        doctor?.onGainReduction(ch, v[ch * 2 + 1], t)
                 }
             }
             else -> {
@@ -173,6 +287,7 @@ class MixerService : Service() {
         val viewBus = e.buses.firstOrNull()?.index ?: 0
         AppState.strips.value = AppState.config.value.channels.map { ch ->
             val st = e.state[ch.index]
+            val tone = doctor?.offsets(ch.index)
             AppState.StripUi(
                 channel = ch.index,
                 name = AppState.mixerChannelNames.value[ch.index] ?: ch.name,
@@ -182,6 +297,8 @@ class MixerService : Service() {
                 frozen = st?.frozen ?: false,
                 offsetDb = e.offsetDb(ch.index, viewBus),
                 targetDb = e.targetDb(ch.index, viewBus),
+                eqOffsetDb = tone?.first?.maxByOrNull { kotlin.math.abs(it) } ?: 0f,
+                thrOffsetDb = tone?.second ?: 0f,
             )
         }
         AppState.snapshotTaken.value = e.snapshotTaken
@@ -221,10 +338,19 @@ class MixerService : Service() {
         val e = engine ?: return
         pending.clear()
         val wanted = HashMap<String, Pair<Int, Int>>()
-        for (ch in AppState.config.value.channels) for (b in e.buses) {
+        val chans = AppState.config.value.channels
+        for (ch in chans) for (b in e.buses) {
             val addr = "/ch/%02d/mix/%02d/level".format(ch.index + 1, b.index + 1)
             wanted[addr] = ch.index to b.index
             send(OscMessage(addr, emptyList()))
+        }
+        // doctor anchors: current EQ band gains + comp threshold
+        for (ch in chans) {
+            for (b in 1..4)
+                send(OscMessage("/ch/%02d/eq/%d/g".format(ch.index + 1, b),
+                    emptyList()))
+            send(OscMessage("/ch/%02d/dyn/thr".format(ch.index + 1),
+                emptyList()))
         }
         withTimeoutOrNull(3000) {
             while (pending.size < wanted.size) delay(50)
@@ -239,6 +365,21 @@ class MixerService : Service() {
             return
         }
         e.takeSnapshot(sends, now())
+        doctor?.let { d ->
+            for (ch in chans) {
+                val gains = FloatArray(4) { b ->
+                    pending["/ch/%02d/eq/%d/g".format(ch.index + 1, b + 1)]
+                        ?.let { it * 30f - 15f } ?: 0f
+                }
+                val haveEq = (0 until 4).any {
+                    "/ch/%02d/eq/%d/g".format(ch.index + 1, it + 1) in pending
+                }
+                val thr = pending["/ch/%02d/dyn/thr".format(ch.index + 1)]
+                    ?.let { it * 60f - 60f }
+                d.snapshotChannel(ch.index,
+                    if (haveEq) gains else null, thr)
+            }
+        }
         publishStrips(now())
     }
 
@@ -246,6 +387,10 @@ class MixerService : Service() {
         val e = engine ?: return
         for (w in e.revertToSnapshot(now()))
             send(OscMessage(w.address, listOf(FaderLaw.dbToFloat(w.levelDb))))
+        doctor?.let { d ->
+            for (ch in d.state.keys)
+                for (w in d.reset(ch)) send(OscMessage(w.address, listOf(w.value)))
+        }
     }
 
     // ------------------------------------------------------------------
@@ -332,6 +477,7 @@ class MixerService : Service() {
         const val ACTION_DIRECTING = "com.stagemix.DIRECTING"
         const val ACTION_FREEZE_ALL = "com.stagemix.FREEZE_ALL"
         const val ACTION_FREEZE_CH = "com.stagemix.FREEZE_CH"
+        const val ACTION_DOCTOR = "com.stagemix.DOCTOR"
 
         fun cmd(ctx: Context, action: String, vararg extras: Pair<String, Any>) {
             val i = Intent(ctx, MixerService::class.java).setAction(action)

@@ -51,7 +51,15 @@ import com.stagemix.engine.Role
 @Composable
 fun StageMixApp() {
     StageMixTheme {
+        val ctx = LocalContext.current
         val conn by AppState.conn.collectAsState()
+        // Fully automatic: on launch, find the mixer on this network
+        // (the M18's own AP — offline, no internet needed) and connect.
+        androidx.compose.runtime.LaunchedEffect(Unit) {
+            if (AppState.conn.value == AppState.Conn.DISCONNECTED)
+                MixerService.cmd(ctx, MixerService.ACTION_CONNECT,
+                    "ip" to AppState.config.value.mixerIp)
+        }
         Surface(Modifier.fillMaxSize(), color = Bg) {
             when (conn) {
                 AppState.Conn.CONNECTED -> ConsoleScreen()
@@ -87,13 +95,31 @@ fun ConnectScreen() {
             color = Ink2, fontSize = 13.sp,
         )
         Spacer(Modifier.height(16.dp))
+        Button(
+            enabled = conn != AppState.Conn.CONNECTING,
+            onClick = {
+                AppState.config.value = cfg.copy(
+                    mixerIp = "",
+                    buses = cfg.buses.ifEmpty {
+                        (0 until 6).map { BusConfig(it, "Bus ${it + 1}") }
+                    })
+                AppState.save(ctx)
+                MixerService.cmd(ctx, MixerService.ACTION_CONNECT, "ip" to "")
+            },
+        ) {
+            Text(if (conn == AppState.Conn.CONNECTING) "Searching…"
+                 else "🔍 Find my mixer (automatic)")
+        }
+        Spacer(Modifier.height(12.dp))
+        Text("or connect by IP:", color = Muted, fontSize = 12.sp)
+        Spacer(Modifier.height(6.dp))
         OutlinedTextField(
             value = ip, onValueChange = { ip = it },
             label = { Text("Mixer IP — e.g. 192.168.1.1") },
             singleLine = true,
         )
-        Spacer(Modifier.height(16.dp))
-        Button(
+        Spacer(Modifier.height(10.dp))
+        OutlinedButton(
             enabled = conn != AppState.Conn.CONNECTING && ip.isNotBlank(),
             onClick = {
                 AppState.config.value = cfg.copy(
@@ -104,10 +130,7 @@ fun ConnectScreen() {
                 AppState.save(ctx)
                 MixerService.cmd(ctx, MixerService.ACTION_CONNECT, "ip" to ip)
             },
-        ) {
-            Text(if (conn == AppState.Conn.CONNECTING) "Connecting…"
-                 else "Connect to mixer")
-        }
+        ) { Text("Connect to this IP") }
         err?.let {
             Spacer(Modifier.height(14.dp))
             Text(it, color = Bad, fontSize = 13.sp)
@@ -153,6 +176,7 @@ fun ConsoleScreen() {
     val hold by AppState.holdReason.collectAsState()
     val snap by AppState.snapshotTaken.collectAsState()
     val directing by AppState.directing.collectAsState()
+    val doctorOn by AppState.doctorOn.collectAsState()
     val frozenAll by AppState.frozenAll.collectAsState()
 
     Column(Modifier.fillMaxSize().padding(14.dp)) {
@@ -169,6 +193,13 @@ fun ConsoleScreen() {
                     fontWeight = FontWeight.Bold)
                 Spacer(Modifier.width(14.dp))
             }
+            Text("DOCTOR", color = if (doctorOn) Ok else Muted,
+                fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            Spacer(Modifier.width(4.dp))
+            Switch(checked = doctorOn, onCheckedChange = {
+                MixerService.cmd(ctx, MixerService.ACTION_DOCTOR, "on" to it)
+            })
+            Spacer(Modifier.width(14.dp))
             Text(if (directing) "MIXING — AUTO" else "PAUSED",
                 color = if (directing) Live else Muted,
                 fontWeight = FontWeight.Bold, fontSize = 13.sp)
@@ -287,6 +318,15 @@ fun Strip(s: AppState.StripUi) {
             else -> Muted
         }, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
         Text("dB adj", color = Muted, fontSize = 9.sp)
+        if (kotlin.math.abs(s.eqOffsetDb) > 0.2f ||
+            kotlin.math.abs(s.thrOffsetDb) > 0.2f) {
+            Text(buildString {
+                if (kotlin.math.abs(s.eqOffsetDb) > 0.2f)
+                    append("EQ%+.1f ".format(s.eqOffsetDb))
+                if (kotlin.math.abs(s.thrOffsetDb) > 0.2f)
+                    append("TH%+.1f".format(s.thrOffsetDb))
+            }, color = Ok, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+        }
         Spacer(Modifier.height(6.dp))
         Box(
             Modifier.size(30.dp).clickable {

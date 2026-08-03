@@ -29,6 +29,9 @@ object AppState {
         /** offset from snapshot on the currently viewed bus */
         val offsetDb: Float,
         val targetDb: Float,
+        /** channel-doctor tone offsets (largest EQ band move, thr move) */
+        val eqOffsetDb: Float = 0f,
+        val thrOffsetDb: Float = 0f,
     )
 
     val conn = MutableStateFlow(Conn.DISCONNECTED)
@@ -40,6 +43,7 @@ object AppState {
     val holdReason = MutableStateFlow<String?>(null)
     val snapshotTaken = MutableStateFlow(false)
     val directing = MutableStateFlow(false)
+    val doctorOn = MutableStateFlow(true)
     val frozenAll = MutableStateFlow(false)
     val lastError = MutableStateFlow<String?>(null)
     /** channel names read from the console's own config */

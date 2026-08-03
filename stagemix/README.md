@@ -19,14 +19,48 @@ apps are just clients of the M18: move a fader in Mixing Station and
 StageMix sees it; StageMix nudges a send and Mixing Station's screen
 follows. Nothing is ever in anyone's way.
 
+## Fully automatic, fully offline
+
+The tablet lives on the **M18's own Wi-Fi** — no internet, no venue
+network. StageMix is built for exactly that: on launch it **finds the
+mixer itself** (broadcast discovery on the mixer's AP), reconnects
+through Wi-Fi hiccups automatically (the engine freezes while meters
+are stale and resumes when packets flow again), and every algorithm —
+level engine and Channel Doctor — runs 100 % locally on the tablet.
+Nothing phones home; nothing needs the internet, ever. Running on the
+same tablet as Mixing Station also costs **zero extra Wi-Fi clients**
+on the M18's 4-client AP limit — one device, two apps.
+
 ## What it automates — and what it never touches
 
 | Automated (bounded) | Never touched |
 |---|---|
 | Bus send levels (monitor wedges) | Main LR mix |
 | Idle-channel easing (−6 dB after 60 s silence, restore on return) | Preamp/headamp gain |
-| Vocal-priority ducking (cuts the band in the singer's wedge) | EQ, dynamics, FX |
-| | Anything not in your soundcheck snapshot |
+| Vocal-priority ducking (cuts the band in the singer's wedge) | EQ band freq/Q/type, comp ratio/attack/release |
+| Channel Doctor: per-channel EQ band **gains** (±2 dB from soundcheck, RTA-measured) | FX, routing, phantom, anything not snapshotted |
+| Channel Doctor: comp **threshold** (±4 dB, restores soundcheck GR profile) | |
+
+### The Channel Doctor (per-channel EQ + compression)
+
+Each channel is tended **separately**, using the console's own senses:
+
+- The M18's 100-band RTA is round-robined across active channels
+  (~3 s each). Each channel's live spectrum is folded into 4 bands
+  matching its 4-band EQ; when a band drifts >2.5 dB from its
+  soundcheck reference, that band's **gain** is corrected — max ±2 dB
+  from your soundcheck EQ, 0.25 dB steps, boosts wait for the global
+  safety gate. Frequencies, Q, filter types: never touched.
+- Compressor **thresholds** are eased to restore the gain-reduction
+  profile each compressor had at soundcheck (singer backs off the mic →
+  comp stops catching → threshold eases down; max ±4 dB). Channels
+  whose comp wasn't really working at soundcheck are left alone, and
+  implausible meter telemetry is discarded before it can move anything.
+- The DOCTOR switch in the header turns all of it off in one tap;
+  per-channel locks and Revert-to-soundcheck cover it too.
+
+It's not a mastering engineer — it keeps every channel sounding the
+way it did when **you** signed off at soundcheck.
 
 The rails, from live-sound research (see `docs/ARCHITECTURE.md`):
 
@@ -73,9 +107,12 @@ will need a one-time uninstall/reinstall.
 ## Roadmap
 
 - Feedback watchdog v2: tablet-mic howl detection (persistence +
-  magnitude-slope tests) and round-robin RTA over `/meters/4`, wired to
-  the engine's existing veto input.
+  magnitude-slope tests) wired to the engine's existing veto input.
 - Per-wedge config UI (choose managed buses, vocal owner per wedge,
   roles) — v1 manages Bus 1–6 with names read from the console.
-- Optional Claude review layer (like AutoDirector's) when the tablet
-  has internet.
+- Mixing Station **desktop** bridge (optional): MS on a computer on the
+  mixer's network exposes a real API (WebSocket + OSC — desktop only);
+  the `MsMeters` decoder is already in the engine. Not needed for the
+  offline tablet rig — direct OSC does everything locally.
+- Verify `/meters/6` dynamics-bank layout against firmware (comp GR
+  indices are an assumption, defensively sanity-gated until then).

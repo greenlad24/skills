@@ -336,6 +336,13 @@ class StageEngine(
     fun meterFresh(tSec: Double): Boolean =
         lastMeterT >= 0 && tSec - lastMeterT <= settings.meterTimeoutSec
 
+    /** Public upward gate, shared with the tone doctor. */
+    fun boostsAllowed(tSec: Double): Boolean = upwardAllowed(tSec)
+
+    /** Channels currently passing the activity gate. */
+    fun activeChannels(): Set<Int> =
+        state.filterValues { it.active }.keys
+
     fun holdReason(tSec: Double): String? = when {
         frozenAll -> "FROZEN by operator"
         watchdogVeto -> "feedback watchdog veto"
