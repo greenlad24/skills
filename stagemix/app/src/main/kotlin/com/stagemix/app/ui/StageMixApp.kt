@@ -409,6 +409,10 @@ fun Strip(s: AppState.StripUi) {
             else "🏷 from the name",
             color = if (s.identHeard) Ok else Muted, fontSize = 8.sp,
             maxLines = 1)
+        // and whether the app will touch this fader at all
+        Text(if (s.heldByYou) "🔒 yours" else "following",
+            color = if (s.heldByYou) Accent else Muted, fontSize = 8.sp,
+            maxLines = 1)
         Spacer(Modifier.height(6.dp))
         // VU
         Box(

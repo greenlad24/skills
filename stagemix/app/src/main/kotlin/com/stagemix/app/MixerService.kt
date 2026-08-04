@@ -477,6 +477,7 @@ class MixerService : Service() {
                 identLabel = id?.label ?: "",
                 identHeard = id?.heard ?: false,
                 identEvidence = id?.evidence ?: 0f,
+                heldByYou = e.held(ch.index),
             )
         }
         AppState.snapshotTaken.value = e.ready

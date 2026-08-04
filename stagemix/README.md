@@ -10,12 +10,23 @@ monitor buses**: monitors stay 100 % human, in Mixing Station, always.
 The app has two jobs and you pick which one it is doing.
 
 **KEEP** (the default) takes the balance already on the desk as the
-plan and defends it. It holds each channel's *contribution* — source
-plus fader — where you put it: the singer leans into the mic and gets
-3 dB louder, the fader comes down 3 dB; they back off, it goes back up.
-Nothing else moves unless somebody solos or an instrument arrives that
-was not there. `✓ Keep this balance` re-adopts whatever is on the desk
-right now.
+plan and defends it. `✓ Keep this balance` re-adopts whatever is on the
+desk right now.
+
+What it will and will not touch, and this is the whole of it:
+
+| | |
+|---|---|
+| **Never moved** | the voices, the kick, the snare, the overheads, the bass. Every one of those is a channel whose level *is* the shape of the mix; moving it re-draws the picture rather than correcting anything inside it. The strip says **🔒 yours**. |
+| **Followed** | guitars, keys, horns — the things that come and go inside a song. Their *contribution* (source + fader) is held where you put it, so a guitarist who stands on their pedal comes back down. The strip says **following**. |
+| **Never between songs** | when the band stops, the engine stops. Nothing moves until they come back. |
+| **A solo** | a guitar, sax or piano stepping out gets a bounded lift, and it comes straight back. |
+| **An instrument arriving** | placed once, then held like everything else. |
+
+Which channels are voices is decided by role, and the app cannot hear
+the difference between a saxophone and a singer — see below. Tap the
+instrument line on a strip to say which is which; it is remembered
+against the console's name for that channel.
 
 **LEAD** derives a balance from the built-in pyramid, for when there is
 no human mix to preserve. `↻ Find a new balance` switches to it until

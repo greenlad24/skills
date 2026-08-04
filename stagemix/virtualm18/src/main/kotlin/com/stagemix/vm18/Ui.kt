@@ -438,7 +438,7 @@ class Bench(
 
         /** where the mouse is, as a fader position */
         private fun setFaderFromY(my: Int) {
-            val top = 34; val bot = height - 54
+            val top = 48; val bot = height - 54
             val span = (bot - top).toFloat()
             if (span <= 0) return
             val frac = ((bot - my) / span).coerceIn(0f, 1f)
@@ -464,7 +464,8 @@ class Bench(
             // is what the audio says, and the two are not always the
             // same channel-for-channel. Dimmed while it is still
             // listening, so a guess is never mistaken for a verdict.
-            client?.invoke()?.engine?.channelIdent(ch)?.let { id ->
+            val eng = client?.invoke()?.engine
+            eng?.channelIdent(ch)?.let { id ->
                 g2.font = Font(Font.SANS_SERIF, Font.PLAIN, 9)
                 g2.color = when {
                     id.label == "LEAD VOCAL" -> LIVE
@@ -473,8 +474,19 @@ class Bench(
                 }
                 g2.drawString(id.label.take(11), 4, 35)
             }
+            // and whether the app will touch this fader at all
+            if (eng != null && eng.balanceAdopted) {
+                g2.font = Font(Font.SANS_SERIF, Font.PLAIN, 8)
+                if (eng.held(ch)) {
+                    g2.color = ACCENT
+                    g2.drawString("🔒 yours", 4, 44)
+                } else {
+                    g2.color = MUTED
+                    g2.drawString("following", 4, 44)
+                }
+            }
 
-            val top = 34; val bot = h - 54
+            val top = 48; val bot = h - 54
             val span = (bot - top).toFloat()
             fun y(db: Float) = bot - (span * ((db + 60f) / 60f)
                 .coerceIn(0f, 1f)).toInt()

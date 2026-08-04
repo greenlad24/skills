@@ -36,10 +36,30 @@ class KeepBalanceTest {
         var t = 0.0
         private var next = 1.0
         val writes = ArrayList<Pair<Double, FaderWrite>>()
+        private val rnd = java.util.Random(20260805L)
+        private val walk = FloatArray(16)
+        private val buf = FloatArray(16)
+
+        /**
+         * Real instruments move, and the engine rightly treats a source
+         * whose level never changes as hum rather than music. A fixture
+         * of dead-flat tones therefore has every channel judged "not an
+         * instrument" after ninety seconds, which is not a scenario any
+         * of these tests mean to be running.
+         */
+        private fun live(s: FloatArray): FloatArray {
+            for (i in 0 until 16) {
+                if (s[i] <= -60f) { buf[i] = s[i]; walk[i] = 0f; continue }
+                walk[i] += -0.05f * walk[i] + rnd.nextGaussian().toFloat() * 0.5f
+                buf[i] = s[i] + walk[i]
+            }
+            return buf
+        }
+
         fun run(sec: Double, src: (Double) -> FloatArray) {
             val end = t + sec - 1e-9
             while (t < end) {
-                e.onMeters(src(t), t)
+                e.onMeters(live(src(t)), t)
                 if (t >= next - 1e-9) {
                     for (w in e.tick(t)) writes.add(t to w)
                     next += 1.0
@@ -108,49 +128,75 @@ class KeepBalanceTest {
         }
     }
 
-    @Test fun `a singer getting louder brings the fader down, and back up`() {
-        // The request, verbatim: "When a volume of a singer (lead or
-        // back) become louder the fade should come lower (to balance)
-        // and vice versa when the signal is weaker the fade should come
-        // up."
+    @Test fun `the voices and the rhythm section do not move at all`() {
+        // "do not move the singing faders, and do not move the bass and
+        // the kick drum + snare + overhead channels after a balance has
+        // been made."
+        //
+        // Every one of those is a channel whose level IS the shape of
+        // the mix. Moving any of them re-draws the picture rather than
+        // correcting anything inside it.
         val e = engine()
+        val r = Run(e)
+        val src = band()
+        r.start(src)
+        r.run(90.0) { src }
+        val held = listOf(0, 1, 2, 3, 8, 11, 12).associateWith { r.fader(it) }
+
+        // the singer leans in six dB, the drummer digs in, the bass
+        // player stands on their pedal
+        val loud = band().also {
+            it[8] = -17f; it[0] = -12f; it[1] = -14f
+            it[2] = -20f; it[11] = -11f; it[12] = -23f
+        }
+        r.run(300.0) { loud }
+        for ((ch, was) in held)
+            assertTrue(abs(r.fader(ch) - was) < 0.5f,
+                "channel ${ch + 1} moved ${r.fader(ch) - was} dB — the " +
+                "voices and the rhythm section are the operator's")
+    }
+
+    @Test fun `following a singer's level is one setting away`() {
+        // The rule above supersedes an earlier request — "when a singer
+        // becomes louder the fader should come lower" — and the
+        // mechanism is still there, so this proves the claim rather
+        // than leaving it as a comment.
+        val e = engine(EngineSettings(holdRoles = setOf(Role.FOUNDATION)))
         val r = Run(e)
         val src = band()
         r.start(src)
         r.run(90.0) { src }
         val settled = r.fader(8)
 
-        // the singer leans into the microphone: six dB louder
         val loud = band().also { it[8] = -17f }
-        r.run(120.0) { loud }
+        r.run(150.0) { loud }
         val down = r.fader(8)
         assertTrue(down < settled - 3f,
-            "a singer six dB louder must come DOWN on the fader: " +
+            "with the voices out of holdRoles the ride follows them: " +
             "$settled -> $down")
 
-        // and backs off again, to six dB quieter than they started
         val soft = band().also { it[8] = -29f }
-        r.run(180.0) { soft }
-        val up = r.fader(8)
-        assertTrue(up > down + 4f,
-            "and a singer who backs off must come back UP: $down -> $up")
-        assertTrue(up > settled + 2f,
-            "six dB below where they started should end up clearly above " +
-            "the original fader: $settled -> $up")
+        r.run(200.0) { soft }
+        assertTrue(r.fader(8) > down + 4f,
+            "and back up when they step off the mic: $down -> ${r.fader(8)}")
     }
 
     @Test fun `what is held is the contribution, not the fader`() {
+        // On a channel that IS ridden — the guitar amp. Holding a fader
+        // still is not holding a balance: the player stands on their
+        // pedal and takes over the room. Holding the sum still is what a
+        // hand on the desk does.
         val e = engine()
         val r = Run(e)
         val src = band()
         r.start(src)
         r.run(90.0) { src }
-        val plan = src[8] + r.fader(8)
+        val plan = src[4] + r.fader(4)
 
-        val loud = band().also { it[8] = -17f }
-        r.run(150.0) { loud }
-        val now = loud[8] + r.fader(8)
-        assertTrue(abs(now - plan) < 1.5f,
+        val loud = band().also { it[4] = -13f }
+        r.run(200.0) { loud }
+        val now = loud[4] + r.fader(4)
+        assertTrue(abs(now - plan) < 2.5f,
             "the channel's contribution to the mains is what must stay " +
             "put: was $plan, now $now")
     }
@@ -162,18 +208,7 @@ class KeepBalanceTest {
         r.start(src)
         r.run(90.0) { src }
         val mark = r.t
-        // a band playing, with the wander a real meter sees off players
-        val rnd = java.util.Random(90210L)
-        val walk = FloatArray(16)
-        val buf = FloatArray(16)
-        r.run(400.0) {
-            for (i in 0 until 16) {
-                if (src[i] <= -60f) { buf[i] = src[i]; continue }
-                walk[i] += -0.05f * walk[i] + rnd.nextGaussian().toFloat() * 0.6f
-                buf[i] = src[i] + walk[i]
-            }
-            buf
-        }
+        r.run(400.0) { src }        // Run gives it a real player's wander
         val moved = r.travel(mark)
         val total = moved.sum()
         assertTrue(total < 25f,
@@ -191,17 +226,7 @@ class KeepBalanceTest {
             r.start(src)
             r.run(90.0) { src }
             val mark = r.t
-            val rnd = java.util.Random(4242L)
-            val walk = FloatArray(16); val buf = FloatArray(16)
-            r.run(600.0) {
-                for (i in 0 until 16) {
-                    if (src[i] <= -60f) { buf[i] = src[i]; continue }
-                    walk[i] += -0.05f * walk[i] +
-                        rnd.nextGaussian().toFloat() * 0.9f
-                    buf[i] = src[i] + walk[i]
-                }
-                buf
-            }
+            r.run(600.0) { src }        // Run already gives it a player's wander
             return r.travel(mark).sum()
         }
         val keep = travelOf(BalanceMode.KEEP)
@@ -242,19 +267,54 @@ class KeepBalanceTest {
         }
     }
 
-    @Test fun `one instrument stopping while the band plays is still a departure`() {
-        // The other half of the same judgement: the gap rule must not
-        // become an excuse to ignore a channel that has genuinely gone.
+    @Test fun `a player sitting out a song is not muted, and not moved`() {
+        // In KEEP, going quiet is not a reason to pull a fader. A silent
+        // channel is already contributing nothing; taking it forty dB
+        // down achieves exactly that and leaves forty dB to undo when
+        // the player comes back. On the night this came from, the kick
+        // was muted and restored twice and the congas once, and each one
+        // cost the balance more than it saved.
         val e = engine()
         val r = Run(e)
         val src = band()
         r.start(src)
         r.run(120.0) { src }
-        val gone = band().also { it[4] = -80f }   // the guitar amp is off
-        r.run(80.0) { gone }
+        val at = r.fader(4)
+        val gone = band().also { it[4] = -80f }   // the guitar amp sits out
+        r.run(120.0) { gone }
         assertTrue(!e.betweenSongs, "the band is still playing")
-        assertTrue(e.decisions.any { it.kind == "mute" && it.channel == 4 },
-            "a channel that stops while the band plays on has left the mix")
+        assertTrue(e.decisions.none { it.kind == "mute" && it.channel == 4 },
+            "a planned channel going quiet is not a departure")
+        assertTrue(abs(r.fader(4) - at) < 1f,
+            "and its fader stays where the operator left it: " +
+            "$at -> ${r.fader(4)}")
+    }
+
+    @Test fun `in LEAD a channel that stops really has left the mix`() {
+        // The rule above is about defending a human's mix. When the
+        // engine is deriving one, a source that has gone genuinely
+        // changes what the others should be doing.
+        val e = engine(LEAD)
+        val r = Run(e)
+        val src = band()
+        r.start(src)
+        r.run(120.0) { src }
+        r.run(80.0) { band().also { it[4] = -80f } }
+        assertTrue(e.decisions.any { it.kind == "mute" && it.channel == 4 })
+    }
+
+    @Test fun `nothing moves between songs`() {
+        val e = engine()
+        val r = Run(e)
+        val src = band()
+        r.start(src)
+        r.run(120.0) { src }
+        val mark = r.t
+        r.run(60.0) { silence() }
+        assertTrue(e.betweenSongs)
+        assertTrue(r.writes.none { it.first > mark },
+            "the engine writes nothing at all while the band is not " +
+            "playing: ${r.writes.filter { it.first > mark }.take(4)}")
     }
 
     @Test fun `a small stage is never mistaken for a gap`() {

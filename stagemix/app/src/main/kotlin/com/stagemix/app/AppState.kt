@@ -49,6 +49,13 @@ object AppState {
         val identHeard: Boolean = false,
         /** 0..1 — how much listening is behind that claim */
         val identEvidence: Float = 0f,
+        /**
+         * True when the app will not move this fader at all — a voice or
+         * the rhythm section, once the balance is made. "Which channels
+         * can this thing touch?" is the first question anyone asks of an
+         * autopilot and the answer belongs on the strip.
+         */
+        val heldByYou: Boolean = false,
     )
 
     val conn = MutableStateFlow(Conn.DISCONNECTED)
