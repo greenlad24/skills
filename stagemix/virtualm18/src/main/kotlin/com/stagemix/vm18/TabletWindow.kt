@@ -129,6 +129,20 @@ class TabletWindow(private val client: DeskClient) {
                 if (client.doctorOn) "ON" else "OFF")
         }
         r2.add(doc)
+        // The two halves of what KEEP mode is: this balance is the one
+        // to defend, or this balance is wrong and I want a new one.
+        r2.add(btn("✓ KEEP THIS BALANCE") {
+            val n = client.engine.adoptBalance(nowSec())
+            note(if (n > 0)
+                "keeping this balance — $n channels held where they are; " +
+                "from here the app only follows the sources, solos and " +
+                "instruments arriving"
+            else "nothing is playing yet — there is no balance to keep")
+        })
+        r2.add(btn("↻ FIND A NEW BALANCE") {
+            client.engine.rebalance(nowSec())
+            note("finding a new balance from where the faders are now")
+        })
         val copy = btn("📋 COPY LOG") { }
         copy.addActionListener { copyLog(copy) }
         r2.add(copy)
@@ -267,7 +281,8 @@ class TabletWindow(private val client: DeskClient) {
         val e = client.engine
         mode.text = when {
             e.frozenAll -> "FROZEN"
-            client.directing -> "MIXING — AUTO"
+            client.directing && e.balanceAdopted -> "KEEPING YOUR BALANCE"
+            client.directing -> "MIXING — finding the balance"
             else -> "SHADOW — watching only"
         }
         mode.foreground = when {

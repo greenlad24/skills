@@ -43,7 +43,7 @@ class MusicalityTest {
      * All measurements are taken against the NOMINAL level.
      */
     private inner class Sim(
-        val e: StageEngine = StageEngine(rig),
+        val e: StageEngine = StageEngine(rig, LEAD),
         val base: Float = BASE,
         val wobbleDb: Float = 2f,
         seed: Long = 4242L,
@@ -119,7 +119,7 @@ class MusicalityTest {
 
     /** Listen briefly, then flip MIXING on with every fader at [BASE]. */
     private inner class Stage(
-        settings: EngineSettings = EngineSettings(),
+        settings: EngineSettings = LEAD,
         pyramid: Map<Role, Float> = PYRAMID,
         wobbleDb: Float = 2f,
         seed: Long = 4242L,
@@ -303,15 +303,15 @@ class MusicalityTest {
             return st.sim.contribs(src)
         }
         val cfg = listOf(
-            "stock engine" to EngineSettings(),
-            "+ settling duck disabled" to EngineSettings(duckMaxDb = 0f),
+            "stock engine" to LEAD,
+            "+ settling duck disabled" to EngineSettings(mode = BalanceMode.LEAD, duckMaxDb = 0f),
             "+ boost budget 6 -> 60 dB" to
-                EngineSettings(duckMaxDb = 0f, mixBoostBudgetDb = 60f),
+                EngineSettings(mode = BalanceMode.LEAD, duckMaxDb = 0f, mixBoostBudgetDb = 60f),
             "+ deadband 2.0 -> 0.5 dB" to
-                EngineSettings(duckMaxDb = 0f, mixBoostBudgetDb = 60f,
+                EngineSettings(mode = BalanceMode.LEAD, duckMaxDb = 0f, mixBoostBudgetDb = 60f,
                     deadbandDb = 0.5f),
             "+ authority +6 -> +12 dB" to
-                EngineSettings(duckMaxDb = 0f, mixBoostBudgetDb = 60f,
+                EngineSettings(mode = BalanceMode.LEAD, duckMaxDb = 0f, mixBoostBudgetDb = 60f,
                     deadbandDb = 0.5f, maxAboveBaselineDb = 12f),
         )
         println("\n=== S1b  the vocal's missing dB, one cause at a time ===")
@@ -332,7 +332,7 @@ class MusicalityTest {
             results.add(name to c)
         }
         // and finally with the group-compensated pyramid on top
-        val relaxed = EngineSettings(duckMaxDb = 0f, mixBoostBudgetDb = 60f,
+        val relaxed = EngineSettings(mode = BalanceMode.LEAD, duckMaxDb = 0f, mixBoostBudgetDb = 60f,
             deadbandDb = 0.5f, maxAboveBaselineDb = 12f)
         val prop = runWith(relaxed, proposedPyramid)
         println(String.format("  %-30s %+8.2f %15.2f%s",
@@ -371,7 +371,7 @@ class MusicalityTest {
         val src = fullBand()
         val on = (0 until 16).toList()
         val a = Stage(); a.start(src); a.sim.run(src, 400.0)
-        val b = Stage(EngineSettings(duckMaxDb = 0f))
+        val b = Stage(EngineSettings(mode = BalanceMode.LEAD, duckMaxDb = 0f))
         b.start(src); b.sim.run(src, 400.0)
         val ca = a.sim.contribs(src); val cb = b.sim.contribs(src)
         val wa = pyramidTargets(ca, on); val wb = pyramidTargets(cb, on)
@@ -672,7 +672,7 @@ class MusicalityTest {
     // SCENARIO 4 — a featured solo
     // ==================================================================
     private fun soloRun(ch: Int, label: String, soloSec: Double,
-                        settings: EngineSettings = EngineSettings()): FloatArray {
+                        settings: EngineSettings = LEAD): FloatArray {
         val base = fullBand()
         val st = Stage(settings); st.start(base); st.sim.run(base, 400.0)
         val before = st.sim.contribs(base)
@@ -728,11 +728,11 @@ class MusicalityTest {
         // the same solo from a channel that is sitting exactly on its target
         // (no leftover duck bias to absorb part of the step)
         val saxClean = soloRun(14, "SAX, channel already on target", 90.0,
-            EngineSettings(duckMaxDb = 0f))
+            EngineSettings(mode = BalanceMode.LEAD, duckMaxDb = 0f))
         // the same solo with the deadband applied as a TRIGGER instead of a
         // stop condition (emulated by shrinking it): the scar disappears
         val saxTight = soloRun(14, "SAX with a 0.5 dB deadband", 90.0,
-            EngineSettings(duckMaxDb = 0f, deadbandDb = 0.5f))
+            EngineSettings(mode = BalanceMode.LEAD, duckMaxDb = 0f, deadbandDb = 0.5f))
         println(String.format("\n  SUMMARY: 40 s sax keeps %.2f of 6 dB, " +
             "40 s guitar %.2f, a 3-minute feature %.2f, and a player who " +
             "was already sitting on target keeps only %.2f",
@@ -764,7 +764,7 @@ class MusicalityTest {
     // SCENARIO 5 — the quiet ballad after the loud rocker
     // ==================================================================
     private fun ballad(label: String, loudSrc: FloatArray,
-                       settings: EngineSettings = EngineSettings()): Float {
+                       settings: EngineSettings = LEAD): Float {
         val on = (0 until 16).filter { loudSrc[it] > -60f }
         val st = Stage(settings); st.start(loudSrc); st.sim.run(loudSrc, 400.0)
         val f0 = FloatArray(16) { st.sim.fader(it) }
@@ -820,7 +820,7 @@ class MusicalityTest {
         // fixing scenario 1 requires) and the foundation's drift correction
         // starts undoing the band's dynamics.
         val relaxed = ballad("FULL BAND, boost budget relieved to 60 dB",
-            fullBand(), EngineSettings(mixBoostBudgetDb = 60f))
+            fullBand(), EngineSettings(mode = BalanceMode.LEAD, mixBoostBudgetDb = 60f))
         println(String.format("\n  BALLAD SUMMARY: %.2f dB of 12 survives " +
             "today; %.2f dB survives once the boost budget is relieved — " +
             "the dynamic contrast is protected by an accident, not a rule",

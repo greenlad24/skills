@@ -148,7 +148,52 @@ val PYRAMID: Map<Role, Float> = mapOf(
     Role.INSTRUMENT to -7f,
 )
 
+/**
+ * What the engine is trying to do with the faders.
+ *
+ * LEAD is the original job: derive a balance from the built-in pyramid
+ * and steer every channel to it. It exists because the app's first
+ * promise was "no soundcheck ritual" — walk up to a desk with the
+ * faders anywhere and get a mix.
+ *
+ * KEEP is what a working engineer actually wants, and it took a real
+ * night's log to see it. In twenty-one minutes of LEAD the engine moved
+ * the faders 1558 dB in total, sat 16 % of the time with an offset
+ * pinned at one of its authority rails and 40 % of the time with the
+ * band ducked at ITS rail, settled channels at +6 and −12 dB within a
+ * minute of each other, and still only had the vocal on top half the
+ * time. That is not a mix being refined; it is a controller that cannot
+ * reach its setpoint, thrashing. Meanwhile the operator switched it off
+ * and built the balance they wanted in about a minute.
+ *
+ * So KEEP takes that balance as the plan and defends it. Its whole job
+ * is to hold each channel's CONTRIBUTION — source plus fader — where
+ * the operator put it: the singer leans in and gets 3 dB louder, the
+ * fader comes down 3 dB; they back off, it goes up. Nothing else moves
+ * unless somebody solos or an instrument arrives that was not there.
+ */
+enum class BalanceMode { LEAD, KEEP }
+
 data class EngineSettings(
+    /**
+     * LEAD derives a balance; KEEP defends the one on the desk. The
+     * default is KEEP: by the time the app is switched on there is
+     * almost always a human mix already there, and preserving it is
+     * both what was asked for and far less likely to be wrong.
+     */
+    val mode: BalanceMode = BalanceMode.KEEP,
+    /** how far KEEP may ride a fader either side of the adopted balance */
+    val rideBandDb: Float = 8f,
+    /**
+     * Contribution error KEEP ignores. Two dB rather than one because
+     * one dB of balance is not something an audience can hear and a
+     * meter wanders that far on its own; correcting it is all cost.
+     */
+    val rideDeadbandDb: Float = 2.0f,
+    /** the loudness average the ride answers to — deliberately slow */
+    val rideTauSec: Float = 45f,
+    /** and how fast it rides — an engineer's hand, not a limiter */
+    val ridePerSecDb: Float = 0.4f,
     val deadbandDb: Float = 2.0f,
     val maxAboveBaselineDb: Float = 6.0f,
     val maxBelowBaselineDb: Float = 12.0f,
@@ -265,6 +310,13 @@ data class EngineSettings(
      */
     val absoluteFloorDb: Float = -62f,
     val silentMuteAfterSec: Float = 25f,
+    /**
+     * The smallest stage this engine will call a gap on at all. Below
+     * three channels there is no way to tell "the band stopped" from
+     * "one of the two players stopped", so a small rig keeps the plain
+     * reading: silent means silent. See `betweenSongs`.
+     */
+    val stageQuietChannels: Int = 2,
     val silentMuteDb: Float = 40f,
     /** a fader move smaller than this is the wire, not a human */
     val overrideMinDb: Float = 0.25f,
@@ -336,7 +388,34 @@ class ChannelState(val cfg: ChannelConfig) {
     var pendingSince = 0.0
     var roleChangedT = -1000.0
     var baselineDb: Float? = null    // fader position at takeover
+    /**
+     * The contribution this channel is meant to make to the mains —
+     * source plus fader — as it stood when the balance was adopted.
+     *
+     * This is the whole of KEEP mode. Holding a FADER still is not
+     * holding a balance: the singer steps back from the mic and
+     * disappears, the guitarist stands on their pedal and takes over the
+     * room. Holding the SUM still is what an engineer's hand does all
+     * night, and it is what was asked for — "when a volume of a singer
+     * become louder the fader should come lower, and vice versa".
+     */
+    var planContrib: Float? = null
+    /** the offset the balance was adopted at: the centre of the ride band */
+    var planOffset = 0f
     var preEma: Float? = null        // active-only source loudness EMA
+    /**
+     * A much slower loudness average, for KEEP's ride only.
+     *
+     * The twenty-second average is the right measurement for deciding
+     * where a channel BELONGS; it is far too twitchy for deciding when
+     * to move a fader that is already right. Ridden off it, a band
+     * playing one steady song walked the desk more than a hundred dB in
+     * ten minutes — the engine chasing its own measurement noise, which
+     * is exactly the restlessness KEEP exists to end. A singer leaning
+     * into the microphone for a chorus is the smallest thing worth
+     * correcting, and that is a minute-scale event.
+     */
+    var slowEma: Float? = null
     var fastEma: Float? = null       // ~3 s EMA: spots a player stepping up
     var featureStart = -1.0          // holding a feature for this player
     var featureRef = 0f              // their level when they stepped up
@@ -370,6 +449,8 @@ class ChannelState(val cfg: ChannelConfig) {
     var isStatic = false             // hum / room tone, not an instrument
     /** deadband hysteresis: once engaged we converge fully */
     var engaged = false
+    /** the same, for KEEP's ride: engaged at the deadband, off well inside */
+    var riding = false
     /** this channel has found its place and is being held there */
     var settled = false
     var settledOffset = 0f
@@ -557,6 +638,21 @@ class StageEngine(
         st.baselineDb = safe
         st.offset = 0f; st.target = 0f; st.duckDb = 0f
         st.overrideUntil = tSec + 120.0
+        // THE OPERATOR'S LEVEL IS THE NEW PLAN.
+        //
+        // Without this the ride does the single worst thing it could:
+        // the plan still describes where the channel was BEFORE the
+        // hand landed, so the moment the two-minute hold expires the
+        // engine puts it straight back and undoes the correction. A
+        // human move is not an error to be defended against; it is a
+        // restatement of what the balance is.
+        (st.slowEma ?: st.preEma)?.let {
+            st.planContrib = it + safe
+            st.planOffset = 0f
+            st.riding = false
+            st.settled = true
+            st.settledOffset = 0f
+        }
     }
 
     /** how long a fader must be still before the hand counts as off it */
@@ -662,7 +758,8 @@ class StageEngine(
             // balance. A source that merely dipped for a bar is not
             // arriving, which is what the silence requirement is for.
             val wasAway = tSec - st.lastActiveT > settings.arrivalSilenceSec
-            if (!st.active && st.gateOpen && wasAway && takeoverT >= 0) {
+            if (!st.active && st.gateOpen && wasAway && takeoverT >= 0 &&
+                !betweenSongs) {
                 st.arrivedT = tSec
                 lastArrivalT = tSec
                 // Forget what this channel used to sound like, and listen
@@ -682,6 +779,7 @@ class StageEngine(
                 // move at all until there are five seconds of it to judge.
                 st.preEma = null
                 st.fastEma = null
+                st.slowEma = null
                 st.riseHist.clear()
                 st.offsetHist.clear()
                 st.featureVotes = 0
@@ -697,6 +795,8 @@ class StageEngine(
                 st.preEma = st.preEma?.let { it + alpha * (db - it) } ?: db
                 val fa = (dtFrame / settings.fastEmaTauSec).coerceIn(0f, 1f)
                 st.fastEma = st.fastEma?.let { it + fa * (db - it) } ?: db
+                val sa = (dtFrame / settings.rideTauSec).coerceIn(0f, 1f)
+                st.slowEma = st.slowEma?.let { it + sa * (db - it) } ?: db
                 mean += db; n += 1
             }
             // the envelope half of "what is this?" — every channel, every
@@ -712,6 +812,26 @@ class StageEngine(
             if (db > settings.clipFreezeDb)
                 clipHoldUntil = tSec + settings.clipHoldSec
         }
+        // How much of the stage is playing, against how much of it was
+        // playing recently. An ABSOLUTE count cannot answer this: on a
+        // sixteen-piece "two channels" means everybody stopped, and on a
+        // singer-plus-guitar duo it means a completely normal song. The
+        // peak rises the instant a channel joins and falls back over
+        // about a minute, so it remembers the band through a gap without
+        // remembering an act that finished half an hour ago.
+        val playingNow = state.values.count {
+            it.active && !it.isStatic && it.role != Role.TALK &&
+                it.baselineDb != null
+        }
+        stagePeak = if (playingNow > stagePeak) playingNow.toFloat()
+                    else max(playingNow.toFloat(),
+                        stagePeak - dtFrame / 60f)
+        // Three channels is the floor for having an opinion at all: with
+        // two you cannot tell "the band stopped" from "one of the two
+        // stopped", and on a small rig the conservative answer is to
+        // treat a silent channel as silent.
+        betweenSongs = stagePeak >= settings.stageQuietChannels + 1 &&
+            playingNow * 3 <= stagePeak
         // Broadband guard over the INTERSECTION of channels active in
         // both frames. Bailing out whenever the active set changed made
         // the guard disarm itself exactly when it was needed — at a song
@@ -768,13 +888,19 @@ class StageEngine(
         takeoverT = tSec
         revertHoldUntil = 0.0
         lastLeadSwitch = tSec
+        balanceAdopted = false
+        adoptWhenSettled = false
+        for (st in state.values) { st.planContrib = null; st.planOffset = 0f }
         // initial lead: the configured lead vocal (Vocal Center)
         leadVocal = state.values.firstOrNull { it.role == Role.VOCAL }
             ?.cfg?.index
         log(tSec, "takeover", null, 0f,
             "autopilot took the mains — listening for " +
-            "${settings.learnSec.toInt()}s, then leading " +
-            "(${faderDb.size} faders bounded, monitors untouched)")
+            "${settings.learnSec.toInt()}s, then " +
+            (if (settings.mode == BalanceMode.KEEP)
+                "keeping the balance you made"
+             else "leading") +
+            " (${faderDb.size} faders bounded, monitors untouched)")
     }
 
     /** Hands the mains back exactly as they were at takeover. */
@@ -920,6 +1046,22 @@ class StageEngine(
         // what is actually plugged in, before deciding where it belongs
         identifyPass(tSec)
 
+        // The listening window is over: whatever balance was on the desk
+        // when MIXING went on is the balance to keep. Done here rather
+        // than in takeover() because at the moment of takeover nothing
+        // has been heard yet — the loudness averages the plan is made of
+        // do not exist until the channels have played for a few seconds.
+        if (settings.mode == BalanceMode.KEEP && !balanceAdopted) {
+            // Normally the balance to keep is the one already on the
+            // desk, adopted the moment there is enough heard to
+            // describe it. After a REBALANCE it is not — the operator
+            // has just said the mix is wrong — so the pyramid steers
+            // until everything has come to rest and the balance it
+            // arrives at is adopted instead.
+            if (!adoptWhenSettled) adoptBalance(tSec)
+            else if (balanced) { adoptBalance(tSec); adoptWhenSettled = false }
+        }
+
         // The boost budget is a safety rail, not a balancing preference,
         // so a held mix is not exempt from it. It used to be enforced
         // only on the way UP, which was enough while every channel was
@@ -1051,6 +1193,19 @@ class StageEngine(
             }
             if (k > 0) s / k else 0f
         }
+        // IS THE BAND PLAYING AT ALL?
+        //
+        // Between songs the whole stage goes quiet together, and the
+        // engine used to read that as instrument after instrument
+        // LEAVING: the kick "silent 25 s — out of the mains", then the
+        // snare, then the congas, each one muting a channel and
+        // re-placing every other channel around the hole it left. Four
+        // of those in one set, and each cost the mix its shape.
+        //
+        // A gap and a departure look identical on one channel and
+        // completely different across sixteen. A kick that stops while
+        // the band plays on has left; a kick that stops when everything
+        // else stops is the end of a song.
         for ((idx, st) in state) {
             if (st.frozen) continue
             if (st.role == Role.TALK) {
@@ -1079,7 +1234,7 @@ class StageEngine(
             // follows the stage, so waiting for it to go idle meant it
             // never did. It has already had ninety seconds of not being
             // an instrument before it can be called static at all.
-            val dead = settings.muteSilent &&
+            val dead = settings.muteSilent && !betweenSongs &&
                 (idleFor > settings.silentMuteAfterSec || st.isStatic)
             if (dead) {
                 if (!st.muted) {
@@ -1109,7 +1264,7 @@ class StageEngine(
                 }
                 continue
             }
-            if (idleFor > settings.idleRampAfterSec) {
+            if (!betweenSongs && idleFor > settings.idleRampAfterSec) {
                 if (!st.idleRamped) {
                     st.idleRamped = true
                     st.target = -settings.idleCutDb
@@ -1262,6 +1417,57 @@ class StageEngine(
             }
             val height = effHeight(st)
             val contrib = pre + base + st.offset
+
+            // KEEP: defend the balance, do not re-derive it.
+            //
+            // One subtraction, and it is the whole feature. The plan is
+            // a contribution — what this channel is meant to add to the
+            // mains — so the fader that delivers it is just the plan
+            // minus what the channel is putting out right now. A singer
+            // who leans in and gets three dB louder is three dB over
+            // plan, so the fader comes down three; back off the mic and
+            // it goes up again. No anchor, no pyramid, no groups: none
+            // of that has any bearing on holding a mix somebody has
+            // already made.
+            //
+            // Bounded twice over. The ride band keeps it near where the
+            // operator left it, so a channel whose gain has genuinely
+            // been changed at the preamp cannot be chased to a rail; and
+            // the deadband means ordinary playing dynamics move nothing
+            // at all.
+            val plan = st.planContrib
+            if (settings.mode == BalanceMode.KEEP && plan != null) {
+                val slow = st.slowEma ?: pre
+                val want = boundOffset((plan - slow - base).coerceIn(
+                    st.planOffset - settings.rideBandDb,
+                    st.planOffset + settings.rideBandDb), base)
+                // Hysteresis, or it hunts. The loudness average this is
+                // computed from wanders a little all the time, so
+                // "correct whenever the error exceeds a dB" re-triggers
+                // every few seconds and rides the noise — sixteen dB a
+                // minute of fader in the first version of this, which is
+                // the very thing it exists to stop. Engage at the
+                // deadband, converge fully, and do not engage again
+                // until the mix has genuinely moved that far once more.
+                val err = abs(want - st.offset)
+                if (err > settings.rideDeadbandDb) st.riding = true
+                else if (err < settings.rideDeadbandDb * 0.25f) st.riding = false
+                if (st.riding) {
+                    if (abs(want - st.target) > 0.25f) {
+                        st.target = want
+                        log(tSec, "ride", idx, want - st.planOffset,
+                            "${st.name} is %+.1f dB off the balance — %s"
+                                .format(java.util.Locale.ROOT,
+                                    contrib - plan,
+                                    if (contrib > plan) "easing it back down"
+                                    else "bringing it back up"))
+                    }
+                } else st.target = st.offset
+                st.settled = true
+                st.settledOffset = st.target
+                continue
+            }
+
             val tgt: Float = if (anchor == null) {
                 // nothing to anchor against (everyone still auditioning):
                 // hold, correcting only this source's drift since takeover
@@ -1391,6 +1597,15 @@ class StageEngine(
                     st.settled = true
                     st.settledOffset = st.target
                     st.engaged = false
+                    // In KEEP this is an instrument that ARRIVED after
+                    // the balance was adopted — there was nothing on the
+                    // channel to preserve, so the pyramid placed it.
+                    // Now that it has a place, that place becomes its
+                    // plan and it stops being steered like the rest.
+                    if (settings.mode == BalanceMode.KEEP) {
+                        st.planContrib = (st.slowEma ?: pre) + base + st.target
+                        st.planOffset = st.target
+                    }
                     log(tSec, "settled", idx, st.target,
                         "${st.name} has found its place " +
                         "(%+.1f dB) — holding it from here"
@@ -1401,6 +1616,22 @@ class StageEngine(
 
         // -- 2. vocal priority on the mains (cut-only) --------------------
         run {
+            // Not in KEEP. The duck exists to get the singer on top of a
+            // balance the ENGINE is still working out; when the balance
+            // came from a human the singer is already where they want
+            // them, and a duck second-guessing that is just the mix
+            // moving for no reason. It showed: on the night this was
+            // written from, forty per cent of all measurements had the
+            // whole band pinned at the duck's four-dB rail, and the
+            // vocal was still only on top half the time — a controller
+            // that could not reach its setpoint, holding everything down
+            // and achieving nothing. Any duck already applied is let go.
+            if (settings.mode == BalanceMode.KEEP && balanceAdopted) {
+                for (st in state.values) if (st.duckDb < -0.01f)
+                    st.duckDb = min(0f,
+                        st.duckDb + (settings.leadPerSecDb * dt).toFloat())
+                return@run
+            }
             val lead = leadVocal?.let { state[it] }
             if (lead == null) {
                 // nobody is leading: release every duck rather than
@@ -1515,11 +1746,18 @@ class StageEngine(
             val tgt = boundOffset(st.target + st.duckDb, base)
             val cur = st.offset
             if (abs(tgt - cur) < 0.05f) continue
+            // KEEP rides at an engineer's pace, not a limiter's, and the
+            // same pace in both directions: a fader that comes down at
+            // three dB a second and back up at one is audible as a
+            // pump, and correcting a singer's level is not an emergency.
+            val riding = settings.mode == BalanceMode.KEEP &&
+                st.planContrib != null && st.featureStart < 0
             val step: Float = if (tgt > cur) {
                 if (!up) 0f
                 else {
                     val fast = tSec < st.fastUntil && cur < 0f
-                    val rate = if (fast) settings.fastPerSecDb
+                    val rate = if (riding) settings.ridePerSecDb
+                               else if (fast) settings.fastPerSecDb
                                else settings.leadPerSecDb
                     val wanted = min((rate * dt).toFloat(), tgt - cur)
                     // Budget governs POSITIVE offset only: climbing back
@@ -1539,7 +1777,8 @@ class StageEngine(
                     (end - cur).coerceAtLeast(0f)
                 }
             } else {
-                -min((settings.cutPerSecDb * dt).toFloat(), cur - tgt)
+                -min(((if (riding) settings.ridePerSecDb
+                       else settings.cutPerSecDb) * dt).toFloat(), cur - tgt)
             }
             val minStep = min(0.01f, (settings.cutPerSecDb * dt).toFloat() * 0.5f)
             if (abs(step) < minStep) continue
@@ -1592,7 +1831,21 @@ class StageEngine(
     private var lastArrivalT = -1000.0
 
     /** everyone but [exceptCh] goes back to looking for their place */
+    /**
+     * One source has left the mix, so the balance everyone else found
+     * was struck against a band that no longer exists — go and find it
+     * again.
+     *
+     * True in LEAD, where every channel's place is derived from every
+     * other channel's. Emphatically FALSE in KEEP: the plan there came
+     * from a person, and a person's mix does not stop being the mix
+     * they wanted because the congas stopped for a verse. On the night
+     * this was written from, this fired every time a drum went quiet
+     * between songs and re-placed the entire desk, which is most of
+     * where fifteen hundred dB of fader travel came from.
+     */
     private fun unsettleOthers(exceptCh: Int, tSec: Double, why: String) {
+        if (settings.mode == BalanceMode.KEEP && balanceAdopted) return
         var n = 0
         for ((i, other) in state) {
             if (i == exceptCh || !other.settled) continue
@@ -1838,7 +2091,45 @@ class StageEngine(
         val st = state[ch] ?: return false
         st.role = role
         st.roleLocked = true
+        knownInstruments[st.name.trim().lowercase()] = role
         return true
+    }
+
+    /**
+     * What the operator has told us is on a channel, remembered against
+     * the CONSOLE'S NAME for it.
+     *
+     * There is a limit here worth stating plainly rather than papering
+     * over, because a night's log ran straight into it: a hundred-bin
+     * RTA cannot tell a saxophone from a singer. Both are a moving
+     * spectrum in the 400 Hz–5 kHz band with nothing underneath — that
+     * is what makes them both carry a melody over a band — and no
+     * amount of cleverness with the numbers available will separate
+     * them. So on a rig where the channel labelled SAXOPHONE is a
+     * singer and the one labelled UTILITY 3 is the saxophone, the audio
+     * will never work it out, and neither will the labels.
+     *
+     * A person can, in one tap. This is where that tap is kept: keyed
+     * by the desk's name, so it survives the app restarting, the band
+     * re-patching, and the channel moving to another socket — because
+     * what the operator actually said was "the thing called SAXOPHONE
+     * on this desk is a singer", and that stays true.
+     */
+    val knownInstruments = HashMap<String, Role>()
+
+    /** apply everything the operator has previously said about this rig */
+    fun applyKnownInstruments(tSec: Double) {
+        for ((_, st) in state) {
+            val r = knownInstruments[st.name.trim().lowercase()] ?: continue
+            if (st.role == r && st.roleLocked) continue
+            val was = st.role
+            st.role = r
+            st.roleLocked = true
+            if (was != r) log(tSec, "known", st.cfg.index, 0f,
+                "${st.name} is ${ident.pretty(r)} — you told us so before, " +
+                "not something the audio could have worked out")
+        }
+        recountGroups()
     }
 
     /**
@@ -1872,8 +2163,81 @@ class StageEngine(
         val n = name.trim()
         if (n.isEmpty() || n == st.deskName) return false
         st.deskName = n
+        // now that we know what the desk calls it, anything the operator
+        // has told us about a channel by that name applies
+        knownInstruments[n.lowercase()]?.let { r ->
+            st.role = r
+            st.roleLocked = true
+        }
         return true
     }
+
+    /**
+     * THIS IS THE BALANCE. Keep it.
+     *
+     * Every channel that is playing has its current contribution —
+     * source plus fader — written down as the thing to defend, and is
+     * marked settled where it stands. From here the engine's job is not
+     * to decide where anything belongs; somebody already did that. It
+     * is to stop the mix drifting away from it.
+     *
+     * Called automatically once the listen period is over, so the
+     * balance that was on the desk when MIXING was switched on is the
+     * one that gets kept — and available by hand for the times the
+     * operator has just fixed something and wants it locked in.
+     */
+    fun adoptBalance(tSec: Double): Int {
+        var n = 0
+        for ((_, st) in state) {
+            val base = st.baselineDb ?: continue
+            val pre = st.preEma
+            if (st.role == Role.TALK || st.isStatic) continue
+            if (pre == null || !st.active || st.heardSec < settings.minHeardSec) {
+                // Nothing playing on it yet, so there is nothing to
+                // preserve. It gets a plan when it arrives — see the
+                // arrival path — rather than one invented from silence.
+                st.planContrib = null
+                continue
+            }
+            st.planContrib = (st.slowEma ?: pre) + base + st.offset
+            st.planOffset = st.offset
+            st.settled = true
+            st.settledOffset = st.offset
+            st.atPlaceSince = tSec
+            st.engaged = false
+            n++
+        }
+        if (n > 0) {
+            balanceAdopted = true
+            log(tSec, "keep", null, 0f,
+                "keeping the balance on the desk — $n channels held where " +
+                "they are; from here only the source moving, a solo or an " +
+                "instrument arriving changes anything")
+        }
+        return n
+    }
+
+    /** true once there is a balance to defend */
+    var balanceAdopted = false; private set
+    /** after a rebalance, wait for the mix to come to rest before adopting */
+    private var adoptWhenSettled = false
+
+    /**
+     * The band has stopped — this is a gap between songs, not sixteen
+     * instruments each independently deciding to leave the mix.
+     *
+     * A gap and a departure look identical on one channel and
+     * completely different across sixteen. A kick that stops while the
+     * band plays on has left; a kick that stops when everything else
+     * stops is the end of a song. Without this the engine muted the
+     * kick, then the snare, then the congas between songs, re-placing
+     * every other channel around each hole as it appeared — which is
+     * most of where fifteen hundred dB of fader travel in twenty
+     * minutes came from.
+     */
+    @Volatile var betweenSongs = false; private set
+    /** how many channels were playing recently: rises at once, falls slowly */
+    private var stagePeak = 0f
 
     /**
      * Tear up the held balance and find a new one.
@@ -1887,7 +2251,14 @@ class StageEngine(
             st.settled = false
             st.atPlaceSince = -1.0
             st.engaged = false
+            // KEEP has nothing left to keep: "find the balance again"
+            // means the balance on the desk is no longer the one to
+            // defend, so it is thrown away and re-adopted from whatever
+            // the faders are doing once the mix comes back to rest.
+            st.planContrib = null
         }
+        balanceAdopted = false
+        adoptWhenSettled = true
         log(tSec, "rebalance", null, 0f,
             "finding the balance again from where the faders are now")
     }

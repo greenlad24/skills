@@ -361,13 +361,58 @@ class Bench(
     }
 
     /** one channel: the source the desk hears, and the tablet's fader */
+    /**
+     * "This channel is a…"
+     *
+     * The app can hear that a channel is a moving melody in the voice
+     * band with nothing underneath it. It cannot hear whether that is a
+     * singer or a saxophone — they are the same thing to a hundred-bin
+     * spectrum, which is exactly why both work as the top line over a
+     * band. On the rig this was written for, the channel the desk calls
+     * SAXOPHONE is a singer and the one it calls UTILITY 3 is the
+     * saxophone, and no amount of listening will sort that out.
+     *
+     * A person sorts it out in one click, and it is remembered against
+     * the console's own name for the channel, so it holds for the rest
+     * of this night and every night after.
+     */
+    private fun instrumentMenu(ch: Int): javax.swing.JPopupMenu {
+        val m = javax.swing.JPopupMenu("what is on channel ${ch + 1}?")
+        val choices = listOf(
+            com.stagemix.engine.Role.VOCAL to "a lead vocal",
+            com.stagemix.engine.Role.BACKING_VOCAL to "a backing vocal",
+            com.stagemix.engine.Role.COLOR to "a horn, sax or harmonica",
+            com.stagemix.engine.Role.SOLO_GTR to "a lead guitar",
+            com.stagemix.engine.Role.RHYTHM_GTR to "a rhythm guitar",
+            com.stagemix.engine.Role.KEYS to "keys or piano",
+            com.stagemix.engine.Role.PERCUSSION to "drums or percussion",
+            com.stagemix.engine.Role.FOUNDATION to "kick or bass",
+            com.stagemix.engine.Role.TALK to "a talkback mic (never mixed)")
+        for ((role, text) in choices) {
+            val i = javax.swing.JMenuItem(text)
+            i.addActionListener {
+                val e = client?.invoke()?.engine
+                if (e == null) { note("start the app first"); return@addActionListener }
+                e.setRole(ch, role)
+                note("ch%02d is %s — remembered for '%s' from now on"
+                    .format(java.util.Locale.ROOT, ch + 1, text,
+                        e.state[ch]?.name ?: "?"))
+                strips.getOrNull(ch)?.repaint()
+            }
+            m.add(i)
+        }
+        return m
+    }
+
     private inner class Strip(val ch: Int, var label: String) : JPanel() {
         init {
             background = PANEL
             preferredSize = Dimension(68, 520)
             border = BorderFactory.createEmptyBorder(6, 4, 6, 4)
             toolTipText = "click the name to load a file on channel " +
-                "${ch + 1}; drag the fader on the right to overrule the app"
+                "${ch + 1}; drag the fader on the right to overrule the " +
+                "app; RIGHT-CLICK to say what is plugged in"
+            componentPopupMenu = instrumentMenu(ch)
             // The fader lane is a real fader. Without this there was no
             // way to put a hand on the desk at all, so the one thing that
             // matters most about a mixing autopilot — that a human can

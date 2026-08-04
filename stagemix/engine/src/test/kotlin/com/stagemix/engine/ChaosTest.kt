@@ -32,7 +32,7 @@ class ChaosTest {
 
     /** Instrumented simulation: 20 Hz meters, 1 Hz ticks, metrics. */
     private class Sim(
-        val e: StageEngine = StageEngine(defaultRigProfile()),
+        val e: StageEngine = StageEngine(defaultRigProfile(), LEAD),
         val baseline: Float = -10f,
     ) {
         var t = 0.0

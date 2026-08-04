@@ -1,0 +1,364 @@
+package com.stagemix.engine
+
+import kotlin.math.abs
+import kotlin.test.Test
+import kotlin.test.assertTrue
+
+/**
+ * KEEP: defend the balance that is on the desk.
+ *
+ * From a real night's log, twenty-one minutes of the pyramid leading a
+ * live band:
+ *
+ *   · 1558 dB of fader travel — about 74 dB a minute across the desk;
+ *   · 16 % of all measurements with a channel's offset pinned at one of
+ *     its authority rails, and 40 % with the band held at the duck's;
+ *   · the same channel "settling" at −12 dB and at +6 dB within a
+ *     minute of each other;
+ *   · and after all that, the vocal on top less than half the time.
+ *
+ * The operator switched it off and built the balance they wanted in
+ * about a minute. What they then asked for is this file: keep THAT, and
+ * "when a volume of a singer become louder the fader should come lower,
+ * and vice versa when the signal is weaker the fader should come up."
+ *
+ * Which is one idea: hold each channel's CONTRIBUTION — source plus
+ * fader — where the human put it. Holding the FADER still is not
+ * holding a balance; holding the sum still is what a hand on the desk
+ * does all night.
+ */
+class KeepBalanceTest {
+
+    private val rig = defaultRigProfile()
+    private val BASE = -10f
+
+    private class Run(val e: StageEngine, val base: Float = -10f) {
+        var t = 0.0
+        private var next = 1.0
+        val writes = ArrayList<Pair<Double, FaderWrite>>()
+        fun run(sec: Double, src: (Double) -> FloatArray) {
+            val end = t + sec - 1e-9
+            while (t < end) {
+                e.onMeters(src(t), t)
+                if (t >= next - 1e-9) {
+                    for (w in e.tick(t)) writes.add(t to w)
+                    next += 1.0
+                }
+                t += 0.05
+            }
+        }
+        fun start(src: FloatArray, faders: Map<Int, Float>? = null) {
+            run(5.0) { src }
+            e.takeover(faders ?: (0 until 16).associateWith { base }, t)
+        }
+        /**
+         * Where the fader actually is. Not `base + offset`: an operator
+         * override REPLACES the baseline, so measuring against the
+         * takeover position reports the engine's move and silently
+         * discards the human's.
+         */
+        fun fader(i: Int) = (e.state[i]?.baselineDb ?: base) + e.offsetDb(i)
+        /** total fader travel per channel since [t0] */
+        fun travel(t0: Double): FloatArray {
+            val last = FloatArray(16) { Float.NaN }
+            val out = FloatArray(16)
+            for ((tt, w) in writes) {
+                if (tt <= t0) { last[w.channel] = w.levelDb; continue }
+                if (!last[w.channel].isNaN())
+                    out[w.channel] += abs(w.levelDb - last[w.channel])
+                last[w.channel] = w.levelDb
+            }
+            return out
+        }
+    }
+
+    private fun engine(s: EngineSettings = EngineSettings()) =
+        StageEngine(rig, s)
+
+    private fun silence() = FloatArray(16) { -80f }
+
+    /** the rig from the night the log came from, roughly */
+    private fun band() = silence().also {
+        it[0] = -18f;  it[1] = -20f;  it[2] = -26f;  it[3] = -22f
+        it[4] = -19f;  it[5] = -24f;  it[6] = -24f;  it[7] = -21f
+        it[8] = -23f;  it[11] = -17f; it[12] = -29f; it[14] = -20f
+    }
+
+    // ------------------------------------------------------------------
+    @Test fun `the balance on the desk is the one that gets kept`() {
+        val e = engine()
+        val r = Run(e)
+        // a mix somebody made: not flat, deliberately uneven
+        val desk = mapOf(0 to -6f, 1 to -12f, 2 to -14f, 3 to -8f,
+            4 to -11f, 5 to -15f, 6 to -15f, 7 to -13f, 8 to -3f,
+            9 to -20f, 10 to -20f, 11 to -7f, 12 to -16f, 13 to -20f,
+            14 to -12f, 15 to -20f)
+        val src = band()
+        r.start(src, desk)
+        r.run(60.0) { src }
+        assertTrue(e.balanceAdopted, "the balance must be adopted once heard")
+
+        val at = (0 until 16).associateWith { BASE + e.offsetDb(it) }
+        r.run(400.0) { src }
+        for (i in 0 until 16) {
+            val moved = abs((BASE + e.offsetDb(i)) - at.getValue(i))
+            assertTrue(moved < 1.5f,
+                "channel ${i + 1} was moved $moved dB away from the balance " +
+                "the operator made, on a band that did not change")
+        }
+    }
+
+    @Test fun `a singer getting louder brings the fader down, and back up`() {
+        // The request, verbatim: "When a volume of a singer (lead or
+        // back) become louder the fade should come lower (to balance)
+        // and vice versa when the signal is weaker the fade should come
+        // up."
+        val e = engine()
+        val r = Run(e)
+        val src = band()
+        r.start(src)
+        r.run(90.0) { src }
+        val settled = r.fader(8)
+
+        // the singer leans into the microphone: six dB louder
+        val loud = band().also { it[8] = -17f }
+        r.run(120.0) { loud }
+        val down = r.fader(8)
+        assertTrue(down < settled - 3f,
+            "a singer six dB louder must come DOWN on the fader: " +
+            "$settled -> $down")
+
+        // and backs off again, to six dB quieter than they started
+        val soft = band().also { it[8] = -29f }
+        r.run(180.0) { soft }
+        val up = r.fader(8)
+        assertTrue(up > down + 4f,
+            "and a singer who backs off must come back UP: $down -> $up")
+        assertTrue(up > settled + 2f,
+            "six dB below where they started should end up clearly above " +
+            "the original fader: $settled -> $up")
+    }
+
+    @Test fun `what is held is the contribution, not the fader`() {
+        val e = engine()
+        val r = Run(e)
+        val src = band()
+        r.start(src)
+        r.run(90.0) { src }
+        val plan = src[8] + r.fader(8)
+
+        val loud = band().also { it[8] = -17f }
+        r.run(150.0) { loud }
+        val now = loud[8] + r.fader(8)
+        assertTrue(abs(now - plan) < 1.5f,
+            "the channel's contribution to the mains is what must stay " +
+            "put: was $plan, now $now")
+    }
+
+    @Test fun `ordinary playing dynamics move nothing at all`() {
+        val e = engine()
+        val r = Run(e)
+        val src = band()
+        r.start(src)
+        r.run(90.0) { src }
+        val mark = r.t
+        // a band playing, with the wander a real meter sees off players
+        val rnd = java.util.Random(90210L)
+        val walk = FloatArray(16)
+        val buf = FloatArray(16)
+        r.run(400.0) {
+            for (i in 0 until 16) {
+                if (src[i] <= -60f) { buf[i] = src[i]; continue }
+                walk[i] += -0.05f * walk[i] + rnd.nextGaussian().toFloat() * 0.6f
+                buf[i] = src[i] + walk[i]
+            }
+            buf
+        }
+        val moved = r.travel(mark)
+        val total = moved.sum()
+        assertTrue(total < 25f,
+            "a band playing the same song moved the desk $total dB — the " +
+            "deadband is not holding: ${moved.toList()}")
+    }
+
+    @Test fun `KEEP moves the faders far less than LEAD does`() {
+        // The headline number from the night, as a test. Same band, same
+        // wander, same length; the only difference is the mode.
+        fun travelOf(mode: BalanceMode): Float {
+            val e = StageEngine(rig, EngineSettings(mode = mode))
+            val r = Run(e)
+            val src = band()
+            r.start(src)
+            r.run(90.0) { src }
+            val mark = r.t
+            val rnd = java.util.Random(4242L)
+            val walk = FloatArray(16); val buf = FloatArray(16)
+            r.run(600.0) {
+                for (i in 0 until 16) {
+                    if (src[i] <= -60f) { buf[i] = src[i]; continue }
+                    walk[i] += -0.05f * walk[i] +
+                        rnd.nextGaussian().toFloat() * 0.9f
+                    buf[i] = src[i] + walk[i]
+                }
+                buf
+            }
+            return r.travel(mark).sum()
+        }
+        val keep = travelOf(BalanceMode.KEEP)
+        val lead = travelOf(BalanceMode.LEAD)
+        println("fader travel over ten minutes: KEEP $keep dB, LEAD $lead dB")
+        assertTrue(keep < lead * 0.5f,
+            "KEEP must be the quiet one: KEEP $keep dB vs LEAD $lead dB")
+    }
+
+    // ------------------------------------------------------------------
+    @Test fun `a gap between songs mutes nothing and re-places nothing`() {
+        val e = engine()
+        val r = Run(e)
+        val src = band()
+        r.start(src)
+        r.run(120.0) { src }
+        val at = (0 until 16).associateWith { e.offsetDb(it) }
+
+        // Channels that were never plugged in have already been muted
+        // by now, and rightly — that is not what this test is about.
+        val mutedBefore = e.decisions.count { it.kind == "mute" }
+
+        // the song ends: everybody stops for most of a minute
+        r.run(50.0) { silence() }
+        assertTrue(e.betweenSongs, "a silent stage is a gap, not a mass exit")
+        assertTrue(e.decisions.count { it.kind == "mute" } == mutedBefore,
+            "nothing may be muted because the band stopped playing: " +
+            e.decisions.filter { it.kind == "mute" }.drop(mutedBefore)
+                .map { it.reason })
+
+        // and the next song starts
+        r.run(120.0) { src }
+        for (i in 0 until 16) {
+            val moved = abs(e.offsetDb(i) - at.getValue(i))
+            assertTrue(moved < 2f,
+                "channel ${i + 1} moved $moved dB across a gap between " +
+                "songs — the balance did not survive the applause")
+        }
+    }
+
+    @Test fun `one instrument stopping while the band plays is still a departure`() {
+        // The other half of the same judgement: the gap rule must not
+        // become an excuse to ignore a channel that has genuinely gone.
+        val e = engine()
+        val r = Run(e)
+        val src = band()
+        r.start(src)
+        r.run(120.0) { src }
+        val gone = band().also { it[4] = -80f }   // the guitar amp is off
+        r.run(80.0) { gone }
+        assertTrue(!e.betweenSongs, "the band is still playing")
+        assertTrue(e.decisions.any { it.kind == "mute" && it.channel == 4 },
+            "a channel that stops while the band plays on has left the mix")
+    }
+
+    @Test fun `a small stage is never mistaken for a gap`() {
+        // On a duo, "two channels playing" is a completely normal song.
+        // An absolute count got this wrong and left a ground loop in the
+        // mix all night.
+        val e = engine()
+        val r = Run(e)
+        val duo = silence().also { it[8] = -22f; it[7] = -24f }
+        r.start(duo)
+        r.run(120.0) { duo }
+        assertTrue(!e.betweenSongs,
+            "a singer and a guitar is a duo, not a gap between songs")
+    }
+
+    // ------------------------------------------------------------------
+    @Test fun `a solo still lifts the fader in KEEP`() {
+        val e = engine()
+        val r = Run(e)
+        val src = band()
+        r.start(src)
+        r.run(120.0) { src }
+        val before = r.fader(14)
+        val solo = band().also { it[14] = -12f }
+        r.run(40.0) { solo }
+        assertTrue(r.fader(14) > before,
+            "a sax stepping out must still get its lift: " +
+            "$before -> ${r.fader(14)}")
+    }
+
+    @Test fun `an instrument arriving is placed, and then kept too`() {
+        val e = engine()
+        val r = Run(e)
+        val src = band()
+        r.start(src)
+        r.run(120.0) { src }
+        assertTrue(e.state[15]!!.planContrib == null,
+            "a channel that was silent when the balance was made has " +
+            "nothing to preserve")
+
+        val withHarp = band().also { it[15] = -26f }
+        r.run(200.0) { withHarp }
+        val st = e.state[15]!!
+        assertTrue(st.planContrib != null,
+            "once it has found a place, that place becomes its plan")
+        // and from then on it is ridden like everything else
+        val at = r.fader(15)
+        val louder = band().also { it[15] = -20f }
+        r.run(120.0) { louder }
+        assertTrue(r.fader(15) < at - 2f,
+            "the new arrival must be ridden too: $at -> ${r.fader(15)}")
+    }
+
+    @Test fun `the ride is bounded, so a preamp change is not chased to a rail`() {
+        val e = engine()
+        val r = Run(e)
+        val src = band()
+        r.start(src)
+        r.run(120.0) { src }
+        val at = r.fader(4)
+        // somebody turns the guitar amp's gain knob up twenty dB
+        val huge = band().also { it[4] = +1f }
+        r.run(300.0) { huge }
+        val moved = at - r.fader(4)
+        assertTrue(moved <= e.settings.rideBandDb + 0.5f,
+            "the ride may not chase a gain change beyond its band: " +
+            "moved $moved dB")
+        assertTrue(moved > 4f, "but it must do most of what it can")
+    }
+
+    // ------------------------------------------------------------------
+    @Test fun `rebalance re-derives, then adopts the balance it arrives at`() {
+        val e = engine()
+        val r = Run(e)
+        val src = band()
+        r.start(src)
+        r.run(120.0) { src }
+        assertTrue(e.balanceAdopted)
+
+        e.rebalance(r.t)
+        assertTrue(!e.balanceAdopted, "the old plan is thrown away")
+        assertTrue(e.state.values.all { it.planContrib == null })
+        // it must not simply re-adopt the same faders on the next tick
+        r.run(2.0) { src }
+        assertTrue(!e.balanceAdopted,
+            "re-adopting immediately would make REBALANCE do nothing")
+
+        r.run(400.0) { src }
+        assertTrue(e.balanceAdopted,
+            "once the pyramid has found a balance, that becomes the plan")
+    }
+
+    @Test fun `a human move is adopted and then defended`() {
+        val e = engine()
+        val r = Run(e)
+        val src = band()
+        r.start(src)
+        r.run(120.0) { src }
+        // the operator pulls the congas down: they were far too loud
+        val want = r.fader(12) - 6f
+        e.operatorOverride(12, want, r.t)
+        r.run(200.0) { src }
+        assertTrue(abs(r.fader(12) - want) < 2f,
+            "the level the operator chose must be where it stays: " +
+            "wanted $want, got ${r.fader(12)}")
+    }
+}

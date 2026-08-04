@@ -5,6 +5,31 @@ Android tablet next to Mixing Station. It **leads the main mix all
 night** — no soundcheck ritual required — and **never touches the six
 monitor buses**: monitors stay 100 % human, in Mixing Station, always.
 
+## KEEP the balance you made, or LEAD from scratch
+
+The app has two jobs and you pick which one it is doing.
+
+**KEEP** (the default) takes the balance already on the desk as the
+plan and defends it. It holds each channel's *contribution* — source
+plus fader — where you put it: the singer leans into the mic and gets
+3 dB louder, the fader comes down 3 dB; they back off, it goes back up.
+Nothing else moves unless somebody solos or an instrument arrives that
+was not there. `✓ Keep this balance` re-adopts whatever is on the desk
+right now.
+
+**LEAD** derives a balance from the built-in pyramid, for when there is
+no human mix to preserve. `↻ Find a new balance` switches to it until
+the mix comes to rest, then keeps what it arrives at.
+
+Why the default changed: on a real night, twenty-one minutes of LEAD
+moved the faders 1558 dB in total, spent 16 % of its time with a
+channel pinned at an authority rail and 40 % with the band pinned at
+the duck's, and still had the vocal on top less than half the time.
+That is not a mix being refined, it is a controller that cannot reach
+its setpoint. The same operator built the mix they wanted by hand in
+about a minute. KEEP over the same band and the same length of time
+moves the desk about a tenth as far.
+
 ## The deal: it leads the mains, you own the monitors
 
 - The only parameter the **balancing** engine can write is the **channel
@@ -196,6 +221,22 @@ to give the Channel Doctor a per-channel spectrum the app repoints the
 console's **RTA source** (`/-stat/rta/source`) every ~3 seconds. That
 setting is global to the console, so X AIR Edit or Mixing Station open
 on the analyzer page will see it moving. Turn DOCTOR off and it stops.
+
+### What it cannot hear, and what to do about it
+
+A hundred-bin RTA cannot tell a saxophone from a singer. Both are a
+moving melody in the 400 Hz–5 kHz band with nothing underneath — which
+is exactly what makes both of them work as the line over a band — and
+no amount of cleverness with the numbers the console provides will
+separate them. On a rig where the channel labelled SAXOPHONE is a
+singer and the one labelled UTILITY 3 is the saxophone, neither the
+ears nor the labels will ever sort it out.
+
+**Tap the instrument line on a channel strip** (right-click on the
+bench) and say what it is. It is pinned — the listener keeps forming an
+opinion and never acts on that channel again — and remembered against
+the *console's name* for the channel, so it holds tomorrow night, and
+follows the name if the band re-patches.
 
 ### The starting chain, set once
 

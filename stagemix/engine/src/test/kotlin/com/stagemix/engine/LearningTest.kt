@@ -7,7 +7,7 @@ import kotlin.test.assertTrue
 /** The feedback + cross-night learning loop. */
 class LearningTest {
 
-    private fun engine() = StageEngine(defaultRigProfile())
+    private fun engine() = StageEngine(defaultRigProfile(), LEAD)
 
     @Test fun `feedback chips nudge the pyramid, bounded at plus-minus 3`() {
         val e = engine()

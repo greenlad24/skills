@@ -12,7 +12,7 @@ import kotlin.test.assertTrue
 class VenueRegressionTest {
     private fun silence() = FloatArray(16) { -80f }
 
-    private class R(val e: StageEngine = StageEngine(defaultRigProfile())) {
+    private class R(val e: StageEngine = StageEngine(defaultRigProfile(), LEAD)) {
         var t = 0.0
         val writes = HashMap<Int, Int>(); val revs = HashMap<Int, Int>()
         private val dir = HashMap<Int, Int>(); private val last = HashMap<Int, Float>()

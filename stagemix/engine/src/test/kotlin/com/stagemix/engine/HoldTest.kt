@@ -39,7 +39,7 @@ class HoldTest {
     }
 
     /** a night, at the app's real cadence: meters 20 Hz, engine 1 Hz */
-    private inner class Rig(settings: EngineSettings = EngineSettings()) {
+    private inner class Rig(settings: EngineSettings = LEAD) {
         val e = StageEngine(rig, settings)
         private val rnd = java.util.Random(90210L)
         private val walk = FloatArray(16)
@@ -214,7 +214,7 @@ class HoldTest {
     @Test fun `the old continuously-steering behaviour is still available`() {
         // holding is a choice, not a hard-wiring: an operator who wants
         // the engine riding the faders all night can still have it
-        val r = Rig(EngineSettings(holdAfterBalance = false))
+        val r = Rig(EngineSettings(mode = BalanceMode.LEAD, holdAfterBalance = false))
         val src = band()
         r.start(src)
         r.run(200.0) { src }

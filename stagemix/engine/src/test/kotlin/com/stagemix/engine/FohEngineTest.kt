@@ -13,7 +13,7 @@ class FohEngineTest {
 
     private val chans = defaultRigProfile()
 
-    private fun engine() = StageEngine(chans)
+    private fun engine() = StageEngine(chans, LEAD)
 
     /** pre-fader source levels for a sane band take */
     private fun sources() = FloatArray(16) { -80f }.also {
@@ -215,7 +215,7 @@ class FohEngineTest {
     @Test fun `talk channels are never automated`() {
         val e = StageEngine(listOf(
             ChannelConfig(0, "Kick", Role.FOUNDATION),
-            ChannelConfig(1, "Talkback", Role.TALK)))
+            ChannelConfig(1, "Talkback", Role.TALK)), LEAD)
         var t = 0.0
         val src = floatArrayOf(-20f, -15f)
         run(e, src, t, 5.0).also { t = it.second }

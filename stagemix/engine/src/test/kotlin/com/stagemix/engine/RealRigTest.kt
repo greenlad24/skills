@@ -31,7 +31,7 @@ class RealRigTest {
     private val rig = defaultRigProfile()
     private val BASE = -10f
 
-    private fun engine(s: EngineSettings = EngineSettings()) =
+    private fun engine(s: EngineSettings = LEAD) =
         StageEngine(rig, s)
 
     /** meters at 20 Hz, engine at 1 Hz, as the app really runs them */
@@ -282,6 +282,48 @@ class RealRigTest {
         assertTrue(e.decisions.any { it.kind == "nearly" || it.kind == "feature" },
             "a player who nearly steps out must appear in the log one " +
             "way or the other")
+    }
+
+    // ------------------------------------------------------------------
+    @Test fun `what the operator says is on a channel is remembered by name`() {
+        // "It didn't realize that SAXOPHONE is actually a singer (it
+        // didn't understand what it is) and it didn't realize the
+        // UTILITY 3 is a saxophone."
+        //
+        // Neither is solvable from the audio and it is worth being plain
+        // about why: a singer and a saxophone are the same thing to a
+        // hundred-bin RTA — a moving melody in the 400 Hz-5 kHz band
+        // with nothing underneath — which is exactly what makes both of
+        // them work as the line over a band. The labels are no help
+        // either, since they are what is wrong. A person settles it once.
+        val e = engine()
+        e.setChannelName(10, "SAXOPHONE")
+        e.setChannelName(14, "UTILITY 3")
+        assertTrue(e.setRole(10, Role.VOCAL))
+        assertTrue(e.setRole(14, Role.COLOR))
+        assertEquals(Role.VOCAL, e.state[10]!!.role)
+        assertEquals(Role.COLOR, e.state[14]!!.role)
+
+        // and it survives into the next night, and follows the NAME
+        // rather than the socket — because what was said was "the thing
+        // called SAXOPHONE on this desk is a singer"
+        val tomorrow = engine()
+        tomorrow.knownInstruments.putAll(e.knownInstruments)
+        tomorrow.setChannelName(3, "SAXOPHONE")   // re-patched to ch 4
+        assertEquals(Role.VOCAL, tomorrow.state[3]!!.role,
+            "the operator's call must follow the channel NAME")
+        assertTrue(tomorrow.state[3]!!.roleLocked,
+            "and it must be pinned: the listener may keep an opinion but " +
+            "must never act on it here again")
+    }
+
+    @Test fun `the audio never overrules what the operator has said`() {
+        val e = engine()
+        e.setChannelName(14, "UTILITY 3")
+        e.setRole(14, Role.COLOR)
+        // a whole night of the channel sounding like anything at all
+        assertTrue(!e.setRoleFromName(14, Role.VOCAL))
+        assertEquals(Role.COLOR, e.state[14]!!.role)
     }
 
     // ------------------------------------------------------------------

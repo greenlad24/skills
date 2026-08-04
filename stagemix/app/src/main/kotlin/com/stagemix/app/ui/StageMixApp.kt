@@ -172,6 +172,7 @@ fun ConsoleScreen() {
     val directing by AppState.directing.collectAsState()
     val doctorOn by AppState.doctorOn.collectAsState()
     val frozenAll by AppState.frozenAll.collectAsState()
+    val balanceKept by AppState.balanceKept.collectAsState()
     val health by AppState.health.collectAsState()
     val nights by AppState.nightsCount.collectAsState()
     val taste by AppState.tasteSummary.collectAsState()
@@ -200,7 +201,8 @@ fun ConsoleScreen() {
             Spacer(Modifier.width(14.dp))
             Text(
                 when {
-                    directing -> "MIXING — AUTO"
+                    directing && balanceKept -> "KEEPING YOUR BALANCE"
+                    directing -> "MIXING — finding the balance"
                     snap -> "SHADOW — watching only"
                     else -> "PAUSED"
                 },
@@ -232,6 +234,15 @@ fun ConsoleScreen() {
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (frozenAll) Ok else Bad),
             ) { Text(if (frozenAll) "▶ Resume" else "⏸ FREEZE ALL", color = Bg) }
+            Spacer(Modifier.width(6.dp))
+            // The two halves of what the app is for: this mix is the one
+            // to defend, or this mix is wrong and I want a new one.
+            OutlinedButton(onClick = {
+                MixerService.cmd(ctx, MixerService.ACTION_KEEP_BALANCE)
+            }) { Text("✓ Keep this balance") }
+            OutlinedButton(onClick = {
+                MixerService.cmd(ctx, MixerService.ACTION_REBALANCE)
+            }) { Text("↻ Find a new balance") }
             Spacer(Modifier.width(6.dp))
             ExportLogButtons()
         }
@@ -361,6 +372,17 @@ fun Strip(s: AppState.StripUi) {
         // know which one they are looking at before deciding whether to
         // trust it. A channel that says CONGOS and sounds like a bass is
         // the whole reason this line exists.
+        // Tapping it opens "what is on this channel?".
+        //
+        // The app can hear that a channel is a moving melody in the
+        // voice band with nothing underneath. It cannot hear whether
+        // that is a singer or a saxophone — they are the same thing to
+        // a hundred-bin spectrum, which is precisely why both work as
+        // the line over a band. On the rig this was written for, the
+        // channel labelled SAXOPHONE is a singer and the one labelled
+        // UTILITY 3 is the saxophone. No amount of listening sorts that
+        // out; one tap does, and it is remembered by channel name.
+        var picking by remember { mutableStateOf(false) }
         Text(
             (if (s.identLabel.isNotEmpty()) s.identLabel else when (s.role) {
                 Role.FOUNDATION -> "low end"; Role.KEYS -> "keys"
@@ -374,7 +396,9 @@ fun Strip(s: AppState.StripUi) {
                 Role.BACKING_VOCAL -> Warn
                 Role.FOUNDATION -> Accent
                 else -> Muted
-            }, fontSize = 9.sp, letterSpacing = 0.5.sp, maxLines = 1)
+            }, fontSize = 9.sp, letterSpacing = 0.5.sp, maxLines = 1,
+            modifier = Modifier.clickable { picking = true })
+        if (picking) InstrumentPicker(s) { picking = false }
         // Where that belief came from: the ear means the AUDIO settled
         // it, the tag means it is still only the channel name, and the
         // percentage is how much listening is behind either.
@@ -427,6 +451,58 @@ fun Strip(s: AppState.StripUi) {
             contentAlignment = Alignment.Center,
         ) { Text(if (s.frozen) "🔒" else "🔓", fontSize = 13.sp) }
     }
+}
+
+/**
+ * "What is on this channel?" — the call the audio cannot make.
+ *
+ * A short list in the language of the stage, not of the engine: the
+ * operator is picking an instrument, not a role in a balance ladder.
+ * What they choose is pinned (the listener will keep forming an opinion
+ * and will never move this channel again) and remembered against the
+ * console's own name for it, so it holds tomorrow night too.
+ */
+@Composable
+private fun InstrumentPicker(s: AppState.StripUi, onDone: () -> Unit) {
+    val ctx = LocalContext.current
+    val choices = listOf(
+        Role.VOCAL to "Lead vocal",
+        Role.BACKING_VOCAL to "Backing vocal",
+        Role.COLOR to "Horn / sax / harmonica",
+        Role.SOLO_GTR to "Lead guitar",
+        Role.RHYTHM_GTR to "Rhythm guitar",
+        Role.KEYS to "Keys / piano",
+        Role.PERCUSSION to "Drums / percussion",
+        Role.FOUNDATION to "Kick / bass",
+        Role.TALK to "Talkback (never mixed)")
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDone,
+        confirmButton = {},
+        dismissButton = {
+            OutlinedButton(onClick = onDone) { Text("Cancel") }
+        },
+        title = { Text("What is on ${s.name}?") },
+        text = {
+            Column {
+                Text("The app hears a melody in the voice band and cannot " +
+                    "tell a singer from a saxophone. Tell it once and it " +
+                    "will remember this channel name.",
+                    color = Muted, fontSize = 12.sp)
+                Spacer(Modifier.height(10.dp))
+                for ((role, label) in choices) {
+                    OutlinedButton(
+                        onClick = {
+                            MixerService.cmd(ctx, MixerService.ACTION_SET_ROLE,
+                                "ch" to s.channel, "role" to role.name)
+                            onDone()
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                            .padding(vertical = 2.dp),
+                    ) { Text(label) }
+                }
+            }
+        },
+    )
 }
 
 /**

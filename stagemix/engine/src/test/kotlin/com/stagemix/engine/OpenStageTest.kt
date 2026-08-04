@@ -14,7 +14,7 @@ import kotlin.test.assertTrue
 class OpenStageTest {
 
     private val chans = defaultRigProfile()
-    private fun engine() = StageEngine(chans)
+    private fun engine() = StageEngine(chans, LEAD)
     private fun faders() = (0 until 16).associateWith { -10f }
 
     private fun run(e: StageEngine, levels: FloatArray, from: Double,

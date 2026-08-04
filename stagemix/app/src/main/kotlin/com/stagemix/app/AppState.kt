@@ -60,6 +60,8 @@ object AppState {
     val holdReason = MutableStateFlow<String?>(null)
     val snapshotTaken = MutableStateFlow(false)
     val directing = MutableStateFlow(false)
+    /** true once there is an adopted balance being defended */
+    val balanceKept = MutableStateFlow(false)
     val doctorOn = MutableStateFlow(true)
     val frozenAll = MutableStateFlow(false)
     val lastError = MutableStateFlow<String?>(null)
@@ -103,6 +105,40 @@ object AppState {
                 out[com.stagemix.engine.Role.valueOf(k)] =
                     o.getDouble(k).toFloat()
             tasteSummary.value = summarizeBias(out)
+            out
+        } catch (e: Exception) { emptyMap() }
+    }
+
+    /**
+     * What the operator has told us is on each channel, by the CONSOLE'S
+     * name for it.
+     *
+     * Kept across nights on purpose. The app can hear that a channel is
+     * a moving melody in the voice band with nothing underneath, and it
+     * cannot hear whether that is a singer or a saxophone — they are the
+     * same thing to a hundred-bin spectrum. On the rig this was written
+     * for, the channel labelled SAXOPHONE is a singer and the one
+     * labelled UTILITY 3 is the saxophone, and neither the ears nor the
+     * labels will ever sort that out. A person does it once.
+     */
+    fun saveKnownInstruments(ctx: Context, known: Map<String, com.stagemix.engine.Role>) {
+        val o = JSONObject()
+        for ((n, r) in known) o.put(n, r.name)
+        ctx.getSharedPreferences("stagemix", Context.MODE_PRIVATE)
+            .edit().putString("known_instruments", o.toString()).apply()
+    }
+
+    fun loadKnownInstruments(ctx: Context): Map<String, com.stagemix.engine.Role> {
+        val raw = ctx.getSharedPreferences("stagemix", Context.MODE_PRIVATE)
+            .getString("known_instruments", null) ?: return emptyMap()
+        return try {
+            val o = JSONObject(raw)
+            val out = HashMap<String, com.stagemix.engine.Role>()
+            for (k in o.keys())
+                // stored prefs are not a trusted source of role names
+                runCatching {
+                    out[k] = com.stagemix.engine.Role.valueOf(o.getString(k))
+                }
             out
         } catch (e: Exception) { emptyMap() }
     }

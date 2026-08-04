@@ -94,6 +94,32 @@ class MixerService : Service() {
                 show?.user(if (on) "you pressed FREEZE ALL"
                            else "you released FREEZE ALL")
             }
+            ACTION_SET_ROLE -> {
+                val ch = intent.getIntExtra("ch", -1)
+                val name = intent.getStringExtra("role") ?: return START_NOT_STICKY
+                val role = runCatching {
+                    com.stagemix.engine.Role.valueOf(name) }.getOrNull()
+                    ?: return START_NOT_STICKY
+                engine?.let { e ->
+                    e.setRole(ch, role)
+                    doctor?.setRole(ch, role)
+                    AppState.saveKnownInstruments(this, e.knownInstruments)
+                    show?.user(("you said ch%02d %s is %s — remembered for " +
+                        "that channel name from now on").format(
+                            java.util.Locale.ROOT, ch + 1,
+                            e.state[ch]?.name ?: "", role.name.lowercase()))
+                }
+            }
+            ACTION_KEEP_BALANCE -> engine?.let { e ->
+                val n = e.adoptBalance(now())
+                show?.user(if (n > 0)
+                    "you pressed KEEP THIS BALANCE — $n channels held"
+                    else "you pressed KEEP THIS BALANCE, but nothing is playing")
+            }
+            ACTION_REBALANCE -> engine?.let { e ->
+                e.rebalance(now())
+                show?.user("you asked for a new balance")
+            }
             ACTION_FREEZE_CH -> {
                 val ch = intent.getIntExtra("ch", -1)
                 val on = intent.getBooleanExtra("on", true)
@@ -183,6 +209,10 @@ class MixerService : Service() {
                     // continue from last night's progress
                     eng.pyramidBias.putAll(
                         AppState.loadBias(this@MixerService))
+                    // and from everything the operator has ever told us
+                    // is on a channel — the calls the audio cannot make
+                    eng.knownInstruments.putAll(
+                        AppState.loadKnownInstruments(this@MixerService))
                     // every decision goes to the show log as it is made;
                     // the console's own list only keeps the last 60
                     eng.onDecision = { d -> show?.decision(d) }
@@ -450,6 +480,7 @@ class MixerService : Service() {
             )
         }
         AppState.snapshotTaken.value = e.ready
+        AppState.balanceKept.value = e.balanceAdopted
         AppState.health.value = e.health()
     }
 
@@ -754,6 +785,9 @@ class MixerService : Service() {
         const val ACTION_DIRECTING = "com.stagemix.DIRECTING"
         const val ACTION_FREEZE_ALL = "com.stagemix.FREEZE_ALL"
         const val ACTION_FREEZE_CH = "com.stagemix.FREEZE_CH"
+        const val ACTION_SET_ROLE = "com.stagemix.SET_ROLE"
+        const val ACTION_KEEP_BALANCE = "com.stagemix.KEEP_BALANCE"
+        const val ACTION_REBALANCE = "com.stagemix.REBALANCE"
         const val ACTION_DOCTOR = "com.stagemix.DOCTOR"
         const val ACTION_FEEDBACK = "com.stagemix.FEEDBACK"
 

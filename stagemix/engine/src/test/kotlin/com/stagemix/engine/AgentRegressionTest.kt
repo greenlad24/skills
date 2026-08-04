@@ -32,14 +32,14 @@ class AgentRegressionTest {
 
     // ---------- crashes (fuzz team) ----------
     @Test fun `F1 baseline above the absolute cap must not crash`() {
-        val e = StageEngine(rig())
+        val e = StageEngine(rig(), LEAD)
         var t = run(e, band(), 0.0, 5.0)
         e.takeover(faders(14f), t)      // faders way above the +2 cap
         run(e, band(), t, 60.0)         // must not throw
     }
 
     @Test fun `F1b absurd operator override must not crash`() {
-        val e = StageEngine(rig())
+        val e = StageEngine(rig(), LEAD)
         var t = run(e, band(), 0.0, 5.0)
         e.takeover(faders(), t)
         t = run(e, band(), t, 30.0)
@@ -75,7 +75,7 @@ class AgentRegressionTest {
     }
 
     @Test fun `F4 a long gap cannot buy an oversized single move`() {
-        val e = StageEngine(rig())
+        val e = StageEngine(rig(), LEAD)
         var t = run(e, band(), 0.0, 5.0)
         e.takeover(faders(), t)
         t = run(e, band().also { it[4] = -14f }, t, 40.0)
@@ -91,7 +91,7 @@ class AgentRegressionTest {
         val e = StageEngine(listOf(
             ChannelConfig(0, "Kick", Role.FOUNDATION),
             ChannelConfig(1, "Piano", Role.KEYS),
-            ChannelConfig(2, "Sax", Role.COLOR)))
+            ChannelConfig(2, "Sax", Role.COLOR)), LEAD)
         var t = 0.0
         val lv = floatArrayOf(-20f, -30f, -30f)
         t = run(e, lv, t, 5.0)
@@ -104,7 +104,7 @@ class AgentRegressionTest {
     }
 
     @Test fun `probe4 a fresh takeover clears stale override holds`() {
-        val e = StageEngine(rig())
+        val e = StageEngine(rig(), LEAD)
         var t = run(e, band(), 0.0, 5.0)
         e.takeover(faders(), t)
         t = run(e, band(), t, 30.0)
@@ -121,7 +121,7 @@ class AgentRegressionTest {
     @Test fun `probe5 health reports n slash a when no vocal is on stage`() {
         val e = StageEngine(listOf(
             ChannelConfig(0, "Kick", Role.FOUNDATION),
-            ChannelConfig(1, "Piano", Role.KEYS)))
+            ChannelConfig(1, "Piano", Role.KEYS)), LEAD)
         var t = run(e, floatArrayOf(-20f, -25f), 0.0, 5.0)
         e.takeover(mapOf(0 to -10f, 1 to -10f), t)
         run(e, floatArrayOf(-20f, -25f), t, 120.0)
@@ -134,7 +134,7 @@ class AgentRegressionTest {
         val e = StageEngine(listOf(
             ChannelConfig(0, "Kick", Role.FOUNDATION),
             ChannelConfig(1, "Guitar", Role.RHYTHM_GTR),
-            ChannelConfig(2, "Vox", Role.VOCAL)))
+            ChannelConfig(2, "Vox", Role.VOCAL)), LEAD)
         var t = 0.0
         // vocal SO buried that the pyramid alone can't rescue it — the
         // duck stays engaged instead of releasing on its own
@@ -155,7 +155,7 @@ class AgentRegressionTest {
         val e = StageEngine(listOf(
             ChannelConfig(0, "Kick", Role.FOUNDATION),
             ChannelConfig(1, "Vox", Role.VOCAL),
-            ChannelConfig(2, "Sax", Role.COLOR)))
+            ChannelConfig(2, "Sax", Role.COLOR)), LEAD)
         var t = 0.0
         t = run(e, floatArrayOf(-20f, -22f, -80f), t, 5.0)
         e.takeover(mapOf(0 to -10f, 1 to -10f, 2 to -10f), t)
@@ -204,7 +204,7 @@ class AgentRegressionTest {
     @Test fun `fuzz - only channel faders are ever written, always bounded`() {
         val rnd = Random(99)
         repeat(30) { seed ->
-            val e = StageEngine(rig())
+            val e = StageEngine(rig(), LEAD)
             var t = 0.0
             val lv = FloatArray(16) { -30f }
             t = run(e, lv, t, 5.0)
