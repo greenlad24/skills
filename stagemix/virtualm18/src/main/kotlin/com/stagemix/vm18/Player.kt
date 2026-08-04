@@ -131,12 +131,15 @@ class Player(
 
     /** back to the top, without reopening the output line */
     @Synchronized fun rewind() {
+        log?.invoke("REWIND — ${state()}")
         val was = playing
         playing = false
         finished = false
         for (c in 0 until channels) load(c, srcFiles[c])
         positionSec = 0.0
+        blocksPlayed = 0
         playing = was
+        log?.invoke("REWIND done — ${state()}")
     }
 
     /**
@@ -202,14 +205,27 @@ class Player(
      * and the channels do not, the problem is the files.
      */
     fun play() {
+        log?.invoke("PLAY pressed — before: ${state()}")
         // Pressing PLAY before loading anything used to be permanent:
         // the reader hit the end of nothing, the loop broke, and every
         // later PLAY was silent however many channels had been loaded
         // since. Starting again from the top is what the button means.
-        if (finished || streams.all { it == null }) rewind()
+        if (finished || streams.all { it == null }) {
+            log?.invoke("  (rewinding first: finished=$finished, " +
+                "${streams.count { it != null }} channels loaded)")
+            rewind()
+        }
+        blocksPlayed = 0
         playing = true
+        log?.invoke("PLAY — after:  ${state()}")
+        if (!loopAlive) log?.invoke(
+            "  WARNING: the transport loop is not running, so nothing " +
+            "will be read. This is a bug — please send this log.")
     }
-    fun pause() { playing = false }
+    fun pause() {
+        playing = false
+        log?.invoke("PAUSE — ${state()}")
+    }
 
     fun close() {
         running = false
@@ -220,6 +236,23 @@ class Player(
 
     /** peak of the last block that went to the speakers, for tests */
     @Volatile var lastMixPeak = 0f; private set
+    /** blocks produced since the transport last started */
+    @Volatile var blocksPlayed = 0L; private set
+    /** why the last block produced nothing, for the log */
+    @Volatile var lastStallReason = ""; private set
+    /** is the run loop alive at all? */
+    @Volatile var loopAlive = false; private set
+
+    /** everything the transport knows about itself, in one line */
+    fun state(): String {
+        val loaded = streams.count { it != null }
+        return ("playing=%s loop=%s pos=%.2fs blocks=%d peak=%.3f " +
+            "loaded=%d/%d finished=%s out=%s%s").format(java.util.Locale.ROOT,
+            playing, if (loopAlive) "alive" else "DEAD", positionSec,
+            blocksPlayed, lastMixPeak, loaded, channels, finished,
+            if (line == null) "none" else "ok",
+            if (lastStallReason.isBlank()) "" else " stall=$lastStallReason")
+    }
 
     /**
      * One block: read every channel, run the room, meter, mix through
@@ -298,28 +331,48 @@ class Player(
      * transport would be dead for the rest of the session.
      */
     fun run() {
+        loopAlive = true
+        log?.invoke("transport loop started")
+        try {
         while (running) {
             if (!playing) { Thread.sleep(20); continue }
             val n = processBlock()
             if (n <= 0) {
                 playing = false
                 finished = true
-                log?.invoke(if (streams.all { it == null })
-                    "nothing loaded — load the channels, then press PLAY"
-                    else "end of the take (press START to play it again)")
+                log?.invoke((if (streams.all { it == null })
+                    "STOPPED: nothing loaded — load the channels, then PLAY"
+                    else "STOPPED: no audio came back — $lastStallReason") +
+                    "  |  ${state()}")
                 continue
             }
+            blocksPlayed++
+            // a heartbeat, so a silent run still says what it is doing
+            if (blocksPlayed == 1L || blocksPlayed % 100L == 0L)
+                log?.invoke("playing — ${state()}")
             // writing to the line is what paces the show; with no output
             // device there is nothing to pace against, so keep time here
             val l = line
             if (l != null) l.write(outBytes, 0, outBytesUsed)
             else Thread.sleep((1000L * n / sampleRate))
         }
+        } catch (e: Throwable) {
+            // a thrown transport is the worst failure of all: everything
+            // still looks alive and nothing will ever play again
+            log?.invoke("TRANSPORT DIED: ${e::class.simpleName}: " +
+                "${e.message} — please send this log")
+            e.printStackTrace()
+        } finally {
+            loopAlive = false
+            log?.invoke("transport loop ended")
+        }
     }
 
     /** one block from every channel; short channels simply fall silent */
     private fun readAll(): Int {
         var most = 0
+        var ended = 0
+        var live = 0
         for (c in 0 until channels) {
             val s = streams[c]
             java.util.Arrays.fill(bufs[c], 0f)
@@ -353,7 +406,11 @@ class Player(
                 bufs[c][i] = v.toFloat() / (1 shl (bps * 8 - 1))
             }
             if (frames > most) most = frames
+            if (frames > 0) live++ else ended++
         }
+        if (most == 0) lastStallReason =
+            "$live channels gave audio, $ended gave nothing, " +
+            "${streams.count { it != null }} open"
         return most
     }
 

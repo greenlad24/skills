@@ -93,9 +93,29 @@ fun main(args: Array<String>) {
     val player = Player(files, console, sampleRate = rate)
 
     val bench = if (headless) null else Bench(console, player, names, files)
+
+    // Every line goes to a file as well as the window. A log you cannot
+    // send is no use when the thing you are debugging is on someone
+    // else's Mac.
+    val logDirEarly = File(System.getProperty("user.home"), "StageMix")
+        .apply { mkdirs() }
+    val benchLog = File(logDirEarly, "bench-console.log")
+    val stamp = java.text.SimpleDateFormat("HH:mm:ss.SSS", Locale.ROOT)
+    val fileOut = try {
+        java.io.PrintWriter(java.io.FileWriter(benchLog, false), true)
+    } catch (e: Exception) { null }
     val note: (String) -> Unit = { s ->
-        println(s); bench?.note(s)
+        val line = "${stamp.format(java.util.Date())}  $s"
+        println(line); bench?.note(s); fileOut?.println(line)
     }
+    note("Virtual M18 starting — java ${System.getProperty("java.version")} " +
+        "on ${System.getProperty("os.name")} ${System.getProperty("os.arch")}")
+    note("this log is also being written to ${benchLog.path}")
+    // what the machine will actually play through
+    try {
+        val mixers = javax.sound.sampled.AudioSystem.getMixerInfo()
+        note("audio devices: " + mixers.joinToString("; ") { it.name })
+    } catch (e: Exception) { note("could not list audio devices: ${e.message}") }
     console.log = note
     player.log = note
     console.onWrite = { addr, v ->
@@ -165,6 +185,7 @@ fun main(args: Array<String>) {
     })
     player.run()
     note("end of the recording")
+    fileOut?.flush()
     if (headless) { player.close(); console.stop() }
 }
 

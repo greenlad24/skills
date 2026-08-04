@@ -196,7 +196,13 @@ class Bench(
             "(%d lost)   |   RTA ch%02d   |   %s")
             .format(java.util.Locale.ROOT,
                 clock(player.positionSec),
-                if (player.playing) "PLAYING" else "stopped",
+                // the transport, in full: a stopped loop and a paused one
+                // look identical from the outside and are not the same
+                if (player.playing) "PLAYING %d blocks, peak %.2f"
+                    .format(java.util.Locale.ROOT, player.blocksPlayed,
+                        player.lastMixPeak)
+                else if (!player.loopAlive) "TRANSPORT DEAD"
+                else "stopped",
                 if (console.stalled()) "RADIO DOWN"
                 else if (subs > 0) "CONNECTED ($subs)" else "not connected",
                 console.packetsIn, console.packetsOut, console.packetsDropped,
