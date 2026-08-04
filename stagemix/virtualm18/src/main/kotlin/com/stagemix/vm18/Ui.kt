@@ -103,11 +103,49 @@ class Bench(
         Timer(50) { tick() }.start()
     }
 
-    private fun header(): JPanel {
+    /** a heading over a group of buttons, so the row reads as sentences */
+    private fun caption(text: String): JLabel {
+        val l = JLabel(text)
+        l.foreground = MUTED
+        l.font = Font(Font.SANS_SERIF, Font.BOLD, 10)
+        l.border = BorderFactory.createEmptyBorder(0, 0, 0, 8)
+        return l
+    }
+
+    private fun row(): JPanel {
         val p = JPanel()
         p.background = BG
         p.layout = BoxLayout(p, BoxLayout.X_AXIS)
-        p.border = BorderFactory.createEmptyBorder(10, 12, 4, 12)
+        p.border = BorderFactory.createEmptyBorder(6, 12, 2, 12)
+        return p
+    }
+
+    /**
+     * The controls, in two rows that say what they are for.
+     *
+     * They were one row of eleven buttons with names like "MIXING", and
+     * the operator's verdict on that was fair: "I don't [want] so many
+     * buttons that I don't understand their meaning (what is mixing on
+     * or off)". The two that mattered were the two least explicable —
+     * "AUTOPILOT on this Mac" starts the app in a WATCHING state where
+     * it hears everything and touches nothing, and "MIXING" is what
+     * actually lets it move the faders. Neither label said so, and the
+     * distinction is the single most important thing on the screen. Now
+     * each button says what it will do when clicked, and each row says
+     * what the buttons under it are about.
+     */
+    private fun header(): JPanel {
+        val stack = JPanel()
+        stack.background = BG
+        stack.layout = BoxLayout(stack, BoxLayout.Y_AXIS)
+        stack.add(playbackRow())
+        stack.add(appRow())
+        return stack
+    }
+
+    private fun playbackRow(): JPanel {
+        val p = row()
+        p.add(caption("THE BAND"))
 
         val play = JButton("▶  PLAY")
         play.addActionListener {
@@ -136,33 +174,51 @@ class Bench(
             "the next launch; this clears that"
         forget.addActionListener { onForgetSession?.invoke() }
         p.add(play); p.add(Box.createHorizontalStrut(8)); p.add(rewind)
-        p.add(Box.createHorizontalStrut(8)); p.add(tone)
         p.add(Box.createHorizontalStrut(8)); p.add(mute)
         p.add(Box.createHorizontalStrut(16)); p.add(folder)
         p.add(Box.createHorizontalStrut(4)); p.add(forget)
+        p.add(Box.createHorizontalStrut(8)); p.add(tone)
+        p.add(Box.createHorizontalGlue())
+        val hint = JLabel("click a channel to load one file at a time")
+        hint.foreground = MUTED
+        hint.font = Font(Font.SANS_SERIF, Font.PLAIN, 11)
+        p.add(hint)
+        return p
+    }
+
+    private fun appRow(): JPanel {
+        val p = row()
+        p.add(caption("THE APP"))
 
         // testing without the tablet: run the autopilot right here
-        p.add(Box.createHorizontalStrut(20))
-        val auto = JButton("AUTOPILOT on this Mac")
-        val mixing = JButton("MIXING")
+        val auto = JButton("START THE APP")
+        auto.toolTipText = "runs the tablet's engine on this Mac and opens " +
+            "its screen — it starts out WATCHING, not mixing"
+        val mixing = JButton("it is only WATCHING — click to let it mix")
+        mixing.toolTipText = "until you click this, the app hears everything " +
+            "and touches nothing; after it, it moves the channel faders"
         mixing.isEnabled = false
         auto.addActionListener {
             autopilotOn = !autopilotOn
             onAutopilot?.invoke(autopilotOn)
-            auto.text = if (autopilotOn) "stop autopilot"
-                        else "AUTOPILOT on this Mac"
+            auto.text = if (autopilotOn) "STOP THE APP" else "START THE APP"
             mixing.isEnabled = autopilotOn
-            if (!autopilotOn) { mixingOn = false; mixing.text = "MIXING" }
+            if (!autopilotOn) {
+                mixingOn = false
+                mixing.text = "it is only WATCHING — click to let it mix"
+            }
         }
         mixing.addActionListener {
             mixingOn = !mixingOn
             onMixing?.invoke(mixingOn)
-            mixing.text = if (mixingOn) "MIXING — ON" else "MIXING"
+            mixing.text = if (mixingOn) "it is MIXING — click to stop it"
+                          else "it is only WATCHING — click to let it mix"
         }
         p.add(auto); p.add(Box.createHorizontalStrut(6)); p.add(mixing)
 
         // the parts of a real stage a recording cannot contain
         p.add(Box.createHorizontalStrut(20))
+        p.add(caption("THE ROOM"))
         val roomBtn = JButton("ROOM LOOP: off")
         roomBtn.toolTipText = "let the PA back into the open mics, so " +
             "feedback can actually happen"
@@ -198,10 +254,6 @@ class Bench(
             "on the clipboard — paste it straight into a message"
         copy.addActionListener { copyLog(copy) }
         p.add(copy)
-        val hint = JLabel("  (click a channel to load one file at a time)")
-        hint.foreground = MUTED
-        hint.font = Font(Font.SANS_SERIF, Font.PLAIN, 11)
-        p.add(hint)
         p.add(Box.createHorizontalGlue())
 
         val ip = JLabel("point the tablet at this Mac's IP, port 10024")

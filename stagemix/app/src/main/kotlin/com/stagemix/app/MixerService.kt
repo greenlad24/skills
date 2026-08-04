@@ -454,6 +454,9 @@ class MixerService : Service() {
         // overrides (non-INSTRUMENT in config) are respected.
         val e = engine ?: return
         for ((ch, name) in names) {
+            // the desk's label, unconditionally: even a hand-pinned role
+            // deserves to be reasoned about under the name on the console
+            e.setChannelName(ch, name)
             val cfgRole = AppState.config.value.channels
                 .firstOrNull { it.index == ch }?.role
             if (cfgRole == null || cfgRole == com.stagemix.engine.Role.INSTRUMENT) {

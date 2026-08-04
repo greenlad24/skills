@@ -268,6 +268,13 @@ data class EngineSettings(
      * moved, that is a solo, not drift — the engine holds its fader
      * instead of taking the feature back off the player.
      */
+    /**
+     * How far the kick sits above a bass channel inside the low-end
+     * group. Not a preference so much as an acknowledgement that the two
+     * are different instruments sharing one target: see
+     * `foundationShareDb`.
+     */
+    val kickTiltDb: Float = 4f,
     val featureRiseDb: Float = 3.5f,
     val featureHoldSec: Float = 90f,
     /** ticks a feature must read before the hold latches (leaky count) */
@@ -298,6 +305,20 @@ data class FaderWrite(val channel: Int, val levelDb: Float) {
 
 class ChannelState(val cfg: ChannelConfig) {
     var role: Role = cfg.role
+    /**
+     * What the CONSOLE calls this channel.
+     *
+     * [cfg] is our own profile of the rig — a guess made before the show,
+     * with a name we invented. The desk has the name the band's engineer
+     * actually typed, and on a real night that is the only one that means
+     * anything: it is the one that says CONGOS on the channel the bass is
+     * now plugged into. Reasoning about the profile name instead is how
+     * the listener ended up arguing with a label nobody on stage had ever
+     * seen.
+     */
+    var deskName: String? = null
+    /** the name to reason about and to print: the desk's if we have it */
+    val name: String get() = deskName ?: cfg.name
     /** out of the mains because it is making no real sound */
     var muted = false
     /** the operator set this role by hand: the listener must not move it */
@@ -313,10 +334,14 @@ class ChannelState(val cfg: ChannelConfig) {
     var fastEma: Float? = null       // ~3 s EMA: spots a player stepping up
     var featureStart = -1.0          // holding a feature for this player
     var featureRef = 0f              // their level when they stepped up
+    var featureFrom = 0f             // where the fader stood before they did
     var duetLatched = false          // singing WITH the lead (latched)
     var featureVotes = 0             // ticks reading as a feature (leaky)
+    var nearFeatureT = -1000.0       // last "nearly a solo" note, throttled
     /** the last few seconds of short-term loudness, at tick rate */
     val riseHist = ArrayDeque<Float>()
+    /** and where the fader was at each of those ticks, for the same window */
+    val offsetHist = ArrayDeque<Float>()
     var takeRef: Float? = null       // source loudness when we took over
     var heardSec = 0f                // audition time since takeover
     var active = false
@@ -329,6 +354,10 @@ class ChannelState(val cfg: ChannelConfig) {
     var vocalAct = 0f
     var fastUntil = 0.0
     var overrideUntil = 0.0          // human out-mixed us: hands off
+    /** a hand is on this fader right now: one gesture, not many events */
+    var gestureOpen = false
+    var gestureFrom = 0f             // where it stood when they took hold
+    var lastOverrideT = -1000.0
     /** rolling min/max of the source level, for static detection */
     var spreadMin = 0f; var spreadMax = -128f
     var spreadSince = 0.0
@@ -500,27 +529,61 @@ class StageEngine(
         // night. One fader step is ~0.04 dB where the engine works, so
         // anything under a quarter of a dB is the protocol, not a person.
         if (abs(disagreement) < settings.overrideMinDb) return
+        // ONE HAND ON THE FADER IS ONE CORRECTION.
+        //
+        // A fader move is not an event, it is a gesture: the surface (or
+        // a mouse on the bench) sends a new position every few tens of
+        // milliseconds all the way through it, and every one of them is
+        // comfortably past the quarter-dB noise floor. Treating each as
+        // its own override turned a handful of moves into 365 of them —
+        // 365 lines of log for the operator to read, and worse, 365
+        // lessons about "taste" from what was really four opinions, each
+        // one dragging the learned bias further towards its rail. So the
+        // level is adopted on every frame of the gesture (the hold has
+        // to be instant — that is the whole point of a human override),
+        // but the LOG LINE and the LESSON wait for the hand to come off,
+        // and are then written once, against where the fader started.
+        if (!st.gestureOpen) {
+            st.gestureOpen = true
+            st.gestureFrom = (st.baselineDb ?: safe) + st.offset
+        }
+        st.lastOverrideT = tSec
         st.baselineDb = safe
         st.offset = 0f; st.target = 0f; st.duckDb = 0f
         st.overrideUntil = tSec + 120.0
-        overrideCount++
-        var learned = ""
-        if (st.role.inLadder() && abs(disagreement) >= 1f) {
-            // AVERAGE the lessons instead of integrating them: a fixed
-            // step per correction pinned the taste to its rail on the
-            // second night, and even zero-mean corrections random-walked
-            // there. A mean converges on what the engineer actually
-            // prefers and lets inconsistent nights cancel out.
-            val lesson = disagreement.coerceIn(-0.5f, 0.5f)
-            ovSum[st.role] = (ovSum[st.role] ?: 0f) + lesson
-            ovN[st.role] = (ovN[st.role] ?: 0) + 1
-            recomputeBias(st.role)
-            learned = " — learned: ${st.role.name.lowercase()} taste " +
-                    "now %+.1f dB".format(pyramidBias[st.role] ?: 0f)
+    }
+
+    /** how long a fader must be still before the hand counts as off it */
+    private val gestureQuietSec = 1.5
+
+    /** the hand came off: write the one log line, learn the one lesson */
+    private fun commitGestures(tSec: Double) {
+        for ((ch, st) in state) {
+            if (!st.gestureOpen) continue
+            if (tSec - st.lastOverrideT < gestureQuietSec) continue
+            st.gestureOpen = false
+            val now = (st.baselineDb ?: continue) + st.offset
+            val moved = now - st.gestureFrom
+            if (abs(moved) < settings.overrideMinDb) continue
+            overrideCount++
+            var learned = ""
+            if (st.role.inLadder() && abs(moved) >= 1f) {
+                // AVERAGE the lessons instead of integrating them: a fixed
+                // step per correction pinned the taste to its rail on the
+                // second night, and even zero-mean corrections random-walked
+                // there. A mean converges on what the engineer actually
+                // prefers and lets inconsistent nights cancel out.
+                val lesson = moved.coerceIn(-0.5f, 0.5f)
+                ovSum[st.role] = (ovSum[st.role] ?: 0f) + lesson
+                ovN[st.role] = (ovN[st.role] ?: 0) + 1
+                recomputeBias(st.role)
+                learned = " — learned: ${st.role.name.lowercase()} taste " +
+                        "now %+.1f dB".format(pyramidBias[st.role] ?: 0f)
+            }
+            log(tSec, "override", ch, moved,
+                "${st.name} — you moved it %+.1f dB; adopting your level, "
+                    .format(moved) + "holding off 2 min$learned")
         }
-        log(tSec, "override", ch, disagreement,
-            "${st.cfg.name} — you moved it %+.1f dB; adopting your level, "
-                .format(disagreement) + "holding off 2 min$learned")
     }
 
     private var lastMeterT = -1.0
@@ -596,8 +659,29 @@ class StageEngine(
             if (!st.active && st.gateOpen && wasAway && takeoverT >= 0) {
                 st.arrivedT = tSec
                 lastArrivalT = tSec
+                // Forget what this channel used to sound like, and listen
+                // again before touching it.
+                //
+                // The loudness EMA is a 20-second average, and a source
+                // that has been away for half a minute is still carrying
+                // the level it faded out at. A piano that comes back in
+                // loud therefore looks, for the first twenty seconds, like
+                // a piano that is far too quiet — so the engine pushed the
+                // fader up seven dB and then spent the next half-minute
+                // taking it back down, which is precisely the "came in
+                // very loud and needed an adjustment very quick" that a
+                // human then has to fix by hand. Clearing the averages
+                // re-seeds them from the sound that is actually arriving,
+                // and clearing the audition timer means the fader does not
+                // move at all until there are five seconds of it to judge.
+                st.preEma = null
+                st.fastEma = null
+                st.riseHist.clear()
+                st.offsetHist.clear()
+                st.featureVotes = 0
+                st.heardSec = 0f
                 log(tSec, "arrive", idx, 0f,
-                    "${st.cfg.name} came in — making room for it")
+                    "${st.name} came in — listening before placing it")
             }
             st.active = st.gateOpen
             if (st.active) {
@@ -739,7 +823,7 @@ class StageEngine(
             // boost, and a place in the anchor. That is the classic way
             // to walk a stage into feedback, arrived at by a new route.
             if (st.isStatic || !st.active) { st.pendingRole = null; continue }
-            val r = ident.resolve(idx, st.cfg.name, st.role)
+            val r = ident.resolve(idx, st.name, st.role)
             if (r == null || r.role == st.role) {
                 st.pendingRole = null
                 continue
@@ -774,7 +858,7 @@ class StageEngine(
             if (r.role == Role.VOCAL || r.role == Role.BACKING_VOCAL)
                 reconsiderLead(tSec)
             log(tSec, "ident", idx, 0f,
-                "${st.cfg.name}: ${was.name.lowercase()} -> " +
+                "${st.name}: ${was.name.lowercase()} -> " +
                 "${r.role.name.lowercase()} — ${r.why}")
         }
     }
@@ -802,8 +886,8 @@ class StageEngine(
         leadVocal = best.cfg.index
         lastLeadSwitch = tSec
         log(tSec, "lead", best.cfg.index, 0f,
-            if (prev == null) "${best.cfg.name} is carrying the lead"
-            else "${best.cfg.name} is carrying the lead, not " +
+            if (prev == null) "${best.name} is carrying the lead"
+            else "${best.name} is carrying the lead, not " +
                 "${state[prev]?.cfg?.name}")
     }
 
@@ -822,6 +906,8 @@ class StageEngine(
                  else (tSec - lastTickT).coerceIn(0.0, 1.5)
         lastTickT = tSec
         if (takeoverT < 0 || !ready) return emptyList()
+        // before anything else: has a hand come off a fader?
+        commitGestures(tSec)
         if (!anyMotionAllowed(tSec)) return emptyList()
         val up = upwardAllowed(tSec)
 
@@ -882,7 +968,7 @@ class StageEngine(
                 lastLeadSwitch = tSec
                 for (st in group) st.fastUntil = tSec + settings.fastWindowSec
                 log(tSec, "lead", cand.cfg.index, 0f,
-                    "${cand.cfg.name} is carrying the song — lead balance " +
+                    "${cand.name} is carrying the song — lead balance " +
                     "moves there")
             }
         }
@@ -890,10 +976,10 @@ class StageEngine(
         // -- 0.5 ensemble detection: the lineup changes all night --------
         run {
             val bassNow = state.values.any {
-                it.role == Role.FOUNDATION && isBassName(it.cfg.name) &&
+                it.role == Role.FOUNDATION && isBassName(it.name) &&
                         it.active && it.heardSec >= settings.minHeardSec }
             val drumsNow = state.values.any {
-                ((it.role == Role.FOUNDATION && !isBassName(it.cfg.name))
+                ((it.role == Role.FOUNDATION && !isBassName(it.name))
                         || it.role == Role.PERCUSSION) &&
                         it.active && it.heardSec >= settings.minHeardSec }
             if (bassNow != hasBass || drumsNow != hasDrums) {
@@ -1005,11 +1091,11 @@ class StageEngine(
                     // holding boosts that were affordable in a mix that
                     // no longer exists.
                     unsettleOthers(idx, tSec, if (st.isStatic)
-                        "${st.cfg.name} was not an instrument after all"
-                        else "${st.cfg.name} has left the mix")
+                        "${st.name} was not an instrument after all"
+                        else "${st.name} has left the mix")
                     st.target = boundOffset(-settings.silentMuteDb, base)
                     log(tSec, "mute", idx, st.target,
-                        "${st.cfg.name} " +
+                        "${st.name} " +
                         (if (st.isStatic) "is not an instrument — hum or an " +
                             "open mic nobody is using" else
                             "silent ${idleFor.toInt()}s") +
@@ -1022,7 +1108,7 @@ class StageEngine(
                     st.idleRamped = true
                     st.target = -settings.idleCutDb
                     log(tSec, "idle", idx, -settings.idleCutDb,
-                        "${st.cfg.name} idle ${idleFor.toInt()}s — easing " +
+                        "${st.name} idle ${idleFor.toInt()}s — easing " +
                         "out of the mains")
                 }
                 continue
@@ -1036,7 +1122,7 @@ class StageEngine(
                 st.target = 0f
                 st.fastUntil = tSec + settings.fastWindowSec
                 log(tSec, "restore", idx, 0f,
-                    "${st.cfg.name} back — rejoining the mix")
+                    "${st.name} back — rejoining the mix")
             }
             if (!st.active || st.heardSec < settings.minHeardSec) continue
             val pre = st.preEma ?: continue
@@ -1055,9 +1141,14 @@ class StageEngine(
             // unrecognised.
             val hadWindow = st.riseHist.size >= settings.featureWindowTicks
             val rose = if (hadWindow) fast - st.riseHist.first() else 0f
+            val wasAt = if (st.offsetHist.isEmpty()) st.offset
+                        else st.offsetHist.first()
             st.riseHist.addLast(fast)
+            st.offsetHist.addLast(st.offset)
             while (st.riseHist.size > settings.featureWindowTicks)
                 st.riseHist.removeFirst()
+            while (st.offsetHist.size > settings.featureWindowTicks)
+                st.offsetHist.removeFirst()
             if (st.featureStart < 0) {
                 // A player digging in for a few seconds is not a solo,
                 // and a short EMA of a dynamic channel crosses any single
@@ -1081,6 +1172,25 @@ class StageEngine(
                 if (hadWindow && rose - ensembleRise > need)
                     st.featureVotes++
                 else st.featureVotes = max(0, st.featureVotes - 1)
+                // Say so when a player nearly gets a feature and doesn't.
+                //
+                // "Solos were not recognised" is the one complaint this
+                // code cannot be debugged from after the fact: a solo
+                // that never latches leaves no trace at all in the log,
+                // so there is no way to tell a threshold set too high
+                // from a rise the meters never actually saw. Throttled
+                // hard — once every half minute per channel — because
+                // this is evidence, not commentary.
+                if (hadWindow && rose - ensembleRise > need * 0.5f &&
+                    st.featureVotes < settings.featureConfirmTicks &&
+                    tSec - st.nearFeatureT > 30.0) {
+                    st.nearFeatureT = tSec
+                    log(tSec, "nearly", idx, rose - ensembleRise,
+                        "${st.name} up %.1f dB over the band, needs %.1f — "
+                            .format(rose - ensembleRise, need) +
+                        "${st.featureVotes}/${settings.featureConfirmTicks} " +
+                        "of a feature")
+                }
                 if (st.featureVotes >= settings.featureConfirmTicks) {
                     st.featureStart = tSec
                     // freeze the reference at the moment of the step: the
@@ -1090,13 +1200,23 @@ class StageEngine(
                     // a 90 s solo used to finish no louder than it began.
                     st.featureRef = pre
                     st.featureVotes = 0
-                    // hold the fader exactly where it is: whatever the
-                    // pyramid had already decided during the seconds it
-                    // took to recognise the solo is not the plan any more
-                    st.target = st.offset
+                    // Undo the cut the solo earned itself on the way in.
+                    //
+                    // Recognising a feature takes about ten seconds — a
+                    // rise window plus a confirmation — and for every one
+                    // of those seconds the pyramid was doing its ordinary
+                    // job of pulling a channel that has got louder back
+                    // down. So by the time the engine agreed a sax was
+                    // soloing it had already taken several dB off it, and
+                    // holding the fader "exactly where it is" held it
+                    // there. The position to hold, and to lift from, is
+                    // where the fader stood BEFORE the player stepped
+                    // out — which is what the offset window is for.
+                    st.featureFrom = if (st.settled) st.settledOffset else wasAt
+                    st.target = st.featureFrom
                     st.engaged = false
                     log(tSec, "feature", idx, rose,
-                        "${st.cfg.name} stepped up — leaving the feature " +
+                        "${st.name} stepped up — leaving the feature " +
                         "with the player")
                 }
             } else {
@@ -1115,16 +1235,23 @@ class StageEngine(
                 }
             }
             if (st.featureStart >= 0) {
-                // In a HELD mix a solo is one of the two things worth
-                // moving a fader for, so it gets a real lift rather than
-                // just being left alone — bounded, and straight back
-                // afterwards. (While still balancing, the old behaviour
-                // is right: hold the fader where it is and simply do not
-                // take the feature back off the player.)
-                st.target = if (st.settled && settings.holdAfterBalance &&
+                // A solo is one of the two things worth moving a fader
+                // for, so it gets a real lift — bounded, and straight
+                // back afterwards.
+                //
+                // This used to be conditional on the channel having
+                // SETTLED, and that was wrong in the case that matters:
+                // on a busy night the mix is re-disturbed constantly —
+                // a hand on the faders, an instrument arriving — and a
+                // sax that steps out during one of those windows got
+                // nothing at all, because "not settled yet" fell through
+                // to merely freezing the fader where it stood. The lift
+                // is measured from wherever the channel is sitting now,
+                // which is the settled position when there is one.
+                st.target = if (settings.holdAfterBalance &&
                     st.role in settings.soloRoles)
-                    boundOffset(st.settledOffset + settings.soloLiftDb, base)
-                else st.offset
+                    boundOffset(st.featureFrom + settings.soloLiftDb, base)
+                else st.featureFrom
                 continue
             }
             val height = effHeight(st)
@@ -1209,7 +1336,7 @@ class StageEngine(
                 if (abs(trimmed - st.target) > 0.25f) {
                     st.target = trimmed
                     log(tSec, "trim", idx, trimmed,
-                        "${st.cfg.name} %+.1f dB — $free".format(
+                        "${st.name} %+.1f dB — $free".format(
                             java.util.Locale.ROOT,
                             trimmed - st.settledOffset))
                 }
@@ -1226,7 +1353,7 @@ class StageEngine(
                 if (abs(boundedPair - st.target) > 0.25f) {
                     st.target = boundedPair
                     log(tSec, "pyramid", idx, boundedPair,
-                        "${st.cfg.name} steering to its place in the pyramid " +
+                        "${st.name} steering to its place in the pyramid " +
                         "(%+.1f dB)".format(boundedPair))
                 }
             } else if (!st.idleRamped && st.duckDb == 0f) {
@@ -1259,7 +1386,7 @@ class StageEngine(
                     st.settledOffset = st.target
                     st.engaged = false
                     log(tSec, "settled", idx, st.target,
-                        "${st.cfg.name} has found its place " +
+                        "${st.name} has found its place " +
                         "(%+.1f dB) — holding it from here"
                             .format(java.util.Locale.ROOT, st.target))
                 }
@@ -1479,6 +1606,9 @@ class StageEngine(
 
     /** live count of channels sharing each height group */
     private val groupN = HashMap<Role, Int>()
+    /** the low end, split into the two things that do not mask each other */
+    private var kickN = 0
+    private var bassN = 0
 
     /**
      * Which group's height a channel is steered to. Vocals are placed by
@@ -1524,12 +1654,44 @@ class StageEngine(
 
     private fun recountGroups() {
         groupN.clear()
+        kickN = 0; bassN = 0
         for (st in state.values) {
             if (!st.active || st.isStatic || st.role == Role.TALK) continue
             if (st.baselineDb == null || st.preEma == null) continue
             if (st.heardSec < settings.minHeardSec) continue
             groupN.merge(heightRole(st), 1, Int::plus)
+            if (st.role == Role.FOUNDATION) {
+                if (isBassName(st.name)) bassN++ else kickN++
+            }
         }
+    }
+
+    /**
+     * This channel's share of the low-end group, in dB.
+     *
+     * Sharing a group target equally is right when the channels are the
+     * same instrument twice — two bass DIs playing the same line really
+     * are one bass as far as the room is concerned. It is wrong for a
+     * kick against a bass: they occupy different moments and different
+     * octaves and do not mask each other, and splitting the low end
+     * evenly across a kick and two or three bass channels left the kick
+     * the quietest thing in the rhythm section, with the whole kit over
+     * the top of it.
+     *
+     * So the split is TILTED, not abolished. The kick takes
+     * [kickTiltDb] more of the low end than a bass channel does, and the
+     * shares are worked out as powers so the GROUP still sums to exactly
+     * the target the pyramid gave it — because the first attempt at this
+     * simply stopped dividing, which raised the whole low end three dB
+     * and buried the singer underneath it.
+     */
+    private fun foundationShareDb(st: ChannelState): Float {
+        val k = kickN; val b = bassN
+        if (k + b <= 1) return 0f
+        val w = Math.pow(10.0, settings.kickTiltDb / 10.0).toFloat()
+        val total = k * w + b
+        val mine = if (isBassName(st.name)) 1f else w
+        return 10f * log10(mine / total)
     }
 
     /**
@@ -1544,9 +1706,26 @@ class StageEngine(
                 10f * log10(n.toFloat())
     }
 
-    /** height for this channel, including duet and low-fill adjustments */
+    /**
+     * Height for this channel, including duet, low-fill — and the one
+     * place where sharing a group target is simply wrong.
+     *
+     * A group target is shared out because the room hears the SUM: two
+     * bass DIs playing the same line are one bass as far as the mix is
+     * concerned, so they get half each. A kick and a bass are not that.
+     * They occupy different moments and different octaves, they do not
+     * mask each other, and dividing one low-end target between them put
+     * the kick 5 dB under where an engineer would ever leave it — on a
+     * rig with two bass channels it was quieter still, and the whole kit
+     * sat over the top of it. Kick and bass therefore each carry the
+     * foundation height in full, and share only with their own kind.
+     */
     private fun effHeight(st: ChannelState): Float {
-        val h = height(heightRole(st))
+        val h = if (st.role == Role.FOUNDATION)
+            (pyramid[Role.FOUNDATION] ?: 0f) +
+                (pyramidBias[Role.FOUNDATION] ?: 0f) +
+                foundationShareDb(st)
+        else height(heightRole(st))
         return when {
             isDuetPartner(st) -> h - 1f
             st.role == Role.KEYS && keysLowFill -> h + 2f
@@ -1667,6 +1846,26 @@ class StageEngine(
         val st = state[ch] ?: return false
         if (st.roleLocked || st.roleIdentified) return false
         st.role = role
+        return true
+    }
+
+    /**
+     * The desk's own label for a channel.
+     *
+     * Worth its own entry point rather than being folded into
+     * [setRoleFromName], because the two answer different questions and
+     * only one of them can be refused: the role is a suggestion the
+     * listener may overrule, but the NAME is simply a fact about the
+     * console, true even on a channel the operator has pinned by hand.
+     * Handing the listener the profile's invented name instead is what
+     * let a bass sit all night on a channel called CONGOS with nobody —
+     * neither the label nor the ears — able to say so.
+     */
+    fun setChannelName(ch: Int, name: String): Boolean {
+        val st = state[ch] ?: return false
+        val n = name.trim()
+        if (n.isEmpty() || n == st.deskName) return false
+        st.deskName = n
         return true
     }
 

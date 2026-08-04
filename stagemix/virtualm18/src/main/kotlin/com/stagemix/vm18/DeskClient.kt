@@ -215,6 +215,7 @@ class DeskClient(
                         ?.groupValues?.get(1)?.toIntOrNull()?.let { ch ->
                             if (s.isNotBlank()) {
                                 names[ch - 1] = s
+                                engine.setChannelName(ch - 1, s)
                                 engine.setRoleFromName(ch - 1, inferRole(s))
                             }
                         }

@@ -348,9 +348,23 @@ class MusicalityTest {
             vocalToBand(stock, on), vocalToBand(prop, on),
             pwr(listOf(stock[0], stock[3], stock[11], stock[13])) - stock[8],
             pwr(listOf(prop[0], prop[3], prop[11], prop[13])) - prop[8]))
-        assertTrue(vocalToBand(prop, on) > vocalToBand(stock, on) + 2f,
-            "the proposal must bring the vocal at least 2 dB further " +
-            "forward: ${vocalToBand(prop, on)} vs ${vocalToBand(stock, on)}")
+        // Two assertions, because the interesting one is absolute.
+        //
+        // "The proposal beats stock by 2 dB" was a fine bar while stock
+        // was the thing being criticised, but it fails for the WRONG
+        // reason as soon as stock improves: tilting the low-end group so
+        // the kick stops sharing a target equally with three bass
+        // channels moved the stock vocal 0.75 dB forward and the gap
+        // closed to 1.5 dB. That is the engine getting better, not the
+        // proposal getting worse — so the bar the proposal has to clear
+        // is now where the vocal actually lands, and stock only has to
+        // stay behind it.
+        assertTrue(vocalToBand(prop, on) > vocalToBand(stock, on),
+            "the proposed pyramid must still be the better one: " +
+            "${vocalToBand(prop, on)} vs ${vocalToBand(stock, on)}")
+        assertTrue(vocalToBand(prop, on) > -6.5f,
+            "the proposal must land the vocal within 6.5 dB of the band: " +
+            "${vocalToBand(prop, on)}")
     }
 
     @Test fun `S1c the settling duck must leave no residue`() {

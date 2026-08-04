@@ -30,9 +30,23 @@ class LearningTest {
         e.takeover((0 until 16).associateWith { -10f }, t)
         while (t < 40.0) { e.onMeters(src, t)
             if (t >= next) { e.tick(t); next += 1.0 }; t += 0.05 }
-        // the human pulls the vocal fader down 3 dB
-        e.operatorOverride(8, -13f, t)
-        assertEquals(1, e.overrideCount)
+        // The human pulls the vocal fader down 3 dB — as a GESTURE, the
+        // way a surface actually sends one: a stream of positions, not a
+        // single jump. The engine adopts each of them immediately (the
+        // hold has to be instant) but waits for the hand to come off
+        // before writing the log line and learning the lesson.
+        for (db in listOf(-11f, -12f, -12.6f, -13f)) {
+            e.operatorOverride(8, db, t)
+            e.onMeters(src, t); t += 0.05
+        }
+        assertEquals(0, e.overrideCount,
+            "the count must not tick while the hand is still moving")
+        val tOff = t + 2.5
+        while (t < tOff) { e.onMeters(src, t)
+            if (t >= next) { e.tick(t); next += 1.0 }; t += 0.05 }
+        assertEquals(1, e.overrideCount,
+            "one hand on one fader is one correction, however many " +
+            "positions the desk sent on the way")
         assertTrue(e.decisions.any { it.kind == "override" })
         // adopted as baseline, hands off: no writes for ch 8 for a while
         val writes = ArrayList<FaderWrite>()
