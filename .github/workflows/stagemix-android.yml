@@ -99,6 +99,18 @@ jobs:
             applied to the audio coming out of the speakers**: you hear
             the mix it is making while you watch it work.
 
+            **Both sides on the Mac, with no tablet:** press **AUTOPILOT on
+            this Mac**, then **MIXING**. The autopilot runs right there and
+            talks to the console over real UDP — the same engine, doctor,
+            howl watchdog and show log the tablet runs.
+
+            *macOS Sequoia will block it on first open* ("Apple could not
+            verify…"). Either run
+            `xattr -dr com.apple.quarantine "/Applications/Virtual M18.app"`
+            in Terminal, or go to **System Settings → Privacy & Security**
+            and click **Open Anyway**. It is unsigned because notarizing
+            needs a paid Apple Developer account.
+
             **stagemix-replay.jar** — replays a recorded night through the
             same engine offline, renders the mix it would have made, and
             can write a ~1 MB "meter tape" of a whole night so the audio

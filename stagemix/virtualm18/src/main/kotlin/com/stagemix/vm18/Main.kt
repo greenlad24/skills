@@ -42,6 +42,7 @@ fun main(args: Array<String>) {
     var quantize = true
     var headless = false
     var startSec = 0.0
+    var autopilot = false
     var i = 0
     while (i < args.size) {
         when (args[i]) {
@@ -51,6 +52,7 @@ fun main(args: Array<String>) {
             "--echo" -> echo = true
             "--no-quantize" -> quantize = false
             "--headless" -> headless = true
+            "--autopilot" -> autopilot = true
             "-h", "--help" -> { usage(); return }
             else -> if (dir == null) dir = args[i]
         }
@@ -113,12 +115,37 @@ fun main(args: Array<String>) {
         console.names[ch] = nm
         names[ch] = nm
     }
+
+    // The autopilot, on this machine, for testing without the tablet.
+    // It goes over real UDP to the console above — same subscriptions,
+    // same meter decoding, same fader writes, same quantization coming
+    // back — so the whole path is exercised, not shortcut in-process.
+    var client: DeskClient? = null
+    val logDir = File(System.getProperty("user.home"), "StageMix")
+    fun startAutopilot(): DeskClient {
+        val c = DeskClient("127.0.0.1", port, logDir)
+        c.log = note
+        c.start()
+        note("autopilot running on this Mac — logs in ${logDir.path}/logs")
+        return c
+    }
+    bench?.onAutopilot = { on ->
+        if (on) client = startAutopilot()
+        else { client?.stop(); note("autopilot stopped — log: " +
+            (client?.logFile()?.path ?: "none")); client = null }
+    }
+    bench?.onMixing = { on -> client?.directing = on }
     bench?.show()
     if (startSec > 0) note("starting %.0f s in".format(Locale.ROOT, startSec))
+    if (autopilot) {
+        client = startAutopilot()
+        Thread.sleep(1500)
+        client?.directing = true
+    }
     if (headless) player.play()   // from the window you press PLAY yourself
 
     Runtime.getRuntime().addShutdownHook(Thread {
-        player.close(); console.stop()
+        client?.stop(); player.close(); console.stop()
     })
     player.run()
     note("end of the recording")
@@ -186,5 +213,8 @@ private fun usage() = println("""
                       back to the sender (the case that used to freeze the
                       app solid) — worth one run
       --no-quantize   perfect faders instead of the console's 1024 steps
+      --autopilot     run the StageMix autopilot on THIS machine and
+                      switch MIXING on, so a night can be tested with no
+                      tablet in the room. In the window it is a button.
       --headless      no window
 """.trimIndent())

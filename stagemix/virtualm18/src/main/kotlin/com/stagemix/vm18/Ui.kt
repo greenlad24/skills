@@ -48,9 +48,15 @@ class Bench(
     private val frame = JFrame("Virtual M18 — StageMix bench")
     /** told when a channel gets a new file, so the console renames it */
     var onChannelLoaded: ((Int, File?, String) -> Unit)? = null
+    /** start / stop the autopilot running on this machine */
+    var onAutopilot: ((Boolean) -> Unit)? = null
+    /** true once the autopilot has taken the mains */
+    var onMixing: ((Boolean) -> Unit)? = null
     private val strips = ArrayList<Strip>()
     private val status = JLabel(" ")
     private val logArea = JTextArea(8, 100)
+    private var autopilotOn = false
+    private var mixingOn = false
 
     fun show() {
         frame.defaultCloseOperation = JFrame.EXIT_ON_CLOSE
@@ -111,6 +117,26 @@ class Bench(
         p.add(play); p.add(Box.createHorizontalStrut(8)); p.add(rewind)
         p.add(Box.createHorizontalStrut(8)); p.add(mute)
         p.add(Box.createHorizontalStrut(16)); p.add(folder)
+
+        // testing without the tablet: run the autopilot right here
+        p.add(Box.createHorizontalStrut(20))
+        val auto = JButton("AUTOPILOT on this Mac")
+        val mixing = JButton("MIXING")
+        mixing.isEnabled = false
+        auto.addActionListener {
+            autopilotOn = !autopilotOn
+            onAutopilot?.invoke(autopilotOn)
+            auto.text = if (autopilotOn) "stop autopilot"
+                        else "AUTOPILOT on this Mac"
+            mixing.isEnabled = autopilotOn
+            if (!autopilotOn) { mixingOn = false; mixing.text = "MIXING" }
+        }
+        mixing.addActionListener {
+            mixingOn = !mixingOn
+            onMixing?.invoke(mixingOn)
+            mixing.text = if (mixingOn) "MIXING — ON" else "MIXING"
+        }
+        p.add(auto); p.add(Box.createHorizontalStrut(6)); p.add(mixing)
         val hint = JLabel("  (click a channel to load one file at a time)")
         hint.foreground = MUTED
         hint.font = Font(Font.SANS_SERIF, Font.PLAIN, 11)

@@ -323,10 +323,26 @@ Better than replaying: **make the tablet mix a recorded night for real.**
 **Installing it on a Mac:** download **VirtualM18-AppleSilicon.dmg**
 from the `stagemix-latest` release, drag *Virtual M18* to Applications
 and open it. It carries its own Java runtime — nothing else to install.
-It is not signed by Apple, so the first launch needs right-click → Open
-(or *System Settings → Privacy & Security → Open Anyway*). macOS will
-also ask to allow incoming connections the first time: say yes, or the
-tablet cannot reach it.
+
+It is not signed by Apple (notarizing needs a paid Developer account),
+so macOS blocks the first launch with *"Apple could not verify…"*. On
+Sequoia the old right-click → Open bypass is gone; use either:
+
+```
+xattr -dr com.apple.quarantine "/Applications/Virtual M18.app"
+```
+
+or **System Settings → Privacy & Security → Open Anyway** (the button
+appears only after the first blocked attempt). macOS will also ask to
+allow incoming connections: say yes, or the tablet cannot reach it.
+
+**Testing with no tablet in the room:** press **AUTOPILOT on this Mac**,
+then **MIXING**. The autopilot runs on the Mac and talks to the console
+over real UDP — the same `StageEngine`, `ToneDoctor`, howl watchdog and
+show log the tablet runs, so the whole path is exercised rather than
+shortcut in-process. Its log lands in `~/StageMix/logs/`. The transport
+loop is a port of the Android service rather than the same code, so a
+bug living only in that service still needs the tablet to find.
 
 There is a window. Along the top: **PLAY**, **START** (rewind), **MUTE
 SPEAKERS** and **Choose folder…**; below that, one strip per channel.
