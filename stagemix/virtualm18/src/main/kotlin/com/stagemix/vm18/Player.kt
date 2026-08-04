@@ -130,10 +130,13 @@ class Player(
             streams[ch] = st
             srcRate[ch] = st.format.sampleRate.toDouble()
                 .let { if (it > 0) it else sampleRate.toDouble() }
-            log?.invoke("ch%02d: %s — %.0f Hz, %d bit, %d ch%s"
+            log?.invoke("ch%02d: %s — %.0f Hz, %d bit, %d ch [%s]%s"
                 .format(java.util.Locale.ROOT, ch + 1, f.name,
                     st.format.sampleRate, st.format.sampleSizeInBits,
                     st.format.channels,
+                    // which reader opened it. When a file is misread this
+                    // is the first thing worth knowing.
+                    if (WavFile.describe(f) != null) "riff" else "spi",
                     if (srcRate[ch].toInt() == sampleRate) ""
                     else " — resampling to ${sampleRate} Hz"))
             true
@@ -193,8 +196,22 @@ class Player(
      * the file can still be named.
      */
     private fun decoded(f: File): AudioInputStream {
-        val src = AudioSystem.getAudioInputStream(f)
+        // A RIFF/RF64 file is parsed by us and never offered to the
+        // guessing — see WavFile for what the guessing did to a folder
+        // of perfectly good WAVs.
+        val src = WavFile.open(f) ?: AudioSystem.getAudioInputStream(f)
         val sf = src.format
+        // And if something still claims a file as MPEG that does not
+        // begin like one, it is wrong: refuse it here, where the file
+        // can be named, rather than three layers down inside a decoder.
+        val enc = sf.encoding.toString()
+        if (("MPEG" in enc || "mpeg" in enc) && !looksLikeMpeg(f)) {
+            runCatching { src.close() }
+            throw IllegalStateException(
+                "${f.name}: the mp3 decoder claimed this file, but it is " +
+                "not an mp3 — refusing it rather than letting it crash " +
+                "mid-show")
+        }
         val pcmFmt = AudioFormat(
             AudioFormat.Encoding.PCM_SIGNED, sf.sampleRate, 16,
             sf.channels.coerceAtLeast(1), sf.channels.coerceAtLeast(1) * 2,
@@ -211,6 +228,24 @@ class Player(
         }
         return out
     }
+
+    /**
+     * Does this file actually begin like an MPEG stream? An ID3 tag, or
+     * a frame sync (eleven set bits) in the first few bytes. Deliberately
+     * strict: this is only ever used to reject a claim, and a real mp3
+     * that starts with junk will still open the normal way.
+     */
+    private fun looksLikeMpeg(f: File): Boolean = try {
+        java.io.FileInputStream(f).use { s ->
+            val b = ByteArray(4)
+            val n = s.read(b)
+            n >= 3 && (
+                (b[0] == 'I'.code.toByte() && b[1] == 'D'.code.toByte() &&
+                    b[2] == '3'.code.toByte()) ||
+                ((b[0].toInt() and 0xFF) == 0xFF &&
+                    (b[1].toInt() and 0xE0) == 0xE0))
+        }
+    } catch (e: Exception) { false }
 
     fun testTone() {
         val l = line ?: run { log?.invoke("no audio output line"); return }

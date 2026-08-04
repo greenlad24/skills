@@ -250,6 +250,197 @@ class RealRigTest {
         } finally { player.close(); console.stop() }
     }
 
+    @Test fun `a wav is never opened as an mp3`() {
+        // The real failure. `AudioSystem.getAudioInputStream(File)` asks
+        // every reader on the classpath in an unspecified order and takes
+        // the first that says yes, and the mp3 SPI says yes to almost
+        // anything — PCM audio is full of byte pairs that look like an
+        // MPEG frame sync. On the operator's Mac it beat the JDK's WAV
+        // reader on ten of sixteen channels, reported a 48 kHz kick as
+        // 12 kHz (an MPEG-2.5 rate — the tell), and then threw out of
+        // LayerIDecoder and killed the transport.
+        val dir = File(System.getProperty("java.io.tmpdir"), "sm-hijack")
+            .apply { deleteRecursively(); mkdirs() }
+
+        // a WAV whose samples are nothing but MPEG frame syncs
+        val f = File(dir, "KICK.wav")
+        val n = 48000
+        val bytes = ByteArray(n * 2)
+        for (i in bytes.indices step 2) {
+            bytes[i] = 0xFF.toByte(); bytes[i + 1] = 0xFB.toByte()
+        }
+        AudioSystem.write(
+            AudioInputStream(ByteArrayInputStream(bytes),
+                AudioFormat(48000f, 16, 1, true, false), n.toLong()),
+            AudioFileFormat.Type.WAVE, f)
+
+        val h = WavFile.open(f)
+        assertTrue(h != null, "our own reader would not open a plain WAV")
+        assertTrue(h!!.format.sampleRate.toInt() == 48000,
+            "a 48 kHz file came back as ${h.format.sampleRate.toInt()} Hz")
+        assertTrue(h.format.sampleSizeInBits == 16, "bit depth was lost")
+        assertTrue(h.format.channels == 1, "channel count was lost")
+        h.close()
+
+        // and through the player, which is what actually matters
+        val console = Console(port = 21306)
+        val player = Player(MutableList(16) { null }, console, sampleRate = 48000)
+        val lines = ArrayList<String>()
+        player.log = { lines.add(it); println("  $it") }
+        try {
+            player.open()
+            assertTrue(player.load(0, f), "the file would not load")
+            assertTrue(lines.any { "[riff]" in it },
+                "the file was not opened by our reader:\n" +
+                lines.joinToString("\n"))
+            assertTrue(lines.none { "12000 Hz" in it || "16000 Hz" in it },
+                "an MPEG rate came back for a 48 kHz WAV:\n" +
+                lines.joinToString("\n"))
+            repeat(5) { player.processBlock() }
+            assertTrue(lines.none { "READ FAILED" in it },
+                "reading it still failed:\n" + lines.joinToString("\n"))
+        } finally { player.close(); console.stop() }
+    }
+
+    @Test fun `an RF64 file opens, which AudioSystem cannot do at all`() {
+        // The other half of the same failure. A long multitrack recording
+        // goes past 4 GB and the DAW writes RF64, which the JDK's WAV
+        // reader refuses outright — leaving the mp3 SPI as the only
+        // provider still saying yes, which is how a drum stem ends up
+        // being decoded as MPEG Layer I. Reading the header ourselves
+        // fixes the hijack and this, in one move.
+        val dir = File(System.getProperty("java.io.tmpdir"), "sm-rf64")
+            .apply { deleteRecursively(); mkdirs() }
+        val f = File(dir, "LONG TAKE.wav")
+
+        val sr = 48000
+        val frames = sr / 2
+        val data = ByteArray(frames * 2)
+        for (i in 0 until frames) {
+            val v = (0.5 * sin(2 * PI * 220 * i / sr) * 32767).toInt()
+            data[i * 2] = (v and 255).toByte()
+            data[i * 2 + 1] = ((v shr 8) and 255).toByte()
+        }
+        java.io.DataOutputStream(f.outputStream().buffered()).use { o ->
+            fun ascii(s: String) = o.write(s.toByteArray(Charsets.US_ASCII))
+            fun le32(v: Long) { for (k in 0 until 4)
+                o.write(((v shr (8 * k)) and 255).toInt()) }
+            fun le64(v: Long) { for (k in 0 until 8)
+                o.write(((v shr (8 * k)) and 255).toInt()) }
+            fun le16(v: Int) { o.write(v and 255); o.write((v shr 8) and 255) }
+
+            ascii("RF64"); le32(0xFFFFFFFFL); ascii("WAVE")
+            ascii("ds64"); le32(28)
+            le64(data.size + 100L)          // riff size
+            le64(data.size.toLong())        // data size, the real one
+            le64(frames.toLong())           // sample count
+            le32(0)                         // no chunk table
+            ascii("fmt "); le32(16)
+            le16(1); le16(1); le32(sr.toLong()); le32(sr * 2L); le16(2); le16(16)
+            ascii("data"); le32(0xFFFFFFFFL)
+            o.write(data)
+        }
+
+        // the JDK genuinely cannot: that is the premise of this test
+        val jdkRefused = try {
+            AudioSystem.getAudioInputStream(f).use { false }
+        } catch (e: Exception) { true }
+        println("AudioSystem refused RF64: $jdkRefused")
+
+        val h = WavFile.open(f)
+        assertTrue(h != null, "our reader could not open RF64 either")
+        assertTrue(h!!.format.sampleRate.toInt() == sr,
+            "RF64 rate came back as ${h.format.sampleRate}")
+        assertTrue(h.frameLength == frames.toLong(),
+            "RF64 length came back as ${h.frameLength}, not $frames — the " +
+            "64-bit size in ds64 was not used")
+        h.close()
+
+        val console = Console(port = 21308)
+        val player = Player(MutableList(16) { null }, console, sampleRate = sr)
+        val lines = ArrayList<String>()
+        player.log = { lines.add(it); println("  $it") }
+        try {
+            player.open()
+            assertTrue(player.load(0, f), "RF64 would not load into a channel")
+            console.params["/ch/01/mix/fader"] = 0.75f
+            var peak = 0f
+            repeat(6) {
+                player.processBlock()
+                if (player.lastMixPeak > peak) peak = player.lastMixPeak
+            }
+            assertTrue(peak > 0.15f,
+                "RF64 played at $peak\n" + lines.joinToString("\n"))
+            println("RF64 peak $peak")
+        } finally { player.close(); console.stop() }
+    }
+
+    @Test fun `every shape of wav a DAW writes opens correctly`() {
+        val dir = File(System.getProperty("java.io.tmpdir"), "sm-shapes")
+            .apply { deleteRecursively(); mkdirs() }
+        // 24-bit and 32-bit float are what a DAW hands you by default,
+        // and both used to go through the guessing
+        val cases = listOf(
+            Triple(48000, 16, 1), Triple(44100, 16, 2),
+            Triple(48000, 24, 1), Triple(44100, 24, 2),
+            Triple(96000, 32, 2))
+        for ((sr, bits, chn) in cases) {
+            val f = File(dir, "s-$sr-$bits-$chn.wav")
+            val frames = sr / 2
+            val bps = bits / 8
+            val b = ByteArray(frames * bps * chn)
+            var p = 0
+            for (i in 0 until frames) {
+                val s = sin(2 * PI * 220 * i / sr)
+                for (c in 0 until chn) {
+                    if (bits == 32) {
+                        val v = java.lang.Float.floatToIntBits((0.4 * s).toFloat())
+                        for (k in 0 until 4) b[p++] = ((v shr (8 * k)) and 255).toByte()
+                    } else {
+                        val v = (0.4 * s * ((1L shl (bits - 1)) - 1)).toLong()
+                        for (k in 0 until bps)
+                            b[p++] = ((v shr (8 * k)) and 255).toByte()
+                    }
+                }
+            }
+            val fmt = if (bits == 32)
+                AudioFormat(AudioFormat.Encoding.PCM_FLOAT, sr.toFloat(), 32,
+                    chn, 4 * chn, sr.toFloat(), false)
+            else AudioFormat(sr.toFloat(), bits, chn, true, false)
+            AudioSystem.write(
+                AudioInputStream(ByteArrayInputStream(b), fmt, frames.toLong()),
+                AudioFileFormat.Type.WAVE, f)
+
+            val h = WavFile.open(f)
+            assertTrue(h != null, "$f would not open")
+            assertTrue(h!!.format.sampleRate.toInt() == sr,
+                "$f: rate ${h.format.sampleRate} not $sr")
+            assertTrue(h.format.sampleSizeInBits == bits,
+                "$f: ${h.format.sampleSizeInBits} bit not $bits")
+            assertTrue(h.format.channels == chn,
+                "$f: ${h.format.channels} ch not $chn")
+            h.close()
+
+            // and it plays, with real level in it
+            val console = Console(port = 21307)
+            val player = Player(MutableList(16) { null }, console,
+                sampleRate = 48000)
+            player.log = { println("  $it") }
+            try {
+                player.open()
+                assertTrue(player.load(0, f), "$f would not load")
+                console.params["/ch/01/mix/fader"] = 0.75f
+                var peak = 0f
+                repeat(6) {
+                    player.processBlock()
+                    if (player.lastMixPeak > peak) peak = player.lastMixPeak
+                }
+                assertTrue(peak > 0.15f, "$f came out at $peak")
+                println("$sr/$bits/$chn peak $peak")
+            } finally { player.close(); console.stop() }
+        }
+    }
+
     @Test fun `the channels loaded are remembered for the next launch`() {
         val dir = File(System.getProperty("java.io.tmpdir"), "sm-session")
             .apply { deleteRecursively(); mkdirs() }
