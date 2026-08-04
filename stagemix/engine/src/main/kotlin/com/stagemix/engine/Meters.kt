@@ -22,7 +22,9 @@ object Meters {
         if (blob.size < 4) return null
         val buf = ByteBuffer.wrap(blob).order(ByteOrder.LITTLE_ENDIAN)
         val count = buf.int
-        if (count < 0 || blob.size < 4 + count * 2) return null
+        // count * 2 overflows for hostile/huge values -> compare in Long
+        if (count < 0 || blob.size.toLong() < 4L + count.toLong() * 2L)
+            return null
         return FloatArray(count) { buf.short / 256f }
     }
 }

@@ -404,7 +404,9 @@ class MixerService : Service() {
      */
     private suspend fun takeoverNow() {
         val e = engine ?: return
-        pending.clear()
+        collecting = true          // our own enquiry replies are NOT
+        pending.clear()            // human fader moves
+
         val chans = AppState.config.value.channels
         for (ch in chans) {
             send(OscMessage("/ch/%02d/mix/fader".format(ch.index + 1),
@@ -427,11 +429,13 @@ class MixerService : Service() {
                 ?.let { faders[ch.index] = FaderLaw.floatToDb(it) }
         }
         if (faders.isEmpty()) {
+            collecting = false
             AppState.lastError.value =
                 "Takeover failed — no fader positions received from the mixer"
             return
         }
         e.takeover(faders, now())
+        collecting = false
         doctor?.let { d ->
             for (ch in chans) {
                 val gains = FloatArray(4) { b ->
@@ -453,6 +457,9 @@ class MixerService : Service() {
 
     private fun revert() {
         val e = engine ?: return
+        // handing back means handing back: pause the autopilot too, or
+        // the next tick would immediately mix away from these faders
+        AppState.directing.value = false
         for (w in e.revertToBaseline(now()))
             send(OscMessage(w.address, listOf(FaderLaw.dbToFloat(w.levelDb))))
         doctor?.let { d ->

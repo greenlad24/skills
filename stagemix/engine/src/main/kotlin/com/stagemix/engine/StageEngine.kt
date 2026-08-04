@@ -218,6 +218,7 @@ class StageEngine(
 
     // mix-health rolling scores (EMAs over ~5 min of ticks)
     private var vocalOnTopEma = 1f
+    private var vocalHealthSamples = 0
     private var inPlaceEma = 1f
     private var healthTicks = 0
 
@@ -229,7 +230,8 @@ class StageEngine(
     )
 
     fun health() = MixHealth(
-        (vocalOnTopEma * 100).toInt().coerceIn(0, 100),
+        if (vocalHealthSamples < 20) -1
+        else (vocalOnTopEma * 100).toInt().coerceIn(0, 100),
         (inPlaceEma * 100).toInt().coerceIn(0, 100),
         overrideCount, healthTicks)
 
@@ -284,8 +286,10 @@ class StageEngine(
      */
     fun operatorOverride(ch: Int, faderDb: Float, tSec: Double) {
         val st = state[ch] ?: return
-        val disagreement = faderDb - ((st.baselineDb ?: faderDb) + st.offset)
-        st.baselineDb = faderDb
+        val safe = if (faderDb.isNaN()) return
+                   else faderDb.coerceIn(FaderLaw.MIN_DB, settings.absFaderCapDb)
+        val disagreement = safe - ((st.baselineDb ?: safe) + st.offset)
+        st.baselineDb = safe
         st.offset = 0f; st.target = 0f; st.duckDb = 0f
         st.overrideUntil = tSec + 120.0
         overrideCount++
@@ -307,6 +311,7 @@ class StageEngine(
     private var clipHoldUntil = 0.0
     private var broadbandHoldUntil = 0.0
     private var lastMixMean: Float? = null
+    private var lastMixCount = 0
     val decisions = ArrayDeque<Decision>()
 
     // ------------------------------------------------------------------
@@ -317,7 +322,7 @@ class StageEngine(
         var mean = 0f
         var n = 0
         for ((idx, st) in state) {
-            val db = levels.getOrNull(idx) ?: continue
+            val db = sane(levels.getOrNull(idx) ?: continue) ?: continue
             st.lastLevelDb = db
             if (!st.active && db > settings.activityEnterDb) st.active = true
             else if (st.active && db < settings.activityExitDb) st.active = false
@@ -337,11 +342,15 @@ class StageEngine(
         }
         if (n > 0) {
             val m = mean / n
-            lastMixMean?.let {
-                if (abs(m - it) > settings.broadbandJumpDb)
+            // Only a change in the SAME set of channels is a real
+            // broadband event; a new (quiet) channel joining drags the
+            // mean without anything actually changing on stage.
+            lastMixMean?.let { prev ->
+                if (n == lastMixCount && abs(m - prev) > settings.broadbandJumpDb)
                     broadbandHoldUntil = tSec + settings.broadbandHoldSec
             }
             lastMixMean = m
+            lastMixCount = n
         }
     }
 
@@ -354,10 +363,16 @@ class StageEngine(
     fun takeover(faderDb: Map<Int, Float>, tSec: Double) {
         for ((ch, db) in faderDb) {
             val st = state[ch] ?: continue
-            st.baselineDb = db
+            if (db.isNaN()) continue
+            st.baselineDb = db.coerceIn(FaderLaw.MIN_DB, settings.absFaderCapDb)
             st.offset = 0f; st.target = 0f; st.duckDb = 0f
             st.heardSec = 0f
             st.takeRef = null   // re-learned during the listening window
+            // a fresh takeover is a clean slate: stale override holds,
+            // idle flags and fast lanes from the previous act must go
+            st.overrideUntil = 0.0
+            st.fastUntil = 0.0
+            st.idleRamped = false
         }
         takeoverT = tSec
         lastLeadSwitch = tSec
@@ -391,7 +406,10 @@ class StageEngine(
         !frozenAll && meterFresh(tSec)
 
     fun tick(tSec: Double): List<FaderWrite> {
-        val dt = if (lastTickT < 0) 1.0 else (tSec - lastTickT).coerceIn(0.0, 5.0)
+        // A long gap (app paused, Wi-Fi outage, clock jump) must never
+        // buy a giant single move: cap the effective step to ~1 tick.
+        val dt = if (lastTickT < 0) 1.0
+                 else (tSec - lastTickT).coerceIn(0.0, 1.5)
         lastTickT = tSec
         if (takeoverT < 0 || !ready) return emptyList()
         if (!anyMotionAllowed(tSec)) return emptyList()
@@ -495,9 +513,7 @@ class StageEngine(
                 val contrib = pre + base + st.offset
                 st.offset - (contrib - (anchor + (height - anchorPyr)))
             }
-            val bounded = tgt.coerceIn(-settings.maxBelowBaselineDb,
-                min(settings.maxAboveBaselineDb,
-                    settings.absFaderCapDb - base))
+            val bounded = boundOffset(tgt, base)
             if (abs(bounded - st.target) > 0.5f &&
                 abs(bounded - st.offset) > settings.deadbandDb) {
                 st.target = bounded
@@ -536,6 +552,11 @@ class StageEngine(
             // health sample: is the lead where it belongs?
             val hOk = if (gap >= wantGap - settings.duckTriggerDb) 1f else 0f
             vocalOnTopEma += 0.02f * (hOk - vocalOnTopEma)
+            vocalHealthSamples++
+            // any channel that left the band (went quiet) must release
+            for (st in state.values)
+                if (st.duckDb < -0.01f && (!st.active || st !in band))
+                    st.duckDb = min(0f, st.duckDb + (1f * dt).toFloat())
             for (st in band) {
                 if (needDuck) {
                     val want = -min(settings.duckMaxDb, wantGap - gap)
@@ -574,10 +595,7 @@ class StageEngine(
             if (st.frozen || st.role == Role.TALK) continue
             if (tSec < st.overrideUntil) continue
             val base = st.baselineDb ?: continue
-            val tgt = (st.target + st.duckDb)
-                .coerceIn(-settings.maxBelowBaselineDb,
-                    min(settings.maxAboveBaselineDb,
-                        settings.absFaderCapDb - base))
+            val tgt = boundOffset(st.target + st.duckDb, base)
             val cur = st.offset
             if (abs(tgt - cur) < 0.05f) continue
             val step: Float = if (tgt > cur) {
@@ -586,10 +604,19 @@ class StageEngine(
                     val fast = tSec < st.fastUntil && cur < 0f
                     val rate = if (fast) settings.fastPerSecDb
                                else settings.leadPerSecDb
-                    val room = (settings.mixBoostBudgetDb -
-                            (boostUsed - max(0f, cur))).coerceAtLeast(0f)
-                    min(min((rate * dt).toFloat(), tgt - cur),
-                        max(0f, room - max(0f, cur)))
+                    val wanted = min((rate * dt).toFloat(), tgt - cur)
+                    // Budget governs POSITIVE offset only: climbing back
+                    // from below baseline toward 0 spends no headroom,
+                    // so a quiet channel can always recover even when
+                    // other channels hold the whole boost budget.
+                    val othersUp = boostUsed - max(0f, cur)
+                    val room = (settings.mixBoostBudgetDb - othersUp)
+                        .coerceAtLeast(0f)
+                    // end position: below baseline is always allowed;
+                    // above baseline is what the budget governs
+                    val end = if (cur + wanted <= 0f) cur + wanted
+                              else min(cur + wanted, max(0f, room))
+                    (end - cur).coerceAtLeast(0f)
                 }
             } else {
                 -min((settings.cutPerSecDb * dt).toFloat(), cur - tgt)
@@ -613,6 +640,25 @@ class StageEngine(
     /** Pyramid height including the taste learned from feedback. */
     private fun height(role: Role): Float =
         (pyramid[role] ?: -4f) + (pyramidBias[role] ?: 0f)
+
+    /**
+     * Clamp an offset into the authority window for a channel whose
+     * fader baseline is [base]. A baseline already above the absolute
+     * cap makes the upper limit smaller than the lower one — clamp the
+     * window itself instead of crashing (kotlin's coerceIn throws when
+     * min > max).
+     */
+    private fun boundOffset(v: Float, base: Float): Float {
+        if (v.isNaN()) return 0f
+        val lo = -settings.maxBelowBaselineDb
+        val hi = min(settings.maxAboveBaselineDb, settings.absFaderCapDb - base)
+        return if (hi <= lo) lo else v.coerceIn(lo, hi)
+    }
+
+    /** Meter sanitation: NaN/Inf/absurd values can never reach state. */
+    private fun sane(db: Float): Float? =
+        if (db.isNaN() || db.isInfinite() || db < -200f || db > 60f) null
+        else db
 
     private fun isBassName(name: String): Boolean {
         val n = name.lowercase()

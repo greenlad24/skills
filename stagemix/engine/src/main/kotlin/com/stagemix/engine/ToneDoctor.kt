@@ -43,6 +43,9 @@ data class DoctorSettings(
     val harshTauSec: Float = 8f,        // reacts in seconds, not minutes
 )
 
+/** consecutive RTA frames a new vocal register must hold to be adopted */
+const val REGISTER_DEBOUNCE_FRAMES = 6
+
 class ToneDoctor(
     channelIndices: List<Int>,
     roles: Map<Int, Role> = emptyMap(),
@@ -75,6 +78,9 @@ class ToneDoctor(
         var lowFill = false
         /** harshness score: 2-6 kHz vs the channel's own body (EMA) */
         var harshEma: Float? = null
+        /** register-change debounce state */
+        var pendingReg = -1
+        var pendingRegCount = 0
     }
 
     val state = channelIndices.associateWith { ChState() }
@@ -94,6 +100,8 @@ class ToneDoctor(
     fun onRta(ch: Int, bins: FloatArray, tSec: Double) {
         val st = state[ch] ?: return
         if (bins.size < 100) return
+        // NaN/Inf in one bin must never propagate into an EQ write
+        for (v in bins) if (v.isNaN() || v.isInfinite()) return
         // Vocal channels: detect the singer's register from where the
         // fundamental lives. A register change means a DIFFERENT SINGER
         // (or a real range shift) — swap to that register's own
@@ -101,7 +109,19 @@ class ToneDoctor(
         // old one. First sighting of a register adopts its sound as-is.
         if (st.role == Role.VOCAL || st.role == Role.BACKING_VOCAL) {
             val reg = vocalRegister(bins)
+            // Debounce: a singer near the male/female boundary (or with
+            // vibrato) must not flap registers frame to frame — each
+            // flap would blind the doctor by resetting its measurement.
             if (reg != null && reg != st.register) {
+                st.pendingReg = if (reg == st.pendingReg) st.pendingReg else reg
+                st.pendingRegCount = if (reg == st.pendingReg)
+                    st.pendingRegCount + 1 else 1
+            } else if (reg == st.register) {
+                st.pendingRegCount = 0
+            }
+            if (reg != null && reg != st.register &&
+                st.pendingRegCount >= REGISTER_DEBOUNCE_FRAMES) {
+                st.pendingRegCount = 0
                 st.regRefs[st.register] = st.refBands
                 st.register = reg
                 st.refBands = st.regRefs[reg]

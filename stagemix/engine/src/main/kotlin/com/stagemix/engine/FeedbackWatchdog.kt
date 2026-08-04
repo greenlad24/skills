@@ -55,10 +55,21 @@ class FeedbackWatchdog(
                 lastFreqHz = binHz(peakBin)
             }
         } else if (isCandidate) {
-            // a different frequency: restart persistence there
+            // A howl that wanders a couple of bins (or alternates
+            // between two adjacent bins as the room mode shifts) is
+            // still one howl: keep counting if it stays in a narrow
+            // neighbourhood, only reset for a genuinely new frequency.
+            if (kotlin.math.abs(peakBin - candidateBin) <= 3) {
+                candidateCount++
+            } else {
+                candidateCount = 1
+            }
             candidateBin = peakBin
-            candidateCount = 1
             lastSeenT = tSec
+            if (candidateCount >= holdFrames && !vetoActive) {
+                vetoActive = true
+                lastFreqHz = binHz(peakBin)
+            }
         } else if (vetoActive && tSec - lastSeenT > clearSec) {
             vetoActive = false
             candidateBin = -1
