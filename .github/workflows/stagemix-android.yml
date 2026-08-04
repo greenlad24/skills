@@ -28,6 +28,15 @@ jobs:
       - name: Engine unit tests
         run: ./gradlew :engine:test --console=plain
 
+      - name: Replay tool tests
+        run: ./gradlew :replay:test --console=plain
+
+      - name: Build the replay jar
+        run: ./gradlew :replay:fatJar --console=plain
+
+      - name: Collect the replay jar
+        run: cp replay/build/libs/stagemix-replay.jar stagemix-replay.jar
+
       - name: Build release APK
         env:
           ANDROID_HOME: /usr/local/lib/android/sdk
@@ -40,7 +49,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: StageMix-apk
-          path: stagemix/StageMix.apk
+          path: |
+            stagemix/StageMix.apk
+            stagemix/stagemix-replay.jar
 
       - name: Update rolling release
         if: github.ref == 'refs/heads/main' || startsWith(github.ref_name, 'claude/')
@@ -49,7 +60,9 @@ jobs:
           tag_name: stagemix-latest
           name: StageMix AI — latest build
           prerelease: true
-          files: stagemix/StageMix.apk
+          files: |
+            stagemix/StageMix.apk
+            stagemix/stagemix-replay.jar
           body: |
             ## StageMix AI — on-stage auto mix engineer (Android)
 

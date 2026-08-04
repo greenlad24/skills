@@ -27,12 +27,12 @@ object LogExport {
 
     /** the newest show log, or null if nothing has been recorded */
     fun latest(ctx: Context): File? =
-        File(ctx.getExternalFilesDir(null), "logs")
+        File(ctx.getExternalFilesDir(null) ?: ctx.filesDir, "logs")
             .listFiles()?.filter { it.isFile && it.length() > 0 }
             ?.maxByOrNull { it.lastModified() }
 
     fun all(ctx: Context): List<File> =
-        File(ctx.getExternalFilesDir(null), "logs")
+        File(ctx.getExternalFilesDir(null) ?: ctx.filesDir, "logs")
             .listFiles()?.filter { it.isFile }?.sortedByDescending {
                 it.lastModified() } ?: emptyList()
 
@@ -43,7 +43,8 @@ object LogExport {
      */
     fun shareIntent(ctx: Context, log: File): Intent? {
         return try {
-            val outDir = File(ctx.getExternalFilesDir(null), "export")
+            val outDir = File(ctx.getExternalFilesDir(null) ?: ctx.filesDir,
+                "export")
                 .apply { mkdirs() }
             // one staged copy, .txt so WhatsApp takes it as a document
             outDir.listFiles()?.forEach { runCatching { it.delete() } }

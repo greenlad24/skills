@@ -289,10 +289,62 @@ are kept.
    mains** any time.
 5. At the end of the night, **⤴ EXPORT LOG** → WhatsApp.
 
+## Testing it against a night you already recorded
+
+If the desk has been recording to a DAW over USB, that session is 16
+tracks of the same sources the console meters — so the engine can be run
+over it as if the band were on stage right now. Same engine, same
+Channel Doctor, same show log; the only thing simulated is the clock.
+
+```
+java -jar stagemix-replay.jar "/path/to/the session's audio files"
+```
+
+Point it at the folder holding the per-track WAVs (in Studio One that is
+the song's `Media` folder — no export needed) or at a single
+multichannel WAV. Channel numbers come from a leading number in the file
+name; the names set the roles the same way the console's channel names
+do live.
+
+Useful flags:
+
+| flag | what it does |
+|---|---|
+| `--render` | also write `<take>_autopilot.wav` — the mix the engine would have made — and `<take>_flat.wav` at the takeover faders, so you can A/B them |
+| `--start 600 --length 900` | replay 15 minutes from ten minutes in |
+| `--fader -8` | start from a different takeover position |
+| `--shadow` | decide and log everything, but leave the rendered mix flat |
+| `--capture night.smcap` | write a **meter tape** (below) |
+
+### The meter tape — sending a night without sending the audio
+
+A recorded night is tens of gigabytes. The engine never sees any of it:
+its entire input is sixteen levels twenty times a second plus a 100-bin
+spectrum of one channel at a time. Written at half-dB resolution that is
+**about a megabyte for a three-hour night**, and it drives the engine to
+the same place the audio does — a round-trip test asserts every channel
+lands within 0.75 dB of the audio replay.
+
+```
+java -jar stagemix-replay.jar "/path/to/audio" --capture night.smcap
+```
+
+`night.smcap` can then be replayed anywhere — the audio never leaves the
+machine it was recorded on:
+
+```
+java -jar stagemix-replay.jar night.smcap
+```
+
+`stagemix-replay.jar` is attached to the `stagemix-latest` release next
+to the APK, and needs nothing but Java 17.
+
 ## Building
 
 - `./gradlew :engine:test` — the whole mix engine is a pure-JVM Kotlin
   module with scenario tests (no Android SDK needed).
+- `./gradlew :replay:test` — the offline replay tool (also pure JVM).
+- `./gradlew :replay:fatJar` — builds `stagemix-replay.jar`.
 - `./gradlew :app:assembleRelease` — needs the Android SDK; CI does this
   on every push and attaches **StageMix.apk** to the `stagemix-latest`
   release.

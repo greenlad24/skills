@@ -1,11 +1,5 @@
-package com.stagemix.app
+package com.stagemix.engine
 
-import android.content.Context
-import android.util.Log
-import com.stagemix.engine.Decision
-import com.stagemix.engine.Role
-import com.stagemix.engine.StageEngine
-import com.stagemix.engine.ToneDoctor
 import java.io.File
 import java.io.FileWriter
 import java.text.SimpleDateFormat
@@ -46,9 +40,14 @@ import java.util.Locale
  * Grep-friendly on purpose: `grep ' FADER ' show.log` is a night's fader
  * moves, `grep ' DEC ' show.log` is the reasoning.
  */
-class ShowLog(ctx: Context, private val snapshotSec: Double = 5.0) {
+class ShowLog(
+    baseDir: File,
+    private val snapshotSec: Double = 5.0,
+    /** override the file name (the replay tool names logs after the take) */
+    name: String? = null,
+) {
 
-    private val dir = File(ctx.getExternalFilesDir(null), "logs")
+    private val dir = File(baseDir, "logs")
     val file: File
     private var w: FileWriter? = null
     private val t0 = System.currentTimeMillis()
@@ -63,10 +62,8 @@ class ShowLog(ctx: Context, private val snapshotSec: Double = 5.0) {
 
     init {
         dir.mkdirs()
-        file = File(dir, "stagemix_${stamp.format(Date())}.log")
-        w = try { FileWriter(file, true) } catch (e: Exception) {
-            Log.w("StageMix", "show log unavailable: ${e.message}"); null
-        }
+        file = File(dir, name ?: "stagemix_${stamp.format(Date())}.log")
+        w = try { FileWriter(file, true) } catch (e: Exception) { null }
         // keep the last ten nights, no more
         dir.listFiles()?.sortedByDescending { it.name }?.drop(10)
             ?.forEach { runCatching { it.delete() } }
@@ -100,14 +97,13 @@ class ShowLog(ctx: Context, private val snapshotSec: Double = 5.0) {
     private fun pct(v: Int) = if (v < 0) "n/a" else "$v%"
 
     // ------------------------------------------------------------------
-    fun head(mixer: AppState.MixerInfo, e: StageEngine,
+    fun head(mixer: String, e: StageEngine,
              names: Map<Int, String>, nights: Int, taste: String) {
         put("HEAD", "StageMix show log — this file is the whole night; " +
             "paste it back and it can be read without the mixer present")
         put("HEAD", "date=${SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.ROOT)
             .format(Date())}  night=${nights + 1}")
-        put("HEAD", "mixer name='${mixer.name}' model='${mixer.model}' " +
-            "fw='${mixer.firmware}' ip=${mixer.ip}")
+        put("HEAD", "mixer $mixer")
         put("HEAD", "learned taste: ${taste.ifBlank { "(none yet)" }}")
         val s = e.settings
         put("HEAD", "authority: -%.0f..+%.0f dB around takeover, cap %+.0f dB; "

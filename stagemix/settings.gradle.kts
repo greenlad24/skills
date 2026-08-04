@@ -22,6 +22,10 @@ rootProject.name = "stagemix"
 
 include(":engine")
 
+// Offline replay of a recorded multitrack through the real engine.
+// Pure JVM, no Android SDK needed.
+include(":replay")
+
 // The :app module needs the Android SDK. Skip it when no SDK is present
 // so `gradle :engine:test` runs on any dev box (engine is pure JVM).
 val hasSdk = System.getenv("ANDROID_HOME") != null ||

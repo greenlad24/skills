@@ -17,6 +17,7 @@ import com.stagemix.engine.Meters
 import com.stagemix.engine.osc
 import com.stagemix.engine.OscMessage
 import com.stagemix.engine.REVERT_HOLD_SEC
+import com.stagemix.engine.ShowLog
 import com.stagemix.engine.StageEngine
 import com.stagemix.engine.ToneDoctor
 import kotlinx.coroutines.CoroutineScope
@@ -174,7 +175,7 @@ class MixerService : Service() {
 
                 val cfg = AppState.config.value
                 show?.close()
-                show = ShowLog(this@MixerService)
+                show = ShowLog(getExternalFilesDir(null) ?: filesDir)
                 AppState.logPath.value = show?.file?.absolutePath ?: ""
                 engine = StageEngine(cfg.channels).also { eng ->
                     // continue from last night's progress
@@ -214,7 +215,9 @@ class MixerService : Service() {
                 AppState.config.value = cfg.copy(mixerIp = ip)
                 fetchNames()
                 engine?.let { eng ->
-                    show?.head(AppState.mixer.value, eng,
+                    val mi = AppState.mixer.value
+                    show?.head("name='${mi.name}' model='${mi.model}' " +
+                        "fw='${mi.firmware}' ip=${mi.ip}", eng,
                         AppState.mixerChannelNames.value,
                         AppState.nightsCount.value,
                         AppState.tasteSummary.value)
@@ -249,8 +252,10 @@ class MixerService : Service() {
                 lastKeepalive = t
                 send(OscMessage("/xremotenfb", emptyList()))
                 send(OscMessage("/meters", listOf("/meters/${Meters.BANK_INPUTS}")))
-                send(OscMessage("/meters", listOf("/meters/4")))  // RTA
-                send(OscMessage("/meters", listOf("/meters/6")))  // dynamics
+                send(OscMessage("/meters",
+                    listOf("/meters/${Meters.BANK_RTA}")))       // RTA
+                send(OscMessage("/meters",
+                    listOf("/meters/${Meters.BANK_DYNAMICS}")))  // gate+comp GR
             }
             val m = receiveOnce()
             if (m != null) {
@@ -329,7 +334,7 @@ class MixerService : Service() {
                     e.onMeters(levels, t)
                 }
             }
-            "/meters/4" -> {
+            "/meters/${Meters.BANK_RTA}" -> {
                 m.blobArg(0)?.let { Meters.decode(it) }?.let { bins ->
                     // every RTA frame feeds the howl recognizer — a howl
                     // circulates acoustically, so any open mic hears it
@@ -352,13 +357,16 @@ class MixerService : Service() {
                         doctor?.onRta(rtaFocus, bins, t)
                 }
             }
-            "/meters/6" -> {
-                // dynamics bank: assumed layout [gate GR, comp GR] per
-                // channel (verify against your firmware — the doctor's
-                // sanity gates discard implausible values either way)
+            "/meters/${Meters.BANK_DYNAMICS}" -> {
+                // 39 values in blocks: 16 gate GR, then 16 comp GR, then
+                // 6 bus and the main. Not interleaved — reading it as
+                // [gate, comp] pairs fed channel 2's GATE into channel
+                // 1's compressor tending.
                 m.blobArg(0)?.let { Meters.decode(it) }?.let { v ->
-                    if (v.size >= 32) for (ch in 0 until 16)
-                        doctor?.onGainReduction(ch, v[ch * 2 + 1], t)
+                    if (v.size >= Meters.DYN_COUNT)
+                        for (ch in 0 until Meters.INPUT_COUNT)
+                            doctor?.onGainReduction(
+                                ch, v[Meters.compGrIndex(ch)], t)
                 }
             }
             else -> {
