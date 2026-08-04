@@ -14,6 +14,7 @@ import android.os.PowerManager
 import android.util.Log
 import com.stagemix.engine.FaderLaw
 import com.stagemix.engine.Meters
+import com.stagemix.engine.osc
 import com.stagemix.engine.OscMessage
 import com.stagemix.engine.StageEngine
 import com.stagemix.engine.ToneDoctor
@@ -24,12 +25,15 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.abs
 
 /**
  * Foreground service that owns the UDP socket, the /xremote + /meters
@@ -56,6 +60,8 @@ class MixerService : Service() {
     private val lastSent = ConcurrentHashMap<Int, Float>()
     /** true while takeoverNow() is collecting enquiry replies */
     @Volatile private var collecting = false
+    /** only one takeover may own `pending`/`collecting` at a time */
+    private val takeoverLock = Mutex()
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -250,10 +256,7 @@ class MixerService : Service() {
                 if (directing) {
                     // the ONLY writes the engine can produce are channel
                     // faders (mains) — monitor buses are human territory
-                    for (w in e.tick(t)) {
-                        send(OscMessage(w.address,
-                            listOf(FaderLaw.dbToFloat(w.levelDb))))
-                    }
+                    for (w in e.tick(t)) sendFader(w.channel, w.levelDb)
                 } else {
                     e.tick(t) // keep state warm; writes discarded when paused
                 }
@@ -326,8 +329,13 @@ class MixerService : Service() {
                         Regex("^/ch/(\\d\\d)/mix/fader$")
                             .find(m.address)?.let { match ->
                                 val ch = match.groupValues[1].toInt() - 1
-                                e.operatorOverride(ch, FaderLaw.floatToDb(v), t)
-                                lastSent.remove(ch)
+                                val db = FaderLaw.floatToDb(v)
+                                // our own write coming back is not a human
+                                val mine = lastSent[ch]
+                                if (mine == null || abs(db - mine) > ECHO_TOL_DB) {
+                                    e.operatorOverride(ch, db, t)
+                                    lastSent.remove(ch)
+                                }
                             }
                     }
                 }
@@ -362,9 +370,9 @@ class MixerService : Service() {
     private suspend fun fetchNames() {
         val names = HashMap<Int, String>()
         for (ch in 0 until 16) send(
-            OscMessage("/ch/%02d/config/name".format(ch + 1), emptyList()))
+            OscMessage(osc("/ch/%02d/config/name", ch + 1), emptyList()))
         for (b in 0 until 6) send(
-            OscMessage("/bus/%d/config/name".format(b + 1), emptyList()))
+            OscMessage(osc("/bus/%d/config/name", b + 1), emptyList()))
         val stop = now() + 2.0
         val busNames = HashMap<Int, String>()
         while (now() < stop) {
@@ -402,51 +410,83 @@ class MixerService : Service() {
      * the current EQ/comp settings as the doctor's anchors. Monitor
      * buses are never read for automation and never written, period.
      */
-    private suspend fun takeoverNow() {
-        val e = engine ?: return
+    private suspend fun takeoverNow() = takeoverLock.withLock {
+        // Serialized: two takeovers racing (flip MIXING on while a
+        // re-baseline is in flight) both cleared `pending` and both
+        // flipped `collecting`, so one of them built an empty map and
+        // reported "no fader positions received" with the console
+        // answering perfectly.
+        val e = engine ?: return@withLock
         collecting = true          // our own enquiry replies are NOT
         pending.clear()            // human fader moves
 
         val chans = AppState.config.value.channels
-        for (ch in chans) {
-            send(OscMessage("/ch/%02d/mix/fader".format(ch.index + 1),
-                emptyList()))
+        fun enquire(ch: Int) {
+            send(OscMessage(osc("/ch/%02d/mix/fader", ch + 1), emptyList()))
             for (b in 1..4)
-                send(OscMessage("/ch/%02d/eq/%d/g".format(ch.index + 1, b),
+                send(OscMessage(osc("/ch/%02d/eq/%d/g", ch + 1, b),
                     emptyList()))
-            send(OscMessage("/ch/%02d/dyn/thr".format(ch.index + 1),
-                emptyList()))
+            send(OscMessage(osc("/ch/%02d/dyn/thr", ch + 1), emptyList()))
         }
+        // Paced, not fired as one 96-packet burst: a burst that big is
+        // routinely clipped by the console's receive buffer or the
+        // tablet's Wi-Fi, and every dropped reply is a channel the
+        // autopilot then leaves unmanaged all night.
+        for (ch in chans) { enquire(ch.index); delay(3) }
         withTimeoutOrNull(3000) {
             while (chans.any {
                     !pending.containsKey(
-                        "/ch/%02d/mix/fader".format(it.index + 1)) })
+                        osc("/ch/%02d/mix/fader", it.index + 1)) })
                 delay(50)
+        }
+        // one retry pass for whatever did not answer
+        val missing = chans.filter {
+            !pending.containsKey(osc("/ch/%02d/mix/fader", it.index + 1)) }
+        if (missing.isNotEmpty()) {
+            for (ch in missing) { enquire(ch.index); delay(3) }
+            withTimeoutOrNull(1500) {
+                while (missing.any {
+                        !pending.containsKey(
+                            osc("/ch/%02d/mix/fader", it.index + 1)) })
+                    delay(50)
+            }
         }
         val faders = HashMap<Int, Float>()
         for (ch in chans) {
-            pending["/ch/%02d/mix/fader".format(ch.index + 1)]
+            pending[osc("/ch/%02d/mix/fader", ch.index + 1)]
                 ?.let { faders[ch.index] = FaderLaw.floatToDb(it) }
         }
         if (faders.isEmpty()) {
             collecting = false
             AppState.lastError.value =
                 "Takeover failed — no fader positions received from the mixer"
-            return
+            return@withLock
+        }
+        // A PARTIAL takeover is not a success. Channels with no fader
+        // reading get no baseline, which means the engine skips them in
+        // every branch for the rest of the night — silently, while the
+        // console log says takeover worked.
+        if (faders.size < chans.size) {
+            val silent = chans.filter { it.index !in faders.keys }
+            AppState.lastError.value =
+                "Only ${faders.size} of ${chans.size} faders answered — " +
+                silent.joinToString(", ") { "ch%02d".format(it.index + 1) } +
+                " are NOT being mixed. Tap MIXING again to retry."
         }
         e.takeover(faders, now())
+        lastSent.clear()
         collecting = false
         doctor?.let { d ->
             for (ch in chans) {
                 val gains = FloatArray(4) { b ->
-                    pending["/ch/%02d/eq/%d/g".format(ch.index + 1, b + 1)]
+                    pending[osc("/ch/%02d/eq/%d/g", ch.index + 1, b + 1)]
                         ?.let { it * 30f - 15f } ?: 0f
                 }
                 val haveEq = (0 until 4).any {
                     pending.containsKey(
-                        "/ch/%02d/eq/%d/g".format(ch.index + 1, it + 1))
+                        osc("/ch/%02d/eq/%d/g", ch.index + 1, it + 1))
                 }
-                val thr = pending["/ch/%02d/dyn/thr".format(ch.index + 1)]
+                val thr = pending[osc("/ch/%02d/dyn/thr", ch.index + 1)]
                     ?.let { it * 60f - 60f }
                 d.snapshotChannel(ch.index,
                     if (haveEq) gains else null, thr)
@@ -460,12 +500,26 @@ class MixerService : Service() {
         // handing back means handing back: pause the autopilot too, or
         // the next tick would immediately mix away from these faders
         AppState.directing.value = false
-        for (w in e.revertToBaseline(now()))
-            send(OscMessage(w.address, listOf(FaderLaw.dbToFloat(w.levelDb))))
+        for (w in e.revertToBaseline(now())) sendFader(w.channel, w.levelDb)
         doctor?.let { d ->
             for (ch in d.state.keys)
                 for (w in d.reset(ch)) send(OscMessage(w.address, listOf(w.value)))
         }
+    }
+
+    /**
+     * Write a channel fader and remember what we asked for. The echo
+     * filter in [handle] needs that memory: on firmware that reflects
+     * parameter changes back to the sender (or if `/xremotenfb` is not
+     * honoured), our own writes arrive looking exactly like a human on
+     * the console — and every one of them used to hand that channel to
+     * "the human" for two minutes. Sixteen writes, sixteen channels
+     * frozen, autopilot dead twenty-five seconds after takeover.
+     */
+    private fun sendFader(ch: Int, db: Float) {
+        lastSent[ch] = db
+        send(OscMessage(osc("/ch/%02d/mix/fader", ch + 1),
+            listOf(FaderLaw.dbToFloat(db))))
     }
 
     // ------------------------------------------------------------------
@@ -549,6 +603,14 @@ class MixerService : Service() {
 
     companion object {
         private const val TAG = "StageMix"
+        /**
+         * How far an incoming fader value may sit from what we last
+         * wrote and still be our own echo rather than a human. The
+         * console quantizes faders to a 1024-step float, which is about
+         * 0.04 dB where the engine works — a tenth of a dB is comfortably
+         * above the wire's noise and far below any real fader move.
+         */
+        private const val ECHO_TOL_DB = 0.1f
         const val PORT = 10024
         const val CHANNEL = "stagemix"
         const val ACTION_CONNECT = "com.stagemix.CONNECT"

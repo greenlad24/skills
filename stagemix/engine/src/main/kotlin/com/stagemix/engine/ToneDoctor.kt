@@ -101,6 +101,8 @@ class ToneDoctor(
         /** register-change debounce state */
         var pendingReg = -1
         var pendingRegCount = 0
+        var lastRtaT = -1.0
+        var lastGrT = -1.0
         /** rolling GR window for the stuck-telemetry gate */
         val grWindow = ArrayList<Float>()
         var grSameCount = 0
@@ -155,7 +157,14 @@ class ToneDoctor(
             }
         }
         val bands = foldBands(bins)
-        val alpha = (3f / settings.bandTauSec).coerceIn(0.01f, 1f)
+        // The service feeds RTA at the console's ~20 Hz, not the 3 s
+        // this used to assume — the "20 second average" was really a
+        // third of a second, so the doctor corrected tone against a
+        // single chorus.
+        val dt = if (st.lastRtaT < 0) 0.05f
+        else (tSec - st.lastRtaT).toFloat().coerceIn(0f, 3f)
+        st.lastRtaT = tSec
+        val alpha = (dt / settings.bandTauSec).coerceIn(0.0005f, 1f)
         val live = st.liveBands
         st.liveBands = if (live == null) bands
         else FloatArray(4) { live[it] + alpha * (bands[it] - live[it]) }
@@ -168,7 +177,7 @@ class ToneDoctor(
         for (i in 66..82) hi += bins[i]
         for (i in 26..60) body += bins[i]
         val harsh = hi / 17f - body / 35f
-        val ha = (3f / settings.harshTauSec).coerceIn(0.01f, 1f)
+        val ha = (dt / settings.harshTauSec).coerceIn(0.0005f, 1f)
         st.harshEma = st.harshEma?.let { it + ha * (harsh - it) } ?: harsh
     }
 
@@ -220,7 +229,10 @@ class ToneDoctor(
             // must act on when a singer backs off the mic.
             st.grTrusted = v > GR_MIN_VARIANCE || m > GR_IDLE_DB
         }
-        val alpha = (1f / settings.grTauSec).coerceIn(0.01f, 1f)
+        val gdt = if (st.lastGrT < 0) 0.05f
+        else (tSec - st.lastGrT).toFloat().coerceIn(0f, 3f)
+        st.lastGrT = tSec
+        val alpha = (gdt / settings.grTauSec).coerceIn(0.0005f, 1f)
         st.grEma = st.grEma?.let { it + alpha * (grDb - it) } ?: grDb
         if (snapshotTaken && st.refGr == null) st.refGr = st.grEma
     }
@@ -328,7 +340,7 @@ class ToneDoctor(
                 st.eqOffset[b] += step
                 val db = (eqSnap[b] + st.eqOffset[b]).coerceIn(-15f, 15f)
                 out.add(ParamWrite(
-                    "/ch/%02d/eq/%d/g".format(ch + 1, b + 1), (db + 15f) / 30f))
+                    osc("/ch/%02d/eq/%d/g", ch + 1, b + 1), (db + 15f) / 30f))
             }
         }
         val thrSnap = st.thrSnapshotDb
@@ -340,7 +352,7 @@ class ToneDoctor(
                 st.thrOffset += step
                 val db = (thrSnap + st.thrOffset).coerceIn(-60f, 0f)
                 out.add(ParamWrite(
-                    "/ch/%02d/dyn/thr".format(ch + 1), (db + 60f) / 60f))
+                    osc("/ch/%02d/dyn/thr", ch + 1), (db + 60f) / 60f))
             }
         }
         return out
@@ -358,11 +370,11 @@ class ToneDoctor(
         val out = ArrayList<ParamWrite>()
         st.eqSnapshotDb?.let { snap ->
             for (b in 0 until 4)
-                out.add(ParamWrite("/ch/%02d/eq/%d/g".format(ch + 1, b + 1),
+                out.add(ParamWrite(osc("/ch/%02d/eq/%d/g", ch + 1, b + 1),
                     (snap[b].coerceIn(-15f, 15f) + 15f) / 30f))
         }
         st.thrSnapshotDb?.let {
-            out.add(ParamWrite("/ch/%02d/dyn/thr".format(ch + 1),
+            out.add(ParamWrite(osc("/ch/%02d/dyn/thr", ch + 1),
                 (it.coerceIn(-60f, 0f) + 60f) / 60f))
         }
         return out
@@ -379,13 +391,21 @@ class ToneDoctor(
          */
         fun foldBands(bins: FloatArray): FloatArray {
             val edges = intArrayOf(0, 26, 54, 80, 100)
-            return FloatArray(4) { b ->
+            val raw = FloatArray(4) { b ->
                 var sum = 0f; var n = 0
                 for (i in edges[b] until minOf(edges[b + 1], bins.size)) {
                     sum += bins[i]; n++
                 }
                 if (n > 0) sum / n else -90f
             }
+            // Normalise to the frame's own broadband mean, so what is
+            // compared is the SHAPE of the tone. On absolute levels a
+            // channel that merely got louder than at takeover read as
+            // drift in all four bands at once, and the doctor answered
+            // with a +-2 dB gain trim through the EQ — a hidden second
+            // gain stage fighting the level engine.
+            val mean = raw.sum() / 4f
+            return FloatArray(4) { raw[it] - mean }
         }
     }
 }

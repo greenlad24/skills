@@ -176,11 +176,18 @@ class ToneDoctorTest {
             "returning singer matches his own stored reference")
     }
 
-    @Test fun `band folding maps bins to four bands`() {
-        val bands = ToneDoctor.foldBands(rta(-10f, -20f, -30f, -40f))
-        assertEquals(-10f, bands[0], 0.01f)
-        assertEquals(-20f, bands[1], 0.01f)
-        assertEquals(-30f, bands[2], 0.01f)
-        assertEquals(-40f, bands[3], 0.01f)
+    @Test fun `band folding reports tone SHAPE, not absolute level`() {
+        // shape is what matters: the same tone 20 dB louder must fold to
+        // the same four numbers, or "got louder" reads as "changed tone"
+        val quiet = ToneDoctor.foldBands(rta(-10f, -20f, -30f, -40f))
+        val loud = ToneDoctor.foldBands(rta(10f, 0f, -10f, -20f))
+        for (b in 0 until 4)
+            assertEquals(quiet[b], loud[b], 0.01f,
+                "band $b changed when only the level did")
+        // and the shape itself is still resolved: low band is the
+        // brightest of this spectrum, high band the darkest
+        assertTrue(quiet[0] > quiet[1] && quiet[1] > quiet[2] &&
+                quiet[2] > quiet[3], "band ordering lost: ${quiet.toList()}")
+        assertEquals(0f, quiet.sum(), 0.01f, "shape must be zero-mean")
     }
 }

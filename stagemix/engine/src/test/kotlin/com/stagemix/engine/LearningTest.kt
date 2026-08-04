@@ -48,13 +48,13 @@ class LearningTest {
     }
 
     @Test fun `learned taste changes where the engine steers`() {
-        // same slightly-quiet-vocal scene, stock vs taste-lowered —
-        // mildly low so neither engine saturates the +6 rail (which
-        // would mask the taste difference)
+        // same vocal-near-its-place scene, stock vs taste-lowered — the
+        // vocal sits close to its pyramid height so neither engine
+        // saturates the +6 rail (which would mask the taste difference)
         fun runScene(e: StageEngine): Float {
             var t = 0.0; var next = 1.0
             val src = FloatArray(16) { -80f }.also {
-                it[0] = -20f; it[11] = -21f; it[8] = -25f }
+                it[0] = -20f; it[11] = -21f; it[8] = -16f }
             while (t < 5.0) { e.onMeters(src, t)
                 if (t >= next) { e.tick(t); next += 1.0 }; t += 0.05 }
             e.takeover((0 until 16).associateWith { -10f }, t)

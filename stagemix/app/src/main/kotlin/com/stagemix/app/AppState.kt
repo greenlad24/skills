@@ -13,6 +13,9 @@ import org.json.JSONObject
  * A plain singleton on StateFlows: the service writes, the UI collects.
  */
 object AppState {
+    /** the M18/MR18 input strip count — the only valid channel indices */
+    const val MIXER_CHANNELS = 16
+
     enum class Conn { DISCONNECTED, CONNECTING, CONNECTED }
 
     data class MixerInfo(val ip: String = "", val name: String = "",
@@ -132,9 +135,16 @@ object AppState {
             val o = JSONObject(raw)
             val chs = ArrayList<ChannelConfig>()
             val ja = o.getJSONArray("channels")
+            val seen = HashSet<Int>()
             for (i in 0 until ja.length()) {
                 val c = ja.getJSONObject(i)
-                chs.add(ChannelConfig(c.getInt("i"), c.getString("n"),
+                // Stored prefs are not a trusted source of channel
+                // numbers: an index of -1 or 16 builds /ch/00/… or
+                // /ch/17/…, addresses the console has no answer for and
+                // silently drops, leaving the channel dead all night.
+                val idx = c.getInt("i")
+                if (idx !in 0 until MIXER_CHANNELS || !seen.add(idx)) continue
+                chs.add(ChannelConfig(idx, c.getString("n"),
                     Role.valueOf(c.getString("r"))))
             }
             config.value = Config(o.optString("ip"),

@@ -2,6 +2,20 @@ package com.stagemix.engine
 
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.Locale
+
+/**
+ * Build an OSC address. Every address in this app is built with `%02d`
+ * channel numbers, and `String.format` follows `Locale.getDefault()` —
+ * so on a tablet set to Arabic, Persian, Bengali, Burmese, Nepali or
+ * Thai-native-digits, `/ch/02/mix/fader` came out as `/ch/٠٢/mix/fader`,
+ * which the ASCII encoder then turned into `/ch/??/mix/fader`. All 16
+ * channels collapsed onto one address the console silently drops: the
+ * autopilot would look perfectly healthy and never move a fader.
+ * Addresses are wire protocol, so they are always formatted in ROOT.
+ */
+fun osc(format: String, vararg args: Any): String =
+    String.format(Locale.ROOT, format, *args)
 
 /**
  * Minimal OSC 1.0 codec for the X-Air / M-Air dialect.
@@ -77,7 +91,12 @@ data class OscMessage(val address: String, val args: List<Any>) {
 
         private fun ByteBuffer.readPaddedString(): String? {
             val start = position()
-            while (hasRemaining() && get() != 0.toByte()) { /* scan */ }
+            var terminated = false
+            while (hasRemaining()) if (get() == 0.toByte()) { terminated = true; break }
+            // An OSC string MUST be null-terminated. Treating the last
+            // byte of a truncated packet as the terminator silently
+            // invents a shorter address — refuse instead of misparsing.
+            if (!terminated) return null
             val end = position() - 1
             if (end < start) return null
             val bytes = ByteArray(end - start)

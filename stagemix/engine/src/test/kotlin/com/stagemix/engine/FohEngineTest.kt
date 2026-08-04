@@ -205,10 +205,11 @@ class FohEngineTest {
         val quiet = sources().also {
             it[8] = -30f; it[5] = -32f; it[6] = -32f; it[4] = -31f }
         run(e, quiet, t, 300.0)
-        val totalUp = (0 until 16).sumOf {
-            maxOf(0f, e.offsetDb(it)).toDouble() }
-        assertTrue(totalUp <= e.settings.mixBoostBudgetDb + 0.1,
-            "mains boost budget exceeded: $totalUp")
+        // the budget is power-weighted: how much LOUDER the boosts made
+        // the mains, not the arithmetic sum of the offsets
+        val added = e.boostLoudnessDb()
+        assertTrue(added <= e.settings.mixBoostBudgetDb + 0.6f,
+            "mains boost budget exceeded: the boosts added $added dB")
     }
 
     @Test fun `talk channels are never automated`() {

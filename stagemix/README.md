@@ -23,17 +23,25 @@ monitor buses**: monitors stay 100 % human, in Mixing Station, always.
 The engine carries a built-in **balance pyramid** for the band and
 steers each channel's *contribution to the mains* toward it,
 cross-adaptively, using the console's pre-fader meters (20×/second,
-fully offline on the mixer's own Wi-Fi):
+fully offline on the mixer's own Wi-Fi). The heights are **group**
+targets — what the room hears from the three drum channels together,
+not from each one — so a rig with one bass and a rig with three get
+the same mix:
 
 ```
-        MAIN VOCAL          on top, always   (+1 over the foundation)
-      BACKING VOCAL         in the mix       (−2)
-   SOLO GTR · SAX · HARMONICA   featured     (−3)
-      RHYTHM GTR · second electric           (−5)
-        CONGAS · SNARE · OVERHEADS           (−6)
-           PIANO / KEYS  (low-mid bed)       (−4)
+      MAIN VOCAL     on top, always  (+1 over the whole kick+bass GROUP)
+        CONGAS · SNARE · OVERHEADS                    (−6)
+   SOLO GTR · SAX · HARMONICA                         (−6)
+           PIANO / KEYS  (low-mid bed)                (−7)
+   RHYTHM GTR · second electric · BACKING VOCAL       (−8)
    ▂▄█  KICK + BASS DI + DI2 SYNTH BASS  █▄▂  dominant foundation (0)
 ```
+
+Each group's target is shared out across however many of its channels
+are actually playing, so the two piano channels sit 3 dB lower each
+than a single piano would — and together they land exactly where the
+pyramid asks. Read as per-channel heights, those same numbers used to
+put the four foundation channels 8 dB over the singer.
 
 Pre-fader metering means it hears the true sources regardless of its
 own moves: contribution ≈ source loudness + fader, and every fader is
@@ -41,6 +49,23 @@ steered so contributions sit at their pyramid heights relative to the
 live kick+bass anchor. The band swelling together moves the anchor —
 ratios intact, nothing re-mixed. A hot solo guitar gets seated; a
 buried vocal gets lifted (bounded); the foundation stays dominant.
+
+**The foundation is balanced against itself, too.** Kick, bass DI, bass
+mic and synth bass are levelled against each other, so a kick channel
+gained 10 dB low is pulled back up instead of the whole band quietly
+following it down all night. The group's *overall* level answers only
+to drift **relative to the rest of the band**: a band that plays a
+whole song quieter is playing a ballad, and 11.9 of its 12 dB reaches
+the audience untouched; a drummer whose kick alone runs hot gets
+seated.
+
+**A player who steps up keeps it.** When one channel rises well over
+its own level of a few seconds ago while the rest of the band has not,
+that is a solo, not drift — the engine leaves that fader alone for up
+to 90 seconds. A 40-second sax feature used to end 4 dB quieter than
+the player played it, and leave them under-mixed for half a minute
+afterwards; now the whole step reaches the room and they rejoin the
+balance within a couple of seconds.
 
 ## Built for the open stage
 
@@ -76,13 +101,19 @@ make — touching nothing. Judge it for a set before trusting it.
 **MIX HEALTH, live:** the console header shows how it's actually
 doing — % of time the lead vocal sits on top, % of channels at their
 pyramid height, and how many times a human had to out-mix it. Not a
-feeling; a number.
+feeling; a number — and an honest one: the vocal is scored against the
+**power sum** of the band, which is what the room hears. Scored against
+the band's *average* channel, a vocal sitting 10 dB under the band as a
+whole reported "on top 99 % of the night".
 
 **Three kinds of feedback it recognizes:**
 1. **Your faders are feedback.** Grab any fader (here or in Mixing
    Station) while it's mixing: it instantly adopts your position as
    the new baseline, keeps its hands off that channel for 2 minutes —
-   and *learns a small bounded lesson* from the disagreement.
+   and *learns a small bounded lesson* from the disagreement. A move
+   has to be bigger than the wire's own noise (0.25 dB) to count, and
+   the app remembers every fader it wrote, so a console that echoes
+   parameter changes back can never be mistaken for a person.
 2. **The feedback bar:** 👍 "Sounds great" or one-tap chips — vocal
    louder/softer, more/less guitar, more/less piano, more low end,
    less percussion, softer sax/harp. Each nudges its built-in taste
@@ -186,7 +217,13 @@ The rails, from live-sound research (see `docs/ARCHITECTURE.md`):
   6 dB ring-out margin even with two paths rising).
 - Boosts **creep** (1 dB per 3 s, max 3 dB total upward per wedge);
   cuts act fast (3 dB/s). Vocal priority is **cut-only**.
-- ±2 dB deadband — musical dynamics are not drift.
+- ±2 dB deadband — musical dynamics are not drift. It is hysteresis,
+  not a stopping line: once a fader starts moving it converges, so the
+  resting position does not depend on which side it came from.
+- The boost budget is what the ROOM hears: the limit is how much louder
+  the engine's lifts have actually made the mains (3 dB), not the
+  arithmetic sum of the offsets. Six dB on a harmonica sitting 30 dB
+  down costs almost nothing; six dB on the kick costs the lot.
 - Automatic freeze on: input near clip, meter dropout, sudden broadband
   change (song start/stop), operator FREEZE, watchdog veto.
 - One-tap **Revert to soundcheck**. Per-channel locks.
@@ -235,3 +272,10 @@ will need a one-time uninstall/reinstall.
   offline tablet rig — direct OSC does everything locally.
 - Verify `/meters/6` dynamics-bank layout against firmware (comp GR
   indices are an assumption, defensively sanity-gated until then).
+- Verify `/-stat/rta/source` numbering on the M18 (the app sends it
+  0-based and the console never confirms; if the enum is 1-based the
+  Channel Doctor would be reading the neighbouring channel's spectrum).
+- Probe whether the console honours `/xremotenfb`. It is not ACKed, so
+  a firmware that ignores it is indistinguishable from one that does
+  not — the echo filter makes both safe, but a positive check would be
+  better than a safety net.
