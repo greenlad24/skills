@@ -190,11 +190,16 @@ class DeskClient(
                             "feedback suspected at ~${watchdog.lastFreqHz} Hz"
                             else "feedback cleared")
                     }
-                    if (rtaFocus >= 0 && t - rtaFocusT > 0.5)
+                    if (rtaFocus >= 0 && t - rtaFocusT > 0.5) {
                         doctor?.onRta(rtaFocus, bins, t)
-                        // and the same frame to the listener that
-                        // works out what is plugged in here
+                        // and the same frame to the listener that works
+                        // out what is plugged in here. BRACES: without
+                        // them only the doctor was guarded, and this ran
+                        // on every frame — including before the analyzer
+                        // had settled on its new focus, which feeds one
+                        // channel's spectrum in under another's name.
                         engine.onRtaFor(rtaFocus, bins)
+                    }
                 }
             "/meters/${Meters.BANK_DYNAMICS}" ->
                 m.blobArg(0)?.let { Meters.decode(it) }?.let { v ->

@@ -353,11 +353,16 @@ class MixerService : Service() {
                     }
                     // channel attribution for the doctor needs the
                     // analyzer settled on its focus source
-                    if (rtaFocus >= 0 && t - rtaFocusT > 0.5)
+                    if (rtaFocus >= 0 && t - rtaFocusT > 0.5) {
                         doctor?.onRta(rtaFocus, bins, t)
-                        // and the same frame to the listener that
-                        // works out what is plugged in here
-                        engine.onRtaFor(rtaFocus, bins)
+                        // and the same frame to the listener that works
+                        // out what is plugged in here. BRACES: without
+                        // them only the doctor was guarded, and this ran
+                        // on every frame — including before the analyzer
+                        // had settled on its new focus, which feeds one
+                        // channel's spectrum in under another's name.
+                        engine?.onRtaFor(rtaFocus, bins)
+                    }
                 }
             }
             "/meters/${Meters.BANK_DYNAMICS}" -> {
