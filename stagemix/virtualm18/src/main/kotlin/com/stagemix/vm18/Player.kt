@@ -71,7 +71,9 @@ class Player(
 
     @Volatile var playing = false; private set
     @Volatile var positionSec = 0.0; private set
+    /** the take has run out — not the end of the bench */
     @Volatile var finished = false; private set
+    @Volatile private var running = true
     /** what the room is hearing per channel, post-fader, for the UI */
     val postDb = FloatArray(channels) { -128f }
     var mute = false
@@ -84,10 +86,21 @@ class Player(
 
     fun open() {
         for (c in 0 until channels) load(c, srcFiles[c])
-        line = AudioSystem.getSourceDataLine(outFmt).apply {
-            open(outFmt, blockFrames * 8)
-            start()
+        line = try {
+            AudioSystem.getSourceDataLine(outFmt).apply {
+                open(outFmt, blockFrames * 8)
+                start()
+            }
+        } catch (e: Exception) {
+            // No output device, or one that will not take this format.
+            // Everything else still works — meters, the OSC conversation,
+            // the autopilot — so say so and carry on rather than dying
+            // before the window is even up.
+            log?.invoke("NO AUDIO OUTPUT: ${e.message} — the bench will " +
+                "still meter and mix, you just will not hear it")
+            null
         }
+        log?.invoke("output: ${line?.format ?: "none"}")
     }
 
     /**
@@ -120,9 +133,9 @@ class Player(
     @Synchronized fun rewind() {
         val was = playing
         playing = false
+        finished = false
         for (c in 0 until channels) load(c, srcFiles[c])
         positionSec = 0.0
-        finished = false
         playing = was
     }
 
@@ -168,11 +181,6 @@ class Player(
         return out
     }
 
-    /**
-     * A second of 1 kHz straight to the output line. If this is silent
-     * the problem is the Mac's output device or its volume; if it plays
-     * and the channels do not, the problem is the files.
-     */
     fun testTone() {
         val l = line ?: run { log?.invoke("no audio output line"); return }
         val n = sampleRate
@@ -188,32 +196,40 @@ class Player(
         log?.invoke("test tone sent to ${l.format}")
     }
 
-    fun play() { playing = true }
+    /**
+     * A second of 1 kHz straight to the output line. If this is silent
+     * the problem is the Mac's output device or its volume; if it plays
+     * and the channels do not, the problem is the files.
+     */
+    fun play() {
+        // Pressing PLAY before loading anything used to be permanent:
+        // the reader hit the end of nothing, the loop broke, and every
+        // later PLAY was silent however many channels had been loaded
+        // since. Starting again from the top is what the button means.
+        if (finished || streams.all { it == null }) rewind()
+        playing = true
+    }
     fun pause() { playing = false }
 
     fun close() {
+        running = false
         playing = false
         streams.forEach { runCatching { it?.close() } }
         line?.let { runCatching { it.stop(); it.close() } }
     }
 
-    /** the real-time loop; run it on its own thread */
-    fun run() {
-        val l = line ?: return
-        while (!finished) {
-            if (!playing) { Thread.sleep(20); continue }
-            val n = readAll()
-            if (n <= 0) {
-                // only the end of the take if there is nothing left to
-                // read anywhere; one bad channel is not the end
-                if (streams.all { it == null }) {
-                    log?.invoke("nothing loaded to play")
-                    playing = false; finished = true; break
-                }
-                finished = true; playing = false; break
-            }
-            positionSec += n.toDouble() / sampleRate
+    /** peak of the last block that went to the speakers, for tests */
+    @Volatile var lastMixPeak = 0f; private set
 
+    /**
+     * One block: read every channel, run the room, meter, mix through
+     * the tablet's faders. Returns the frames produced, 0 at the end.
+     * Split out from [run] so it can be exercised with no sound card.
+     */
+    fun processBlock(): Int {
+        val n = readAll()
+        if (n <= 0) return 0
+        positionSec += n.toDouble() / sampleRate
             // The room, before anything is metered: if the mains are
             // ringing, the open mics hear it exactly as they would on
             // stage — so the meters, the RTA and the speakers all get it.
@@ -257,16 +273,47 @@ class Player(
                 val x = bufs[c]
                 for (i in 0 until n) { val v = x[i] * g; mixL[i] += v; mixR[i] += v }
             }
-            var p = 0
-            for (i in 0 until n) {
-                val li = pcm(if (mute) 0f else mixL[i])
-                val ri = pcm(if (mute) 0f else mixR[i])
-                outBytes[p++] = (li and 255).toByte()
-                outBytes[p++] = ((li shr 8) and 255).toByte()
-                outBytes[p++] = (ri and 255).toByte()
-                outBytes[p++] = ((ri shr 8) and 255).toByte()
+        var peak = 0f
+        var p = 0
+        for (i in 0 until n) {
+            val lv = if (mute) 0f else mixL[i]
+            val rv = if (mute) 0f else mixR[i]
+            if (kotlin.math.abs(lv) > peak) peak = kotlin.math.abs(lv)
+            val li = pcm(lv); val ri = pcm(rv)
+            outBytes[p++] = (li and 255).toByte()
+            outBytes[p++] = ((li shr 8) and 255).toByte()
+            outBytes[p++] = (ri and 255).toByte()
+            outBytes[p++] = ((ri shr 8) and 255).toByte()
+        }
+        lastMixPeak = peak
+        outBytesUsed = p
+        return n
+    }
+
+    private var outBytesUsed = 0
+
+    /**
+     * The real-time loop. It runs for the life of the bench: reaching the
+     * end of a take stops PLAYBACK, it does not end the loop, or the
+     * transport would be dead for the rest of the session.
+     */
+    fun run() {
+        while (running) {
+            if (!playing) { Thread.sleep(20); continue }
+            val n = processBlock()
+            if (n <= 0) {
+                playing = false
+                finished = true
+                log?.invoke(if (streams.all { it == null })
+                    "nothing loaded — load the channels, then press PLAY"
+                    else "end of the take (press START to play it again)")
+                continue
             }
-            l.write(outBytes, 0, p)     // blocks: this is what paces the show
+            // writing to the line is what paces the show; with no output
+            // device there is nothing to pace against, so keep time here
+            val l = line
+            if (l != null) l.write(outBytes, 0, outBytesUsed)
+            else Thread.sleep((1000L * n / sampleRate))
         }
     }
 
