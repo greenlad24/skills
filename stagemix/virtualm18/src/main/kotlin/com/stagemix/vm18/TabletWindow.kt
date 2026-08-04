@@ -308,23 +308,35 @@ class TabletWindow(private val client: DeskClient) {
             g2.font = Font(Font.SANS_SERIF, Font.BOLD, 11)
             g2.drawString(name.take(10), 6, 16)
 
+            // The name above is the console's label; this is what the
+            // app believes is actually plugged in, and the line under it
+            // says which of the two you are reading.
             val role = st?.role ?: Role.INSTRUMENT
+            val id = client.engine.channelIdent(ch)
             g2.color = when (role) {
                 Role.VOCAL -> LIVE; Role.BACKING_VOCAL -> WARN
                 Role.FOUNDATION -> ACCENT; else -> MUTED
             }
             g2.font = Font(Font.SANS_SERIF, Font.PLAIN, 9)
-            g2.drawString(when (role) {
-                Role.FOUNDATION -> "FOUND"; Role.KEYS -> "KEYS"
-                Role.PERCUSSION -> "PERC"; Role.RHYTHM_GTR -> "RHYTHM"
-                Role.SOLO_GTR -> "SOLO"; Role.COLOR -> "COLOR"
-                Role.BACKING_VOCAL -> "BVOX"; Role.VOCAL -> "VOCAL"
-                Role.TALK -> "TALK"; else -> "INST"
-            }, 6, 28)
+            g2.drawString((id?.label ?: when (role) {
+                Role.FOUNDATION -> "low end"; Role.KEYS -> "keys"
+                Role.PERCUSSION -> "percussion"; Role.RHYTHM_GTR -> "rhythm gtr"
+                Role.SOLO_GTR -> "lead gtr"; Role.COLOR -> "horn or harp"
+                Role.BACKING_VOCAL -> "backing vocal"; Role.VOCAL -> "vocal"
+                Role.TALK -> "talkback"; else -> "unclassified"
+            }).uppercase().take(12), 6, 28)
+            g2.color = if (id?.heard == true) OK else MUTED
+            g2.font = Font(Font.SANS_SERIF, Font.PLAIN, 8)
+            val ev = id?.evidence ?: 0f
+            g2.drawString(when {
+                id?.heard == true -> "heard %.0f%%".format(Locale.ROOT, ev * 100)
+                ev > 0.05f -> "listening %.0f%%".format(Locale.ROOT, ev * 100)
+                else -> "from the name"
+            }, 6, 38)
 
             // VU of what the engine hears
             val db = st?.lastLevelDb ?: -128f
-            val top = 38; val bot = height - 96
+            val top = 46; val bot = height - 96
             val h = bot - top
             g2.color = INSET
             g2.fillRoundRect(28, top, 16, h, 4, 4)

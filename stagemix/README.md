@@ -7,10 +7,17 @@ monitor buses**: monitors stay 100 % human, in Mixing Station, always.
 
 ## The deal: it leads the mains, you own the monitors
 
-- The only mixer parameter the engine can write is the **channel fader**
-  (`/ch/NN/mix/fader` — the mains path). Bus sends have no
-  representation in the engine at all; "never mix the monitors" is an
-  architectural invariant with its own test, not a setting.
+- The only parameter the **balancing** engine can write is the **channel
+  fader** (`/ch/NN/mix/fader` — the mains path). Everything the engine
+  decides about level goes out through that one address.
+- Channel *processing* — the high-pass, the EQ, the compressor, and the
+  reverb send — is written once per instrument by the
+  [starting chain](#the-starting-chain-set-once) and by the Channel
+  Doctor. Those are channel strips and FX sends, never an aux send:
+  sends 1–6 feed the wedges and the in-ears and are refused outright by
+  a whitelist (`isSafeAddress`) with a test whose only job is to try to
+  get an aux send past it. "Never mix the monitors" is an architectural
+  invariant, not a setting.
 - Keep monitor sends **pre-fader** (the console default) and the
   autopilot's fader moves never reach the wedges.
 - Flip **MIXING** on and it takes over: the current fader positions
@@ -181,13 +188,30 @@ redesigns the sound.
 | Channel faders → the MAIN mix | **All 6 monitor buses — ever** |
 | Idle-channel easing + fast rejoin | Main LR master fader |
 | Vocal-priority ducking (cut-only, in the mains) | Preamp/headamp gain |
-| Channel Doctor: EQ band gains ±2 dB, comp threshold ±4 dB (from takeover settings) | EQ freq/Q/type, comp ratio/attack/release, FX, routing |
+| Channel Doctor: EQ band gains ±2 dB, comp threshold ±4 dB (from takeover settings) | Aux sends 1–6, routing, channel mute/ON |
+| Starting chain, once per identified instrument: HPF, EQ, compressor, reverb send | Anything on a channel the engineer has since moved by hand |
 
 One shared setting is not a mix parameter but is worth knowing about:
 to give the Channel Doctor a per-channel spectrum the app repoints the
 console's **RTA source** (`/-stat/rta/source`) every ~3 seconds. That
 setting is global to the console, so X AIR Edit or Mixing Station open
 on the analyzer page will see it moving. Turn DOCTOR off and it stops.
+
+### The starting chain, set once
+
+Once the app has *heard* what is on a channel — not read it off the
+label — it sets that channel up the way an engineer would at
+soundcheck, and then leaves it alone:
+
+| | |
+|---|---|
+| **When** | the first time the AUDIO is confident (not the channel name), and again only if the instrument changes or the sound on the socket genuinely changes and stays changed for half a minute |
+| **What** | channel high-pass, one or two EQ moves, compressor threshold/ratio/attack/release/makeup, and a reverb send |
+| **Reverb** | voices, kit, keys, horns and lead guitar. Never the kick, never the bass, never a DI, never a talkback mic — reverb on the low end is how a room turns to mud |
+| **Never** | a parameter the engineer has moved since. That one is theirs; a re-treat skips it rather than argues |
+
+After that it is balance work only, which is the whole point: an
+autopilot that keeps re-EQing is worse than one that never EQs at all.
 
 ### The Channel Doctor (per-channel EQ + compression)
 

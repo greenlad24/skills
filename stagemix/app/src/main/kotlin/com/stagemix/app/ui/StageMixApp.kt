@@ -349,22 +349,42 @@ fun Strip(s: AppState.StripUi) {
             .padding(8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        // The console's label for the channel — whatever the last
+        // engineer typed, which may well be a lie about what is now
+        // plugged into it.
         Text(s.name, color = Ink, fontSize = 12.sp, fontWeight = FontWeight.Bold,
             maxLines = 1)
+        // And underneath it, what the app believes is actually there.
+        //
+        // These are two different claims and the strip has to keep them
+        // apart, because an operator glancing at this mid-song needs to
+        // know which one they are looking at before deciding whether to
+        // trust it. A channel that says CONGOS and sounds like a bass is
+        // the whole reason this line exists.
         Text(
-            when (s.role) {
-                Role.FOUNDATION -> "FOUND"; Role.KEYS -> "KEYS"
-                Role.PERCUSSION -> "PERC"; Role.RHYTHM_GTR -> "RHYTHM"
-                Role.SOLO_GTR -> "SOLO"; Role.COLOR -> "COLOR"
-                Role.BACKING_VOCAL -> "BVOX"; Role.VOCAL -> "VOCAL"
-                Role.TALK -> "TALK"; else -> "INST"
-            },
+            (if (s.identLabel.isNotEmpty()) s.identLabel else when (s.role) {
+                Role.FOUNDATION -> "low end"; Role.KEYS -> "keys"
+                Role.PERCUSSION -> "percussion"; Role.RHYTHM_GTR -> "rhythm gtr"
+                Role.SOLO_GTR -> "lead gtr"; Role.COLOR -> "horn or harp"
+                Role.BACKING_VOCAL -> "backing vocal"; Role.VOCAL -> "vocal"
+                Role.TALK -> "talkback"; else -> "unclassified"
+            }).uppercase(),
             color = when (s.role) {
                 Role.VOCAL -> Live
                 Role.BACKING_VOCAL -> Warn
                 Role.FOUNDATION -> Accent
                 else -> Muted
-            }, fontSize = 9.sp, letterSpacing = 1.sp)
+            }, fontSize = 9.sp, letterSpacing = 0.5.sp, maxLines = 1)
+        // Where that belief came from: the ear means the AUDIO settled
+        // it, the tag means it is still only the channel name, and the
+        // percentage is how much listening is behind either.
+        Text(
+            if (s.identHeard) "♪ heard %.0f%%".format(s.identEvidence * 100)
+            else if (s.identEvidence > 0.05f)
+                "listening %.0f%%".format(s.identEvidence * 100)
+            else "🏷 from the name",
+            color = if (s.identHeard) Ok else Muted, fontSize = 8.sp,
+            maxLines = 1)
         Spacer(Modifier.height(6.dp))
         // VU
         Box(

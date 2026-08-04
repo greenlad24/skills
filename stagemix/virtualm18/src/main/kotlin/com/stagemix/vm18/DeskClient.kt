@@ -10,6 +10,7 @@ import com.stagemix.engine.ShowLog
 import com.stagemix.engine.StageEngine
 import com.stagemix.engine.ToneDoctor
 import com.stagemix.engine.inferRole
+import com.stagemix.engine.isSafeAddress
 import com.stagemix.engine.osc
 import java.io.File
 import java.net.DatagramPacket
@@ -53,6 +54,8 @@ class DeskClient(
     private val addr = InetSocketAddress(InetAddress.getByName(host), port)
     private val pending = ConcurrentHashMap<String, Float>()
     private val lastSent = ConcurrentHashMap<Int, Float>()
+    /** channel-processing values we wrote, so an echo is not a human */
+    private val lastParam = ConcurrentHashMap<String, Float>()
     @Volatile private var collecting = false
     @Volatile private var running = false
 
@@ -158,6 +161,13 @@ class DeskClient(
                     send(OscMessage(w.address,
                         listOf(FaderLaw.dbToFloat(w.levelDb))))
                 } else engine.tick(t)
+                // the once-per-instrument chain: almost always empty
+                if (directing) for (w in engine.treatmentPass(t)) {
+                    lastParam[w.address] = w.value
+                    send(OscMessage(w.address, listOf(w.value)))
+                    log?.invoke("treat %s = %.3f".format(
+                        java.util.Locale.ROOT, w.address, w.value))
+                }
                 doctor?.let { d ->
                     for (ch in engine.state.keys)
                         if (engine.state[ch]?.role == Role.KEYS)
@@ -233,6 +243,16 @@ class DeskClient(
                                 engine.operatorOverride(ch, db, now())
                                 lastSent.remove(ch)
                             }
+                        }
+                    // an EQ band or a compressor setting changing under us
+                    // is the engineer disagreeing with the chain we set:
+                    // that parameter is theirs from here on
+                    if (isSafeAddress(m.address))
+                        Regex("^/ch/(\\d\\d)/").find(m.address)?.let { mt ->
+                            val ch = mt.groupValues[1].toInt() - 1
+                            val ours = lastParam[m.address]
+                            if (ours == null || abs(v - ours) > 0.005f)
+                                engine.treatmentOverride(ch, m.address)
                         }
                 }
             }

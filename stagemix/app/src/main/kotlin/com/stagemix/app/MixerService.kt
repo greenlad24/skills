@@ -60,6 +60,8 @@ class MixerService : Service() {
     private val pending = ConcurrentHashMap<String, Float>()
     /** last fader value we sent per channel (dB) */
     private val lastSent = ConcurrentHashMap<Int, Float>()
+    /** channel-processing values we wrote, so an echo is not a human */
+    private val lastParam = ConcurrentHashMap<String, Float>()
     /** true while takeoverNow() is collecting enquiry replies */
     @Volatile private var collecting = false
     /** only one takeover may own `pending`/`collecting` at a time */
@@ -299,6 +301,15 @@ class MixerService : Service() {
                 } else {
                     e.tick(t) // keep state warm; writes discarded when paused
                 }
+                // The chain an engineer would set at soundcheck, set once
+                // per instrument and then left alone. Channel processing
+                // and FX sends only — ChannelTreatment.isSafeAddress
+                // refuses an aux send outright, because the wedges are
+                // not ours.
+                if (directing) for (w in e.treatmentPass(t)) {
+                    lastParam[w.address] = w.value
+                    send(OscMessage(w.address, listOf(w.value)))
+                }
                 doctor?.let { d ->
                     // ensemble hook: while drums play without a bass, the
                     // piano channels fill the low end (EQ low band lift)
@@ -397,6 +408,19 @@ class MixerService : Service() {
                                     lastSent.remove(ch)
                                 }
                             }
+                        // The same argument for channel processing: an EQ
+                        // band or a compressor setting arriving here is
+                        // somebody at the desk disagreeing with the chain
+                        // we set. That parameter is theirs from now on —
+                        // a re-treat will skip it rather than argue.
+                        if (com.stagemix.engine.isSafeAddress(m.address))
+                            Regex("^/ch/(\\d\\d)/").find(m.address)
+                                ?.let { match ->
+                                val ch = match.groupValues[1].toInt() - 1
+                                val ours = lastParam[m.address]
+                                if (ours == null || abs(v - ours) > 0.005f)
+                                    e.treatmentOverride(ch, m.address)
+                            }
                     }
                 }
             }
@@ -408,6 +432,7 @@ class MixerService : Service() {
         AppState.strips.value = AppState.config.value.channels.map { ch ->
             val st = e.state[ch.index]
             val tone = doctor?.offsets(ch.index)
+            val id = e.channelIdent(ch.index)
             AppState.StripUi(
                 channel = ch.index,
                 name = AppState.mixerChannelNames.value[ch.index] ?: ch.name,
@@ -419,6 +444,9 @@ class MixerService : Service() {
                 targetDb = e.targetDb(ch.index),
                 eqOffsetDb = tone?.first?.maxByOrNull { kotlin.math.abs(it) } ?: 0f,
                 thrOffsetDb = tone?.second ?: 0f,
+                identLabel = id?.label ?: "",
+                identHeard = id?.heard ?: false,
+                identEvidence = id?.evidence ?: 0f,
             )
         }
         AppState.snapshotTaken.value = e.ready
@@ -546,6 +574,7 @@ class MixerService : Service() {
         e.takeover(faders, now())
         show?.takeover(faders, AppState.mixerChannelNames.value)
         lastSent.clear()
+        lastParam.clear()
         collecting = false
         doctor?.let { d ->
             for (ch in chans) {

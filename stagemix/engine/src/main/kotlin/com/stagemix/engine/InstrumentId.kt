@@ -192,6 +192,15 @@ class InstrumentId(private val settings: IdSettings = IdSettings()) {
     fun forget(ch: Int) { prints.remove(ch) }
     fun forgetAll() { prints.clear() }
 
+    /**
+     * The channel's average spectrum, normalised, or null before there
+     * is one. Handed out so a one-shot channel treatment can remember
+     * WHAT it was built for, and notice later that the socket now has
+     * something else on it.
+     */
+    fun spectrum(ch: Int): DoubleArray? =
+        prints[ch]?.takeIf { it.spectra > 0 }?.spec?.copyOf()
+
     /** how much evidence there is, 0..1, for the screen */
     fun evidence(ch: Int): Float {
         val p = prints[ch] ?: return 0f

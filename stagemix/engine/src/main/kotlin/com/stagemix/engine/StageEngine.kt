@@ -254,6 +254,12 @@ data class EngineSettings(
      */
     val muteSilent: Boolean = true,
     /**
+     * Set each channel's starting chain — high-pass, EQ, compressor and
+     * (where it belongs) reverb — once the audio has said what the
+     * channel is. See [ChannelTreatment]: once, then balance work only.
+     */
+    val treatChannels: Boolean = true,
+    /**
      * No signal below this is an instrument, however quiet the rest of
      * the stage is. This is the floor under the relative activity gate.
      */
@@ -1896,6 +1902,42 @@ class StageEngine(
     /** true once every channel on stage is being held rather than steered */
     val balanced: Boolean get() = settledCount().let {
         it.second > 0 && it.first >= it.second }
+
+    /**
+     * The chain an engineer would have set at soundcheck, set once.
+     *
+     * Kept off [tick] on purpose. `tick` returns fader writes and only
+     * fader writes, and that is the property the whole app is built on —
+     * so channel processing goes out through its own call, exactly as
+     * the [ToneDoctor]'s does, and a caller who never invokes this is a
+     * caller that never touches an EQ.
+     */
+    val treatment = ChannelTreatment()
+
+    fun treatmentPass(tSec: Double): List<ParamWrite> {
+        if (!settings.treatChannels || takeoverT < 0 || !ready)
+            return emptyList()
+        val out = ArrayList<ParamWrite>()
+        for ((idx, st) in state) {
+            // never a talkback mic, never a frozen channel, never
+            // something that has already been judged not to be an
+            // instrument at all
+            if (st.role == Role.TALK || st.frozen || st.isStatic) continue
+            if (!st.active || st.heardSec < settings.minHeardSec) continue
+            val w = treatment.consider(idx, st.role, ident.verdict(idx),
+                ident.evidence(idx), ident.spectrum(idx), tSec)
+            if (w.isEmpty()) continue
+            log(tSec, "treat", idx, 0f,
+                "${st.name}: ${treatment.lastReason}")
+            out += w
+        }
+        return out
+    }
+
+    /** the engineer moved something we set — it is theirs now */
+    fun treatmentOverride(ch: Int, address: String) {
+        treatment.humanTouched(ch, address)
+    }
 
     /** what the audio thinks is on a channel, for the screen */
     fun identified(ch: Int): InstrumentId.Verdict? = ident.verdict(ch)

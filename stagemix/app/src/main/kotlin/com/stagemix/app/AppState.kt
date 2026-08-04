@@ -34,6 +34,21 @@ object AppState {
         /** channel-doctor tone offsets (largest EQ band move, thr move) */
         val eqOffsetDb: Float = 0f,
         val thrOffsetDb: Float = 0f,
+        /**
+         * What is on this channel right now, in words.
+         *
+         * Separate from [role] on purpose, and the operator asked for it
+         * in exactly those terms: "I want the software to show in the UI
+         * what is the instrument in the channel right now". [role] is
+         * where the channel sits in the balance; this is what the app
+         * believes is plugged into it — which on a house desk with
+         * inherited labels is a different and much less obvious thing.
+         */
+        val identLabel: String = "",
+        /** true when the AUDIO settled it, not the console's label */
+        val identHeard: Boolean = false,
+        /** 0..1 — how much listening is behind that claim */
+        val identEvidence: Float = 0f,
     )
 
     val conn = MutableStateFlow(Conn.DISCONNECTED)
