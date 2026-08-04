@@ -100,9 +100,13 @@ jobs:
             the mix it is making while you watch it work.
 
             **Both sides on the Mac, with no tablet:** press **AUTOPILOT on
-            this Mac**, then **MIXING**. The autopilot runs right there and
-            talks to the console over real UDP — the same engine, doctor,
-            howl watchdog and show log the tablet runs.
+            this Mac** and a second window opens — the tablet's console
+            screen, with the same mode line, MIX HEALTH, feedback chips,
+            channel strips and decision log. The autopilot behind it talks
+            to the console over real UDP: the same engine, doctor, howl
+            watchdog and show log the tablet runs. The screen is a Swing
+            replica (the shipping UI is Compose, Android only); everything
+            it shows and every button it drives is the real engine.
 
             *macOS Sequoia will block it on first open* ("Apple could not
             verify…"). Either run

@@ -121,12 +121,20 @@ fun main(args: Array<String>) {
     // same meter decoding, same fader writes, same quantization coming
     // back — so the whole path is exercised, not shortcut in-process.
     var client: DeskClient? = null
+    var tablet: TabletWindow? = null
     val logDir = File(System.getProperty("user.home"), "StageMix")
     fun startAutopilot(): DeskClient {
         val c = DeskClient("127.0.0.1", port, logDir)
         c.log = note
         c.start()
         note("autopilot running on this Mac — logs in ${logDir.path}/logs")
+        // the second window: the tablet's screen, off the same engine
+        if (!headless) {
+            val w = TabletWindow(c)
+            c.onDecision = { d -> w.onDecision(d) }
+            javax.swing.SwingUtilities.invokeLater { w.show() }
+            tablet = w
+        }
         return c
     }
     bench?.onAutopilot = { on ->

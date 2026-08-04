@@ -336,8 +336,11 @@ or **System Settings → Privacy & Security → Open Anyway** (the button
 appears only after the first blocked attempt). macOS will also ask to
 allow incoming connections: say yes, or the tablet cannot reach it.
 
-**Testing with no tablet in the room:** press **AUTOPILOT on this Mac**,
-then **MIXING**. The autopilot runs on the Mac and talks to the console
+**Testing with no tablet in the room:** press **AUTOPILOT on this Mac**.
+A second window opens — the tablet's console screen: mode and hold
+reason, MIX HEALTH, the feedback chips, a strip per channel with its
+role, level, correction and doctor moves, and the running decision log.
+Take over the mains from there, or with the bench's **MIXING** button. The autopilot runs on the Mac and talks to the console
 over real UDP — the same `StageEngine`, `ToneDoctor`, howl watchdog and
 show log the tablet runs, so the whole path is exercised rather than
 shortcut in-process. Its log lands in `~/StageMix/logs/`. The transport

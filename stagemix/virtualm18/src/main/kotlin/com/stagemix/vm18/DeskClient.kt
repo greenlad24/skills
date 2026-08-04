@@ -70,6 +70,14 @@ class DeskClient(
     private var t0 = System.nanoTime()
     private fun now() = (System.nanoTime() - t0) / 1e9
 
+    /**
+     * The engine's clock. Anything that hands the engine a timestamp —
+     * a freeze, a feedback tap, a hold check — has to use THIS, not the
+     * wall clock: the two differ by however long the JVM has been up,
+     * which would put every hold decades in the past.
+     */
+    fun clock(): Double = now()
+
     private var rtaFocus = -1
     private var rtaFocusT = 0.0
     private var lastKeep = -99.0
