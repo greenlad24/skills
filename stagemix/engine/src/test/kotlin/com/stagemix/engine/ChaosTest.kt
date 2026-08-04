@@ -19,10 +19,11 @@ import kotlin.test.assertTrue
 class ChaosTest {
 
     companion object {
-        private val REPORT = File("/tmp/chaos-stagemix/chaos-report.txt")
+        private val REPORT = File(System.getProperty("java.io.tmpdir"),
+            "stagemix-chaos-report.txt")
         fun rep(s: String) {
             println(s)
-            REPORT.appendText(s + "\n")
+            try { REPORT.appendText(s + "\n") } catch (e: Exception) { }
         }
         val NAMES = defaultRigProfile().associate { it.index to it.name }
     }
