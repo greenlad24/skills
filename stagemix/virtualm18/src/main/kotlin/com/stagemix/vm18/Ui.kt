@@ -176,6 +176,15 @@ class Bench(
         }
         p.add(roomBtn); p.add(Box.createHorizontalStrut(6)); p.add(provoke)
         p.add(Box.createHorizontalStrut(6)); p.add(drop)
+
+        // getting the log OFF this machine is the whole point of having
+        // one, so it is a button and not a file path to go hunting for
+        p.add(Box.createHorizontalStrut(20))
+        val copy = JButton("📋 COPY LOG")
+        copy.toolTipText = "the whole log, plus the state of everything, " +
+            "on the clipboard — paste it straight into a message"
+        copy.addActionListener { copyLog(copy) }
+        p.add(copy)
         val hint = JLabel("  (click a channel to load one file at a time)")
         hint.foreground = MUTED
         hint.font = Font(Font.SANS_SERIF, Font.PLAIN, 11)
@@ -223,6 +232,67 @@ class Bench(
     fun note(line: String) = SwingUtilities.invokeLater {
         logArea.append(line + "\n")
         logArea.caretPosition = logArea.document.length
+    }
+
+    /**
+     * The log, plus a snapshot of everything that would otherwise have to
+     * be asked for one question at a time: the machine, the audio
+     * devices, the transport's own account of itself, every channel and
+     * what is loaded on it, and where the tablet stands.
+     */
+    private fun copyLog(button: JButton) {
+        val sb = StringBuilder()
+        sb.appendLine("=== StageMix bench log ===")
+        sb.appendLine("when: " + java.util.Date())
+        sb.appendLine("java: " + System.getProperty("java.version") +
+            " on " + System.getProperty("os.name") + " " +
+            System.getProperty("os.version") + " " +
+            System.getProperty("os.arch"))
+        sb.appendLine()
+        sb.appendLine("--- transport ---")
+        sb.appendLine(player.state())
+        sb.appendLine("room: " + player.room.status())
+        sb.appendLine()
+        sb.appendLine("--- audio devices ---")
+        try {
+            for (m in javax.sound.sampled.AudioSystem.getMixerInfo())
+                sb.appendLine("  ${m.name} — ${m.description}")
+        } catch (e: Exception) { sb.appendLine("  unavailable: ${e.message}") }
+        sb.appendLine()
+        sb.appendLine("--- console ---")
+        sb.appendLine("subscribers=${console.subscriberCount()} " +
+            "in=${console.packetsIn} out=${console.packetsOut} " +
+            "dropped=${console.packetsDropped} " +
+            "rtaSource=ch%02d".format(java.util.Locale.ROOT,
+                console.rtaSource + 1))
+        sb.appendLine()
+        sb.appendLine("--- channels ---")
+        for (c in 0 until strips.size) {
+            val f = player.fileOf(c)
+            sb.appendLine("  ch%02d %-20s src%7.1f dB  out%7.1f dB  " +
+                "fader%+6.2f  %s".format(java.util.Locale.ROOT, c + 1,
+                strips[c].label,
+                console.inputDb.getOrElse(c) { -128f },
+                player.postDb.getOrElse(c) { -128f },
+                console.faderDb(c),
+                f?.name ?: "(nothing loaded)"))
+        }
+        sb.appendLine()
+        sb.appendLine("--- log ---")
+        sb.append(logArea.text)
+
+        try {
+            java.awt.Toolkit.getDefaultToolkit().systemClipboard.setContents(
+                java.awt.datatransfer.StringSelection(sb.toString()), null)
+            val n = sb.count { it == '\n' }
+            button.text = "✓ COPIED ($n lines)"
+            javax.swing.Timer(2500) { button.text = "📋 COPY LOG" }
+                .apply { isRepeats = false }.start()
+            note("log copied to the clipboard — paste it into a message")
+        } catch (e: Exception) {
+            note("could not reach the clipboard (${e.message}) — the same " +
+                "log is at ~/StageMix/bench-console.log")
+        }
     }
 
     /** one channel: the source the desk hears, and the tablet's fader */

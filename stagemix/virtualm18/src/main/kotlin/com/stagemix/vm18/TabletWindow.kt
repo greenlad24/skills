@@ -129,9 +129,12 @@ class TabletWindow(private val client: DeskClient) {
                 if (client.doctorOn) "ON" else "OFF")
         }
         r2.add(doc)
-        r2.add(btn("Show the log") {
+        val copy = btn("📋 COPY LOG") { }
+        copy.addActionListener { copyLog(copy) }
+        r2.add(copy)
+        r2.add(btn("Show the log folder") {
             client.logFile()?.let {
-                java.awt.Desktop.getDesktop().open(it.parentFile)
+                runCatching { java.awt.Desktop.getDesktop().open(it.parentFile) }
             }
         })
         r2.add(Box.createHorizontalGlue())
@@ -182,6 +185,70 @@ class TabletWindow(private val client: DeskClient) {
 
     /** the engine's own clock — never the wall clock (see DeskClient) */
     private fun nowSec() = client.clock()
+
+    /**
+     * The autopilot's side of the story on the clipboard: what it has
+     * decided, where it has put every fader and why, and the tail of the
+     * show log — the same file it writes for a real night.
+     */
+    private fun copyLog(button: JButton) {
+        val e = client.engine
+        val sb = StringBuilder()
+        sb.appendLine("=== StageMix autopilot (bench) ===")
+        sb.appendLine("when: " + java.util.Date())
+        val h = e.health()
+        sb.appendLine("mode: " + (if (e.frozenAll) "FROZEN"
+            else if (client.directing) "MIXING" else "shadow") +
+            "   vocal on top " +
+            (if (h.vocalOnTopPct < 0) "n/a" else "${h.vocalOnTopPct}%") +
+            ", in place ${h.inPlacePct}%, ${h.overrides} overrides, " +
+            "${h.ticks} ticks")
+        sb.appendLine("hold: " + (e.holdReason(nowSec()) ?: "none"))
+        sb.appendLine("lead vocal: " + (e.leadVocal?.let {
+            client.names[it] ?: "ch${it + 1}" } ?: "none"))
+        sb.appendLine("boosts have added %.2f dB to the mix"
+            .format(Locale.ROOT, e.boostLoudnessDb()))
+        sb.appendLine()
+        sb.appendLine("--- channels ---")
+        for (c in 0 until 16) {
+            val st = e.state[c] ?: continue
+            val d = client.doctor?.state?.get(c)
+            sb.appendLine(("  ch%02d %-18s %-12s src%7.1f  off%+6.2f  " +
+                "duck%+5.2f  eq%+5.2f thr%+5.2f  %s")
+                .format(Locale.ROOT, c + 1,
+                    client.names[c] ?: st.cfg.name, st.role.name,
+                    st.lastLevelDb, e.offsetDb(c), st.duckDb,
+                    d?.eqOffset?.maxByOrNull { abs(it) } ?: 0f,
+                    d?.thrOffset ?: 0f,
+                    buildString {
+                        if (!st.active) append("silent ")
+                        if (st.isStatic) append("ROOM-TONE ")
+                        if (st.idleRamped) append("idle ")
+                        if (st.featureStart >= 0) append("FEATURE ")
+                        if (c == e.leadVocal) append("LEAD ")
+                        if (st.frozen) append("locked ")
+                    }.trim()))
+        }
+        sb.appendLine()
+        sb.appendLine("--- decisions ---")
+        sb.append(decisions.text)
+        client.logFile()?.let { f ->
+            sb.appendLine()
+            sb.appendLine("--- show log tail (${f.path}) ---")
+            runCatching { sb.append(f.readLines().takeLast(120)
+                .joinToString("\n")) }
+        }
+        try {
+            java.awt.Toolkit.getDefaultToolkit().systemClipboard.setContents(
+                java.awt.datatransfer.StringSelection(sb.toString()), null)
+            button.text = "✓ COPIED"
+            javax.swing.Timer(2500) { button.text = "📋 COPY LOG" }
+                .apply { isRepeats = false }.start()
+            note("copied to the clipboard")
+        } catch (ex: Exception) {
+            note("could not reach the clipboard: ${ex.message}")
+        }
+    }
 
     fun note(s: String) = SwingUtilities.invokeLater {
         decisions.append("· $s\n")
