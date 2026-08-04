@@ -1,0 +1,201 @@
+package com.stagemix.vm18
+
+import java.awt.BorderLayout
+import java.awt.Color
+import java.awt.Dimension
+import java.awt.Font
+import java.awt.Graphics
+import java.awt.Graphics2D
+import java.awt.GridLayout
+import java.awt.RenderingHints
+import java.io.File
+import javax.swing.BorderFactory
+import javax.swing.Box
+import javax.swing.BoxLayout
+import javax.swing.JButton
+import javax.swing.JFileChooser
+import javax.swing.JFrame
+import javax.swing.JLabel
+import javax.swing.JPanel
+import javax.swing.JScrollPane
+import javax.swing.JTextArea
+import javax.swing.SwingUtilities
+import javax.swing.Timer
+
+private val BG = Color(0x0B, 0x0E, 0x14)
+private val PANEL = Color(0x11, 0x16, 0x1F)
+private val INK = Color(0xE9, 0xEE, 0xF5)
+private val MUTED = Color(0x7C, 0x8A, 0xA0)
+private val OK = Color(0x36, 0xD3, 0x99)
+private val WARN = Color(0xF5, 0xA6, 0x23)
+private val LIVE = Color(0xFF, 0x46, 0x52)
+private val ACCENT = Color(0x5A, 0x9B, 0xFF)
+
+/**
+ * The bench window: sixteen strips showing what the desk is hearing and
+ * where the tablet has put each fader, so a fader move on the app is
+ * visible here within a frame and audible in the room immediately.
+ *
+ * Deliberately plain — this is test equipment, not the product. The
+ * product is the tablet; this is the console it thinks it is talking to.
+ */
+class Bench(
+    private val console: Console,
+    private val player: Player,
+    private val names: List<String>,
+    private val files: MutableList<File?>,
+) {
+    private val frame = JFrame("Virtual M18 — StageMix bench")
+    private val strips = ArrayList<Strip>()
+    private val status = JLabel(" ")
+    private val logArea = JTextArea(8, 100)
+
+    fun show() {
+        frame.defaultCloseOperation = JFrame.EXIT_ON_CLOSE
+        frame.contentPane.background = BG
+        frame.layout = BorderLayout(8, 8)
+
+        frame.add(header(), BorderLayout.NORTH)
+
+        val grid = JPanel(GridLayout(1, names.size, 6, 0))
+        grid.background = BG
+        grid.border = BorderFactory.createEmptyBorder(4, 10, 4, 10)
+        for (c in names.indices) {
+            val s = Strip(c, names[c])
+            strips.add(s); grid.add(s)
+        }
+        frame.add(grid, BorderLayout.CENTER)
+
+        logArea.background = PANEL; logArea.foreground = MUTED
+        logArea.font = Font(Font.MONOSPACED, Font.PLAIN, 11)
+        logArea.isEditable = false
+        val south = JPanel(BorderLayout())
+        south.background = BG
+        status.foreground = INK
+        status.font = Font(Font.MONOSPACED, Font.PLAIN, 12)
+        status.border = BorderFactory.createEmptyBorder(4, 12, 4, 12)
+        south.add(status, BorderLayout.NORTH)
+        south.add(JScrollPane(logArea), BorderLayout.CENTER)
+        frame.add(south, BorderLayout.SOUTH)
+
+        frame.pack()
+        frame.setSize(maxOf(1100, names.size * 74), 720)
+        frame.setLocationRelativeTo(null)
+        frame.isVisible = true
+
+        Timer(50) { tick() }.start()
+    }
+
+    private fun header(): JPanel {
+        val p = JPanel()
+        p.background = BG
+        p.layout = BoxLayout(p, BoxLayout.X_AXIS)
+        p.border = BorderFactory.createEmptyBorder(10, 12, 4, 12)
+
+        val play = JButton("▶  PLAY")
+        play.addActionListener {
+            if (player.playing) { player.pause(); play.text = "▶  PLAY" }
+            else { player.play(); play.text = "❚❚ PAUSE" }
+        }
+        val mute = JButton("MUTE SPEAKERS")
+        mute.addActionListener {
+            player.mute = !player.mute
+            mute.text = if (player.mute) "UNMUTE" else "MUTE SPEAKERS"
+        }
+        p.add(play); p.add(Box.createHorizontalStrut(8)); p.add(mute)
+        p.add(Box.createHorizontalGlue())
+
+        val ip = JLabel("point the tablet at this Mac's IP, port 10024")
+        ip.foreground = ACCENT
+        ip.font = Font(Font.SANS_SERIF, Font.BOLD, 13)
+        p.add(ip)
+        return p
+    }
+
+    private fun tick() {
+        for (s in strips) s.repaint()
+        val subs = console.subscriberCount()
+        status.text = ("t %s   |   %s   |   tablet: %s   |   in %d / out %d " +
+            "packets   |   RTA on ch%02d")
+            .format(java.util.Locale.ROOT,
+                clock(player.positionSec),
+                if (player.playing) "PLAYING" else "stopped",
+                if (subs > 0) "CONNECTED ($subs)" else "not connected",
+                console.packetsIn, console.packetsOut,
+                console.rtaSource + 1)
+        status.foreground = if (subs > 0) OK else WARN
+    }
+
+    private fun clock(s: Double) =
+        "%d:%02d:%05.2f".format(java.util.Locale.ROOT,
+            (s / 3600).toInt(), ((s % 3600) / 60).toInt(), s % 60)
+
+    fun note(line: String) = SwingUtilities.invokeLater {
+        logArea.append(line + "\n")
+        logArea.caretPosition = logArea.document.length
+    }
+
+    /** one channel: the source the desk hears, and the tablet's fader */
+    private inner class Strip(val ch: Int, val label: String) : JPanel() {
+        init {
+            background = PANEL
+            preferredSize = Dimension(68, 520)
+            border = BorderFactory.createEmptyBorder(6, 4, 6, 4)
+        }
+
+        override fun paintComponent(g: Graphics) {
+            super.paintComponent(g)
+            val g2 = g as Graphics2D
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                RenderingHints.VALUE_ANTIALIAS_ON)
+            val w = width; val h = height
+            g2.color = MUTED
+            g2.font = Font(Font.SANS_SERIF, Font.PLAIN, 9)
+            g2.drawString("ch%02d".format(java.util.Locale.ROOT, ch + 1), 4, 12)
+            g2.color = INK
+            g2.font = Font(Font.SANS_SERIF, Font.BOLD, 10)
+            g2.drawString(label.take(9), 4, 25)
+
+            val top = 34; val bot = h - 54
+            val span = (bot - top).toFloat()
+            fun y(db: Float) = bot - (span * ((db + 60f) / 60f)
+                .coerceIn(0f, 1f)).toInt()
+
+            // scale
+            g2.color = Color(0x1D, 0x24, 0x30)
+            for (d in intArrayOf(0, -10, -20, -30, -40, -50))
+                g2.drawLine(2, y(d.toFloat()), w - 2, y(d.toFloat()))
+
+            // what the desk hears, pre-fader
+            val src = console.inputDb.getOrElse(ch) { -128f }
+            g2.color = if (src > -3f) LIVE else ACCENT
+            val sy = y(src)
+            g2.fillRect(6, sy, 16, bot - sy)
+
+            // what the room hears, after the tablet's fader
+            val post = player.postDb.getOrElse(ch) { -128f }
+            g2.color = OK
+            val py = y(post)
+            g2.fillRect(26, py, 16, bot - py)
+
+            // the fader itself
+            val f = console.faderDb(ch)
+            val fy = y(f)
+            g2.color = INK
+            g2.fillRect(46, fy - 2, 18, 4)
+            g2.color = MUTED
+            g2.drawLine(54, top, 54, bot)
+
+            g2.font = Font(Font.MONOSPACED, Font.PLAIN, 10)
+            g2.color = ACCENT
+            g2.drawString("%.0f".format(java.util.Locale.ROOT, src), 4, bot + 14)
+            g2.color = OK
+            g2.drawString("%.0f".format(java.util.Locale.ROOT, post), 26, bot + 14)
+            g2.color = INK
+            g2.drawString("%+.1f".format(java.util.Locale.ROOT, f), 4, bot + 28)
+            g2.color = MUTED
+            g2.font = Font(Font.SANS_SERIF, Font.PLAIN, 8)
+            g2.drawString("src  out  fader", 4, bot + 40)
+        }
+    }
+}

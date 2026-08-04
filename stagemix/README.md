@@ -316,6 +316,44 @@ Useful flags:
 | `--shadow` | decide and log everything, but leave the rendered mix flat |
 | `--capture night.smcap` | write a **meter tape** (below) |
 
+### The bench: a virtual M18 on a Mac
+
+Better than replaying: **make the tablet mix a recorded night for real.**
+
+`virtual-m18.jar` runs on a Mac (or anything with Java 17) and pretends
+to be the console. Put one file per channel in a folder, press PLAY, and
+point the tablet at the Mac's IP:
+
+```
+java -jar virtual-m18.jar "/path/to/the night's channels"
+```
+
+The app connects, reads the channel names, takes over the faders and
+starts mixing — and **the faders it writes are applied to the audio
+coming out of the speakers**, so you hear its mix while you watch it
+work on the tablet. Nothing in the app is modified or aware of this: it
+is talking OSC to something that answers exactly as the console does —
+same addresses, the same meter banks at the console's own 50 ms cadence,
+the same 1024-step fader quantization, the same 10-second subscription
+timeout.
+
+Files are matched to channels by a leading number (`09 Vocal Center.mp3`
+is channel 9). WAV, MP3 and AIFF all work and they need not share a
+format or sample rate. Names become the console's channel names, which
+is also what sets the roles.
+
+The window shows, per channel: what the desk is hearing pre-fader, what
+the room is hearing after the tablet's fader, and where the tablet has
+put that fader — so every move is visible within a frame and audible
+immediately.
+
+| flag | why |
+|---|---|
+| `--start 600` | begin ten minutes in |
+| `--echo` | behave like firmware that reflects parameter changes back to the sender — the case that used to make the app freeze every channel. Worth one run. |
+| `--no-quantize` | perfect faders instead of the console's 1024 steps |
+| `--headless` | no window |
+
 ### The meter tape — sending a night without sending the audio
 
 A recorded night is tens of gigabytes. The engine never sees any of it:
@@ -345,6 +383,7 @@ to the APK, and needs nothing but Java 17.
   module with scenario tests (no Android SDK needed).
 - `./gradlew :replay:test` — the offline replay tool (also pure JVM).
 - `./gradlew :replay:fatJar` — builds `stagemix-replay.jar`.
+- `./gradlew :virtualm18:test` / `:virtualm18:fatJar` — the bench console.
 - `./gradlew :app:assembleRelease` — needs the Android SDK; CI does this
   on every push and attaches **StageMix.apk** to the `stagemix-latest`
   release.

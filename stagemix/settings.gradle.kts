@@ -26,6 +26,10 @@ include(":engine")
 // Pure JVM, no Android SDK needed.
 include(":replay")
 
+// A virtual M18 for the bench: plays a recorded night, speaks the
+// console's OSC, and lets the real tablet app mix it for real.
+include(":virtualm18")
+
 // The :app module needs the Android SDK. Skip it when no SDK is present
 // so `gradle :engine:test` runs on any dev box (engine is pure JVM).
 val hasSdk = System.getenv("ANDROID_HOME") != null ||
