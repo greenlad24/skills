@@ -68,22 +68,42 @@ jobs:
             stagemix/stagemix-replay.jar
             stagemix/virtual-m18.jar
           body: |
-            ## StageMix AI — on-stage auto mix engineer (Android)
+            ## StageMix AI — the FOH autopilot for the Midas M18
 
-            Install: download **StageMix.apk** on the tablet, open it, and
-            allow "install unknown apps" for your browser/file manager when
-            asked. Updates install right over the old version.
+            **StageMix.apk** — the tablet app. It leads the MAIN mix all
+            night, with no soundcheck ritual, and **never touches the six
+            monitor buses**: monitors stay 100 % yours in Mixing Station.
+            Download it on the tablet, open it, and allow "install unknown
+            apps" when asked. It installs over the previous version.
 
-            1. Put the tablet on the same network as the Midas M18
-               (same Wi-Fi Mixing Station uses).
-            2. Open StageMix → enter the mixer's IP → Connect.
-            3. At soundcheck: get the wedges right by hand (Mixing Station
-               works alongside — both talk to the mixer), then press
-               **Soundcheck snapshot**.
-            4. Flip **MIXING** on. StageMix nudges monitor sends back toward
-               your soundcheck when levels drift — slow bounded boosts,
-               fast cuts, vocal-priority ducking, and it freezes itself
-               whenever anything looks unsafe.
+            1. Put the tablet on the M18's Wi-Fi. Open StageMix — it finds
+               the mixer and reads your channel names by itself.
+            2. Rough the faders in anywhere sane. Mix your monitors in
+               Mixing Station as usual.
+            3. Flip **MIXING** on. It takes over the mains, listens ~20 s,
+               then leads: kick+bass foundation, the lead vocal on top,
+               lead-follow between the vocal mics, feature holds for
+               solos, idle easing, howl watchdog, freeze-on-anything-odd.
+            4. **Hand back the mains** any time. At the end of the night,
+               **⤴ EXPORT LOG** sends the whole night to WhatsApp.
+
+            ### Testing it without a console
+
+            **VirtualM18-AppleSilicon.dmg** — a virtual M18 for a Mac.
+            Drag *Virtual M18* to Applications and open it (unsigned, so
+            the first launch needs right-click → Open, and say yes to the
+            incoming-connections prompt). Load a night the desk recorded —
+            click a strip for one channel at a time, or *Choose folder…*
+            for the lot; WAV, MP3 and AIFF all work. Point the tablet at
+            the Mac's IP, press PLAY, and **the faders the app writes are
+            applied to the audio coming out of the speakers**: you hear
+            the mix it is making while you watch it work.
+
+            **stagemix-replay.jar** — replays a recorded night through the
+            same engine offline, renders the mix it would have made, and
+            can write a ~1 MB "meter tape" of a whole night so the audio
+            never has to leave the machine it was recorded on. Needs
+            Java 17. **virtual-m18.jar** is the bench for non-Mac boxes.
 
             The mixer keeps your last mix if the app ever disconnects —
             fail-safe by design.
