@@ -49,9 +49,17 @@ data class IdSettings(
     val actConfidence: Float = 0.55f,
     /** how much better a contradicting verdict must be to overrule a name */
     val overruleConfidence: Float = 0.75f,
+    /**
+     * Half-minute windows of the night before a voice and a horn are
+     * worth trying to tell apart. Over one song they are the same
+     * thing; the difference is that one of them is in most songs.
+     */
+    val minWindows: Int = 6,
+    /** confidence before an instrument reading is acted on */
+    val recogniseConfidence: Float = 0.45f,
 )
 
-class InstrumentId(private val settings: IdSettings = IdSettings()) {
+class InstrumentId(val settings: IdSettings = IdSettings()) {
 
     data class Verdict(
         val family: Family,
@@ -313,6 +321,175 @@ class InstrumentId(private val settings: IdSettings = IdSettings()) {
 
         return Verdict(best.first, conf, why)
     }
+
+    // ------------------------------------------------------------------
+    /**
+     * WHAT INSTRUMENT IS THIS? — from the audio, with no name involved.
+     *
+     * [verdict] answers "what family", which is as far as one channel's
+     * own numbers go. This answers "what instrument", and it can only
+     * do that because [Ensemble] supplies what a channel is doing
+     * relative to the other fifteen. Each test below names the physical
+     * fact it stands on, because a classifier whose thresholds are
+     * folklore cannot be argued with when it is wrong:
+     *
+     *  · KICK vs BASS. Both are energy under 200 Hz with no top, and
+     *    nothing in one channel's spectrum separates them. What does is
+     *    the ENVELOPE: a kick is a hit and then nothing — a hard rise
+     *    and a peak far above its own average — while a bass sustains
+     *    between notes. A kick also fires with the rest of the kit; a
+     *    bass locks to the kick but not to the cymbals.
+     *  · CYMBALS vs SNARE vs HAND DRUM. Overheads are the only channel
+     *    that hears the WHOLE kit, so they coincide with everything and
+     *    are mostly air. A snare has a body around 200 Hz and a burst
+     *    of noise above 2 kHz. Congas and toms are the mid-low ones
+     *    with no top and a much denser stream of hits.
+     *  · KEYS. Wide, even, always there — and very often two channels
+     *    whose envelopes are the same curve twice, which no two
+     *    separate instruments ever are.
+     *  · VOICE vs HORN. These are the same thing to a spectrum, and
+     *    saying so is more useful than pretending otherwise. What
+     *    separates them is the SET: a singer sings in most songs, a
+     *    saxophone plays in a few and in bursts. That needs more than
+     *    one song to see, and until it has been seen this returns
+     *    UNKNOWN rather than guessing.
+     */
+    fun recognise(ch: Int, ens: Ensemble): Reading? {
+        val p = prints[ch] ?: return null
+        if (p.spectra < settings.minSpectra) return null
+        if (p.activeSec < settings.minActiveSec) return null
+
+        fun band(r: IntRange): Float {
+            var s = 0.0
+            for (i in r) if (i in 0 until 100) s += p.spec[i]
+            return s.toFloat()
+        }
+        val sub = band(SUB); val low = band(LOW); val loMid = band(LOMID)
+        val mid = band(MID); val upMid = band(UPMID); val pres = band(PRES)
+        val air = band(AIR)
+        val bottom = sub + low
+        val top = pres + air
+        val voiceBand = mid + upMid + pres
+
+        val duty = p.duty; val sustain = p.sustain
+        val attack = p.attack; val crest = p.crest
+        val flux = p.flux; val onsets = p.onsetRate
+
+        val kit = ens.kitAffinity(ch)
+        val mate = ens.stereoMate(ch)
+        val setDuty = ens.setDuty(ch)
+        val burst = ens.burstiness(ch)
+        val windows = ens.windows(ch)
+
+        fun ramp(v: Float, at0: Float, at1: Float): Float =
+            ((v - at0) / (at1 - at0)).coerceIn(0f, 1f)
+
+        val scores = HashMap<Instrument, Float>()
+        val why = HashMap<Instrument, String>()
+
+        // --- the low end ------------------------------------------------
+        val isLow = ramp(bottom, 0.35f, 0.62f) * ramp(air, 0.14f, 0.03f) *
+            ramp(sub, 0.06f, 0.25f)
+        if (isLow > 0.05f) {
+            val struck = ramp(attack, 2f, 7f) * ramp(crest, 7f, 14f) *
+                ramp(1f - sustain, 0.2f, 0.5f)
+            scores[Instrument.KICK] = isLow * struck *
+                ramp(kit, 0.15f, 0.45f)
+            why[Instrument.KICK] = ("all underneath and struck: %.0f dB " +
+                "attacks, peaks %.0f dB over average, firing with the kit")
+                .format(attack, crest)
+            scores[Instrument.BASS] = isLow * ramp(sustain, 0.25f, 0.6f) *
+                ramp(crest, 12f, 6f)
+            why[Instrument.BASS] = ("%.0f%% under 200 Hz and it sustains " +
+                "between notes rather than being struck")
+                .format(bottom * 100)
+        }
+
+        // --- the kit ----------------------------------------------------
+        if (kit > 0.2f) {
+            scores[Instrument.CYMBALS] = ramp(air, 0.20f, 0.45f) *
+                ramp(bottom, 0.30f, 0.08f) * ramp(kit, 0.35f, 0.7f)
+            why[Instrument.CYMBALS] = ("%.0f%% of it is above 5 kHz and it " +
+                "fires with every other drum — that is a pair of overheads")
+                .format(air * 100)
+            scores[Instrument.SNARE] = ramp(loMid + mid, 0.20f, 0.45f) *
+                ramp(top, 0.12f, 0.35f) * ramp(crest, 8f, 16f) *
+                ramp(kit, 0.25f, 0.55f) * ramp(onsets, 0.3f, 1.2f)
+            why[Instrument.SNARE] = ("a body around 200 Hz with a burst of " +
+                "noise on top, peaks %.0f dB over average, on the grid")
+                .format(crest)
+            scores[Instrument.HAND_DRUM] = ramp(low + loMid, 0.25f, 0.55f) *
+                ramp(air, 0.12f, 0.02f) * ramp(crest, 7f, 14f) *
+                ramp(onsets, 0.8f, 2.5f) * ramp(kit, 0.2f, 0.5f)
+            why[Instrument.HAND_DRUM] = ("mid-low, no top, and %.1f hits a " +
+                "second — hands rather than sticks").format(onsets)
+        }
+
+        // --- the bed ----------------------------------------------------
+        val widest = maxOf(sub, low, loMid, mid, upMid, pres, air)
+        val even = ramp(widest, 0.60f, 0.30f)
+        scores[Instrument.KEYS] = even * ramp(duty, 0.35f, 0.75f) *
+            ramp(sustain, 0.35f, 0.75f) * ramp(flux, 0.25f, 0.08f) *
+            ramp(sub, 0.20f, 0.04f) *
+            // two channels that are the same curve twice are one
+            // instrument, and on a stage that instrument is a keyboard
+            (if (mate != null) 1f else 0.55f)
+        why[Instrument.KEYS] = (if (mate != null)
+            "wide and even, and channel %02d is the same curve twice — " +
+            "one instrument on two channels".format(mate + 1)
+            else "wide and even, playing %.0f%% of the time".format(duty * 100))
+
+        // --- things that carry a line -----------------------------------
+        val melodic = ramp(voiceBand, 0.40f, 0.70f) * ramp(sub, 0.12f, 0.02f) *
+            ramp(flux, 0.05f, 0.22f) * ramp(kit, 0.35f, 0.1f)
+        if (melodic > 0.05f) {
+            // A singer is in most of the night; a horn is in a few songs
+            // of it, and in bursts. Below `minWindows` there has not
+            // been enough night to tell, and neither score is offered.
+            val enough = windows >= settings.minWindows
+            if (enough) {
+                scores[Instrument.VOICE] = melodic *
+                    ramp(setDuty, 0.18f, 0.45f) * ramp(burst, 0.75f, 0.35f)
+                why[Instrument.VOICE] = ("carries a line in the voice band " +
+                    "and is in %.0f%% of the night — a singer, not a guest")
+                    .format(setDuty * 100)
+                scores[Instrument.HORN] = melodic *
+                    ramp(setDuty, 0.40f, 0.12f) * ramp(burst, 0.35f, 0.75f)
+                why[Instrument.HORN] = ("carries a line but only in %.0f%% " +
+                    "of the night, in bursts — a horn or a reed, playing " +
+                    "its parts").format(setDuty * 100)
+            }
+            // A picked string has attacks a throat and a reed do not.
+            val picked = ramp(attack, 2f, 6f) * ramp(crest, 6f, 13f)
+            scores[Instrument.GUITAR] = melodic * picked *
+                ramp(setDuty, 0.20f, 0.55f) * ramp(burst, 0.6f, 0.25f)
+            why[Instrument.GUITAR] = ("a picked string: %.0f dB attacks, " +
+                "playing under the song most of the time").format(attack)
+            scores[Instrument.LEAD_GUITAR] = melodic * picked *
+                ramp(burst, 0.3f, 0.7f) * ramp(setDuty, 0.55f, 0.15f)
+            why[Instrument.LEAD_GUITAR] = ("a picked string that plays in " +
+                "bursts rather than under the song — lead, not rhythm")
+        }
+
+        val best = scores.entries.maxByOrNull { it.value }
+            ?: return Reading(Instrument.UNKNOWN, 0f, "nothing distinctive yet")
+        if (best.value <= 0.02f)
+            return Reading(Instrument.UNKNOWN, 0f, "nothing distinctive yet")
+        val runnerUp = scores.entries.filter { it.key != best.key }
+            .maxOfOrNull { it.value } ?: 0f
+        // Confidence is how far clear of the next candidate it is, not
+        // the raw score: two instruments both fitting is exactly the
+        // case where an autopilot should keep its opinion to itself.
+        val conf = (best.value * (1f - runnerUp / max(best.value, 1e-6f)))
+            .coerceIn(0f, 1f)
+        return Reading(best.key, conf, why[best.key] ?: "")
+    }
+
+    data class Reading(
+        val instrument: Instrument,
+        val confidence: Float,
+        val why: String,
+    )
 
     // ------------------------------------------------------------------
     /**

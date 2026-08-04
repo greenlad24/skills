@@ -234,21 +234,38 @@ console's **RTA source** (`/-stat/rta/source`) every ~3 seconds. That
 setting is global to the console, so X AIR Edit or Mixing Station open
 on the analyzer page will see it moving. Turn DOCTOR off and it stops.
 
-### What it cannot hear, and what to do about it
+### How it works out what is on each channel
 
-A hundred-bin RTA cannot tell a saxophone from a singer. Both are a
-moving melody in the 400 Hz–5 kHz band with nothing underneath — which
-is exactly what makes both of them work as the line over a band — and
-no amount of cleverness with the numbers the console provides will
-separate them. On a rig where the channel labelled SAXOPHONE is a
-singer and the one labelled UTILITY 3 is the saxophone, neither the
-ears nor the labels will ever sort it out.
+Not from the names. Names are a fallback for when the audio has not
+made up its mind, and on a house desk they are usually a previous
+band's.
 
-**Tap the instrument line on a channel strip** (right-click on the
-bench) and say what it is. It is pinned — the listener keeps forming an
-opinion and never acts on that channel again — and remembered against
-the *console's name* for the channel, so it holds tomorrow night, and
-follows the name if the band re-patches.
+One channel's own spectrum tops out at four families, and the two pairs
+that matter are inside the same family: a kick and a bass are both
+energy under 200 Hz with no top, and a saxophone and a singer are both
+a moving melody in the voice band. Nothing about either pair is visible
+one channel at a time.
+
+But the sixteen meters arrive **together**, twenty times a second, so
+what a channel is doing relative to the other fifteen is measurable —
+and that is where the answer is:
+
+| | |
+|---|---|
+| **kick vs bass** | a kick is a hit and then nothing; a bass sustains between notes. And a kick fires with the rest of the kit. |
+| **overheads** | the only channel that hears the *whole* kit, so it coincides with every other drum — and it is nearly all air. |
+| **snare vs congas** | a snare has a body around 200 Hz and a burst of noise on top; hand drums are mid-low with no top and far more hits a second. |
+| **piano** | wide, even, always there — and usually two channels whose envelopes are the same curve twice, which no two separate instruments ever are. |
+| **singer vs horn** | identical to a spectrum. The difference is the **set**: a singer sings in most songs, a horn plays in a few, in bursts. |
+
+That last one needs more than one song to see, and until it has been
+seen the app says **UNKNOWN** rather than guessing — a channel with no
+confident reading is left where the operator put it.
+
+If it still gets one wrong, **tap the instrument line on a channel
+strip** (right-click on the bench) and say what it is. That is pinned,
+and remembered against the *console's name* for the channel, so it
+holds tomorrow night and follows the name if the band re-patches.
 
 ### The starting chain, set once
 

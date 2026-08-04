@@ -291,7 +291,19 @@ data class EngineSettings(
     /** how far a released channel may be trimmed from where it settled */
     val trimBandDb: Float = 2.5f,
     /** how far a solo is lifted out of a held mix, and no further */
-    val soloLiftDb: Float = 2.0f,
+    /**
+     * How far a soloist comes up when they step out.
+     *
+     * Was two dB, which is barely audible over a band and is why the
+     * operator kept reaching for the fader themselves — "I shouldn't be
+     * pushing up faders for solos". Their own moves on the night were
+     * +4.6 and +6.1 dB. Four is what a person does; the lift is also
+     * scaled by how far the player actually stepped out, so a quiet
+     * step forward gets a small hand and a real solo gets a real one.
+     */
+    val soloLiftDb: Float = 4.0f,
+    /** the most a solo lift may ever be, however hard the player pushes */
+    val soloLiftMaxDb: Float = 6.0f,
     /** and how far a player must step up to break a held balance at all */
     val holdSoloRiseDb: Float = 5.0f,
     /** how long an arriving instrument may reshape the balance */
@@ -467,6 +479,7 @@ class ChannelState(val cfg: ChannelConfig) {
     var featureStart = -1.0          // holding a feature for this player
     var featureRef = 0f              // their level when they stepped up
     var featureFrom = 0f             // where the fader stood before they did
+    var featureLift = 0f             // and how far up they go, decided at the latch
     var duetLatched = false          // singing WITH the lead (latched)
     var featureVotes = 0             // ticks reading as a feature (leaky)
     var nearFeatureT = -1000.0       // last "nearly a solo" note, throttled
@@ -520,6 +533,15 @@ class ChannelState(val cfg: ChannelConfig) {
 
 /** how long "hand back the mains" keeps the autopilot off the faders */
 const val REVERT_HOLD_SEC = 120.0
+
+/** the M18's input strip count: the widest ensemble this engine sees */
+const val ENSEMBLE_CH = 16
+
+/**
+ * The smallest solo lift — what a player gets for just clearing the
+ * bar. Everything above this is earned by stepping further out.
+ */
+const val SOLO_LIFT_FLOOR_DB = 2.0f
 
 class StageEngine(
     channels: List<ChannelConfig>,
@@ -961,6 +983,13 @@ class StageEngine(
         // treat a silent channel as silent.
         betweenSongs = stagePeak >= settings.stageQuietChannels + 1 &&
             playingNow * 3 <= stagePeak
+
+        // and what the channels are doing to EACH OTHER — the only place
+        // the information to tell a kick from a bass, or a singer from a
+        // saxophone, actually lives
+        for (i in activeBuf.indices)
+            activeBuf[i] = state[i]?.let { it.active && !it.isStatic } ?: false
+        ensemble.onFrame(levels, activeBuf, dtFrame)
         // Broadband guard over the INTERSECTION of channels active in
         // both frames. Bailing out whenever the active set changed made
         // the guard disarm itself exactly when it was needed — at a song
@@ -1084,7 +1113,23 @@ class StageEngine(
             // boost, and a place in the anchor. That is the classic way
             // to walk a stage into feedback, arrived at by a new route.
             if (st.isStatic || !st.active) { st.pendingRole = null; continue }
-            val r = ident.resolve(idx, st.name, st.role)
+            // WHAT IS IT? — asked of the audio first, and of the label
+            // only if the audio has not made up its mind. The operator's
+            // ask, in their words: "I want a smarter system that
+            // recognizes each channel — it doesn't need to look at the
+            // name at all." It does not, when it knows; a name is now
+            // the fallback rather than the starting point.
+            val heard = ident.recognise(idx, ensemble)
+            if (heard != null) recognised[idx] = heard
+            val r = if (heard != null &&
+                heard.instrument != Instrument.UNKNOWN &&
+                heard.confidence >= ident.settings.recogniseConfidence)
+                InstrumentId.Resolution(heard.instrument.role,
+                    InstrumentId.Verdict(
+                        ident.familyOf(heard.instrument.role),
+                        heard.confidence, heard.why),
+                    "it sounds like ${heard.instrument.label} (${heard.why})")
+            else ident.resolve(idx, st.name, st.role)
             if (r == null || r.role == st.role) {
                 st.pendingRole = null
                 continue
@@ -1541,6 +1586,22 @@ class StageEngine(
                     // where the fader stood BEFORE the player stepped
                     // out — which is what the offset window is for.
                     st.featureFrom = if (st.settled) st.settledOffset else wasAt
+                    // How big a hand this player gets, decided ONCE, here.
+                    //
+                    // Sized by how far past the threshold they actually
+                    // stepped rather than by a fixed number: a player
+                    // who has just cleared the bar gets what the engine
+                    // always gave (two dB, which is a nudge), and one
+                    // who has walked to the front of the stage gets what
+                    // the operator was reaching for the fader to give
+                    // them themselves — theirs were +4.6 and +6.1 dB.
+                    // Deciding it at the latch and not every tick also
+                    // means the lift does not wobble under the player.
+                    st.featureLift = (SOLO_LIFT_FLOOR_DB +
+                        (settings.soloLiftDb - SOLO_LIFT_FLOOR_DB) *
+                        ((st.riseOverBand - need) / max(need, 1e-3f))
+                            .coerceIn(0f, 1f))
+                        .coerceAtMost(settings.soloLiftMaxDb)
                     st.target = st.featureFrom
                     st.engaged = false
                     log(tSec, "feature", idx, rose,
@@ -1577,7 +1638,7 @@ class StageEngine(
                 // is measured from wherever the channel is sitting now,
                 // which is the settled position when there is one.
                 st.target = if (settings.holdAfterBalance && isSoloist(st))
-                    boundOffset(st.featureFrom + settings.soloLiftDb, base)
+                    boundOffset(st.featureFrom + st.featureLift, base)
                 else st.featureFrom
                 if (st.role in settings.holdRoles &&
                     settings.mode == BalanceMode.KEEP) st.target = st.offset
@@ -2500,6 +2561,13 @@ class StageEngine(
     private var stagePeak = 0f
 
     /**
+     * What the channels are doing to each other. See [Ensemble]: this
+     * is where the app stops guessing from labels.
+     */
+    val ensemble = Ensemble(ENSEMBLE_CH)
+    private val activeBuf = BooleanArray(ENSEMBLE_CH)
+
+    /**
      * Tear up the held balance and find a new one.
      *
      * For the times the mix is simply wrong for the next hour — the band
@@ -2606,21 +2674,34 @@ class StageEngine(
         val why: String,
     )
 
+    /** the last thing the audio recognised on each channel */
+    val recognised = HashMap<Int, InstrumentId.Reading>()
+
     fun channelIdent(ch: Int): ChannelIdent? {
         val st = state[ch] ?: return null
         val v = ident.verdict(ch)
         val lead = ch == leadVocal
+        val heard = recognised[ch]?.takeIf {
+            it.instrument != Instrument.UNKNOWN &&
+                it.confidence >= ident.settings.recogniseConfidence }
+        // The instrument, when the audio knows one — "kick", "congas",
+        // "horn / reed" — rather than the balance-ladder role it maps
+        // to. The operator asked what is on the channel, not where it
+        // sits in the pyramid.
         val label = when {
             st.role == Role.VOCAL && lead -> "LEAD VOCAL"
+            heard != null -> heard.instrument.label
             st.role == Role.VOCAL -> "vocal"
             else -> ident.pretty(st.role)
         }
         return ChannelIdent(st.role, label,
-            heard = st.roleIdentified || (v != null && !st.roleLocked),
+            heard = heard != null || st.roleIdentified ||
+                (v != null && !st.roleLocked),
             confidence = v?.confidence ?: 0f,
             evidence = ident.evidence(ch),
             why = when {
                 st.roleLocked -> "you set this"
+                heard != null -> heard.why
                 st.roleIdentified -> v?.why ?: "heard"
                 v == null -> "still listening"
                 else -> v.why
