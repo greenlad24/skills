@@ -39,6 +39,13 @@ class Player(
     private val streams = arrayOfNulls<AudioInputStream>(channels)
     private val bufs = Array(channels) { FloatArray(blockFrames) }
     private val raw = Array(channels) { ByteArray(blockFrames * 4) }
+
+    /** the rate the file is actually at; we do the rate change ourselves */
+    private val srcRate = DoubleArray(channels) { sampleRate.toDouble() }
+    /** source samples read but not yet consumed by the resampler */
+    private val srcBuf = Array(channels) { FloatArray(blockFrames + 8) }
+    private val srcHeld = IntArray(channels)
+    private val srcPos = DoubleArray(channels)
     private val meters = List(channels) { LevelMeter(sampleRate) }
     private val rta = List(channels) { Rta(sampleRate, 4096) }
     private val levels = FloatArray(16) { -128f }
@@ -113,20 +120,43 @@ class Player(
         if (ch !in 0 until channels) return false
         runCatching { streams[ch]?.close() }
         streams[ch] = null
+        srcHeld[ch] = 0
+        srcPos[ch] = 0.0
+        srcRate[ch] = sampleRate.toDouble()
         srcFiles[ch] = f
         if (f == null) { log?.invoke("ch${ch + 1}: cleared"); return true }
         return try {
             val st = decoded(f)
             streams[ch] = st
-            log?.invoke("ch%02d: %s — %.0f Hz, %d bit, %d ch"
+            srcRate[ch] = st.format.sampleRate.toDouble()
+                .let { if (it > 0) it else sampleRate.toDouble() }
+            log?.invoke("ch%02d: %s — %.0f Hz, %d bit, %d ch%s"
                 .format(java.util.Locale.ROOT, ch + 1, f.name,
                     st.format.sampleRate, st.format.sampleSizeInBits,
-                    st.format.channels))
+                    st.format.channels,
+                    if (srcRate[ch].toInt() == sampleRate) ""
+                    else " — resampling to ${sampleRate} Hz"))
             true
         } catch (e: Exception) {
             log?.invoke("ch${ch + 1}: cannot open ${f.name} — ${e.message}")
             false
         }
+    }
+
+    /**
+     * Put an already-open stream on a channel. The bench never needs
+     * this — it exists so the tests can hand the transport a decoder
+     * that misbehaves, which is the whole failure being defended
+     * against and cannot be produced from a well-formed file.
+     */
+    @Synchronized internal fun loadStream(ch: Int, st: AudioInputStream) {
+        if (ch !in 0 until channels) return
+        runCatching { streams[ch]?.close() }
+        streams[ch] = st
+        srcHeld[ch] = 0
+        srcPos[ch] = 0.0
+        srcRate[ch] = st.format.sampleRate.toDouble()
+            .let { if (it > 0) it else sampleRate.toDouble() }
     }
 
     /** back to the top, without reopening the output line */
@@ -143,44 +173,42 @@ class Player(
     }
 
     /**
-     * Open any supported file as signed 16-bit PCM at our output rate.
+     * Open any supported file as signed PCM AT ITS OWN SAMPLE RATE.
      *
-     * In TWO steps, which matters. An mp3 arrives as an MPEG-encoded
-     * stream whose `sampleSizeInBits` is NOT_SPECIFIED, and asking for a
-     * decode and a sample-rate change in one hop is not a conversion the
-     * JDK offers — so the one-step version silently handed back the
-     * still-encoded stream, whose bytes-per-sample then came out as
-     * zero. Every read returned nothing, the player decided the take had
-     * ended, and pressing PLAY produced silence. Decode first, resample
-     * second, and refuse anything that is still not PCM.
+     * Decoding is the JDK's job; the rate change is ours. Asking the JDK
+     * to decode and resample in one hop is not a conversion it offers —
+     * so the one-step version silently handed back a still-encoded mp3,
+     * whose bytes-per-sample then came out as zero, every read returned
+     * nothing, and PLAY produced silence.
+     *
+     * Doing the decode in one step and the rate change in another fixed
+     * that and introduced a worse one: the JDK's own resampler threw
+     * `ArrayIndexOutOfBoundsException` out of the middle of a read, which
+     * killed the transport thread outright — the window still said
+     * PLAYING and no amount of pressing PLAY brought it back. That
+     * resampler is a known-fragile corner of the JDK and there is no need
+     * to be near it: a 16-channel bench already owns its mixing loop, so
+     * it may as well own its interpolation too (see [resampleBlock]).
+     * Anything that will not decode to PCM at all is refused here, where
+     * the file can still be named.
      */
     private fun decoded(f: File): AudioInputStream {
         val src = AudioSystem.getAudioInputStream(f)
         val sf = src.format
-        // 1. whatever it is, get it to PCM at its own rate
         val pcmFmt = AudioFormat(
             AudioFormat.Encoding.PCM_SIGNED, sf.sampleRate, 16,
             sf.channels.coerceAtLeast(1), sf.channels.coerceAtLeast(1) * 2,
             sf.sampleRate, false)
-        val pcm = if (sf.encoding == AudioFormat.Encoding.PCM_SIGNED &&
+        val out = if (sf.encoding == AudioFormat.Encoding.PCM_SIGNED &&
                       sf.sampleSizeInBits > 0) src
                   else AudioSystem.getAudioInputStream(pcmFmt, src)
-        // 2. then to our output rate, if it is not already there
-        val want = AudioFormat(
-            AudioFormat.Encoding.PCM_SIGNED, sampleRate.toFloat(),
-            pcm.format.sampleSizeInBits, pcm.format.channels,
-            pcm.format.frameSize, sampleRate.toFloat(), false)
-        val out = if (pcm.format.sampleRate.toInt() == sampleRate) pcm
-                  else if (AudioSystem.isConversionSupported(want, pcm.format))
-                      AudioSystem.getAudioInputStream(want, pcm)
-                  else pcm     // different rate, but at least it is audio
         require(out.format.sampleSizeInBits > 0) {
             "${f.name}: could not be decoded to PCM " +
             "(${sf.encoding}, ${sf.sampleSizeInBits} bit)"
         }
-        if (out.format.sampleRate.toInt() != sampleRate)
-            log?.invoke("note: ${f.name} is ${out.format.sampleRate.toInt()} Hz " +
-                "and could not be resampled — it will play at the wrong speed")
+        require(out.format.sampleRate > 0f) {
+            "${f.name}: the file does not say what rate it is at"
+        }
         return out
     }
 
@@ -215,6 +243,19 @@ class Player(
                 "${streams.count { it != null }} channels loaded)")
             rewind()
         }
+        // Exactly what is about to be decoded, at the moment of pressing
+        // PLAY. The formats are logged as each file loads too, but that
+        // is hundreds of lines earlier — and when a decode goes wrong it
+        // is the format that explains it.
+        for (c in 0 until channels) {
+            val s = streams[c] ?: continue
+            log?.invoke("  ch%02d %-22s %.0f Hz %d bit %d ch%s"
+                .format(java.util.Locale.ROOT, c + 1,
+                    srcFiles[c]?.name ?: "?", s.format.sampleRate,
+                    s.format.sampleSizeInBits, s.format.channels,
+                    if (srcRate[c].toInt() == sampleRate) ""
+                    else " -> ${sampleRate} Hz"))
+        }
         blocksPlayed = 0
         playing = true
         log?.invoke("PLAY — after:  ${state()}")
@@ -236,6 +277,9 @@ class Player(
 
     /** peak of the last block that went to the speakers, for tests */
     @Volatile var lastMixPeak = 0f; private set
+
+    /** a sample of the last block that went to the speakers, for tests */
+    fun blockL(i: Int): Float = if (i in mixL.indices) mixL[i] else 0f
     /** blocks produced since the transport last started */
     @Volatile var blocksPlayed = 0L; private set
     /** why the last block produced nothing, for the log */
@@ -260,7 +304,10 @@ class Player(
      * Split out from [run] so it can be exercised with no sound card.
      */
     fun processBlock(): Int {
-        val n = readAll()
+        // Everything downstream is sized to one block. A decoder that
+        // hands back more than it was asked for must not be able to walk
+        // off the end of the mix buffers.
+        val n = readAll().coerceAtMost(blockFrames)
         if (n <= 0) return 0
         positionSec += n.toDouble() / sampleRate
             // The room, before anything is metered: if the mains are
@@ -331,6 +378,29 @@ class Player(
      * transport would be dead for the rest of the session.
      */
     fun run() {
+        // Restart rather than die: a transport that has thrown leaves
+        // everything looking alive with nothing ever playing again, and
+        // no amount of pressing PLAY brings it back.
+        var restarts = 0
+        while (running && restarts < 20) {
+            if (restarts > 0) log?.invoke(
+                "transport restarting (attempt $restarts)" +
+                if (playing) " — carrying on from %.1fs"
+                    .format(java.util.Locale.ROOT, positionSec) else "")
+            loop()
+            if (!running) break
+            restarts++
+            // `playing` is deliberately left alone: if the loop threw
+            // mid-show the restarted one picks the show straight back
+            // up, which is the only acceptable behaviour in a room with
+            // people in it.
+            Thread.sleep(200)
+        }
+        if (restarts >= 20) log?.invoke(
+            "transport gave up after $restarts restarts — please send this log")
+    }
+
+    private fun loop() {
         loopAlive = true
         log?.invoke("transport loop started")
         try {
@@ -359,8 +429,8 @@ class Player(
         } catch (e: Throwable) {
             // a thrown transport is the worst failure of all: everything
             // still looks alive and nothing will ever play again
-            log?.invoke("TRANSPORT DIED: ${e::class.simpleName}: " +
-                "${e.message} — please send this log")
+            log?.invoke("TRANSPORT DIED: ${e::class.simpleName}: ${e.message}")
+            for (fr in e.stackTrace.take(12)) log?.invoke("    at $fr")
             e.printStackTrace()
         } finally {
             loopAlive = false
@@ -380,38 +450,117 @@ class Player(
             val fmt = s.format
             val bps = fmt.sampleSizeInBits / 8
             val chn = fmt.channels
-            // a stream that reports neither must not divide by zero and
-            // must not be mistaken for the end of the night
-            if (bps <= 0 || chn <= 0) {
+            try {
+                // a stream that reports neither must not divide by zero
+                // and must not be mistaken for the end of the night
+                if (bps <= 0 || chn <= 0) {
+                    streams[c] = null
+                    log?.invoke("ch${c + 1}: unreadable format " +
+                        "(${fmt.sampleSizeInBits} bit, ${fmt.channels} ch) — " +
+                        "dropped")
+                    continue
+                }
+                val ratio = srcRate[c] / sampleRate
+                val frames =
+                    if (kotlin.math.abs(ratio - 1.0) < 1e-9)
+                        readSource(c, bps, chn, bufs[c], 0, blockFrames)
+                    else resampleBlock(c, bps, chn, ratio)
+                if (frames > most) most = frames
+                if (frames > 0) live++ else ended++
+            } catch (e: Throwable) {
+                // one unreadable channel must not take the show down
                 streams[c] = null
-                log?.invoke("ch${c + 1}: unreadable format " +
-                    "(${fmt.sampleSizeInBits} bit, ${fmt.channels} ch) — dropped")
-                continue
+                ended++
+                log?.invoke("ch%02d READ FAILED (%s: %s) — dropped, the rest "
+                    .format(java.util.Locale.ROOT, c + 1,
+                        e::class.simpleName, e.message) + "keep playing")
+                log?.invoke("  at " + e.stackTrace.take(4).joinToString(" <- ") {
+                    "${it.className.substringAfterLast('.')}." +
+                        "${it.methodName}:${it.lineNumber}"
+                })
             }
-            val want = blockFrames * bps * chn
-            if (raw[c].size < want) raw[c] = ByteArray(want)
-            var got = 0
-            while (got < want) {
-                val k = s.read(raw[c], got, want - got)
-                if (k <= 0) break
-                got += k
-            }
-            val frames = got / (bps * chn)
-            val b = raw[c]
-            for (i in 0 until frames) {
-                // take the left channel of anything stereo
-                val p = i * bps * chn
-                var v = b[p + bps - 1].toInt()
-                for (k in bps - 2 downTo 0) v = (v shl 8) or (b[p + k].toInt() and 255)
-                bufs[c][i] = v.toFloat() / (1 shl (bps * 8 - 1))
-            }
-            if (frames > most) most = frames
-            if (frames > 0) live++ else ended++
         }
         if (most == 0) lastStallReason =
             "$live channels gave audio, $ended gave nothing, " +
             "${streams.count { it != null }} open"
         return most
+    }
+
+    /**
+     * [want] frames of channel [c] straight off the stream, as mono
+     * floats — the left channel of anything wider. Returns how many
+     * frames actually arrived, which is short only at the end of a file.
+     *
+     * Every write is bounded by the destination as well as by the read,
+     * because "the stream handed back more than I asked for" is exactly
+     * the kind of thing that ends a show.
+     */
+    private fun readSource(c: Int, bps: Int, chn: Int,
+                           dst: FloatArray, off: Int, want: Int): Int {
+        val s = streams[c] ?: return 0
+        if (want <= 0 || off >= dst.size) return 0
+        val bytes = want * bps * chn
+        if (raw[c].size < bytes) raw[c] = ByteArray(bytes)
+        val b = raw[c]
+        var got = 0
+        while (got < bytes) {
+            val k = s.read(b, got, bytes - got)
+            if (k <= 0) break
+            got += k
+        }
+        val frames = minOf(got / (bps * chn), want, dst.size - off)
+        val scale = 1f / (1 shl (bps * 8 - 1))
+        for (i in 0 until frames) {
+            val p = i * bps * chn
+            var v = b[p + bps - 1].toInt()
+            for (k in bps - 2 downTo 0) v = (v shl 8) or (b[p + k].toInt() and 255)
+            dst[off + i] = v * scale
+        }
+        return frames
+    }
+
+    /**
+     * A block of channel [c] pulled up or down to the output rate by
+     * linear interpolation, carrying the fractional position and the
+     * unconsumed tail across blocks so a three-hour file does not click
+     * every 50 ms.
+     *
+     * Linear is honest here: this bench is judged on levels, spectra and
+     * fader moves, none of which care about the last few dB of
+     * interpolation noise at the top of the band, and the alternative on
+     * offer — the JDK's converter — is the thing that was killing the
+     * transport.
+     */
+    private fun resampleBlock(c: Int, bps: Int, chn: Int, ratio: Double): Int {
+        // the furthest source sample any of this block's outputs will
+        // touch, plus the one after it for the interpolation
+        val need = kotlin.math.floor(
+            srcPos[c] + (blockFrames - 1) * ratio).toInt() + 2
+        if (srcBuf[c].size < need) srcBuf[c] = srcBuf[c].copyOf(need + blockFrames)
+        if (srcHeld[c] < need)
+            srcHeld[c] += readSource(c, bps, chn, srcBuf[c], srcHeld[c],
+                need - srcHeld[c])
+
+        val sb = srcBuf[c]
+        val held = srcHeld[c]
+        var pos = srcPos[c]
+        var out = 0
+        while (out < blockFrames) {
+            val i0 = pos.toInt()
+            if (i0 < 0 || i0 + 1 >= held) break        // out of source
+            val f = (pos - i0).toFloat()
+            bufs[c][out++] = sb[i0] + (sb[i0 + 1] - sb[i0]) * f
+            pos += ratio
+        }
+
+        val consumed = pos.toInt().coerceIn(0, held)
+        if (consumed > 0) {
+            System.arraycopy(sb, consumed, sb, 0, held - consumed)
+            srcHeld[c] = held - consumed
+            pos -= consumed
+        }
+        srcPos[c] = pos
+        return out
     }
 
     private fun pcm(f: Float): Int =

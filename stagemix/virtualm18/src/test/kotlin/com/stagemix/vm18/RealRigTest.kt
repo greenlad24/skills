@@ -112,6 +112,144 @@ class RealRigTest {
         } finally { player.close(); console.stop() }
     }
 
+    @Test fun `a folder of mixed sample rates plays together`() {
+        // The rig that killed the transport. A DAW folder is not all one
+        // rate — a 44.1 kHz bounce sits next to 48 kHz stems — and the
+        // JDK's own resampler threw ArrayIndexOutOfBoundsException out of
+        // the middle of a read, which took the whole transport thread
+        // with it: the window still said PLAYING and no amount of
+        // pressing PLAY ever brought it back.
+        val dir = File(System.getProperty("java.io.tmpdir"), "sm-rates")
+            .apply { deleteRecursively(); mkdirs() }
+        val rates = listOf(48000, 44100, 96000, 88200, 32000, 22050)
+        val files = rates.mapIndexed { i, sr ->
+            File(dir, "ch${i + 1}-$sr.wav")
+                .also { wav16(it, sr, 2.0, 220.0, if (i % 2 == 0) 1 else 2) }
+        }
+
+        val console = Console(port = 21303)
+        val player = Player(MutableList(16) { null }, console, sampleRate = 48000)
+        val lines = ArrayList<String>()
+        player.log = { lines.add(it); println("  $it") }
+        try {
+            player.open()
+            for ((i, f) in files.withIndex())
+                assertTrue(player.load(i, f), "ch${i + 1} ($f) did not load")
+
+            var peak = 0f
+            var blocks = 0
+            // 2 s of audio at 50 ms a block; run past the end of the
+            // shortest file so the tail is exercised too
+            repeat(50) {
+                if (player.processBlock() > 0) blocks++
+                if (player.lastMixPeak > peak) peak = player.lastMixPeak
+            }
+            assertTrue(blocks >= 40,
+                "only $blocks blocks of 50 came back\n" +
+                lines.joinToString("\n"))
+            assertTrue(peak > 0.05f,
+                "mixed rates came out at $peak\n" + lines.joinToString("\n"))
+            assertTrue(lines.none { "READ FAILED" in it || "dropped" in it },
+                "a channel was dropped:\n" + lines.joinToString("\n"))
+            println("mixed rates: $blocks blocks, peak $peak")
+        } finally { player.close(); console.stop() }
+    }
+
+    @Test fun `a resampled channel keeps its pitch and its continuity`() {
+        // Interpolating each block from scratch clicks 20 times a second;
+        // the fractional position has to survive the block boundary. A
+        // 44.1 kHz 1 kHz tone resampled to 48 kHz must still be a clean
+        // 1 kHz tone with no step at any 50 ms seam.
+        val dir = File(System.getProperty("java.io.tmpdir"), "sm-resamp")
+            .apply { deleteRecursively(); mkdirs() }
+        val f = File(dir, "tone.wav")
+        wav16(f, 44100, 2.0, 1000.0, channels = 1, level = 0.5f)
+
+        val console = Console(port = 21304)
+        val player = Player(MutableList(16) { null }, console, sampleRate = 48000)
+        player.log = { println("  $it") }
+        try {
+            player.open()
+            // channel 1 alone, fader at unity, so the mix IS the channel
+            assertTrue(player.load(0, f))
+            console.params["/ch/01/mix/fader"] = 0.75f     // 0 dB
+
+            var peak = 0f
+            var worstStep = 0f
+            var prevEnd = 0f
+            repeat(30) {
+                val n = player.processBlock()
+                if (n > 0) {
+                    val first = player.blockL(0)
+                    // 1 kHz at 48 kHz moves at most ~0.066 per sample;
+                    // a seam glitch shows up as a jump far bigger
+                    val step = kotlin.math.abs(first - prevEnd)
+                    if (it > 0 && step > worstStep) worstStep = step
+                    prevEnd = player.blockL(n - 1)
+                    if (player.lastMixPeak > peak) peak = player.lastMixPeak
+                }
+            }
+            assertTrue(peak > 0.3f, "0 dB on a 0.5 tone came out at $peak")
+            assertTrue(worstStep < 0.15f,
+                "a click at the block seam: jump of $worstStep between " +
+                "blocks — the resampler is not carrying its position")
+            println("resampled peak $peak, worst seam step $worstStep")
+        } finally { player.close(); console.stop() }
+    }
+
+    @Test fun `a decoder that throws does not take the show down`() {
+        // The reported failure, exactly: something deep in a decode threw
+        // `ArrayIndexOutOfBoundsException: Index 580 out of bounds for
+        // length 580` out of the middle of a read. It escaped the
+        // transport thread, the thread ended, and from then on the window
+        // still said PLAYING while nothing came out and no amount of
+        // pressing PLAY brought it back. One bad channel must cost that
+        // channel and nothing else.
+        val dir = File(System.getProperty("java.io.tmpdir"), "sm-badch")
+            .apply { deleteRecursively(); mkdirs() }
+        val good = File(dir, "GOOD.wav").also { wav16(it, 48000, 5.0, 220.0, 1) }
+
+        val console = Console(port = 21305)
+        val player = Player(MutableList(16) { null }, console, sampleRate = 48000)
+        val lines = ArrayList<String>()
+        player.log = { lines.add(it); println("  $it") }
+        try {
+            player.open()
+            for (c in 0 until 3) assertTrue(player.load(c, good))
+            // channel 4 blows up on the third read, the way a decoder does
+            var reads = 0
+            val rogue = object : java.io.InputStream() {
+                override fun read(): Int = 0
+                override fun read(b: ByteArray, off: Int, len: Int): Int {
+                    if (++reads >= 3)
+                        throw ArrayIndexOutOfBoundsException(
+                            "Index 580 out of bounds for length 580")
+                    java.util.Arrays.fill(b, off, off + len, 0)
+                    return len
+                }
+            }
+            player.loadStream(3, AudioInputStream(rogue,
+                AudioFormat(48000f, 16, 1, true, false), Long.MAX_VALUE))
+
+            val loop = Thread { player.run() }.apply { isDaemon = true; start() }
+            player.play()
+            Thread.sleep(1200)
+
+            assertTrue(lines.any { "READ FAILED" in it && "ch04" in it },
+                "the bad channel was not named:\n" + lines.joinToString("\n"))
+            assertTrue(lines.none { "TRANSPORT DIED" in it },
+                "the transport died over one bad channel:\n" +
+                lines.joinToString("\n"))
+            assertTrue(player.loopAlive, "the transport thread is gone")
+            assertTrue(player.playing, "playback stopped: ${player.state()}")
+            assertTrue(player.lastMixPeak > 0.02f,
+                "the three good channels went silent too: ${player.state()}\n" +
+                lines.joinToString("\n"))
+            println("survived: ${player.state()}")
+            loop.interrupt()
+        } finally { player.close(); console.stop() }
+    }
+
     @Test fun `the channels loaded are remembered for the next launch`() {
         val dir = File(System.getProperty("java.io.tmpdir"), "sm-session")
             .apply { deleteRecursively(); mkdirs() }
