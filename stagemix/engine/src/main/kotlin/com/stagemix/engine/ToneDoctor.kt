@@ -41,10 +41,30 @@ data class DoctorSettings(
     val harshThresholdDb: Float = 6f,
     val harshMaxCutDb: Float = 2f,
     val harshTauSec: Float = 8f,        // reacts in seconds, not minutes
+    val harshAllowanceDb: Float = 3f,   // headroom over the approved tone
+    /**
+     * Compressor-threshold tending rides on the /meters/6 layout, which
+     * is an ASSUMPTION about which field carries comp gain reduction.
+     * Automating on an unverified meter index is how a plausible-looking
+     * wrong field walks a threshold to its rail, so this stays OFF until
+     * the layout is confirmed against the actual console. EQ tending
+     * (from the RTA, whose layout is verified) is unaffected.
+     */
+    val compTendingEnabled: Boolean = false,
 )
 
 /** consecutive RTA frames a new vocal register must hold to be adopted */
-const val REGISTER_DEBOUNCE_FRAMES = 6
+const val REGISTER_DEBOUNCE_FRAMES = 40
+
+/** samples inspected by the stuck-GR-telemetry gate, and its floor */
+const val GR_WINDOW = 30
+const val GR_MIN_VARIANCE = 0.05f
+
+/** above this mean GR the compressor is simply idle, not mis-metered */
+const val GR_IDLE_DB = -1.0f
+
+/** identical non-zero GR readings in a row that mark frozen telemetry */
+const val GR_FROZEN_STREAK = 4
 
 class ToneDoctor(
     channelIndices: List<Int>,
@@ -81,6 +101,12 @@ class ToneDoctor(
         /** register-change debounce state */
         var pendingReg = -1
         var pendingRegCount = 0
+        /** rolling GR window for the stuck-telemetry gate */
+        val grWindow = ArrayList<Float>()
+        var grSameCount = 0
+        var grTrusted = true
+        /** harshness measured at snapshot: the approved tone */
+        var refHarsh: Float? = null
     }
 
     val state = channelIndices.associateWith { ChState() }
@@ -165,8 +191,35 @@ class ToneDoctor(
 
     /** Comp gain reduction (negative dB) for one channel. */
     fun onGainReduction(ch: Int, grDb: Float, tSec: Double) {
+        if (grDb.isNaN() || grDb.isInfinite()) return
         if (grDb > 0.5f || grDb < -40f) return  // implausible -> ignore
         val st = state[ch] ?: return
+        // Stuck-telemetry gate: the /meters/6 layout is an assumption,
+        // so a plausible-LOOKING but frozen value must never be allowed
+        // to walk a compressor threshold to its rail. Real gain
+        // reduction breathes with the music; a constant is a wrong
+        // index, not a compressor.
+        // exact repeats: real GR is quantized but rarely bit-identical
+        // many times in a row — a frozen field is telemetry, not audio
+        if (st.grWindow.isNotEmpty() && st.grWindow.last() == grDb)
+            st.grSameCount++
+        else st.grSameCount = 0
+        st.grWindow.add(grDb)
+        if (st.grWindow.size > GR_WINDOW) st.grWindow.removeAt(0)
+        if (st.grSameCount >= GR_FROZEN_STREAK && grDb <= GR_IDLE_DB) {
+            st.grTrusted = false
+            return
+        }
+        if (st.grWindow.size >= GR_WINDOW) {
+            val m = st.grWindow.sum() / st.grWindow.size
+            val v = st.grWindow.sumOf { ((it - m) * (it - m)).toDouble() }
+                .toFloat() / st.grWindow.size
+            // A frozen NON-ZERO reading is a wrong meter index. A
+            // steady near-zero reading is a compressor that simply
+            // isn't working right now — which is exactly the signal we
+            // must act on when a singer backs off the mic.
+            st.grTrusted = v > GR_MIN_VARIANCE || m > GR_IDLE_DB
+        }
         val alpha = (1f / settings.grTauSec).coerceIn(0.01f, 1f)
         st.grEma = st.grEma?.let { it + alpha * (grDb - it) } ?: grDb
         if (snapshotTaken && st.refGr == null) st.refGr = st.grEma
@@ -182,6 +235,7 @@ class ToneDoctor(
         st.thrSnapshotDb = thrDb
         st.refBands = st.liveBands?.copyOf()
         st.regRefs[st.register] = st.refBands
+        st.refHarsh = st.harshEma
         st.refGr = st.grEma
         st.eqOffset.fill(0f); st.eqTarget.fill(0f)
         st.thrOffset = 0f; st.thrTarget = 0f
@@ -217,9 +271,10 @@ class ToneDoctor(
                     else (-drift).coerceIn(-settings.eqMaxDb, settings.eqMaxDb)
                     // low-fill: lift the low band toward the rail while
                     // this channel is covering for a missing bass
+                    // low-fill is a FLOOR, not an addend: adding it to a
+                    // drift correction made the two fight tick to tick
                     if (b == 0 && st.lowFill)
-                        t = (t + settings.eqMaxDb)
-                            .coerceIn(-settings.eqMaxDb, settings.eqMaxDb)
+                        t = maxOf(t, settings.eqMaxDb)
                     // harshness guard (cut-only, high-mid band): shrill
                     // guitar amps, piercing harmonica, edgy vocal mics —
                     // softened up to the rail, released when it passes.
@@ -227,8 +282,17 @@ class ToneDoctor(
                     // cymbals are bright by nature).
                     if (b == 2 && st.role != Role.FOUNDATION &&
                         st.role != Role.PERCUSSION) {
-                        val over = (st.harshEma ?: -99f) -
-                                settings.harshThresholdDb
+                        // The tone at takeover is the tone the engineer
+                        // approved: a deliberately edgy guitar or a
+                        // belting singer with real presence must not be
+                        // fought all night. Only harshness ABOVE that
+                        // approved level (or above the absolute
+                        // threshold, whichever is higher) is eased.
+                        val anchor = st.refHarsh?.let {
+                            maxOf(settings.harshThresholdDb,
+                                  it + settings.harshAllowanceDb)
+                        } ?: settings.harshThresholdDb
+                        val over = (st.harshEma ?: -99f) - anchor
                         if (over > 0f) {
                             val cut = -over.coerceAtMost(settings.harshMaxCutDb)
                             t = minOf(t, cut)
@@ -240,7 +304,8 @@ class ToneDoctor(
             }
             // -- comp threshold target from GR drift
             val refGr = st.refGr; val gr = st.grEma
-            if (st.compEnabled && refGr != null && gr != null
+            if (settings.compTendingEnabled && st.compEnabled && st.grTrusted
+                && refGr != null && gr != null
                 && st.thrSnapshotDb != null && refGr <= -1f) {
                 val delta = refGr - gr   // negative: comp too shallow now
                 st.thrTarget = if (abs(delta) <= settings.thrDeadbandDb) 0f

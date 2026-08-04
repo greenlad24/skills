@@ -17,12 +17,20 @@ class ToneDoctorTest {
             }
         }
 
-    private fun doctor(): ToneDoctor = ToneDoctor(listOf(0, 1))
+    // comp tending is opt-in (see DoctorSettings.compTendingEnabled);
+    // these tests exercise it explicitly
+    private fun doctor(): ToneDoctor = ToneDoctor(listOf(0, 1),
+        settings = DoctorSettings(compTendingEnabled = true))
 
     private fun soundcheck(d: ToneDoctor, t0: Double = 0.0): Double {
         var t = t0
         repeat(20) { d.onRta(0, rta(-30f, -25f, -28f, -35f), t); t += 3.0 }
-        repeat(20) { d.onGainReduction(0, -4f, t); t += 1.0 }
+        repeat(40) { i ->
+            // realistic GR: breathing with the music (a frozen value is
+            // telemetry, not audio, and is distrusted by design)
+            d.onGainReduction(0, -4f + 1.5f * kotlin.math.sin(0.7 * i).toFloat(), t)
+            t += 1.0
+        }
         d.snapshotChannel(0, floatArrayOf(0f, 1f, -1f, 0f), thrDb = -20f)
         return t
     }
@@ -77,7 +85,10 @@ class ToneDoctorTest {
         val d = doctor()
         var t = soundcheck(d)  // ref GR -4 dB
         // singer backs off: comp stops catching (GR ~0)
-        repeat(120) { d.onGainReduction(0, -0.2f, t); t += 1.0 }
+        repeat(160) { i ->
+            d.onGainReduction(0, -0.2f + 0.15f * kotlin.math.sin(0.9 * i).toFloat(), t)
+            t += 1.0
+        }
         val writes = ArrayList<ParamWrite>()
         repeat(40) { writes.addAll(d.tick(setOf(0), true, false)) }
         val thr = writes.filter { it.address == "/ch/01/dyn/thr" }
@@ -92,9 +103,15 @@ class ToneDoctorTest {
         val d = doctor()
         var t = 0.0
         repeat(20) { d.onRta(1, rta(-30f, -25f, -28f, -35f), t); t += 3.0 }
-        repeat(20) { d.onGainReduction(1, -0.2f, t); t += 1.0 }  // barely working
+        repeat(40) { i ->  // barely working, but breathing
+            d.onGainReduction(1, -0.2f + 0.1f * kotlin.math.sin(0.6 * i).toFloat(), t)
+            t += 1.0
+        }
         d.snapshotChannel(1, floatArrayOf(0f, 0f, 0f, 0f), thrDb = -10f)
-        repeat(60) { d.onGainReduction(1, -8f, t); t += 1.0 }
+        repeat(80) { i ->
+            d.onGainReduction(1, -8f + 1.2f * kotlin.math.sin(0.8 * i).toFloat(), t)
+            t += 1.0
+        }
         assertTrue(d.tick(setOf(1), true, false)
             .none { it.address == "/ch/02/dyn/thr" },
             "no comp tending when soundcheck GR was ~0 (comp not in use)")

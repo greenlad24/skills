@@ -88,7 +88,12 @@ feeling; a number.
    less percussion, softer sax/harp. Each nudges its built-in taste
    (bounded ±3 dB per role) and is logged in plain language.
 3. **The room's feedback:** a howl recognizer runs on the console's
-   RTA (a narrow towering *parked* peak — music moves, howls don't):
+   RTA. Telling a howl from your harmonica, sax, organ or a held vocal
+   note is the whole problem — all of them are narrow, parked, loud
+   peaks — so it uses two discriminators: instruments have **harmonic
+   partners** at 2f and 3f (feedback, a single room resonance, does
+   not), and a howl **grows** ≥12 dB at a fixed frequency even when the
+   band's level masks it. On detection:
    it freezes all boosts instantly and shows the frequency to notch.
    And a **harshness guard** watches every mic and guitar for shrill
    2–6 kHz energy towering over the channel's own body — easing that
@@ -157,8 +162,13 @@ Each channel is tended **separately**, using the console's own senses:
   soundcheck reference, that band's **gain** is corrected — max ±2 dB
   from your soundcheck EQ, 0.25 dB steps, boosts wait for the global
   safety gate. Frequencies, Q, filter types: never touched.
-- Compressor **thresholds** are eased to restore the gain-reduction
-  profile each compressor had at soundcheck (singer backs off the mic →
+- Compressor **thresholds** can be eased to restore the gain-reduction
+  profile each compressor had at takeover — **off by default**: that
+  feature rides on an unverified assumption about which console meter
+  field carries gain reduction, and automating on an unverified index
+  is how a wrong field walks a threshold to its rail. Flip it on
+  (`compTendingEnabled`) once the layout is confirmed on the M18. EQ
+  tending, which uses the verified RTA, is always available (singer backs off the mic →
   comp stops catching → threshold eases down; max ±4 dB). Channels
   whose comp wasn't really working at soundcheck are left alone, and
   implausible meter telemetry is discarded before it can move anything.

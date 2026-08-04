@@ -235,3 +235,155 @@ class AgentRegressionTest {
         }
     }
 }
+
+/** Round 2: perception bugs found by the DSP agent. */
+class PerceptionRegressionTest {
+
+    private fun floor(v: Float = -55f) = FloatArray(100) { v }
+
+    /** an instrument note: fundamental + 2f/3f partners */
+    private fun note(bin: Int, level: Float = -12f, floorDb: Float = -55f) =
+        floor(floorDb).also {
+            it[bin] = level
+            it[bin + 10] = level - 12f     // 2f
+            it[bin + 16] = level - 20f     // 3f
+        }
+
+    @Test fun `the band's own instruments never trip the howl veto`() {
+        for ((name, bin) in listOf("harmonica" to 55, "flute" to 62,
+                "organ" to 45, "held vocal" to 38)) {
+            val w = FeedbackWatchdog()
+            var t = 0.0
+            repeat(200) { w.onRta(note(bin), t); t += 0.05 }
+            assertFalse(w.vetoActive,
+                "$name is a sustained NOTE (it has 2f/3f partners) — " +
+                "vetoing on it would freeze the mix through every solo")
+        }
+    }
+
+    @Test fun `a pure parked howl is still caught`() {
+        val w = FeedbackWatchdog()
+        var t = 0.0
+        repeat(15) { w.onRta(floor().also { it[55] = -12f }, t); t += 0.05 }
+        assertTrue(w.vetoActive, "a partner-less parked spike is a howl")
+        assertTrue(w.lastFreqHz in 700..1200)
+    }
+
+    @Test fun `a howl rising under a playing band is caught`() {
+        val w = FeedbackWatchdog()
+        var t = 0.0
+        // the band raises the median, blinding a pure tower test
+        repeat(40) { i ->
+            w.onRta(floor(-25f).also { it[55] = -50f + 45f * (i / 39f) }, t)
+            t += 0.05
+        }
+        var caught = false
+        repeat(100) {
+            w.onRta(floor(-25f).also { it[55] = -5f }, t)
+            if (w.vetoActive) caught = true
+            t += 0.05
+        }
+        assertTrue(caught,
+            "growth is the tell when the band masks the tower test")
+    }
+
+    @Test fun `speaker distortion does not disguise a howl as an instrument`() {
+        val w = FeedbackWatchdog()
+        var t = 0.0
+        repeat(15) {
+            // a weak driver-distortion harmonic, far below the noise floor
+            w.onRta(floor().also { it[55] = -12f; it[65] = -50f }, t)
+            t += 0.05
+        }
+        assertTrue(w.vetoActive, "-38 dBc is not a harmonic partner")
+    }
+
+    @Test fun `melodies and crescendos are still ignored`() {
+        val w1 = FeedbackWatchdog()
+        var t = 0.0
+        repeat(60) { w1.onRta(floor(-18f), t); t += 0.05 }
+        assertFalse(w1.vetoActive, "broadband crescendo is music")
+        val w2 = FeedbackWatchdog()
+        t = 0.0
+        repeat(60) { i ->
+            w2.onRta(floor().also { it[30 + (i % 8) * 5] = -12f }, t); t += 0.05
+        }
+        assertFalse(w2.vetoActive, "moving peaks are a melody")
+    }
+
+    @Test fun `an approved edgy tone is not fought all night`() {
+        // a deliberately bright/distorted guitar, harsh from the start
+        val d = ToneDoctor(listOf(0), mapOf(0 to Role.SOLO_GTR))
+        fun spec(harsh: Float) = FloatArray(100) { i ->
+            when (i) { in 26..60 -> -30f; in 66..82 -> harsh; else -> -40f } }
+        var t = 0.0
+        repeat(40) { d.onRta(0, spec(-18f), t); t += 0.5 }   // +12 harsh
+        d.snapshotChannel(0, floatArrayOf(0f, 0f, 0f, 0f), thrDb = null)
+        repeat(40) { d.onRta(0, spec(-18f), t); t += 0.5 }
+        val w = ArrayList<ParamWrite>()
+        repeat(20) { w.addAll(d.tick(setOf(0), true, false)) }
+        assertTrue(w.none { it.address == "/ch/01/eq/3/g" },
+            "the tone the engineer approved at takeover is the reference — " +
+            "an edgy-by-design guitar must not be dulled forever")
+    }
+
+    @Test fun `a channel that BECOMES harsh is still eased`() {
+        val d = ToneDoctor(listOf(0), mapOf(0 to Role.SOLO_GTR))
+        fun spec(harsh: Float) = FloatArray(100) { i ->
+            when (i) { in 26..60 -> -30f; in 66..82 -> harsh; else -> -40f } }
+        var t = 0.0
+        repeat(40) { d.onRta(0, spec(-32f), t); t += 0.5 }   // sweet
+        d.snapshotChannel(0, floatArrayOf(0f, 0f, 0f, 0f), thrDb = null)
+        repeat(60) { d.onRta(0, spec(-16f), t); t += 0.5 }   // turned shrill
+        val w = ArrayList<ParamWrite>()
+        repeat(20) { w.addAll(d.tick(setOf(0), true, false)) }
+        assertTrue(w.any { it.address == "/ch/01/eq/3/g" },
+            "new harshness must still be softened")
+    }
+
+    @Test fun `frozen comp telemetry never walks a threshold`() {
+        val d = ToneDoctor(listOf(0),
+            settings = DoctorSettings(compTendingEnabled = true))
+        var t = 0.0
+        repeat(30) { d.onRta(0, FloatArray(100) { -30f }, t); t += 1.0 }
+        repeat(40) { i ->
+            d.onGainReduction(0, -4f + 1.5f * kotlin.math.sin(0.7 * i).toFloat(), t)
+            t += 1.0
+        }
+        d.snapshotChannel(0, floatArrayOf(0f, 0f, 0f, 0f), thrDb = -20f)
+        // the parsed field freezes at a plausible-looking value
+        repeat(200) { d.onGainReduction(0, -12f, t); t += 1.0
+                      d.tick(setOf(0), true, false) }
+        assertTrue(kotlin.math.abs(d.state[0]!!.thrOffset) < 2.5f,
+            "a frozen non-zero reading is a wrong meter index, not audio " +
+            "(offset=${d.state[0]!!.thrOffset})")
+    }
+
+    @Test fun `comp tending is off until the meter layout is verified`() {
+        val d = ToneDoctor(listOf(0))     // stock settings
+        assertFalse(d.settings.compTendingEnabled,
+            "never automate on an unverified meter index")
+    }
+
+    @Test fun `low fill is stable, not fighting the drift corrector`() {
+        val d = ToneDoctor(listOf(0), mapOf(0 to Role.KEYS))
+        val hot = FloatArray(100) { -29f }
+        var t = 0.0
+        repeat(40) { d.onRta(0, FloatArray(100) { -30f }, t); t += 0.5 }
+        d.snapshotChannel(0, floatArrayOf(0f, 0f, 0f, 0f), thrDb = null)
+        d.setLowFill(0, true)
+        val targets = ArrayList<Float>()
+        repeat(60) {
+            d.onRta(0, hot, t); t += 0.5
+            d.tick(setOf(0), true, false)
+            targets.add(d.state[0]!!.eqTarget[0])
+        }
+        val reversals = (2 until targets.size).count {
+            (targets[it] - targets[it - 1]) *
+                (targets[it - 1] - targets[it - 2]) < -1e-6
+        }
+        assertTrue(reversals <= 2,
+            "the low-end fill must be a stable floor, not a target that " +
+            "fights the drift corrector every tick ($reversals reversals)")
+    }
+}
