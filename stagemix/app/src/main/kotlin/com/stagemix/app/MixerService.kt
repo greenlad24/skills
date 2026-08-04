@@ -16,6 +16,7 @@ import com.stagemix.engine.FaderLaw
 import com.stagemix.engine.Meters
 import com.stagemix.engine.osc
 import com.stagemix.engine.OscMessage
+import com.stagemix.engine.REVERT_HOLD_SEC
 import com.stagemix.engine.StageEngine
 import com.stagemix.engine.ToneDoctor
 import kotlinx.coroutines.CoroutineScope
@@ -62,6 +63,8 @@ class MixerService : Service() {
     @Volatile private var collecting = false
     /** only one takeover may own `pending`/`collecting` at a time */
     private val takeoverLock = Mutex()
+    /** the night's show log — levels, EQ, comp, and every decision */
+    private var show: ShowLog? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -77,26 +80,39 @@ class MixerService : Service() {
             ACTION_DIRECTING -> {
                 val on = intent.getBooleanExtra("on", false)
                 AppState.directing.value = on
+                show?.user(if (on) "you switched MIXING ON"
+                           else "you switched MIXING OFF (shadow mode)")
                 if (on) scope.launch { takeoverNow() }
             }
             ACTION_FREEZE_ALL -> {
                 val on = intent.getBooleanExtra("on", true)
                 engine?.frozenAll = on
                 AppState.frozenAll.value = on
+                show?.user(if (on) "you pressed FREEZE ALL"
+                           else "you released FREEZE ALL")
             }
             ACTION_FREEZE_CH -> {
                 val ch = intent.getIntExtra("ch", -1)
                 val on = intent.getBooleanExtra("on", true)
                 engine?.freezeChannel(ch, on)
                 doctor?.state?.get(ch)?.frozen = on
+                show?.user("you ${if (on) "locked" else "unlocked"} " +
+                    "ch%02d %s".format(java.util.Locale.ROOT, ch + 1,
+                        chName(ch)))
             }
-            ACTION_DOCTOR -> AppState.doctorOn.value =
-                intent.getBooleanExtra("on", true)
+            ACTION_DOCTOR -> {
+                val on = intent.getBooleanExtra("on", true)
+                AppState.doctorOn.value = on
+                show?.user("you turned the Channel Doctor " +
+                    (if (on) "ON" else "OFF"))
+            }
             ACTION_FEEDBACK -> {
                 val kind = intent.getStringExtra("kind") ?: return START_NOT_STICKY
                 engine?.let { e ->
                     e.applyFeedback(kind, now())
                     AppState.saveBias(this, e.pyramidBias)
+                    show?.user("you tapped '$kind' — taste is now " +
+                        AppState.tasteSummary.value.ifBlank { "neutral" })
                 }
             }
             ACTION_DISCONNECT -> shutdown()
@@ -157,10 +173,16 @@ class MixerService : Service() {
                 mixerAddr = InetSocketAddress(InetAddress.getByName(ip), PORT)
 
                 val cfg = AppState.config.value
+                show?.close()
+                show = ShowLog(this@MixerService)
+                AppState.logPath.value = show?.file?.absolutePath ?: ""
                 engine = StageEngine(cfg.channels).also { eng ->
                     // continue from last night's progress
                     eng.pyramidBias.putAll(
                         AppState.loadBias(this@MixerService))
+                    // every decision goes to the show log as it is made;
+                    // the console's own list only keeps the last 60
+                    eng.onDecision = { d -> show?.decision(d) }
                 }
                 AppState.loadNights(this@MixerService)
                 doctor = ToneDoctor(cfg.channels.map { it.index },
@@ -182,6 +204,7 @@ class MixerService : Service() {
                     }
                 }
                 if (!ok) {
+                    show?.net("no mixer answered at $ip:$PORT")
                     AppState.conn.value = AppState.Conn.DISCONNECTED
                     AppState.lastError.value =
                         "No mixer answered at $ip:$PORT — check Wi-Fi/IP"
@@ -190,6 +213,14 @@ class MixerService : Service() {
                 AppState.conn.value = AppState.Conn.CONNECTED
                 AppState.config.value = cfg.copy(mixerIp = ip)
                 fetchNames()
+                engine?.let { eng ->
+                    show?.head(AppState.mixer.value, eng,
+                        AppState.mixerChannelNames.value,
+                        AppState.nightsCount.value,
+                        AppState.tasteSummary.value)
+                }
+                show?.net("connected to $ip:$PORT — meters and RTA " +
+                    "subscribed, offline on the mixer's own Wi-Fi")
                 runLoop()
             } catch (e: Exception) {
                 Log.w(TAG, "connect failed", e)
@@ -233,6 +264,9 @@ class MixerService : Service() {
                 // by meter staleness already
                 AppState.conn.value = AppState.Conn.CONNECTING
                 AppState.lastError.value = "Mixer silent — waiting for Wi-Fi…"
+                show?.net("METERS LOST — %.0fs with no packet from the mixer; "
+                    .format(java.util.Locale.ROOT, t - lastRx) +
+                    "the engine is holding every fader still")
             }
             val e = engine ?: continue
             // RTA round-robin: park the console's RTA on each active
@@ -271,11 +305,17 @@ class MixerService : Service() {
                                 upAllowed = e.boostsAllowed(t),
                                 frozenAll = e.frozenAll)) {
                             send(OscMessage(w.address, listOf(w.value)))
+                            logDoctorWrite(d, w)
                         }
                     }
                 }
                 publishStrips(t)
                 AppState.decisions.value = e.decisions.toList()
+                show?.let { lg ->
+                    lg.snapshot(t, e, doctor, AppState.mixerChannelNames.value,
+                        directing)
+                    lg.summary(t, e, AppState.mixerChannelNames.value)
+                }
             }
         }
     }
@@ -297,6 +337,10 @@ class MixerService : Service() {
                     if (watchdog.vetoActive != lastVeto) {
                         lastVeto = watchdog.vetoActive
                         e.watchdogVeto = watchdog.vetoActive
+                        show?.note("HOWL", if (watchdog.vetoActive)
+                            "feedback suspected at ~${watchdog.lastFreqHz} Hz " +
+                            "— every boost frozen until it clears"
+                            else "feedback cleared — boosts allowed again")
                         AppState.lastError.value = if (watchdog.vetoActive)
                             "⚠ FEEDBACK suspected ~${watchdog.lastFreqHz} Hz " +
                             "— boosts frozen; notch it on the GEQ"
@@ -468,12 +512,17 @@ class MixerService : Service() {
         // console log says takeover worked.
         if (faders.size < chans.size) {
             val silent = chans.filter { it.index !in faders.keys }
+            show?.net("PARTIAL TAKEOVER: only ${faders.size}/${chans.size} " +
+                "faders answered; " + silent.joinToString(",") {
+                    "ch%02d".format(java.util.Locale.ROOT, it.index + 1) } +
+                " are NOT being mixed")
             AppState.lastError.value =
                 "Only ${faders.size} of ${chans.size} faders answered — " +
                 silent.joinToString(", ") { "ch%02d".format(it.index + 1) } +
                 " are NOT being mixed. Tap MIXING again to retry."
         }
         e.takeover(faders, now())
+        show?.takeover(faders, AppState.mixerChannelNames.value)
         lastSent.clear()
         collecting = false
         doctor?.let { d ->
@@ -500,6 +549,8 @@ class MixerService : Service() {
         // handing back means handing back: pause the autopilot too, or
         // the next tick would immediately mix away from these faders
         AppState.directing.value = false
+        show?.user("you handed the mains back — restoring the takeover " +
+            "faders and pausing for ${REVERT_HOLD_SEC.toInt()}s")
         for (w in e.revertToBaseline(now())) sendFader(w.channel, w.levelDb)
         doctor?.let { d ->
             for (ch in d.state.keys)
@@ -516,8 +567,38 @@ class MixerService : Service() {
      * "the human" for two minutes. Sixteen writes, sixteen channels
      * frozen, autopilot dead twenty-five seconds after takeover.
      */
+    /** the console's name for a channel, falling back to the profile */
+    private fun chName(ch: Int): String =
+        AppState.mixerChannelNames.value[ch]
+            ?: AppState.config.value.channels.firstOrNull { it.index == ch }
+                ?.name ?: "ch%02d".format(java.util.Locale.ROOT, ch + 1)
+
+    /**
+     * Explain a Channel Doctor write in the log: which band moved, how
+     * far the channel's tone had drifted from the sound the operator
+     * approved, and — for the compressor — the gain reduction it is
+     * trying to restore.
+     */
+    private fun logDoctorWrite(d: ToneDoctor, w: com.stagemix.engine.ParamWrite) {
+        val lg = show ?: return
+        val m = Regex("^/ch/(\\d\\d)/(eq/(\\d)/g|dyn/thr)$").find(w.address)
+            ?: return
+        val ch = m.groupValues[1].toInt() - 1
+        val st = d.state[ch] ?: return
+        if (m.groupValues[3].isNotEmpty()) {
+            val band = m.groupValues[3].toInt() - 1
+            val live = st.liveBands; val ref = st.refBands
+            val drift = if (live != null && ref != null) live[band] - ref[band]
+                        else 0f
+            lg.eq(ch, band, w.value * 30f - 15f, drift, chName(ch))
+        } else {
+            lg.comp(ch, w.value * 60f - 60f, st.grEma, st.refGr, chName(ch))
+        }
+    }
+
     private fun sendFader(ch: Int, db: Float) {
         lastSent[ch] = db
+        show?.fader(ch, db, chName(ch))
         send(OscMessage(osc("/ch/%02d/mix/fader", ch + 1),
             listOf(FaderLaw.dbToFloat(db))))
     }
@@ -585,7 +666,9 @@ class MixerService : Service() {
             AppState.saveBias(this, e.pyramidBias)
             val h = e.health()
             if (h.ticks > 600) AppState.saveNight(this, h)  // >10 min mixed
+            show?.footer(e)
         }
+        show?.close()
         AppState.conn.value = AppState.Conn.DISCONNECTED
         AppState.directing.value = false
         loopJob?.cancel()

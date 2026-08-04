@@ -64,6 +64,8 @@ object AppState {
     /** Cross-night learning surface. */
     val health = MutableStateFlow<com.stagemix.engine.StageEngine.MixHealth?>(null)
     val nightsCount = MutableStateFlow(0)
+    /** where tonight's show log is being written, for the export screen */
+    val logPath = MutableStateFlow("")
     val tasteSummary = MutableStateFlow("")
     val lastNightSummary = MutableStateFlow("")
 

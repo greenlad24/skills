@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The show log lives in the app's own external files dir; this is the
+     only thing StageMix ever shares out. -->
+<paths>
+    <external-files-path name="showlogs" path="logs/" />
+    <external-files-path name="exports" path="export/" />
+</paths>

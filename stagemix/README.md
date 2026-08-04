@@ -234,6 +234,47 @@ The rails, from live-sound research (see `docs/ARCHITECTURE.md`):
   change (song start/stop), operator FREEZE, watchdog veto.
 - One-tap **Revert to soundcheck**. Per-channel locks.
 
+## The show log — test it tonight, read it tomorrow
+
+Every night is written to a plain text file on the tablet as it
+happens, with no network of any kind. It is meant to be read the
+morning after by someone who is not standing in front of the mixer:
+
+| tag | what it records |
+|---|---|
+| `HEAD` | the rig: mixer, channels, roles, pyramid targets, limits, what it learned on previous nights |
+| `TAKE` | the fader positions that became the authority bounds |
+| `LVL` | every 5 s, per channel: source level heard, 3 s level, fader, our offset, duck, contribution, **where the pyramid wanted it**, and flags (silent / room-tone / idle / feature-hold / locked / yours / lead) |
+| `MIX` | every 5 s: the anchor and who forms it, mix health, how much the boosts have added, any hold |
+| `DEC` | every decision, with its reason in plain language |
+| `FADER` | every fader write |
+| `EQ` | every EQ band move, with how far that band had drifted from your soundcheck tone |
+| `COMP` | every compressor threshold move, with the gain reduction it is chasing |
+| `TONE` | every 30 s, per channel: live 4-band tone shape, drift from soundcheck, our EQ correction, harshness, gain reduction, detected singer register |
+| `HOWL` | feedback suspected / cleared, with the frequency |
+| `NET` | connect, meter loss, partial takeover |
+| `USER` | everything you did — MIXING, FREEZE, locks, feedback chips, fader grabs |
+| `SUM` | once a minute: the state of the mix in one line |
+
+It is grep-friendly on purpose — `grep ' FADER ' show.log` is the
+night's fader moves, `grep ' DEC ' show.log` is the reasoning.
+
+### Exporting it
+
+**⤴ EXPORT LOG** in the console opens the Android share sheet with the
+whole log attached, so it goes to WhatsApp, mail or Drive in one tap.
+The file is staged as `.txt` because that is what WhatsApp accepts as a
+document. **short version** shares a one-screen digest instead — the
+rig, what you did, what the network did, how many decisions of each
+kind, fader moves per channel, and the final balance table — small
+enough to paste straight into a chat.
+
+Both work while the tablet is still on the M18's Wi-Fi with no
+internet: the share hands the file to WhatsApp, which sends it the
+moment the tablet is back on a normal network. The files also sit at
+`Android/data/com.stagemix/files/logs/` over USB. The last ten nights
+are kept.
+
 ## Show flow
 
 1. Tablet on the M18's Wi-Fi. Open StageMix — it finds the mixer and
@@ -246,6 +287,7 @@ The rails, from live-sound research (see `docs/ARCHITECTURE.md`):
    idle easing, duck-the-band-not-the-vocal, freeze-on-anything-odd.
 4. Your monitors never move unless you move them. **Hand back the
    mains** any time.
+5. At the end of the night, **⤴ EXPORT LOG** → WhatsApp.
 
 ## Building
 

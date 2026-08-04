@@ -1220,7 +1220,36 @@ class StageEngine(
 
     private fun log(t: Double, kind: String, ch: Int?, delta: Float,
                     reason: String) {
-        decisions.addFirst(Decision(t, kind, ch, null, delta, reason))
+        val d = Decision(t, kind, ch, null, delta, reason)
+        decisions.addFirst(d)
         while (decisions.size > 60) decisions.removeLast()
+        onDecision?.invoke(d)
+    }
+
+    /**
+     * Every decision, as it is made. The `decisions` deque only keeps
+     * the last 60 for the console; a show log wants all of them.
+     */
+    var onDecision: ((Decision) -> Unit)? = null
+
+    /** what the mix is currently anchored to — the reference every
+     *  pyramid height is measured from */
+    data class AnchorInfo(val contributionDb: Float?, val pyramidDb: Float,
+                          val members: Set<Int>)
+
+    fun anchorInfo(): AnchorInfo {
+        recountGroups()
+        val a = anchorContribution()
+        return AnchorInfo(a.db, a.pyr, a.members)
+    }
+
+    /** this channel's current pyramid height, in dB under the anchor */
+    fun heightDb(ch: Int): Float =
+        state[ch]?.let { recountGroups(); effHeight(it) } ?: 0f
+
+    /** the live count of channels sharing each height group */
+    fun groupCounts(): Map<Role, Int> {
+        recountGroups()
+        return groupN.toMap()
     }
 }

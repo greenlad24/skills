@@ -32,5 +32,17 @@
             android:name=".MixerService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
+
+        <!-- Export the show log to WhatsApp / mail / Drive. Grants are
+             per-share and read-only; nothing else is exposed. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.logs"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 </manifest>

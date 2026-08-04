@@ -42,7 +42,10 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.content.Intent
+import android.widget.Toast
 import com.stagemix.app.AppState
+import com.stagemix.app.LogExport
 import com.stagemix.app.MixerService
 import com.stagemix.engine.ChannelConfig
 import com.stagemix.engine.Role
@@ -229,6 +232,8 @@ fun ConsoleScreen() {
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (frozenAll) Ok else Bad),
             ) { Text(if (frozenAll) "▶ Resume" else "⏸ FREEZE ALL", color = Bg) }
+            Spacer(Modifier.width(6.dp))
+            ExportLogButtons()
         }
         Spacer(Modifier.height(8.dp))
 
@@ -401,5 +406,59 @@ fun Strip(s: AppState.StripUi) {
             }.background(if (s.frozen) Warn else Inset, CircleShape),
             contentAlignment = Alignment.Center,
         ) { Text(if (s.frozen) "🔒" else "🔓", fontSize = 13.sp) }
+    }
+}
+
+/**
+ * Export the night. The tablet is on the mixer's Wi-Fi with no
+ * internet, so nothing is uploaded here: the share sheet hands the file
+ * to WhatsApp (or mail, or Drive), which queues it and sends the moment
+ * the tablet is back on a normal network.
+ *
+ * Two sizes, because both are useful the morning after: the whole log
+ * as an attachment, and a one-screen digest that pastes straight into a
+ * chat message.
+ */
+@Composable
+private fun ExportLogButtons() {
+    val ctx = LocalContext.current
+    val logPath by AppState.logPath.collectAsState()
+    fun latest() = LogExport.latest(ctx)
+
+    Button(
+        onClick = {
+            val f = latest()
+            if (f == null) {
+                Toast.makeText(ctx,
+                    "No show log yet — connect to the mixer first",
+                    Toast.LENGTH_SHORT).show()
+                return@Button
+            }
+            val intent = LogExport.shareIntent(ctx, f)
+            if (intent == null) {
+                Toast.makeText(ctx, "Log is at ${f.absolutePath}",
+                    Toast.LENGTH_LONG).show()
+            } else {
+                ctx.startActivity(Intent.createChooser(intent,
+                    "Send the show log").apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    })
+            }
+        },
+        colors = ButtonDefaults.buttonColors(containerColor = Panel2),
+    ) { Text("⤴  EXPORT LOG", color = Ink, fontSize = 12.sp) }
+
+    Spacer(Modifier.width(6.dp))
+    OutlinedButton(onClick = {
+        val f = latest() ?: return@OutlinedButton
+        ctx.startActivity(Intent.createChooser(
+            LogExport.shareDigest(ctx, f), "Send the short version").apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            })
+    }) { Text("short version", fontSize = 11.sp) }
+
+    if (logPath.isNotBlank()) {
+        Spacer(Modifier.width(8.dp))
+        Text("recording", color = Live, fontSize = 10.sp, letterSpacing = 1.sp)
     }
 }
