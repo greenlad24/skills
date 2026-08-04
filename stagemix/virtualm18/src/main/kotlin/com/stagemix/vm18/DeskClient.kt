@@ -111,6 +111,38 @@ class DeskClient(
 
     fun logFile(): File? = show?.file
 
+    /**
+     * The balance this engineer keeps arriving at, kept beside the logs
+     * so a bench session tomorrow starts where tonight left off. Losing
+     * it on a restart would throw away the only real knowledge the app
+     * has about this band.
+     */
+    private fun learnedFile() = File(logDir, "learned-balance.txt")
+
+    fun saveLearned() = runCatching {
+        learnedFile().writeText(
+            engine.learned.snapshot().entries.joinToString("\n") {
+                "${it.key} ${it.value.first} ${it.value.second}"
+            })
+    }
+
+    fun loadLearned() = runCatching {
+        val f = learnedFile()
+        if (!f.exists()) return@runCatching
+        val out = HashMap<String, Pair<Float, Int>>()
+        for (line in f.readLines()) {
+            val p = line.trim().split(" ")
+            if (p.size != 3) continue
+            val v = p[1].toFloatOrNull() ?: continue
+            val n = p[2].toIntOrNull() ?: continue
+            out[p[0]] = v to n
+        }
+        engine.learned.restore(out)
+        if (engine.learned.kept > 0)
+            log?.invoke("carrying ${engine.learned.kept} kept balances " +
+                "forward: ${engine.learned.summary()}")
+    }
+
     // ------------------------------------------------------------------
     private fun loop() {
         send(OscMessage("/xinfo", emptyList()))
@@ -124,6 +156,7 @@ class DeskClient(
             } }
         }
         if (!ok) { log?.invoke("no console answered at $host:$port"); return }
+        loadLearned()
         fetchNames()
         show?.head("bench: $host:$port", engine, names, 0, "")
 

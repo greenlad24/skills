@@ -150,6 +150,37 @@ object AppState {
         } catch (e: Exception) { emptyMap() }
     }
 
+    /**
+     * The balance this engineer keeps arriving at, across nights.
+     *
+     * The single most valuable thing the app owns: every time they
+     * press KEEP it learns where they actually put each instrument, and
+     * that is a far better answer than the built-in pyramid's guess.
+     * Losing it on a restart would throw away the only real knowledge
+     * the thing has.
+     */
+    fun saveLearnedBalance(ctx: Context, snap: Map<String, Pair<Float, Int>>) {
+        val o = JSONObject()
+        for ((k, v) in snap)
+            o.put(k, JSONObject().put("s", v.first.toDouble()).put("n", v.second))
+        ctx.getSharedPreferences("stagemix", Context.MODE_PRIVATE)
+            .edit().putString("learned_balance", o.toString()).apply()
+    }
+
+    fun loadLearnedBalance(ctx: Context): Map<String, Pair<Float, Int>> {
+        val raw = ctx.getSharedPreferences("stagemix", Context.MODE_PRIVATE)
+            .getString("learned_balance", null) ?: return emptyMap()
+        return try {
+            val o = JSONObject(raw)
+            val out = HashMap<String, Pair<Float, Int>>()
+            for (k in o.keys()) runCatching {
+                val e = o.getJSONObject(k)
+                out[k] = e.getDouble("s").toFloat() to e.getInt("n")
+            }
+            out
+        } catch (e: Exception) { emptyMap() }
+    }
+
     private fun summarizeBias(bias: Map<com.stagemix.engine.Role, Float>): String =
         bias.filterValues { kotlin.math.abs(it) > 0.01f }.entries
             .sortedByDescending { kotlin.math.abs(it.value) }

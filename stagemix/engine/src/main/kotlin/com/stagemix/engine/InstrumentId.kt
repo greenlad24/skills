@@ -398,11 +398,21 @@ class InstrumentId(val settings: IdSettings = IdSettings()) {
             why[Instrument.KICK] = ("all underneath and struck: %.0f dB " +
                 "attacks, peaks %.0f dB over average, firing with the kit")
                 .format(attack, crest)
+            // A BASS DOES NOT FIRE WITH THE CYMBALS.
+            //
+            // The kit term was in the comment above and missing from the
+            // arithmetic, and it cost exactly what it was there to
+            // prevent: on a real night the OVERHEADS were declared a
+            // bass — "60 % under 200 Hz and it sustains" — and the
+            // engine then moved them into the low-end group and put a
+            // kick's chain on them. A channel that lands with every
+            // other drum is part of the kit whatever its spectrum says,
+            // and a bass locks to the KICK and to nothing else.
             scores[Instrument.BASS] = isLow * ramp(sustain, 0.25f, 0.6f) *
-                ramp(crest, 12f, 6f)
-            why[Instrument.BASS] = ("%.0f%% under 200 Hz and it sustains " +
-                "between notes rather than being struck")
-                .format(bottom * 100)
+                ramp(crest, 12f, 6f) * ramp(kit, 0.55f, 0.25f)
+            why[Instrument.BASS] = ("%.0f%% under 200 Hz, it sustains " +
+                "between notes rather than being struck, and it does not " +
+                "land with the kit").format(bottom * 100)
         }
 
         // --- the kit ----------------------------------------------------

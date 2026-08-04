@@ -197,6 +197,31 @@ class EnsembleTest {
             "a sustained low end that does not is a bass")
     }
 
+    @Test fun `a channel that lands with the kit is never called a bass`() {
+        // From a real night: the OVERHEADS were declared a bass — "60 %
+        // under 200 Hz and it sustains" — and the engine moved them into
+        // the low-end group and put a kick's chain on them. The kit term
+        // was in the comment and missing from the arithmetic.
+        val b = Band(4)
+        val beat = 0.5
+        val lv = FloatArray(4)
+        while (b.t < 240.0) {
+            val t = b.t
+            lv[0] = maxOf(hit(t, beat * 2, 0.0, -18f, 0.16), -100f)   // kick
+            lv[1] = maxOf(hit(t, beat * 2, beat, -21f, 0.14), -100f)  // snare
+            // a badly placed overhead: bottom-heavy AND on the grid
+            lv[2] = maxOf(hit(t, beat, 0.0, -24f, 0.45), -100f)
+            lv[3] = -22f + 2f * sin(2 * PI * t / (beat * 8)).toFloat()
+            b.frame(lv)
+        }
+        b.spectrum(2, rta(90.0 to -12f, 160.0 to -14f, 400.0 to -20f), 60)
+        val oh = b.id.recognise(2, b.ens)
+        println("bottom-heavy overhead -> " + oh?.instrument + "  " + oh?.why)
+        assertTrue(oh?.instrument != Instrument.BASS,
+            "a channel that lands with every other drum is part of the " +
+            "kit, whatever its spectrum says: got ${oh?.instrument}")
+    }
+
     @Test fun `overheads are the channel that hears everything`() {
         val b = Band(4)
         val beat = 0.5

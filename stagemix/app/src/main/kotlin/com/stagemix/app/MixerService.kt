@@ -112,8 +112,10 @@ class MixerService : Service() {
             }
             ACTION_KEEP_BALANCE -> engine?.let { e ->
                 val n = e.adoptBalance(now())
+                AppState.saveLearnedBalance(this, e.learned.snapshot())
                 show?.user(if (n > 0)
-                    "you pressed KEEP THIS BALANCE — $n channels held"
+                    "you pressed KEEP THIS BALANCE — $n channels held; " +
+                    "learned from ${e.learned.kept} balances so far"
                     else "you pressed KEEP THIS BALANCE, but nothing is playing")
             }
             ACTION_REBALANCE -> engine?.let { e ->
@@ -213,6 +215,9 @@ class MixerService : Service() {
                     // is on a channel — the calls the audio cannot make
                     eng.knownInstruments.putAll(
                         AppState.loadKnownInstruments(this@MixerService))
+                    // and the balance they keep arriving at
+                    eng.learned.restore(
+                        AppState.loadLearnedBalance(this@MixerService))
                     // every decision goes to the show log as it is made;
                     // the console's own list only keeps the last 60
                     eng.onDecision = { d -> show?.decision(d) }

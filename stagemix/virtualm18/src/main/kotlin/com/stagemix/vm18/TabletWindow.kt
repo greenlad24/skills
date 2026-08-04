@@ -133,6 +133,7 @@ class TabletWindow(private val client: DeskClient) {
         // to defend, or this balance is wrong and I want a new one.
         r2.add(btn("✓ KEEP THIS BALANCE") {
             val n = client.engine.adoptBalance(nowSec())
+            client.saveLearned()
             note(if (n > 0)
                 "keeping this balance — $n channels held where they are; " +
                 "from here the app only follows the sources, solos and " +

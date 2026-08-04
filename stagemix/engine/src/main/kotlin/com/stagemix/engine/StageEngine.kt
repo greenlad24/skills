@@ -304,6 +304,12 @@ data class EngineSettings(
     val soloLiftDb: Float = 4.0f,
     /** the most a solo lift may ever be, however hard the player pushes */
     val soloLiftMaxDb: Float = 6.0f,
+    /**
+     * The smallest hand movement that can be a solo ride. Below this it
+     * is a trim, whatever the player was doing — nobody rides a solo by
+     * half a dB.
+     */
+    val soloRideMinDb: Float = 2.0f,
     /** and how far a player must step up to break a held balance at all */
     val holdSoloRiseDb: Float = 5.0f,
     /** how long an arriving instrument may reshape the balance */
@@ -517,6 +523,8 @@ class ChannelState(val cfg: ChannelConfig) {
     var riseOverBand = 0f
     /** the operator's lift is for a solo, not a new balance */
     var soloRide = false
+    /** the biggest step-out seen during the gesture a hand is making now */
+    var soloEvidence = 0f
     /** this channel has found its place and is being held there */
     var settled = false
     var settledOffset = 0f
@@ -734,37 +742,18 @@ class StageEngine(
         // already climbing away from the rest of the band is riding a
         // solo. A hand moving on a channel that is playing exactly as it
         // was is re-drawing the balance.
-        // A latched feature counts for its whole ninety seconds; before
-        // one has latched — which is every channel the app has not yet
-        // learned is a soloist — the decaying rise memory is what there
-        // is to go on.
-        val soloing = st.featureStart >= 0 ||
-            st.riseOverBand > settings.featureRiseDb * 0.5f
-        if (soloing && disagreement > 0f && st.planContrib != null) {
-            // Keep the plan. The lift stands while the player is out
-            // front and the ride brings it home when they step back —
-            // and remember that THIS channel is one that solos, so the
-            // next time it happens the app does it rather than the
-            // operator.
-            st.soloRide = true
-            learnSoloist(st)
-            st.planFaderDb += 0f      // unchanged: that is the point
-            log(tSec, "soloride", ch, disagreement,
-                "${st.name} — you lifted it %+.1f dB while it was stepping "
-                    .format(java.util.Locale.ROOT, disagreement) +
-                "out; keeping your lift for the solo and putting it back " +
-                "after. Noted that this channel takes solos.")
-            return
-        }
-        // A correction. The operator's level IS the new plan.
-        (st.slowEma ?: st.preEma)?.let {
-            st.planContrib = it + safe
-            st.planFaderDb = safe
-            st.riding = false
-            st.soloRide = false
-            st.settled = true
-            st.settledOffset = 0f
-        }
+        // Was this a solo ride or a correction? Remember what the
+        // player was doing, and decide when the HAND COMES OFF.
+        //
+        // Deciding it here, on every frame of the drag, was the same
+        // mistake the override log made before and it produced the same
+        // result: a single gesture wrote thirty "you lifted it +0.4 dB"
+        // lines, and thirty times told the engine that the kick, the
+        // snare and the lead vocal are channels that take solos. One
+        // hand on one fader is one decision.
+        st.soloEvidence = max(st.soloEvidence,
+            if (st.featureStart >= 0) settings.holdSoloRiseDb
+            else st.riseOverBand)
     }
 
     /**
@@ -800,7 +789,46 @@ class StageEngine(
             st.gestureOpen = false
             val now = (st.baselineDb ?: continue) + st.offset
             val moved = now - st.gestureFrom
+            val evidence = st.soloEvidence
+            st.soloEvidence = 0f
             if (abs(moved) < settings.overrideMinDb) continue
+
+            // A SOLO RIDE, or a correction?
+            //
+            // The two look identical at the fader and mean opposite
+            // things. A hand going UP, by a real amount, on a channel
+            // whose own level had genuinely stepped out from the band is
+            // riding a solo: the lift stands while the player is out
+            // front and the ride brings it home afterwards. Anything
+            // else is a restatement of the balance and is adopted.
+            //
+            // The bar is the full feature threshold, not half of it.
+            // Half was 1.75 dB, which every channel on a stage clears
+            // several times a song, so the engine decided the kick, the
+            // snare and the lead vocal were all soloists and handed them
+            // all a feature hold.
+            if (evidence >= settings.featureRiseDb &&
+                moved >= settings.soloRideMinDb && st.planContrib != null) {
+                st.soloRide = true
+                learnSoloist(st)
+                overrideCount++
+                log(tSec, "soloride", ch, moved,
+                    "${st.name} — you lifted it %+.1f dB while it was "
+                        .format(java.util.Locale.ROOT, moved) +
+                    "stepping out; keeping your lift for the solo and " +
+                    "putting it back after. Noted that this channel " +
+                    "takes solos.")
+                continue
+            }
+            // a correction: the operator's level IS the new plan
+            (st.slowEma ?: st.preEma)?.let {
+                st.planContrib = it + (st.baselineDb ?: 0f)
+                st.planFaderDb = st.baselineDb ?: 0f
+                st.riding = false
+                st.soloRide = false
+                st.settled = true
+                st.settledOffset = st.offset
+            }
             overrideCount++
             var learned = ""
             if (st.role.inLadder() && abs(moved) >= 1f) {
@@ -1702,8 +1730,8 @@ class StageEngine(
                 st.planFaderDb = base + placed
                 st.riding = false
                 log(tSec, "placed", idx, placed,
-                    "${st.name} has a place in the mix now (%+.1f dB) — " +
-                    "held from here like everything else"
+                    "${st.name} has a place in the mix now " +
+                    "(%+.1f dB) — held from here like everything else"
                         .format(java.util.Locale.ROOT, placed))
             }
             val plan = st.planContrib
@@ -2293,6 +2321,28 @@ class StageEngine(
      * foundation height in full, and share only with their own kind.
      */
     private fun effHeight(st: ChannelState): Float {
+        // WHAT THIS ENGINEER ACTUALLY DOES, when it is known.
+        //
+        // The built-in pyramid is the fallback, not the authority. Once
+        // the operator has kept a couple of balances with this
+        // instrument in them, where they put it is a far better answer
+        // than where a table in this file guesses it belongs — and it is
+        // the whole point of the exercise: the mix the app builds on its
+        // own should be the mix they would have built.
+        //
+        // Learned heights are relative to the WHOLE MIX and the pyramid
+        // is relative to the low end, so it is shifted onto the
+        // pyramid's own reference rather than mixed with it.
+        recognised[st.cfg.index]?.takeIf {
+            it.instrument != Instrument.UNKNOWN &&
+                it.confidence >= ident.settings.recogniseConfidence
+        }?.let { r ->
+            learned.heightOf(r.instrument)?.let { learnedH ->
+                val ref = learned.heightOf(Instrument.KICK)
+                    ?: learned.heightOf(Instrument.BASS)
+                if (ref != null) return learnedH - ref
+            }
+        }
         val h = if (st.role == Role.FOUNDATION)
             (pyramid[Role.FOUNDATION] ?: 0f) +
                 (pyramidBias[Role.FOUNDATION] ?: 0f) +
@@ -2530,6 +2580,28 @@ class StageEngine(
         }
         if (n > 0) {
             balanceAdopted = true
+            // AND LEARN IT. Every kept balance is the operator saying
+            // "this is the mix" — the built-in pyramid is a guess about
+            // where instruments belong written by somebody who has never
+            // heard this band in this room, and this is the answer.
+            val heights = HashMap<Instrument, Float>()
+            for ((idx, st) in state) {
+                val inst = recognised[idx]?.takeIf {
+                    it.instrument != Instrument.UNKNOWN &&
+                        it.confidence >= ident.settings.recogniseConfidence
+                }?.instrument ?: continue
+                val c = st.planContrib ?: continue
+                // one channel per instrument: two piano channels are one
+                // piano, and counting both would teach that keys sit
+                // three dB lower than they do
+                heights[inst] = maxOf(heights[inst] ?: -140f, c)
+            }
+            if (heights.size >= 2) {
+                learned.learn(heights)
+                log(tSec, "learned", null, 0f,
+                    "this balance is now what the app aims for on its own " +
+                    "(${learned.kept} kept so far): ${learned.summary()}")
+            }
             log(tSec, "keep", null, 0f,
                 "keeping the balance on the desk — $n channels held where " +
                 "they are; from here only the source moving, a solo or an " +
@@ -2537,6 +2609,12 @@ class StageEngine(
         }
         return n
     }
+
+    /**
+     * The balance this engineer keeps arriving at, learned from every
+     * time they pressed KEEP. See [LearnedBalance].
+     */
+    val learned = LearnedBalance()
 
     /** true once there is a balance to defend */
     var balanceAdopted = false; private set

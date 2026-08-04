@@ -29,9 +29,27 @@ the difference between a saxophone and a singer — see below. Tap the
 instrument line on a strip to say which is which; it is remembered
 against the console's name for that channel.
 
-**LEAD** derives a balance from the built-in pyramid, for when there is
-no human mix to preserve. `↻ Find a new balance` switches to it until
-the mix comes to rest, then keeps what it arrives at.
+**LEAD** derives a balance for when there is no human mix to preserve.
+`↻ Find a new balance` switches to it until the mix comes to rest, then
+keeps what it arrives at.
+
+### Every KEEP teaches it the mix you make
+
+This is the point of the whole thing. The built-in pyramid is a guess
+about where instruments belong, written by somebody who has never heard
+your band in your room — and every night's log has said so.
+
+A balance you built and pressed **KEEP** on is not a guess. So each one
+is recorded: every channel's contribution measured against the whole
+mix, keyed by **what the audio recognised is on it** — not by channel
+number, because you re-patch, and not by name, because the desk's
+labels are a previous band's. "The kick sits 4 dB under the mix"
+survives a re-patch; "channel 1 sits 4 dB under the mix" does not.
+
+It averages across nights — one night is one room, one crowd and one
+mood — and needs two before it will use what it learned. From then on,
+when it places an arriving instrument or cold-starts a set, it aims for
+**your** balance rather than the table in the source code.
 
 Why the default changed: on a real night, twenty-one minutes of LEAD
 moved the faders 1558 dB in total, spent 16 % of its time with a
