@@ -1,6 +1,8 @@
 package com.stagemix.replay
 
+import com.stagemix.engine.BalanceMode
 import com.stagemix.engine.ChannelConfig
+import com.stagemix.engine.EngineSettings
 import com.stagemix.engine.FaderLaw
 import com.stagemix.engine.Meters
 import com.stagemix.engine.Role
@@ -75,7 +77,8 @@ fun main(args: Array<String>) {
         println("  ch%02d  %-24s %s".format(Locale.ROOT, i + 1, n,
             src.profile[i].role.name))
 
-    val engine = StageEngine(src.profile)
+    val engine = StageEngine(src.profile,
+        EngineSettings(mode = opts.mode))
     val doctor = ToneDoctor(src.profile.map { it.index },
         src.profile.associate { it.index to it.role })
     val log = ShowLog(outDir, snapshotSec = opts.snapshotSec,
@@ -83,6 +86,11 @@ fun main(args: Array<String>) {
     engine.onDecision = { d -> log.decision(d) }
     val names = src.profile.associate { it.index to it.name }
     log.head("(replay of a recorded take — no console)", engine, names, 0, "")
+    log.note("NET", "mode ${opts.mode} — " +
+        (if (opts.mode == BalanceMode.LEAD)
+            "deriving a balance from scratch, which is what a folder of " +
+            "stems can be asked; pass --keep for the other question"
+         else "defending the balance the starting faders describe") + "\n")
     log.note("NET", "replaying ${input.name}: ${src.count} channels, " +
         "${src.sampleRate} Hz, meters at $METER_HZ Hz, ticks at " +
         "%.0f s — the engine and doctor are the shipping ones"
@@ -118,6 +126,13 @@ private fun usage() = println("""
       --snapshot <sec>    how often the log writes a level picture (default 5)
       --shadow            decide and log, but do not apply the moves to the
                           rendered mix (what the app's shadow mode does)
+      --lead              derive a balance from scratch. The default here,
+                          and the only question a folder of stems can
+                          answer: there is no desk and no human mix in a
+                          recording, only the flat --fader position.
+      --keep              defend the balance the starting faders describe,
+                          as the tablet does on a real desk — for asking
+                          what KEEP would have done to a mix that existed.
       --capture <file>    also write a METER TAPE: the sixteen levels and
                           the spectra, and nothing else. About a megabyte
                           for a whole night, against tens of gigabytes of
@@ -140,12 +155,27 @@ private class Opts(
     val shadow: Boolean,
     /** write a meter tape instead of / as well as replaying */
     val capture: String?,
+    /**
+     * Which job the engine is doing.
+     *
+     * LEAD by default, and that is a deliberate difference from the
+     * tablet, which ships as KEEP. KEEP defends the balance already on
+     * the desk — but a folder of stems has no desk and no balance on
+     * it, only whatever flat starting fader `--fader` puts there, so
+     * KEEP would faithfully preserve a mix nobody made and the tool
+     * would render silence-shaped nothing. What a replay is FOR is
+     * "what would the app have done with this night from scratch", and
+     * that is LEAD. Pass --keep to ask the other question: what would
+     * KEEP have done to a mix that already existed.
+     */
+    val mode: BalanceMode,
 ) {
     companion object {
         fun parse(a: Array<String>): Opts {
             var path = ""; var render = false; var out: String? = null
             var fader = -10f; var start = 0.0; var len = 0.0
             var snap = 5.0; var shadow = false; var cap: String? = null
+            var mode = BalanceMode.LEAD
             var i = 0
             while (i < a.size) {
                 when (a[i]) {
@@ -157,12 +187,14 @@ private class Opts(
                     "--length" -> len = a[++i].toDouble()
                     "--snapshot" -> snap = a[++i].toDouble()
                     "--capture" -> cap = a[++i]
+                    "--keep" -> mode = BalanceMode.KEEP
+                    "--lead" -> mode = BalanceMode.LEAD
                     else -> if (path.isEmpty()) path = a[i]
                 }
                 i++
             }
             return Opts(path, render, out, fader, start, len, snap, shadow,
-                cap)
+                cap, mode)
         }
     }
 }
@@ -479,7 +511,7 @@ private fun replayCapture(file: File, opts: Opts, outDir: File, take: String) {
         onHeader = { tape ->
             profile = profileFor(tape.names, defaultRigProfile())
             names = profile.associate { it.index to it.name }
-            val e = StageEngine(profile)
+            val e = StageEngine(profile, EngineSettings(mode = opts.mode))
             val d = ToneDoctor(profile.map { it.index },
                 profile.associate { it.index to it.role })
             val l = ShowLog(outDir, snapshotSec = opts.snapshotSec,

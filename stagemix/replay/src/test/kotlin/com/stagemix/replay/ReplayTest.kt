@@ -44,6 +44,43 @@ class ReplayTest {
         w.close()
     }
 
+    /**
+     * KEEP is what the tablet ships in, so the replay tool has to be
+     * able to answer "what would KEEP have done to this night" — but
+     * LEAD is its DEFAULT, and the difference is worth stating because
+     * a green build once depended on nobody noticing it. A folder of
+     * stems has no desk and no human mix on it, only the flat starting
+     * fader; asked to KEEP that, the engine correctly keeps it, decides
+     * almost nothing, and renders a mix identical to the reference. The
+     * question a recording can actually answer is "what would the app
+     * have made of this from scratch", and that is LEAD.
+     */
+    @Test fun `the replay tool asks the question a recording can answer`() {
+        val dir = File(System.getProperty("java.io.tmpdir"),
+            "stagemix-replay-mode").apply { deleteRecursively(); mkdirs() }
+        val secs = 40.0
+        writeStem(File(dir, "01 Kick Drum.wav"), secs, 0.30f, 60.0)
+        writeStem(File(dir, "09 Vocal Center.wav"), secs, 0.06f, 180.0)
+        writeStem(File(dir, "12 Bass DI.wav"), secs, 0.25f, 80.0)
+
+        fun decisionsWith(vararg extra: String): Int {
+            val out = File(dir, "out-" + extra.joinToString("").ifEmpty { "default" })
+            main(arrayOf(dir.absolutePath, "--out", out.absolutePath,
+                "--snapshot", "2", *extra))
+            val log = File(out, "logs").listFiles()?.firstOrNull()
+            assertTrue(log != null, "no show log written")
+            return log!!.readLines().count { " DEC " in it }
+        }
+        val lead = decisionsWith()
+        val keep = decisionsWith("--keep")
+        println("decisions: LEAD $lead, KEEP $keep")
+        assertTrue(lead > 3,
+            "the default must be the mode that actually mixes: $lead")
+        assertTrue(keep < lead,
+            "KEEP has a balance to defend and should barely move: " +
+            "KEEP $keep vs LEAD $lead")
+    }
+
     @Test fun `a recorded take replays through the real engine`() {
         val dir = File(System.getProperty("java.io.tmpdir"),
             "stagemix-replay-test").apply { deleteRecursively(); mkdirs() }
