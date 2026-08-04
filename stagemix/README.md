@@ -183,6 +183,12 @@ redesigns the sound.
 | Vocal-priority ducking (cut-only, in the mains) | Preamp/headamp gain |
 | Channel Doctor: EQ band gains ±2 dB, comp threshold ±4 dB (from takeover settings) | EQ freq/Q/type, comp ratio/attack/release, FX, routing |
 
+One shared setting is not a mix parameter but is worth knowing about:
+to give the Channel Doctor a per-channel spectrum the app repoints the
+console's **RTA source** (`/-stat/rta/source`) every ~3 seconds. That
+setting is global to the console, so X AIR Edit or Mixing Station open
+on the analyzer page will see it moving. Turn DOCTOR off and it stops.
+
 ### The Channel Doctor (per-channel EQ + compression)
 
 Each channel is tended **separately**, using the console's own senses:
