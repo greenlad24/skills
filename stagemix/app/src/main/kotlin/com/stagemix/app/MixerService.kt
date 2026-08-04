@@ -355,6 +355,9 @@ class MixerService : Service() {
                     // analyzer settled on its focus source
                     if (rtaFocus >= 0 && t - rtaFocusT > 0.5)
                         doctor?.onRta(rtaFocus, bins, t)
+                        // and the same frame to the listener that
+                        // works out what is plugged in here
+                        engine.onRtaFor(rtaFocus, bins)
                 }
             }
             "/meters/${Meters.BANK_DYNAMICS}" -> {
@@ -450,7 +453,10 @@ class MixerService : Service() {
                 .firstOrNull { it.index == ch }?.role
             if (cfgRole == null || cfgRole == com.stagemix.engine.Role.INSTRUMENT) {
                 val r = com.stagemix.engine.inferRole(name)
-                e.setRole(ch, r)
+                // setRoleFromName, not setRole: a name is a starting
+                // guess, and locking the role to it would switch off the
+                // listener that exists to second-guess exactly this.
+                e.setRoleFromName(ch, r)
                 doctor?.setRole(ch, r)
             }
         }

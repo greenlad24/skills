@@ -172,6 +172,35 @@ class Console(
         }
     }
 
+    /**
+     * Somebody put their hand on the desk.
+     *
+     * The bench had no way to do this at all, which meant the single most
+     * important thing about a mixing autopilot — that a human can
+     * overrule it instantly, mid-song, without ceremony — could not be
+     * tried before a show. On a real M18 the move comes from the surface
+     * or from Mixing Station and the desk tells every subscribed client;
+     * here it comes from a mouse and does exactly the same thing.
+     */
+    fun humanFader(ch: Int, db: Float) {
+        if (ch !in 0 until 16) return
+        val addr = "/ch/%02d/mix/fader".fmt(ch + 1)
+        val v = FaderLaw.dbToFloat(db.coerceIn(FaderLaw.MIN_DB, 10f))
+        val stored = if (quantize) quant(v) else v
+        params[addr] = stored
+        val now = System.currentTimeMillis()
+        // everyone hears about it — this did not come from a client, so
+        // there is no sender to exclude
+        for (s in subs.keys) {
+            if (now - (subs[s] ?: 0) > TTL_MS) continue
+            send(s, OscMessage(addr, listOf(stored)))
+        }
+        log?.invoke("you moved ch%02d to %+.1f dB".fmt2(ch + 1, db))
+    }
+
+    private fun String.fmt2(a: Int, b: Float) =
+        String.format(java.util.Locale.ROOT, this, a, b)
+
     /** the console's fader resolution: 1024 steps over the float range */
     private fun quant(f: Float): Float =
         (Math.round(f.coerceIn(0f, 1f) * 1023f) / 1023f)

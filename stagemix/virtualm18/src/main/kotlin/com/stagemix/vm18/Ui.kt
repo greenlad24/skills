@@ -55,6 +55,12 @@ class Bench(
     var onMixing: ((Boolean) -> Unit)? = null
     /** the operator wants the next launch to start empty */
     var onForgetSession: (() -> Unit)? = null
+    /**
+     * The autopilot running on this Mac, when there is one — so the
+     * strips can show what the engine currently believes is plugged into
+     * each channel.
+     */
+    var client: (() -> DeskClient?)? = null
     private val strips = ArrayList<Strip>()
     private val status = JLabel(" ")
     private val logArea = JTextArea(8, 100)
@@ -308,11 +314,39 @@ class Bench(
             background = PANEL
             preferredSize = Dimension(68, 520)
             border = BorderFactory.createEmptyBorder(6, 4, 6, 4)
-            toolTipText = "click to put a file on channel ${ch + 1}"
-            addMouseListener(object : java.awt.event.MouseAdapter() {
-                override fun mouseClicked(e: java.awt.event.MouseEvent) =
-                    chooseFile(ch)
-            })
+            toolTipText = "click the name to load a file on channel " +
+                "${ch + 1}; drag the fader on the right to overrule the app"
+            // The fader lane is a real fader. Without this there was no
+            // way to put a hand on the desk at all, so the one thing that
+            // matters most about a mixing autopilot — that a human can
+            // overrule it instantly, mid-song — could not be tried before
+            // a show. Dragging here goes out over OSC exactly as a move
+            // on the surface or in Mixing Station would.
+            val drag = object : java.awt.event.MouseAdapter() {
+                private fun inFaderLane(e: java.awt.event.MouseEvent) =
+                    e.x >= 44
+                override fun mousePressed(e: java.awt.event.MouseEvent) {
+                    if (inFaderLane(e)) setFaderFromY(e.y)
+                }
+                override fun mouseDragged(e: java.awt.event.MouseEvent) {
+                    if (inFaderLane(e)) setFaderFromY(e.y)
+                }
+                override fun mouseClicked(e: java.awt.event.MouseEvent) {
+                    if (!inFaderLane(e)) chooseFile(ch)
+                }
+            }
+            addMouseListener(drag)
+            addMouseMotionListener(drag)
+        }
+
+        /** where the mouse is, as a fader position */
+        private fun setFaderFromY(my: Int) {
+            val top = 34; val bot = height - 54
+            val span = (bot - top).toFloat()
+            if (span <= 0) return
+            val frac = ((bot - my) / span).coerceIn(0f, 1f)
+            console.humanFader(ch, frac * 60f - 60f)
+            repaint()
         }
 
         override fun paintComponent(g: Graphics) {
@@ -327,6 +361,21 @@ class Bench(
             g2.color = INK
             g2.font = Font(Font.SANS_SERIF, Font.BOLD, 10)
             g2.drawString(label.take(9), 4, 25)
+
+            // WHAT IS ON THIS CHANNEL, as the app currently hears it.
+            // The desk label is whatever the last engineer typed; this
+            // is what the audio says, and the two are not always the
+            // same channel-for-channel. Dimmed while it is still
+            // listening, so a guess is never mistaken for a verdict.
+            client?.invoke()?.engine?.channelIdent(ch)?.let { id ->
+                g2.font = Font(Font.SANS_SERIF, Font.PLAIN, 9)
+                g2.color = when {
+                    id.label == "LEAD VOCAL" -> LIVE
+                    id.evidence >= 1f && id.heard -> OK
+                    else -> MUTED
+                }
+                g2.drawString(id.label.take(11), 4, 35)
+            }
 
             val top = 34; val bot = h - 54
             val span = (bot - top).toFloat()

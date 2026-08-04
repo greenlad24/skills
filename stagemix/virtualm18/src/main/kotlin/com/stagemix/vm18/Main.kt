@@ -175,6 +175,8 @@ fun main(args: Array<String>) {
     // same meter decoding, same fader writes, same quantization coming
     // back — so the whole path is exercised, not shortcut in-process.
     var client: DeskClient? = null
+    // the strips ask the running engine what it hears on each channel
+    bench?.client = { client }
     var tablet: TabletWindow? = null
     val logDir = File(System.getProperty("user.home"), "StageMix")
     fun startAutopilot(): DeskClient {

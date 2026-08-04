@@ -86,11 +86,20 @@ fun inferRole(name: String): Role {
 }
 
 /**
- * The user's rig, channel by channel — the built-in default profile:
+ * The rig this was built around, as a STARTING POINT only:
  * 1 Kick, 2 Snare, 3 Overheads, 4 Bass Mic, 5 Guitar Amp (solo),
- * 6+7 Piano stereo, 8 Guitar DI (2nd electric), 9 Vocal Center (lead),
- * 10 Vocal Piano (2nd singer), 11 Congo / 3rd singer, 12 Bass DI,
- * 13 Congo 2, 14 DI2 (synth bass), 15 Sax/Flute, 16 Harmonica.
+ * 6+7 Piano stereo, 8 Guitar DI (2nd electric), 9 Vocal Center,
+ * 10 Vocal Piano, 11 Congo / 3rd singer, 12 Bass DI, 13 Congo 2,
+ * 14 DI2 (synth bass), 15 Sax/Flute, 16 Harmonica.
+ *
+ * These roles are a seed for the first twenty seconds and nothing more.
+ * The band moves an input, the house desk relabels a channel, a singer
+ * picks up a different mic — and a profile keyed to channel numbers is
+ * then wrong for the rest of the night. Channel 11 is the case in point:
+ * labelled "Congo / Vox 3", it is the LEAD SINGER on this rig, and
+ * reading the first word of the label put the lead vocal in the
+ * percussion group. InstrumentId listens and corrects all of this from
+ * the audio once there is enough of it to be sure.
  */
 fun defaultRigProfile(): List<ChannelConfig> = listOf(
     ChannelConfig(0, "Kick Drum", Role.FOUNDATION),
@@ -103,7 +112,8 @@ fun defaultRigProfile(): List<ChannelConfig> = listOf(
     ChannelConfig(7, "Guitar DI", Role.RHYTHM_GTR),
     ChannelConfig(8, "Vocal Center", Role.VOCAL),
     ChannelConfig(9, "Vocal Piano", Role.VOCAL),
-    ChannelConfig(10, "Congo / Vox 3", Role.BACKING_VOCAL),
+    // ambiguous by name on purpose — the audio settles it
+    ChannelConfig(10, "Congo / Vox 3", Role.VOCAL),
     ChannelConfig(11, "Bass DI", Role.FOUNDATION),
     ChannelConfig(12, "Congo 2", Role.PERCUSSION),
     ChannelConfig(13, "DI2 Synth Bass", Role.FOUNDATION),
@@ -181,6 +191,75 @@ data class EngineSettings(
     val staticMinDepthDb: Float = 12f,
     val vocalActTauSec: Float = 2.5f,
     val leadHoldSec: Float = 5f,
+    /**
+     * ONE BALANCE, THEN HOLD.
+     *
+     * The point of the app is a mix that is right most of the night, not
+     * a mix that is being adjusted all night. Once every channel has
+     * found its place the engine stops steering, and only a real change
+     * of picture — a solo, or an instrument arriving — moves anything
+     * again, and then only by a trim. Turn this off to get the old
+     * continuously-steering behaviour back.
+     */
+    val holdAfterBalance: Boolean = true,
+    /** how long a channel must sit still before its place is called found */
+    val settleSec: Float = 25f,
+    /** and how close to its target "sitting still" means */
+    val settleTolDb: Float = 1.0f,
+    /** how far a released channel may be trimmed from where it settled */
+    val trimBandDb: Float = 2.5f,
+    /** how far a solo is lifted out of a held mix, and no further */
+    val soloLiftDb: Float = 2.0f,
+    /** and how far a player must step up to break a held balance at all */
+    val holdSoloRiseDb: Float = 5.0f,
+    /** how long an arriving instrument may reshape the balance */
+    val arrivalGraceSec: Float = 25f,
+    /** a source silent for this long is ARRIVING when it plays again */
+    val arrivalSilenceSec: Float = 25f,
+    /** the instruments that take solos, and so may step out of the hold */
+    val soloRoles: Set<Role> = setOf(
+        Role.SOLO_GTR, Role.RHYTHM_GTR, Role.COLOR, Role.KEYS),
+    /**
+     * How much more of the singing a challenger must be doing before the
+     * lead moves to them while the current lead is still audible. Spill
+     * from a loud stage keeps every vocal mic slightly "active", so
+     * waiting for the current lead to fall silent never happened.
+     */
+    val leadMarginAct: Float = 0.25f,
+    /**
+     * How often the engine reconsiders what is plugged into a channel. A
+     * role change is worth several dB, so it is a verdict on minutes of
+     * listening, not a reaction to one chorus.
+     */
+    val identEverySec: Float = 20f,
+    /**
+     * How long the audio must keep proposing a new instrument before the
+     * channel is re-roled. A channel is NOT one instrument all night —
+     * the harmonica player sings backing vocals between solos on the same
+     * mic — so this is deliberately re-runnable; the dwell and the gap
+     * are what stop it flapping between the two mid-phrase.
+     */
+    val identDwellSec: Float = 45f,
+    val identMinGapSec: Float = 90f,
+    /**
+     * A channel making no real sound is taken out of the MAINS entirely
+     * rather than eased down a few dB. An open mic left in the mix is a
+     * feedback path, a bucket of room, and one-sixteenth of the hiss on
+     * the main bus, all for no music at all.
+     *
+     * Never the channel ON/OFF key — that takes the bus sends with it and
+     * would kill a player's wedge mid-song. The main fader is the only
+     * mute the engine is allowed to have, and a human moving the fader
+     * takes the channel back for two minutes as always.
+     */
+    val muteSilent: Boolean = true,
+    /**
+     * No signal below this is an instrument, however quiet the rest of
+     * the stage is. This is the floor under the relative activity gate.
+     */
+    val absoluteFloorDb: Float = -62f,
+    val silentMuteAfterSec: Float = 25f,
+    val silentMuteDb: Float = 40f,
     /** a fader move smaller than this is the wire, not a human */
     val overrideMinDb: Float = 0.25f,
     /**
@@ -219,6 +298,16 @@ data class FaderWrite(val channel: Int, val levelDb: Float) {
 
 class ChannelState(val cfg: ChannelConfig) {
     var role: Role = cfg.role
+    /** out of the mains because it is making no real sound */
+    var muted = false
+    /** the operator set this role by hand: the listener must not move it */
+    var roleLocked = false
+    /** the listener has re-roled this channel at least once */
+    var roleIdentified = false
+    /** a role the audio is proposing, and how long it has proposed it */
+    var pendingRole: Role? = null
+    var pendingSince = 0.0
+    var roleChangedT = -1000.0
     var baselineDb: Float? = null    // fader position at takeover
     var preEma: Float? = null        // active-only source loudness EMA
     var fastEma: Float? = null       // ~3 s EMA: spots a player stepping up
@@ -246,6 +335,15 @@ class ChannelState(val cfg: ChannelConfig) {
     var isStatic = false             // hum / room tone, not an instrument
     /** deadband hysteresis: once engaged we converge fully */
     var engaged = false
+    /** this channel has found its place and is being held there */
+    var settled = false
+    var settledOffset = 0f
+    /** when its target stopped moving; -1 while it is still moving */
+    var atPlaceSince = -1.0
+    /** the target that timer is measured against */
+    var settleRef = 0f
+    /** when this source last arrived from silence */
+    var arrivedT = -1000.0
     var offset = 0f                  // slewed fader offset from baseline
     var target = 0f
     var duckDb = 0f
@@ -270,6 +368,15 @@ class StageEngine(
 
     var leadVocal: Int? = null; private set
     private var lastLeadSwitch = 0.0
+
+    /**
+     * What is actually plugged in. Channel numbers and desk labels both
+     * lie — see InstrumentId — so the engine listens and re-roles what it
+     * finds, unless the operator has said otherwise.
+     */
+    val ident = InstrumentId()
+    var identifyFromAudio = true
+    private var lastIdentT = -1.0
     /** revert hands the mix back AND keeps hands off until re-armed */
     private var revertHoldUntil = 0.0
 
@@ -446,8 +553,17 @@ class StageEngine(
             val db = sane(levels.getOrNull(idx) ?: continue) ?: continue
             if (db > loudest) loudest = db
         }
-        val enterGate = min(settings.activityEnterDb,
-            loudest - settings.relativeGateDb)
+        // The gate follows the stage so a quiet trio is not deafened —
+        // but it must never follow it all the way down. On an empty
+        // stage the loudest thing is digital silence, and `loudest - 25`
+        // then puts the gate at -105 dBFS, which makes all sixteen
+        // channels of NOTHING read as active. The engine duly balanced
+        // the silence and boosted six of them to +6, and once the mix
+        // was allowed to settle it held them there into the next act.
+        // Below the absolute floor there is no instrument, whatever the
+        // rest of the stage is doing.
+        val enterGate = max(settings.absoluteFloorDb,
+            min(settings.activityEnterDb, loudest - settings.relativeGateDb))
         val exitGate = enterGate - 10f
         for ((idx, st) in state) {
             val db = sane(levels.getOrNull(idx) ?: continue) ?: continue
@@ -470,6 +586,19 @@ class StageEngine(
                 st.spreadSince = tSec
                 st.spreadMin = db; st.spreadMax = db
             }
+            // ARRIVAL: silent for a good while, and now playing. This is
+            // an instrument coming in — a horn section for the middle
+            // eight, a singer picking up a mic nobody was using — and it
+            // is one of only two things allowed to disturb a settled
+            // balance. A source that merely dipped for a bar is not
+            // arriving, which is what the silence requirement is for.
+            val wasAway = tSec - st.lastActiveT > settings.arrivalSilenceSec
+            if (!st.active && st.gateOpen && wasAway && takeoverT >= 0) {
+                st.arrivedT = tSec
+                lastArrivalT = tSec
+                log(tSec, "arrive", idx, 0f,
+                    "${st.cfg.name} came in — making room for it")
+            }
             st.active = st.gateOpen
             if (st.active) {
                 st.lastActiveT = tSec
@@ -480,6 +609,9 @@ class StageEngine(
                 st.fastEma = st.fastEma?.let { it + fa * (db - it) } ?: db
                 mean += db; n += 1
             }
+            // the envelope half of "what is this?" — every channel, every
+            // frame, whether or not the RTA happens to be parked here
+            ident.onLevel(idx, db, dtFrame, st.active && !st.isStatic)
             val a = (dtFrame / settings.vocalActTauSec).coerceIn(0f, 1f)
             val singing = if ((st.role == Role.VOCAL ||
                         st.role == Role.BACKING_VOCAL) &&
@@ -541,6 +673,7 @@ class StageEngine(
             st.heardSec = 0f; st.takeRef = null
             st.overrideUntil = 0.0; st.fastUntil = 0.0
             st.idleRamped = false; st.engaged = false
+            st.settled = false; st.atPlaceSince = -1.0; st.settledOffset = 0f
         }
         takeoverT = tSec
         revertHoldUntil = 0.0
@@ -574,6 +707,106 @@ class StageEngine(
         return out
     }
 
+    /**
+     * The spectrum half of "what is this?" — one channel at a time, from
+     * whichever channel the Channel Doctor's RTA is parked on.
+     */
+    fun onRtaFor(ch: Int, bins: FloatArray) {
+        val st = state[ch] ?: return
+        ident.onRta(ch, bins, st.active && !st.isStatic)
+    }
+
+    /**
+     * Re-role whatever the audio has made up its mind about.
+     *
+     * Runs on a slow cadence: a role change moves a channel several dB,
+     * so it must be a considered verdict on minutes of evidence, not a
+     * reaction to one chorus. Each channel can be moved once — after
+     * that it stays put unless the operator changes it, because a role
+     * oscillating between two families would swing the mix all night.
+     */
+    private fun identifyPass(tSec: Double) {
+        if (!identifyFromAudio) return
+        if (lastIdentT >= 0 && tSec - lastIdentT < settings.identEverySec) return
+        lastIdentT = tSec
+        for ((idx, st) in state) {
+            if (st.roleLocked || st.role == Role.TALK) continue
+            // A source the engine has judged to be hum, room tone or an
+            // empty open mic is NOT an instrument and must never be
+            // re-roled. Room noise through a vocal mic looks exactly like
+            // a quiet singer to a spectrum — and promoting a -50 dBFS
+            // open mic to lead vocal hands it the top of the pyramid, a
+            // boost, and a place in the anchor. That is the classic way
+            // to walk a stage into feedback, arrived at by a new route.
+            if (st.isStatic || !st.active) { st.pendingRole = null; continue }
+            val r = ident.resolve(idx, st.cfg.name, st.role)
+            if (r == null || r.role == st.role) {
+                st.pendingRole = null
+                continue
+            }
+            // A CHANNEL IS NOT ONE INSTRUMENT ALL NIGHT. The harmonica
+            // player on this rig sings backing vocals between solos, on
+            // the same microphone — so this may not be re-run once and
+            // then closed. What it must not do is flap: the role has to
+            // hold its new opinion for a while, and the last change has
+            // to be far enough behind.
+            if (st.pendingRole != r.role) {
+                st.pendingRole = r.role
+                st.pendingSince = tSec
+                continue
+            }
+            if (tSec - st.pendingSince < settings.identDwellSec) continue
+            if (tSec - st.roleChangedT < settings.identMinGapSec) continue
+
+            val was = st.role
+            st.role = r.role
+            st.roleIdentified = true
+            st.roleChangedT = tSec
+            st.pendingRole = null
+            // the balance for both groups just changed size
+            recountGroups()
+            // The channel is doing a different job now, so where it
+            // belongs has changed — which is a real change of picture,
+            // not drift, and one of the few things allowed to disturb a
+            // held mix.
+            st.settled = false
+            st.atPlaceSince = -1.0
+            if (r.role == Role.VOCAL || r.role == Role.BACKING_VOCAL)
+                reconsiderLead(tSec)
+            log(tSec, "ident", idx, 0f,
+                "${st.cfg.name}: ${was.name.lowercase()} -> " +
+                "${r.role.name.lowercase()} — ${r.why}")
+        }
+    }
+
+    /**
+     * Who is carrying the lead right now.
+     *
+     * This used to be `the first channel whose role says VOCAL`, which
+     * is to say: whichever singer happened to be patched lowest. On a rig
+     * where the lead is on channel 11 and a spare vocal mic is on 9, the
+     * engine spent the night holding up an empty microphone. Position on
+     * the desk means nothing; who is actually singing means everything.
+     */
+    private fun reconsiderLead(tSec: Double) {
+        val group = state.values.filter {
+            (it.role == Role.VOCAL || it.role == Role.BACKING_VOCAL) &&
+                it.baselineDb != null && !it.isStatic
+        }
+        if (group.isEmpty()) { leadVocal = null; return }
+        // most singing done, and among near-equals the loudest source
+        val best = group.maxWithOrNull(
+            compareBy({ it.vocalAct }, { it.preEma ?: -128f })) ?: return
+        if (best.cfg.index == leadVocal) return
+        val prev = leadVocal
+        leadVocal = best.cfg.index
+        lastLeadSwitch = tSec
+        log(tSec, "lead", best.cfg.index, 0f,
+            if (prev == null) "${best.cfg.name} is carrying the lead"
+            else "${best.cfg.name} is carrying the lead, not " +
+                "${state[prev]?.cfg?.name}")
+    }
+
     // ------------------------------------------------------------------
     private fun upwardAllowed(tSec: Double): Boolean =
         !frozenAll && !watchdogVeto && tSec >= clipHoldUntil &&
@@ -591,6 +824,23 @@ class StageEngine(
         if (takeoverT < 0 || !ready) return emptyList()
         if (!anyMotionAllowed(tSec)) return emptyList()
         val up = upwardAllowed(tSec)
+
+        // what is actually plugged in, before deciding where it belongs
+        identifyPass(tSec)
+
+        // The boost budget is a safety rail, not a balancing preference,
+        // so a held mix is not exempt from it. It used to be enforced
+        // only on the way UP, which was enough while every channel was
+        // being re-steered every tick — but a channel that settled with
+        // a boost it could afford, in a mix that later lost half its
+        // sources, sat there breaching it for the rest of the night.
+        if (boostLoudnessDb() > settings.mixBoostBudgetDb) {
+            for (st in state.values)
+                if (st.settled && st.offset > 0f) {
+                    st.settled = false
+                    st.atPlaceSince = -1.0
+                }
+        }
 
         // -- 0. lead-vocal follow ----------------------------------------
         // the pointer is state, so it must be re-validated: a channel
@@ -619,8 +869,15 @@ class StageEngine(
                 return@run
             val cur = leadVocal?.let { state[it] }
             val cand = group.maxByOrNull { it.vocalAct } ?: return@run
-            if (cand.cfg.index != leadVocal && cand.vocalAct > 0.6f
-                && (cur == null || cur.vocalAct < 0.3f)) {
+            // Hand over when someone else is clearly carrying it. The old
+            // rule ALSO demanded the current lead go nearly silent, which
+            // meant a lead seeded onto the wrong mic could keep the role
+            // for the whole night as long as that mic heard spill —
+            // exactly what happens to a vocal mic on a loud stage.
+            val takesOver = cand.cfg.index != leadVocal && cand.vocalAct > 0.6f &&
+                (cur == null || cur.vocalAct < 0.3f ||
+                    cand.vocalAct > cur.vocalAct + settings.leadMarginAct)
+            if (takesOver) {
                 leadVocal = cand.cfg.index
                 lastLeadSwitch = tSec
                 for (st in group) st.fastUntil = tSec + settings.fastWindowSec
@@ -712,6 +969,54 @@ class StageEngine(
             if (tSec < st.overrideUntil) continue  // human owns it right now
             val base = st.baselineDb ?: continue
             val idleFor = tSec - st.lastActiveT
+            // A channel making no real sound is OFF IN THE MAINS.
+            //
+            // Easing it down some fixed number of dB left an open mic
+            // still in the mix, still adding room, still a feedback
+            // path, and still summing hiss from sixteen inputs into a
+            // main bus. Silent means silent.
+            //
+            // "Muted" here means the MAIN FADER at the bottom, never the
+            // channel ON/OFF key. On this desk the channel mute takes the
+            // bus sends with it, so muting a quiet channel would kill
+            // that player's own wedge in the middle of a song. Monitors
+            // are not ours to touch, so the main fader is the only mute
+            // the engine is allowed to have.
+            // `isStatic` alone is enough, with no idle time required: a
+            // dead open mic still reads as "active" because the gate
+            // follows the stage, so waiting for it to go idle meant it
+            // never did. It has already had ninety seconds of not being
+            // an instrument before it can be called static at all.
+            val dead = settings.muteSilent &&
+                (idleFor > settings.silentMuteAfterSec || st.isStatic)
+            if (dead) {
+                if (!st.muted) {
+                    st.muted = true
+                    st.idleRamped = true
+                    // The balance everyone else found was computed
+                    // against a mix that included this. If it turns out
+                    // to be a ground loop or an empty mic, every other
+                    // channel was placed against a lie and has to find
+                    // its place again — a -38 dB hum left the singer
+                    // seven dB down and the hold kept them there.
+                    // Applies to anything LEAVING the mix, not only to
+                    // hum. Between acts the stage empties, and a balance
+                    // struck against a full band leaves the survivors
+                    // holding boosts that were affordable in a mix that
+                    // no longer exists.
+                    unsettleOthers(idx, tSec, if (st.isStatic)
+                        "${st.cfg.name} was not an instrument after all"
+                        else "${st.cfg.name} has left the mix")
+                    st.target = boundOffset(-settings.silentMuteDb, base)
+                    log(tSec, "mute", idx, st.target,
+                        "${st.cfg.name} " +
+                        (if (st.isStatic) "is not an instrument — hum or an " +
+                            "open mic nobody is using" else
+                            "silent ${idleFor.toInt()}s") +
+                        " — out of the mains (monitors untouched)")
+                }
+                continue
+            }
             if (idleFor > settings.idleRampAfterSec) {
                 if (!st.idleRamped) {
                     st.idleRamped = true
@@ -727,6 +1032,7 @@ class StageEngine(
                 // (applause): that is the classic howl setup
                 if (tSec < broadbandHoldUntil) continue
                 st.idleRamped = false
+                st.muted = false
                 st.target = 0f
                 st.fastUntil = tSec + settings.fastWindowSec
                 log(tSec, "restore", idx, 0f,
@@ -762,7 +1068,17 @@ class StageEngine(
                 // solo dips below the line now and then, and demanding
                 // an unbroken run let a genuine 90 s feature go
                 // unrecognised
-                if (hadWindow && rose - ensembleRise > settings.featureRiseDb)
+                // Breaking a held balance takes more than starting a
+                // feature does. While the engine is still balancing, a
+                // marginal call costs nothing — the fader was going to
+                // move anyway. Once the mix is set, the same marginal
+                // call is a 2 dB lift and a 2 dB return on a player who
+                // never actually stepped out, and on a steady guitar
+                // channel the ordinary wander of the meter was enough to
+                // trip it twice in seven minutes.
+                val need = if (st.settled && settings.holdAfterBalance)
+                    settings.holdSoloRiseDb else settings.featureRiseDb
+                if (hadWindow && rose - ensembleRise > need)
                     st.featureVotes++
                 else st.featureVotes = max(0, st.featureVotes - 1)
                 if (st.featureVotes >= settings.featureConfirmTicks) {
@@ -798,7 +1114,19 @@ class StageEngine(
                     st.engaged = false
                 }
             }
-            if (st.featureStart >= 0) { st.target = st.offset; continue }
+            if (st.featureStart >= 0) {
+                // In a HELD mix a solo is one of the two things worth
+                // moving a fader for, so it gets a real lift rather than
+                // just being left alone — bounded, and straight back
+                // afterwards. (While still balancing, the old behaviour
+                // is right: hold the fader where it is and simply do not
+                // take the feature back off the player.)
+                st.target = if (st.settled && settings.holdAfterBalance &&
+                    st.role in settings.soloRoles)
+                    boundOffset(st.settledOffset + settings.soloLiftDb, base)
+                else st.offset
+                continue
+            }
             val height = effHeight(st)
             val contrib = pre + base + st.offset
             val tgt: Float = if (anchor == null) {
@@ -851,6 +1179,43 @@ class StageEngine(
                 } else bounded
             } else bounded
             val err = abs(boundedPair - st.offset)
+
+            // ONE BALANCE, THEN HOLD.
+            //
+            // The engine used to re-steer every channel every tick for
+            // the whole night. Each move is defensible on its own — the
+            // source drifted, so the target drifted — but the sum of
+            // them is a mix that never stops moving, and a mix that
+            // never stops moving has no shape. Worse, when the anchor
+            // shifted the targets could swing twelve dB, and a swing
+            // that size warps everything around it.
+            //
+            // So: converge once, then stop. After the balance is found
+            // a channel only moves for something that genuinely changes
+            // the picture — a player taking a solo, or an instrument
+            // arriving that was not there before. Drift is not a
+            // reason. See [holdRelease].
+            if (st.settled && settings.holdAfterBalance) {
+                val free = holdRelease(st, tSec)
+                if (free == null) {
+                    st.target = st.settledOffset
+                    continue
+                }
+                // released, but gently: a trim around the settled
+                // point, never a fresh full-range placement
+                val lo = st.settledOffset - settings.trimBandDb
+                val hi = st.settledOffset + settings.trimBandDb
+                val trimmed = boundedPair.coerceIn(lo, hi)
+                if (abs(trimmed - st.target) > 0.25f) {
+                    st.target = trimmed
+                    log(tSec, "trim", idx, trimmed,
+                        "${st.cfg.name} %+.1f dB — $free".format(
+                            java.util.Locale.ROOT,
+                            trimmed - st.settledOffset))
+                }
+                continue
+            }
+
             if (err > settings.deadbandDb) st.engaged = true
             // Disengage at HALF the trigger, not at 0.25 dB: chasing a
             // moving source all the way down to a quarter of a dB turned
@@ -866,6 +1231,38 @@ class StageEngine(
                 }
             } else if (!st.idleRamped && st.duckDb == 0f) {
                 st.target = st.offset  // settled
+            }
+
+            // Has the engine stopped changing its mind?
+            //
+            // Judged on the TARGET, not on where the fader happens to be.
+            // The fader is also carrying the vocal duck, which moves
+            // continuously by design — measuring settling on the fader
+            // meant a ducked channel could never settle, ducking never
+            // stopped, and the mix never came to rest at all.
+            // Settling early is worse than not settling at all: it freezes
+            // a mix that was never finished. So it takes three things at
+            // once — the channel has been auditioned, the pyramid agrees
+            // with where its fader actually is, and the target has stopped
+            // moving. Target stability alone was not enough: a channel
+            // inside the deadband parks its target on its own offset,
+            // which is perfectly stable and says nothing about whether
+            // the channel is in the right place.
+            val converged = st.takeRef != null && err < settings.deadbandDb
+            if (settings.holdAfterBalance && !st.settled && converged) {
+                if (st.atPlaceSince < 0 ||
+                    abs(st.target - st.settleRef) > settings.settleTolDb) {
+                    st.settleRef = st.target
+                    st.atPlaceSince = tSec
+                } else if (tSec - st.atPlaceSince >= settings.settleSec) {
+                    st.settled = true
+                    st.settledOffset = st.target
+                    st.engaged = false
+                    log(tSec, "settled", idx, st.target,
+                        "${st.cfg.name} has found its place " +
+                        "(%+.1f dB) — holding it from here"
+                            .format(java.util.Locale.ROOT, st.target))
+                }
             }
         }
 
@@ -928,6 +1325,26 @@ class StageEngine(
                 val step = (settings.leadPerSecDb * dt).toFloat()
                 val move = min(step, abs(err) * 0.5f) * (if (err > 0) -1f else 1f)
                 for (st in band) {
+                    // A HELD channel is not ducked. Ducking is how the
+                    // engine gets the vocal on top while it is still
+                    // working out the balance; once the balance IS right
+                    // the vocal is already on top, and a duck that keeps
+                    // breathing under the band for the rest of the night
+                    // is precisely the restlessness the hold exists to
+                    // stop. Whatever duck it is carrying is let go.
+                    // A HELD channel keeps whatever duck it settled with
+                    // and stops breathing — but the freeze is one-way.
+                    // Releasing a duck outright put the band straight
+                    // back over the singer the moment the mix came to
+                    // rest, and freezing it in BOTH directions took away
+                    // the engine's cheap tool: with no duck available it
+                    // pushed the singer up instead, which costs mix
+                    // loudness the boost budget has to pay for. So a held
+                    // channel may still duck FURTHER for a buried vocal —
+                    // that is a drastic change by any reading — and may
+                    // never drift back up on its own.
+                    if (st.settled && settings.holdAfterBalance &&
+                        move >= 0f) continue
                     val was = st.duckDb
                     st.duckDb = (st.duckDb + move)
                         .coerceIn(-settings.duckMaxDb, 0f)
@@ -999,6 +1416,59 @@ class StageEngine(
                     settings.absFaderCapDb)))
         }
         return writes
+    }
+
+    /**
+     * Once the balance is found, the only things that may move a fader
+     * again. Returns the reason, or null to keep holding.
+     *
+     * Deliberately short. A settled mix is the product; drift, a quieter
+     * verse, a busier chorus and a source wandering a couple of dB are
+     * all things a good balance ABSORBS rather than chases. What it
+     * cannot absorb is the picture actually changing:
+     *
+     *  · A SOLO. Somebody steps out front — guitar, sax, harmonica,
+     *    piano. The feature hold already recognises this; here it also
+     *    earns the right to move.
+     *  · AN INSTRUMENT ARRIVING. A channel that was silent starts
+     *    playing, including a singer picking up a mic that was not in
+     *    use. Something genuinely new is in the room and has no place
+     *    in the balance yet.
+     *
+     * Safety is not in this list because safety does not go through it:
+     * clip freezes, the howl veto, operator overrides and revert all act
+     * on the fader directly.
+     */
+    private fun holdRelease(st: ChannelState, tSec: Double): String? {
+        if (st.featureStart >= 0 && st.role in settings.soloRoles)
+            return "taking a solo"
+        if (tSec - st.arrivedT < settings.arrivalGraceSec) {
+            return if (st.role == Role.VOCAL || st.role == Role.BACKING_VOCAL)
+                "a voice on a mic that was not in use"
+            else "just came in"
+        }
+        // Only the arriving channel moves. Letting the rest of the band
+        // "make room" was worth thirty-two dB of fader travel across the
+        // desk for one harmonica — which is the whole balance warping
+        // around a single entry, exactly what the hold is for. The new
+        // instrument is placed against the mix that already exists.
+        return null
+    }
+
+    /** the most recent time any channel arrived from silence */
+    private var lastArrivalT = -1000.0
+
+    /** everyone but [exceptCh] goes back to looking for their place */
+    private fun unsettleOthers(exceptCh: Int, tSec: Double, why: String) {
+        var n = 0
+        for ((i, other) in state) {
+            if (i == exceptCh || !other.settled) continue
+            other.settled = false
+            other.atPlaceSince = -1.0
+            n++
+        }
+        if (n > 0) log(tSec, "rebalance", null, 0f,
+            "$why — re-placing the other $n channels around it")
     }
 
     /** + means the source got louder than when we took over. */
@@ -1174,10 +1644,102 @@ class StageEngine(
     }
 
     // ------------------------------------------------------------------
+    /**
+     * The operator's word is final. A role set from the screen is locked:
+     * the listener will keep forming an opinion, but it will never move
+     * this channel again.
+     */
     fun setRole(ch: Int, role: Role): Boolean {
         val st = state[ch] ?: return false
         st.role = role
+        st.roleLocked = true
         return true
+    }
+
+    /**
+     * A role read off the console's channel NAME. Emphatically not a
+     * lock: names are the thing the listener exists to second-guess, and
+     * routing them through [setRole] pinned every channel to its label
+     * the moment the desk reported one — which would have switched the
+     * whole feature off on exactly the rigs that need it.
+     */
+    fun setRoleFromName(ch: Int, role: Role): Boolean {
+        val st = state[ch] ?: return false
+        if (st.roleLocked || st.roleIdentified) return false
+        st.role = role
+        return true
+    }
+
+    /**
+     * Tear up the held balance and find a new one.
+     *
+     * For the times the mix is simply wrong for the next hour — the band
+     * swaps half its instruments between sets, the room fills up, the
+     * PA is repositioned. Nothing detects that; a human does.
+     */
+    fun rebalance(tSec: Double) {
+        for (st in state.values) {
+            st.settled = false
+            st.atPlaceSince = -1.0
+            st.engaged = false
+        }
+        log(tSec, "rebalance", null, 0f,
+            "finding the balance again from where the faders are now")
+    }
+
+    /** how many channels have found their place, and how many are steered */
+    fun settledCount(): Pair<Int, Int> {
+        val steered = state.values.count {
+            it.baselineDb != null && it.role != Role.TALK && it.active }
+        return state.values.count { it.settled && it.active } to steered
+    }
+
+    /** true once every channel on stage is being held rather than steered */
+    val balanced: Boolean get() = settledCount().let {
+        it.second > 0 && it.first >= it.second }
+
+    /** what the audio thinks is on a channel, for the screen */
+    fun identified(ch: Int): InstrumentId.Verdict? = ident.verdict(ch)
+    fun identEvidence(ch: Int): Float = ident.evidence(ch)
+
+    /**
+     * What is on this channel right now, in words, for the screen.
+     *
+     * [heard] separates the two very different claims the app can make:
+     * "the label says vocal" and "this sounds like a vocal". An operator
+     * glancing at the screen mid-song needs to know which one they are
+     * looking at before they decide whether to trust it.
+     */
+    data class ChannelIdent(
+        val role: Role,
+        val label: String,
+        /** true once the AUDIO has settled this, not the desk label */
+        val heard: Boolean,
+        val confidence: Float,
+        /** 0..1 — how much listening is behind it */
+        val evidence: Float,
+        val why: String,
+    )
+
+    fun channelIdent(ch: Int): ChannelIdent? {
+        val st = state[ch] ?: return null
+        val v = ident.verdict(ch)
+        val lead = ch == leadVocal
+        val label = when {
+            st.role == Role.VOCAL && lead -> "LEAD VOCAL"
+            st.role == Role.VOCAL -> "vocal"
+            else -> ident.pretty(st.role)
+        }
+        return ChannelIdent(st.role, label,
+            heard = st.roleIdentified || (v != null && !st.roleLocked),
+            confidence = v?.confidence ?: 0f,
+            evidence = ident.evidence(ch),
+            why = when {
+                st.roleLocked -> "you set this"
+                st.roleIdentified -> v?.why ?: "heard"
+                v == null -> "still listening"
+                else -> v.why
+            })
     }
 
     fun freezeChannel(ch: Int, frozen: Boolean): Boolean {

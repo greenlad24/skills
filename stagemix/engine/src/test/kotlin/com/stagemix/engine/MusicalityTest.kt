@@ -263,14 +263,16 @@ class MusicalityTest {
         assertTrue(foundation - lead < 4f,
             "the kick+bass group sits ${foundation - lead} dB over the " +
             "lead vocal — the singer is buried under the low end")
-        // R4: at most the two vocal channels may sit off their modelled
-        // target — the lead because it is against its +6 authority rail
-        // (it wants ~+10), the second singer because the engine's duet
-        // rule places a genuine duet partner near the top and this
-        // model does not carry that rule.
-        assertTrue(missed <= 2,
-            "$missed channels left off target (expected at most the two " +
-            "vocals)")
+        // R4: only the vocal channels may sit off their modelled target
+        // — the lead because it is against its +6 authority rail (it
+        // wants ~+10), and the other singers because the engine's duet
+        // rule places a genuine duet partner near the top while this
+        // model does not carry that rule. There are three of them since
+        // ch11 ("Congo / Vox 3") was seeded as the vocal it actually is.
+        val vocals = (0 until 16).count { ROLE[it] == Role.VOCAL }
+        assertTrue(missed <= vocals,
+            "$missed channels left off target (expected at most the " +
+            "$vocals vocals)")
     }
 
     /**

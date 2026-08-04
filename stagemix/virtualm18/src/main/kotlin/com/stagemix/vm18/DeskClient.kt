@@ -192,6 +192,9 @@ class DeskClient(
                     }
                     if (rtaFocus >= 0 && t - rtaFocusT > 0.5)
                         doctor?.onRta(rtaFocus, bins, t)
+                        // and the same frame to the listener that
+                        // works out what is plugged in here
+                        engine.onRtaFor(rtaFocus, bins)
                 }
             "/meters/${Meters.BANK_DYNAMICS}" ->
                 m.blobArg(0)?.let { Meters.decode(it) }?.let { v ->
@@ -207,7 +210,7 @@ class DeskClient(
                         ?.groupValues?.get(1)?.toIntOrNull()?.let { ch ->
                             if (s.isNotBlank()) {
                                 names[ch - 1] = s
-                                engine.setRole(ch - 1, inferRole(s))
+                                engine.setRoleFromName(ch - 1, inferRole(s))
                             }
                         }
                     return

@@ -255,7 +255,12 @@ class RolesTest {
         assertEquals(16, rig.size)
         assertEquals(Role.VOCAL, rig[8].role)
         assertEquals(Role.VOCAL, rig[9].role)
-        assertEquals(Role.BACKING_VOCAL, rig[10].role)
+        // ch11 is labelled "Congo / Vox 3" and is the LEAD SINGER on this
+        // rig. Seeding it as a backing vocal put the lead 8 dB under
+        // where it belongs until the audio corrected it; seeding it as a
+        // vocal costs nothing if the audio disagrees, because
+        // InstrumentId moves it back within the first minute.
+        assertEquals(Role.VOCAL, rig[10].role)
         assertEquals(Role.FOUNDATION, rig[0].role)
         assertEquals(Role.FOUNDATION, rig[11].role)
         assertEquals(Role.FOUNDATION, rig[13].role)
