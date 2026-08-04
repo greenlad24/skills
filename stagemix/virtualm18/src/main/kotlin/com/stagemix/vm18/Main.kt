@@ -43,6 +43,8 @@ fun main(args: Array<String>) {
     var headless = false
     var startSec = 0.0
     var autopilot = false
+    var room = false
+    var loss = 0.0
     var i = 0
     while (i < args.size) {
         when (args[i]) {
@@ -53,6 +55,8 @@ fun main(args: Array<String>) {
             "--no-quantize" -> quantize = false
             "--headless" -> headless = true
             "--autopilot" -> autopilot = true
+            "--room" -> room = true
+            "--loss" -> loss = args[++i].toDouble()
             "-h", "--help" -> { usage(); return }
             else -> if (dir == null) dir = args[i]
         }
@@ -105,6 +109,10 @@ fun main(args: Array<String>) {
         } else note("tablet: $addr = %.4f".format(Locale.ROOT, v))
     }
 
+    player.room.enabled = room
+    console.lossPercent = loss
+    if (room) println("  room loop ON — the mains feed back into the open mics")
+    if (loss > 0) println("  dropping %.1f%% of packets".format(Locale.ROOT, loss))
     player.open()
     console.start()
     note("ready — on the tablet, enter this Mac's IP and connect")
@@ -224,5 +232,8 @@ private fun usage() = println("""
       --autopilot     run the StageMix autopilot on THIS machine and
                       switch MIXING on, so a night can be tested with no
                       tablet in the room. In the window it is a button.
+      --room          let the PA back into the open mics, so feedback can
+                      actually happen and the howl watchdog can be judged
+      --loss <pct>    drop this percentage of the console's packets
       --headless      no window
 """.trimIndent())

@@ -42,6 +42,26 @@ class Player(
     private val meters = List(channels) { LevelMeter(sampleRate) }
     private val rta = List(channels) { Rta(sampleRate, 4096) }
     private val levels = FloatArray(16) { -128f }
+    private val dyn = List(channels) { ChannelDynamics(sampleRate) }
+    private val gate = FloatArray(16)
+    private val comp = FloatArray(16)
+
+    /** the room's feedback path — see RoomLoop */
+    val room = RoomLoop(sampleRate)
+    private val howl = FloatArray(blockFrames)
+
+    /**
+     * Which channels are open microphones. Only these are part of the
+     * feedback loop: a bass DI cannot howl however far you push it.
+     */
+    var isMic: (Int) -> Boolean = { ch ->
+        val n = (console.names[ch] ?: "").lowercase()
+        n.isNotBlank() &&
+            !listOf("di", "synth", "808").any { it in n } &&
+            listOf("vocal", "vox", "mic", "sax", "harm", "conga", "congo",
+                "snare", "overhead", "amp", "flute", "kick", "tom", "hat")
+                .any { it in n }
+    }
 
     private val outFmt = AudioFormat(sampleRate.toFloat(), 16, 2, true, false)
     private var line: SourceDataLine? = null
@@ -130,10 +150,33 @@ class Player(
             if (n <= 0) { finished = true; playing = false; break }
             positionSec += n.toDouble() / sampleRate
 
+            // The room, before anything is metered: if the mains are
+            // ringing, the open mics hear it exactly as they would on
+            // stage — so the meters, the RTA and the speakers all get it.
+            val openMics = (0 until channels)
+                .filter { isMic(it) }
+                .map { console.faderDb(it) }
+            if (room.advance(openMics, n, howl))
+                for (c in 0 until channels)
+                    if (isMic(c)) for (i in 0 until n) bufs[c][i] += howl[i]
+
             // pre-fader levels: what the console meters and the app steers on
             for (c in 0 until channels)
                 levels[c] = meters[c].push(bufs[c], n)
             console.inputDb = levels.copyOf()
+
+            // the dynamics the desk would be applying, so /meters/6 is
+            // worth reading — against the threshold the console holds,
+            // which is the one the Channel Doctor moves
+            for (c in 0 until channels) {
+                val thr = (console.params["/ch/%02d/dyn/thr"
+                    .format(java.util.Locale.ROOT, c + 1)] ?: 0.667f) * 60f - 60f
+                dyn[c].push(bufs[c], n, thr)
+                gate[c] = dyn[c].gateGrDb
+                comp[c] = dyn[c].compGrDb
+            }
+            console.gateGr = gate.copyOf()
+            console.compGr = comp.copyOf()
 
             // the RTA the app has parked on a channel
             val focus = console.rtaSource

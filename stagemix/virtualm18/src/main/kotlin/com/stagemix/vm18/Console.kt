@@ -68,6 +68,23 @@ class Console(
     @Volatile private var running = true
     var packetsIn = 0L; private set
     var packetsOut = 0L; private set
+    var packetsDropped = 0L; private set
+
+    /**
+     * Wi-Fi, modelled. On loopback nothing is ever lost, so the engine's
+     * meter-timeout freeze and its recovery never run — and those are
+     * the paths that decide what happens when the radio dies mid-show.
+     */
+    @Volatile var lossPercent = 0.0
+    @Volatile private var stallUntil = 0L
+    private val rnd = java.util.Random(12345)
+
+    /** go silent for [seconds], as a radio dropout would */
+    fun stall(seconds: Double) {
+        stallUntil = System.currentTimeMillis() + (seconds * 1000).toLong()
+    }
+
+    fun stalled(): Boolean = System.currentTimeMillis() < stallUntil
 
     init {
         for (ch in 0 until 16) {
@@ -210,6 +227,10 @@ class Console(
     }
 
     private fun send(to: InetSocketAddress, m: OscMessage) {
+        if (stalled()) { packetsDropped++; return }
+        if (lossPercent > 0 && rnd.nextDouble() * 100.0 < lossPercent) {
+            packetsDropped++; return
+        }
         try {
             val b = m.encode()
             sock.send(DatagramPacket(b, b.size, to))

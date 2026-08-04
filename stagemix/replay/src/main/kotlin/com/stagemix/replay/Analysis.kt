@@ -79,7 +79,11 @@ class Rta(private val sampleRate: Int, val fftSize: Int = 4096) {
         }
         for (b in 0 until 100) {
             if (cnt[b] == 0) { bins[b] = -128f; continue }
-            val rms = sqrt(acc[b] / cnt[b]) * 2.0 / fftSize
+            // The ENERGY in the band, not the average of its FFT bins. A
+            // 1/10-octave band up at 2 kHz spans thirty FFT bins, so
+            // averaging buried a pure tone 15 dB under its real level —
+            // which is exactly how a howl hides from an analyzer.
+            val rms = sqrt(acc[b]) * 2.0 / fftSize
             bins[b] = if (rms <= 1e-9) -128f
                       else max(-128.0, 20.0 * log10(rms)).toFloat()
         }

@@ -377,8 +377,30 @@ the room is hearing after the tablet's fader, and where the tablet has
 put that fader — so every move is visible within a frame and audible
 immediately.
 
+**The three things a recording cannot contain**, modelled so they can be
+tested indoors:
+
+- **ROOM LOOP** — the PA back into the open mics. One resonance: every
+  open mic hears the mains, attenuated by distance from the boxes and by
+  wherever its fader is now; above unity gain it rings up, below it
+  decays. The tone is injected *before* metering, so the meters see it,
+  the RTA sees a narrow peak climbing, and it comes out of the speakers.
+  **PROVOKE FEEDBACK** opens the loop 10 dB for six seconds, as if
+  someone walked a mic into the boxes. Without this the howl watchdog —
+  the most consequential safety feature in the app — cannot be tested at
+  all on a recording, because the engine's own moves can never change
+  what a fixed recording hears.
+- **Gain reduction** — a compressor and gate model reading the *same*
+  threshold the console holds, so `/meters/6` carries real numbers and
+  the Channel Doctor's compressor tending has a loop to close. The bench
+  used to send zeros.
+- **DROP WI-FI 8s** and `--loss <pct>` — the radio failing, so the
+  engine's meter-timeout freeze and its recovery actually run.
+
 | flag | why |
 |---|---|
+| `--room` | room loop on from the start |
+| `--loss 5` | drop 5 % of the console's packets |
 | `--start 600` | begin ten minutes in |
 | `--echo` | behave like firmware that reflects parameter changes back to the sender — the case that used to make the app freeze every channel. Worth one run. |
 | `--no-quantize` | perfect faders instead of the console's 1024 steps |

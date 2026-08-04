@@ -29,6 +29,7 @@ private val MUTED = Color(0x7C, 0x8A, 0xA0)
 private val OK = Color(0x36, 0xD3, 0x99)
 private val WARN = Color(0xF5, 0xA6, 0x23)
 private val LIVE = Color(0xFF, 0x46, 0x52)
+private val BAD = Color(0xE5, 0x48, 0x4E)
 private val ACCENT = Color(0x5A, 0x9B, 0xFF)
 
 /**
@@ -137,6 +138,35 @@ class Bench(
             mixing.text = if (mixingOn) "MIXING — ON" else "MIXING"
         }
         p.add(auto); p.add(Box.createHorizontalStrut(6)); p.add(mixing)
+
+        // the parts of a real stage a recording cannot contain
+        p.add(Box.createHorizontalStrut(20))
+        val roomBtn = JButton("ROOM LOOP: off")
+        roomBtn.toolTipText = "let the PA back into the open mics, so " +
+            "feedback can actually happen"
+        roomBtn.addActionListener {
+            player.room.enabled = !player.room.enabled
+            roomBtn.text = if (player.room.enabled) "ROOM LOOP: ON"
+                           else "ROOM LOOP: off"
+            note(if (player.room.enabled)
+                "room loop on — the mains now feed back into the open mics"
+                else "room loop off")
+        }
+        val provoke = JButton("PROVOKE FEEDBACK")
+        provoke.toolTipText = "as if someone walked a mic into the boxes"
+        provoke.addActionListener {
+            player.room.enabled = true
+            roomBtn.text = "ROOM LOOP: ON"
+            player.room.provoke(6.0)
+            note("someone just walked a mic in front of the PA")
+        }
+        val drop = JButton("DROP WI-FI 8s")
+        drop.addActionListener {
+            console.stall(8.0)
+            note("radio dropout — the console goes silent for 8 s")
+        }
+        p.add(roomBtn); p.add(Box.createHorizontalStrut(6)); p.add(provoke)
+        p.add(Box.createHorizontalStrut(6)); p.add(drop)
         val hint = JLabel("  (click a channel to load one file at a time)")
         hint.foreground = MUTED
         hint.font = Font(Font.SANS_SERIF, Font.PLAIN, 11)
@@ -154,14 +184,21 @@ class Bench(
         for (s in strips) s.repaint()
         val subs = console.subscriberCount()
         status.text = ("t %s   |   %s   |   tablet: %s   |   in %d / out %d " +
-            "packets   |   RTA on ch%02d")
+            "(%d lost)   |   RTA ch%02d   |   %s")
             .format(java.util.Locale.ROOT,
                 clock(player.positionSec),
                 if (player.playing) "PLAYING" else "stopped",
-                if (subs > 0) "CONNECTED ($subs)" else "not connected",
-                console.packetsIn, console.packetsOut,
-                console.rtaSource + 1)
-        status.foreground = if (subs > 0) OK else WARN
+                if (console.stalled()) "RADIO DOWN"
+                else if (subs > 0) "CONNECTED ($subs)" else "not connected",
+                console.packetsIn, console.packetsOut, console.packetsDropped,
+                console.rtaSource + 1,
+                player.room.status())
+        status.foreground = when {
+            console.stalled() -> BAD
+            player.room.amplitude > 0.02 -> LIVE
+            subs > 0 -> OK
+            else -> WARN
+        }
     }
 
     private fun clock(s: Double) =
