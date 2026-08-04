@@ -53,6 +53,8 @@ class Bench(
     var onAutopilot: ((Boolean) -> Unit)? = null
     /** true once the autopilot has taken the mains */
     var onMixing: ((Boolean) -> Unit)? = null
+    /** the operator wants the next launch to start empty */
+    var onForgetSession: (() -> Unit)? = null
     private val strips = ArrayList<Strip>()
     private val status = JLabel(" ")
     private val logArea = JTextArea(8, 100)
@@ -123,10 +125,15 @@ class Bench(
         rewind.addActionListener { player.rewind() }
         val folder = JButton("Choose folder…")
         folder.addActionListener { chooseFolder() }
+        val forget = JButton("Forget these")
+        forget.toolTipText = "the channels are remembered and put back on " +
+            "the next launch; this clears that"
+        forget.addActionListener { onForgetSession?.invoke() }
         p.add(play); p.add(Box.createHorizontalStrut(8)); p.add(rewind)
         p.add(Box.createHorizontalStrut(8)); p.add(tone)
         p.add(Box.createHorizontalStrut(8)); p.add(mute)
         p.add(Box.createHorizontalStrut(16)); p.add(folder)
+        p.add(Box.createHorizontalStrut(4)); p.add(forget)
 
         // testing without the tablet: run the autopilot right here
         p.add(Box.createHorizontalStrut(20))

@@ -44,6 +44,7 @@ fun main(args: Array<String>) {
     var startSec = 0.0
     var autopilot = false
     var room = false
+    var fresh = false
     var loss = 0.0
     var i = 0
     while (i < args.size) {
@@ -54,6 +55,7 @@ fun main(args: Array<String>) {
             "--echo" -> echo = true
             "--no-quantize" -> quantize = false
             "--headless" -> headless = true
+            "--fresh" -> fresh = true
             "--autopilot" -> autopilot = true
             "--room" -> room = true
             "--loss" -> loss = args[++i].toDouble()
@@ -71,16 +73,28 @@ fun main(args: Array<String>) {
     if (folder != null && !folder.isDirectory) {
         System.err.println("not a folder: $folder"); return
     }
-    val (files, names) = if (folder != null) assignFolder(folder)
-        else MutableList<File?>(16) { null } to
+    // A folder on the command line wins; otherwise put back whatever was
+    // loaded last time, so the same sixteen files do not have to be
+    // picked again after every rebuild.
+    val restored = if (folder != null || fresh) null else Session.load()
+    val (files, names) = when {
+        folder != null -> assignFolder(folder)
+        restored != null -> restored.files to restored.names
+        else -> MutableList<File?>(16) { null } to
             MutableList(16) { defaultRigProfile().getOrNull(it)?.name
                 ?: "ch${it + 1}" }
+    }
     val live = files.count { it != null }
     if (live == 0 && headless) {
         System.err.println("no .wav or .mp3 files to play"); return
     }
 
     println("Virtual M18 — StageMix bench")
+    restored?.let { r ->
+        println("  put back ${r.found} channels from last time " +
+            "(${Session.path})")
+        for (m in r.missing) println("  MISSING since last time: $m")
+    }
     println("  $live of 16 channels loaded" +
         (folder?.let { " from ${it.name}" } ?: ""))
     for (c in 0 until 16)
@@ -135,13 +149,25 @@ fun main(args: Array<String>) {
     if (loss > 0) println("  dropping %.1f%% of packets".format(Locale.ROOT, loss))
     player.open()
     console.start()
+    restored?.let { r ->
+        note("put back ${r.found} channels from last time — " +
+            "press PLAY, or load different ones")
+        for (m in r.missing)
+            note("MISSING since last time: $m (moved or deleted)")
+    }
     note("ready — on the tablet, enter this Mac's IP and connect")
     note("(if it does not find it, check both are on the same Wi-Fi and " +
         "that the Mac firewall is not blocking UDP $port)")
 
-    bench?.onChannelLoaded = { ch, _, nm ->
+    bench?.onChannelLoaded = { ch, f, nm ->
         console.names[ch] = nm
         names[ch] = nm
+        files[ch] = f
+        Session.save(files, names)      // so the next launch has it already
+    }
+    bench?.onForgetSession = {
+        Session.forget()
+        note("forgotten — the next launch will start empty")
     }
 
     // The autopilot, on this machine, for testing without the tablet.
@@ -256,5 +282,6 @@ private fun usage() = println("""
       --room          let the PA back into the open mics, so feedback can
                       actually happen and the howl watchdog can be judged
       --loss <pct>    drop this percentage of the console's packets
+      --fresh         ignore the channels remembered from last time
       --headless      no window
 """.trimIndent())

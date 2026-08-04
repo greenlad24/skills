@@ -111,4 +111,42 @@ class RealRigTest {
             println("stereo peak $peak")
         } finally { player.close(); console.stop() }
     }
+
+    @Test fun `the channels loaded are remembered for the next launch`() {
+        val dir = File(System.getProperty("java.io.tmpdir"), "sm-session")
+            .apply { deleteRecursively(); mkdirs() }
+        val kick = File(dir, "KICK.wav").also { wav16(it, 48000, 0.5, 60.0, 1) }
+        val vox = File(dir, "VOCAL CENTRE.wav")
+            .also { wav16(it, 48000, 0.5, 300.0, 1) }
+        val gone = File(dir, "GONE.wav").also { wav16(it, 48000, 0.5, 200.0, 1) }
+
+        val files = MutableList<File?>(16) { null }
+        val names = MutableList(16) { "" }
+        files[0] = kick; names[0] = "KICK"
+        files[8] = vox;  names[8] = "VOCAL CENTRE"
+        files[15] = gone; names[15] = "GONE"
+        Session.save(files, names)
+
+        // the file moves away between sessions, as they do
+        gone.delete()
+
+        val back = Session.load()
+        assertTrue(back != null, "nothing was remembered")
+        assertTrue(back!!.found == 2,
+            "expected 2 files back, got ${back.found}")
+        assertTrue(back.files[0]?.name == "KICK.wav", "ch01 not restored")
+        assertTrue(back.files[8]?.name == "VOCAL CENTRE.wav",
+            "ch09 not restored")
+        assertTrue(back.names[8] == "VOCAL CENTRE", "the name was not kept")
+        assertTrue(back.files[15] == null,
+            "a file that no longer exists must not be handed back as loaded")
+        assertTrue(back.missing.any { "GONE" in it },
+            "a file that has moved should be named, not silently dropped: " +
+            "${back.missing}")
+
+        // and it can be forgotten
+        Session.forget()
+        assertTrue(Session.load() == null, "forgetting did not clear it")
+        println("remembered ${back.found}, missing ${back.missing}")
+    }
 }
