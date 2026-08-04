@@ -112,12 +112,20 @@ fun defaultRigProfile(): List<ChannelConfig> = listOf(
     ChannelConfig(7, "Guitar DI", Role.RHYTHM_GTR),
     ChannelConfig(8, "Vocal Center", Role.VOCAL),
     ChannelConfig(9, "Vocal Piano", Role.VOCAL),
-    // ambiguous by name on purpose — the audio settles it
-    ChannelConfig(10, "Congo / Vox 3", Role.VOCAL),
+    // THREE SINGERS, and the third one's channel is labelled SAXOPHONE.
+    //
+    // Stated here rather than left to the audio or the label, because
+    // neither can get it right: a hundred-bin spectrum cannot tell a
+    // horn from a voice, and the console's own label on this rig is a
+    // leftover from a different band. The profile is where the operator
+    // says what their rig IS, and it now outranks the desk's label —
+    // see `setRoleFromName`.
+    ChannelConfig(10, "Vox 3", Role.VOCAL),
     ChannelConfig(11, "Bass DI", Role.FOUNDATION),
     ChannelConfig(12, "Congo 2", Role.PERCUSSION),
     ChannelConfig(13, "DI2 Synth Bass", Role.FOUNDATION),
-    ChannelConfig(14, "Sax / Flute", Role.COLOR),
+    // and the saxophone is on the channel labelled UTILITY 3
+    ChannelConfig(14, "Sax", Role.COLOR),
     ChannelConfig(15, "Harmonica", Role.COLOR),
 )
 
@@ -429,8 +437,18 @@ class ChannelState(val cfg: ChannelConfig) {
      * become louder the fader should come lower, and vice versa".
      */
     var planContrib: Float? = null
-    /** the offset the balance was adopted at: the centre of the ride band */
-    var planOffset = 0f
+    /**
+     * The fader position that delivered the plan, in absolute dB — not
+     * an offset from the baseline.
+     *
+     * It has to be absolute because an operator move REPLACES the
+     * baseline: a lift for a solo shifts `baselineDb` and zeroes
+     * `offset`, and a ride band stored as an offset from the old
+     * baseline then describes a fader position that no longer exists.
+     * The plan is "this channel sat here"; where the baseline happens
+     * to be underneath it is nobody's business.
+     */
+    var planFaderDb = 0f
     var preEma: Float? = null        // active-only source loudness EMA
     /**
      * A much slower loudness average, for KEEP's ride only.
@@ -482,6 +500,10 @@ class ChannelState(val cfg: ChannelConfig) {
     var riding = false
     /** this correction has already been reported: do not repeat it */
     var rideLogged = false
+    /** how far this channel has stepped up over the rest of the band */
+    var riseOverBand = 0f
+    /** the operator's lift is for a solo, not a new balance */
+    var soloRide = false
     /** this channel has found its place and is being held there */
     var settled = false
     var settledOffset = 0f
@@ -669,22 +691,81 @@ class StageEngine(
         st.baselineDb = safe
         st.offset = 0f; st.target = 0f; st.duckDb = 0f
         st.overrideUntil = tSec + 120.0
-        // THE OPERATOR'S LEVEL IS THE NEW PLAN.
+        // IS THIS A CORRECTION, OR A SOLO RIDE?
         //
-        // Without this the ride does the single worst thing it could:
-        // the plan still describes where the channel was BEFORE the
-        // hand landed, so the moment the two-minute hold expires the
-        // engine puts it straight back and undoes the correction. A
-        // human move is not an error to be defended against; it is a
-        // restatement of what the balance is.
+        // The two look identical at the fader and mean opposite things,
+        // and getting it wrong is expensive in both directions. A
+        // CORRECTION is a restatement of the balance: the operator has
+        // decided this channel belongs somewhere else, and if the plan
+        // is not updated the engine puts it straight back the moment the
+        // hold expires and undoes the work. A SOLO RIDE is temporary by
+        // definition — the sax steps out, the hand goes up, the sax
+        // steps back — and adopting THAT as the balance leaves the
+        // soloist six dB up for the rest of the night, which the
+        // operator then has to come back and undo. Both of those
+        // happened on the same night: four rides on the saxophone and
+        // five on the guitar amp, each one followed by a correction in
+        // the other direction.
+        //
+        // What tells them apart is not the fader, it is what the PLAYER
+        // is doing. A hand going UP on a channel whose own level is
+        // already climbing away from the rest of the band is riding a
+        // solo. A hand moving on a channel that is playing exactly as it
+        // was is re-drawing the balance.
+        // A latched feature counts for its whole ninety seconds; before
+        // one has latched — which is every channel the app has not yet
+        // learned is a soloist — the decaying rise memory is what there
+        // is to go on.
+        val soloing = st.featureStart >= 0 ||
+            st.riseOverBand > settings.featureRiseDb * 0.5f
+        if (soloing && disagreement > 0f && st.planContrib != null) {
+            // Keep the plan. The lift stands while the player is out
+            // front and the ride brings it home when they step back —
+            // and remember that THIS channel is one that solos, so the
+            // next time it happens the app does it rather than the
+            // operator.
+            st.soloRide = true
+            learnSoloist(st)
+            st.planFaderDb += 0f      // unchanged: that is the point
+            log(tSec, "soloride", ch, disagreement,
+                "${st.name} — you lifted it %+.1f dB while it was stepping "
+                    .format(java.util.Locale.ROOT, disagreement) +
+                "out; keeping your lift for the solo and putting it back " +
+                "after. Noted that this channel takes solos.")
+            return
+        }
+        // A correction. The operator's level IS the new plan.
         (st.slowEma ?: st.preEma)?.let {
             st.planContrib = it + safe
-            st.planOffset = 0f
+            st.planFaderDb = safe
             st.riding = false
+            st.soloRide = false
             st.settled = true
             st.settledOffset = 0f
         }
     }
+
+    /**
+     * Channels the operator has ridden for a solo, by the console's name
+     * for them.
+     *
+     * The app could not have known that "UTILITY 3" is a saxophone —
+     * the label says nothing and a horn and a voice are the same thing
+     * to a spectrum — but a hand going up every time that channel steps
+     * out is a demonstration, and demonstrations are worth learning
+     * from. A channel in here can take a feature and gets the lift
+     * automatically next time, whatever its role says.
+     */
+    val soloistNames = HashSet<String>()
+
+    private fun learnSoloist(st: ChannelState) {
+        soloistNames.add(st.name.trim().lowercase())
+    }
+
+    /** true if this channel is one the operator rides for solos */
+    fun isSoloist(st: ChannelState): Boolean =
+        st.role in settings.soloRoles ||
+            st.name.trim().lowercase() in soloistNames
 
     /** how long a fader must be still before the hand counts as off it */
     private val gestureQuietSec = 1.5
@@ -938,7 +1019,7 @@ class StageEngine(
         lastLeadSwitch = tSec
         balanceAdopted = false
         adoptWhenSettled = false
-        for (st in state.values) { st.planContrib = null; st.planOffset = 0f }
+        for (st in state.values) { st.planContrib = null; st.planFaderDb = 0f }
         // initial lead: the configured lead vocal (Vocal Center)
         leadVocal = state.values.firstOrNull { it.role == Role.VOCAL }
             ?.cfg?.index
@@ -1365,6 +1446,17 @@ class StageEngine(
             // unrecognised.
             val hadWindow = st.riseHist.size >= settings.featureWindowTicks
             val rose = if (hadWindow) fast - st.riseHist.first() else 0f
+            // Kept for `operatorOverride`, which has to know whether the
+            // player was stepping out when the hand landed — and kept
+            // with a MEMORY, because an operator reaches for the fader
+            // a few seconds into a solo, not on the downbeat of it. The
+            // rise window itself is eight seconds and has flattened out
+            // long before the hand arrives; what matters is "has this
+            // channel stepped up recently", which decays over about
+            // half a minute.
+            val riseNow = if (hadWindow) rose - ensembleRise else 0f
+            st.riseOverBand = max(riseNow,
+                st.riseOverBand - (settings.featureRiseDb / 30f) * dt.toFloat())
             val wasAt = if (st.offsetHist.isEmpty()) st.offset
                         else st.offsetHist.first()
             st.riseHist.addLast(fast)
@@ -1401,7 +1493,7 @@ class StageEngine(
                 // on all of them, dozens of times an hour, and each one
                 // suspended the ride on that channel for ninety seconds.
                 val canFeature = settings.mode != BalanceMode.KEEP ||
-                    st.role in settings.soloRoles
+                    isSoloist(st)
                 val need = if (st.settled && settings.holdAfterBalance)
                     settings.holdSoloRiseDb else settings.featureRiseDb
                 if (canFeature && hadWindow && rose - ensembleRise > need)
@@ -1484,8 +1576,7 @@ class StageEngine(
                 // to merely freezing the fader where it stood. The lift
                 // is measured from wherever the channel is sitting now,
                 // which is the settled position when there is one.
-                st.target = if (settings.holdAfterBalance &&
-                    st.role in settings.soloRoles)
+                st.target = if (settings.holdAfterBalance && isSoloist(st))
                     boundOffset(st.featureFrom + settings.soloLiftDb, base)
                 else st.featureFrom
                 if (st.role in settings.holdRoles &&
@@ -1547,7 +1638,7 @@ class StageEngine(
                     st.offset - ((pre + base + st.offset) -
                         (anchor + (h - anchorPyr))), base)
                 st.planContrib = (st.slowEma ?: pre) + base + placed
-                st.planOffset = placed
+                st.planFaderDb = base + placed
                 st.riding = false
                 log(tSec, "placed", idx, placed,
                     "${st.name} has a place in the mix now (%+.1f dB) — " +
@@ -1569,9 +1660,10 @@ class StageEngine(
             }
             if (settings.mode == BalanceMode.KEEP && plan != null) {
                 val slow = st.slowEma ?: pre
+                val planOff = st.planFaderDb - base
                 val want = boundOffset((plan - slow - base).coerceIn(
-                    st.planOffset - settings.rideBandDb,
-                    st.planOffset + settings.rideBandDb), base)
+                    planOff - settings.rideBandDb,
+                    planOff + settings.rideBandDb), base)
                 // Hysteresis, or it hunts. The loudness average this is
                 // computed from wanders a little all the time, so
                 // "correct whenever the error exceeds a dB" re-triggers
@@ -1592,11 +1684,11 @@ class StageEngine(
                         // error still growing, and reporting that every
                         // tick produced pages of "bringing it back up"
                         // about a fader that was not going anywhere.
-                        val atRail = abs(want - st.planOffset) >=
+                        val atRail = abs(want - planOff) >=
                             settings.rideBandDb - 0.05f
                         if (!st.rideLogged || !atRail) {
                             st.rideLogged = true
-                            log(tSec, "ride", idx, want - st.planOffset,
+                            log(tSec, "ride", idx, want - planOff,
                                 "${st.name} is %+.1f dB off the balance — %s"
                                     .format(java.util.Locale.ROOT,
                                         contrib - plan,
@@ -1751,7 +1843,7 @@ class StageEngine(
                     // plan and it stops being steered like the rest.
                     if (settings.mode == BalanceMode.KEEP) {
                         st.planContrib = (st.slowEma ?: pre) + base + st.target
-                        st.planOffset = st.target
+                        st.planFaderDb = base + st.target
                     }
                     log(tSec, "settled", idx, st.target,
                         "${st.name} has found its place " +
@@ -1972,7 +2064,7 @@ class StageEngine(
      * on the fader directly.
      */
     private fun holdRelease(st: ChannelState, tSec: Double): String? {
-        if (st.featureStart >= 0 && st.role in settings.soloRoles)
+        if (st.featureStart >= 0 && isSoloist(st))
             return "taking a solo"
         if (tSec - st.arrivedT < settings.arrivalGraceSec) {
             return if (st.role == Role.VOCAL || st.role == Role.BACKING_VOCAL)
@@ -2302,6 +2394,14 @@ class StageEngine(
     fun setRoleFromName(ch: Int, role: Role): Boolean {
         val st = state[ch] ?: return false
         if (st.roleLocked || st.roleIdentified) return false
+        // A profile that already states a role is the operator saying
+        // what their rig is, and a house desk's label does not get to
+        // overrule it. On the rig this was written for, channel 11 is a
+        // third singer on a channel somebody once used for a saxophone
+        // and never relabelled; letting the label win put a voice in
+        // the horn group every time the app connected. Only a channel
+        // the profile left unclassified takes its role from its name.
+        if (st.cfg.role != Role.INSTRUMENT) return false
         st.role = role
         return true
     }
@@ -2360,7 +2460,7 @@ class StageEngine(
                 continue
             }
             st.planContrib = (st.slowEma ?: pre) + base + st.offset
-            st.planOffset = st.offset
+            st.planFaderDb = base + st.offset
             st.settled = true
             st.settledOffset = st.offset
             st.atPlaceSince = tSec

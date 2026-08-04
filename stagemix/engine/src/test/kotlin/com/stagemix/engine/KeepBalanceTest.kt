@@ -37,8 +37,8 @@ class KeepBalanceTest {
         private var next = 1.0
         val writes = ArrayList<Pair<Double, FaderWrite>>()
         private val rnd = java.util.Random(20260805L)
-        private val walk = FloatArray(16)
-        private val buf = FloatArray(16)
+        private var walk = FloatArray(0)
+        private var buf = FloatArray(0)
 
         /**
          * Real instruments move, and the engine rightly treats a source
@@ -48,7 +48,10 @@ class KeepBalanceTest {
          * of these tests mean to be running.
          */
         private fun live(s: FloatArray): FloatArray {
-            for (i in 0 until 16) {
+            if (walk.size != s.size) {
+                walk = FloatArray(s.size); buf = FloatArray(s.size)
+            }
+            for (i in s.indices) {
                 if (s[i] <= -60f) { buf[i] = s[i]; walk[i] = 0f; continue }
                 walk[i] += -0.05f * walk[i] + rnd.nextGaussian().toFloat() * 0.5f
                 buf[i] = s[i] + walk[i]
@@ -405,6 +408,94 @@ class KeepBalanceTest {
         r.run(400.0) { src }
         assertTrue(e.balanceAdopted,
             "once the pyramid has found a balance, that becomes the plan")
+    }
+
+    // ------------------------------------------------------------------
+    @Test fun `a lift during a solo is not adopted as the new balance`() {
+        // "GTR amp went up (I did) when it had a solo."
+        //
+        // A correction and a solo ride look identical at the fader and
+        // mean opposite things. Adopt a solo ride as the balance and the
+        // player is left six dB up for the rest of the night — which the
+        // operator then has to come back and undo, and on the night this
+        // came from they did exactly that, four times on the saxophone
+        // and five on the guitar.
+        val e = engine()
+        val r = Run(e)
+        val src = band()
+        r.start(src)
+        r.run(120.0) { src }
+        val settled = r.fader(4)
+
+        // the guitarist steps out, and the operator rides them up
+        val solo = band().also { it[4] = -11f }
+        r.run(10.0) { solo }
+        e.operatorOverride(4, r.fader(4) + 6f, r.t)
+        r.run(3.0) { solo }
+        assertTrue(e.decisions.any { it.kind == "soloride" && it.channel == 4 },
+            "a hand going up on a channel that is stepping out is a solo " +
+            "ride, not a new balance: " +
+            e.decisions.filter { it.channel == 4 }.map { it.kind })
+        assertTrue(r.fader(4) > settled + 4f, "and the lift stands")
+
+        // the solo ends and the fader comes home on its own
+        r.run(400.0) { src }
+        assertTrue(abs(r.fader(4) - settled) < 2.5f,
+            "when the player steps back the lift must come back too: " +
+            "$settled -> ${r.fader(4)}")
+    }
+
+    @Test fun `a correction on a steady channel IS adopted`() {
+        // The other half. Nothing is stepping out; the operator has
+        // simply decided the channel belongs somewhere else.
+        val e = engine()
+        val r = Run(e)
+        val src = band()
+        r.start(src)
+        r.run(120.0) { src }
+        val want = r.fader(4) - 6f
+        e.operatorOverride(4, want, r.t)
+        r.run(3.0) { src }
+        assertTrue(e.decisions.none { it.kind == "soloride" && it.channel == 4 },
+            "a steady channel is not soloing")
+        r.run(300.0) { src }
+        assertTrue(abs(r.fader(4) - want) < 2f,
+            "the level the operator chose is where it stays: " +
+            "wanted $want, got ${r.fader(4)}")
+    }
+
+    @Test fun `a channel the operator rides is remembered as a soloist`() {
+        // "Utility 3 is saxophone." The app could not have known that —
+        // the label says nothing at all and a horn and a voice are the
+        // same thing to a spectrum. But a hand going up every time that
+        // channel steps out is a demonstration, and demonstrations are
+        // worth learning from.
+        val rig = listOf(
+            ChannelConfig(0, "KICK", Role.FOUNDATION),
+            ChannelConfig(1, "BASS", Role.FOUNDATION),
+            ChannelConfig(2, "VOCAL CENTRE", Role.VOCAL),
+            ChannelConfig(3, "PIANO", Role.KEYS),
+            ChannelConfig(4, "UTILITY 3", Role.INSTRUMENT))
+        val e = StageEngine(rig)
+        val r = Run(e)
+        fun src() = FloatArray(5).also {
+            it[0] = -18f; it[1] = -17f; it[2] = -21f; it[3] = -24f
+            it[4] = -26f }
+        r.run(5.0) { src() }
+        e.takeover((0 until 5).associateWith { -10f }, r.t)
+        r.run(120.0) { src() }
+        assertTrue(!e.isSoloist(e.state[4]!!),
+            "an unclassified channel does not take solos by default")
+
+        val solo = src().also { it[4] = -18f }
+        r.run(10.0) { solo }
+        e.operatorOverride(4, -10f + e.offsetDb(4) + 5f, r.t)
+        r.run(3.0) { solo }
+        assertTrue(e.isSoloist(e.state[4]!!),
+            "one demonstration is enough to learn it")
+        assertTrue(e.soloistNames.contains("utility 3"),
+            "and it is remembered by the console's name for the channel: " +
+            e.soloistNames)
     }
 
     @Test fun `a human move is adopted and then defended`() {

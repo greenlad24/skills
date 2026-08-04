@@ -21,6 +21,7 @@ What it will and will not touch, and this is the whole of it:
 | **Followed** | guitars, keys, horns — the things that come and go inside a song. Their *contribution* (source + fader) is held where you put it, so a guitarist who stands on their pedal comes back down. The strip says **following**. |
 | **Never between songs** | when the band stops, the engine stops. Nothing moves until they come back. |
 | **A solo** | a guitar, sax or piano stepping out gets a bounded lift, and it comes straight back. |
+| **Your solo ride** | lift a fader yourself while that player is stepping out and the app keeps your lift for the solo, puts it back after — and remembers that channel takes solos, so next time it does it for you. |
 | **An instrument arriving** | placed once, then held like everything else. |
 
 Which channels are voices is decided by role, and the app cannot hear
