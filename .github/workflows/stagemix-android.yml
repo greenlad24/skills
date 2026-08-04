@@ -87,3 +87,57 @@ jobs:
 
             The mixer keeps your last mix if the app ever disconnects —
             fail-safe by design.
+
+  # A double-clickable Mac app for the bench, with its own Java runtime
+  # bundled — nothing to install on the Mac mini.
+  mac-bench:
+    runs-on: macos-14          # Apple Silicon
+    defaults:
+      run:
+        working-directory: stagemix
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build the bench jar
+        run: ./gradlew :virtualm18:fatJar --console=plain
+
+      - name: Package it as a Mac app
+        run: |
+          mkdir -p jpkg/input
+          cp virtualm18/build/libs/virtual-m18.jar jpkg/input/
+          jpackage \
+            --type dmg \
+            --name "Virtual M18" \
+            --app-version 1.0.0 \
+            --vendor "StageMix" \
+            --description "A virtual Midas M18 for testing StageMix" \
+            --input jpkg/input \
+            --main-jar virtual-m18.jar \
+            --main-class com.stagemix.vm18.MainKt \
+            --mac-package-identifier com.stagemix.vm18 \
+            --dest jpkg/out
+          mv "jpkg/out/Virtual M18-1.0.0.dmg" VirtualM18-AppleSilicon.dmg
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VirtualM18-dmg
+          path: stagemix/VirtualM18-AppleSilicon.dmg
+
+      - name: Attach to the rolling release
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref_name, 'claude/')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: stagemix-latest
+          name: StageMix AI — latest build
+          prerelease: true
+          files: stagemix/VirtualM18-AppleSilicon.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

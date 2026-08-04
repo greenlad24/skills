@@ -320,9 +320,20 @@ Useful flags:
 
 Better than replaying: **make the tablet mix a recorded night for real.**
 
-`virtual-m18.jar` runs on a Mac (or anything with Java 17) and pretends
-to be the console. Put one file per channel in a folder, press PLAY, and
-point the tablet at the Mac's IP:
+**Installing it on a Mac:** download **VirtualM18-AppleSilicon.dmg**
+from the `stagemix-latest` release, drag *Virtual M18* to Applications
+and open it. It carries its own Java runtime — nothing else to install.
+It is not signed by Apple, so the first launch needs right-click → Open
+(or *System Settings → Privacy & Security → Open Anyway*). macOS will
+also ask to allow incoming connections the first time: say yes, or the
+tablet cannot reach it.
+
+There is a window. Along the top: **PLAY**, **START** (rewind), **MUTE
+SPEAKERS** and **Choose folder…**; below that, one strip per channel.
+Click any strip to put a file on that channel — so channels can be
+loaded one at a time, or the whole folder at once.
+
+Or from a terminal, with the jar and any Java 17:
 
 ```
 java -jar virtual-m18.jar "/path/to/the night's channels"

@@ -56,20 +56,27 @@ fun main(args: Array<String>) {
         }
         i++
     }
-    if (dir == null) { usage(); return }
+    // Double-clicked from the Dock there are no arguments at all, so the
+    // window opens empty and channels are loaded from it — by folder or
+    // one at a time.
+    if (dir == null && headless) { usage(); return }
 
-    val folder = File(dir)
-    if (!folder.isDirectory) {
+    val folder = dir?.let { File(it) }
+    if (folder != null && !folder.isDirectory) {
         System.err.println("not a folder: $folder"); return
     }
-    val (files, names) = assign(folder)
+    val (files, names) = if (folder != null) assignFolder(folder)
+        else MutableList<File?>(16) { null } to
+            MutableList(16) { defaultRigProfile().getOrNull(it)?.name
+                ?: "ch${it + 1}" }
     val live = files.count { it != null }
-    if (live == 0) {
-        System.err.println("no .wav or .mp3 files in $folder"); return
+    if (live == 0 && headless) {
+        System.err.println("no .wav or .mp3 files to play"); return
     }
 
     println("Virtual M18 — StageMix bench")
-    println("  $live of 16 channels loaded from ${folder.name}")
+    println("  $live of 16 channels loaded" +
+        (folder?.let { " from ${it.name}" } ?: ""))
     for (c in 0 until 16)
         println("  ch%02d  %-22s %s".format(Locale.ROOT, c + 1, names[c],
             files[c]?.name ?: "(silent)"))
@@ -102,9 +109,13 @@ fun main(args: Array<String>) {
     note("(if it does not find it, check both are on the same Wi-Fi and " +
         "that the Mac firewall is not blocking UDP $port)")
 
+    bench?.onChannelLoaded = { ch, _, nm ->
+        console.names[ch] = nm
+        names[ch] = nm
+    }
     bench?.show()
     if (startSec > 0) note("starting %.0f s in".format(Locale.ROOT, startSec))
-    if (headless) player.play()
+    if (headless) player.play()   // from the window you press PLAY yourself
 
     Runtime.getRuntime().addShutdownHook(Thread {
         player.close(); console.stop()
@@ -120,7 +131,7 @@ fun main(args: Array<String>) {
  * names come from the files, so the app reads them off "the console"
  * exactly as it would live — which is also what sets the roles.
  */
-private fun assign(folder: File): Pair<MutableList<File?>, MutableList<String>> {
+internal fun assignFolder(folder: File): Pair<MutableList<File?>, MutableList<String>> {
     val rig = defaultRigProfile()
     val files = MutableList<File?>(16) { null }
     val names = MutableList(16) { rig.getOrNull(it)?.name ?: "ch${it + 1}" }
@@ -148,7 +159,7 @@ private fun assign(folder: File): Pair<MutableList<File?>, MutableList<String>> 
     return files to names
 }
 
-private fun cleanName(f: File): String =
+internal fun cleanName(f: File): String =
     f.name.substringBeforeLast('.')
         .replace(Regex("^\\s*\\d{1,2}[ _.-]*"), "").trim()
         .ifBlank { f.name }.take(20)

@@ -57,20 +57,50 @@ class Player(
     var mute = false
     var log: ((String) -> Unit)? = null
 
-    private val srcFiles = files
+    private val srcFiles = files.toMutableList()
+
+    /** the file currently loaded on a channel, for the window */
+    fun fileOf(ch: Int): File? = srcFiles.getOrNull(ch)
 
     fun open() {
-        for (c in 0 until channels) {
-            val f = srcFiles[c] ?: continue
-            streams[c] = try { decoded(f) } catch (e: Exception) {
-                log?.invoke("ch${c + 1}: cannot open ${f.name} — ${e.message}")
-                null
-            }
-        }
+        for (c in 0 until channels) load(c, srcFiles[c])
         line = AudioSystem.getSourceDataLine(outFmt).apply {
             open(outFmt, blockFrames * 8)
             start()
         }
+    }
+
+    /**
+     * Put a file on a channel — the way channels get loaded one at a
+     * time from the window. Takes effect from the current position, so
+     * it is meant for a stopped player; loading mid-play simply starts
+     * that channel from its own beginning.
+     */
+    @Synchronized fun load(ch: Int, f: File?): Boolean {
+        if (ch !in 0 until channels) return false
+        runCatching { streams[ch]?.close() }
+        streams[ch] = null
+        srcFiles[ch] = f
+        if (f == null) { log?.invoke("ch${ch + 1}: cleared"); return true }
+        return try {
+            streams[ch] = decoded(f)
+            log?.invoke("ch%02d: loaded %s".format(java.util.Locale.ROOT,
+                ch + 1, f.name))
+            true
+        } catch (e: Exception) {
+            log?.invoke("ch${ch + 1}: cannot open ${f.name} — ${e.message}")
+            false
+        }
+    }
+
+    /** back to the top, without reopening the output line */
+    @Synchronized fun rewind() {
+        val was = playing
+        playing = false
+        for (c in 0 until channels) load(c, srcFiles[c])
+        positionSec = 0.0
+        finished = false
+        playing = was
     }
 
     /** open any supported file and convert it to mono float at our rate */

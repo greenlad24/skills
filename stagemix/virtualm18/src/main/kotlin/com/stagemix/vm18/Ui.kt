@@ -46,6 +46,8 @@ class Bench(
     private val files: MutableList<File?>,
 ) {
     private val frame = JFrame("Virtual M18 — StageMix bench")
+    /** told when a channel gets a new file, so the console renames it */
+    var onChannelLoaded: ((Int, File?, String) -> Unit)? = null
     private val strips = ArrayList<Strip>()
     private val status = JLabel(" ")
     private val logArea = JTextArea(8, 100)
@@ -102,7 +104,17 @@ class Bench(
             player.mute = !player.mute
             mute.text = if (player.mute) "UNMUTE" else "MUTE SPEAKERS"
         }
-        p.add(play); p.add(Box.createHorizontalStrut(8)); p.add(mute)
+        val rewind = JButton("⏮  START")
+        rewind.addActionListener { player.rewind() }
+        val folder = JButton("Choose folder…")
+        folder.addActionListener { chooseFolder() }
+        p.add(play); p.add(Box.createHorizontalStrut(8)); p.add(rewind)
+        p.add(Box.createHorizontalStrut(8)); p.add(mute)
+        p.add(Box.createHorizontalStrut(16)); p.add(folder)
+        val hint = JLabel("  (click a channel to load one file at a time)")
+        hint.foreground = MUTED
+        hint.font = Font(Font.SANS_SERIF, Font.PLAIN, 11)
+        p.add(hint)
         p.add(Box.createHorizontalGlue())
 
         val ip = JLabel("point the tablet at this Mac's IP, port 10024")
@@ -136,11 +148,16 @@ class Bench(
     }
 
     /** one channel: the source the desk hears, and the tablet's fader */
-    private inner class Strip(val ch: Int, val label: String) : JPanel() {
+    private inner class Strip(val ch: Int, var label: String) : JPanel() {
         init {
             background = PANEL
             preferredSize = Dimension(68, 520)
             border = BorderFactory.createEmptyBorder(6, 4, 6, 4)
+            toolTipText = "click to put a file on channel ${ch + 1}"
+            addMouseListener(object : java.awt.event.MouseAdapter() {
+                override fun mouseClicked(e: java.awt.event.MouseEvent) =
+                    chooseFile(ch)
+            })
         }
 
         override fun paintComponent(g: Graphics) {
@@ -195,7 +212,49 @@ class Bench(
             g2.drawString("%+.1f".format(java.util.Locale.ROOT, f), 4, bot + 28)
             g2.color = MUTED
             g2.font = Font(Font.SANS_SERIF, Font.PLAIN, 8)
-            g2.drawString("src  out  fader", 4, bot + 40)
+            g2.drawString(
+                if (player.fileOf(ch) == null) "click to load" else "src out fdr",
+                4, bot + 40)
         }
+    }
+
+    // ------------------------------------------------------------------
+    private fun chooseFile(ch: Int) {
+        val fc = JFileChooser()
+        fc.dialogTitle = "Channel ${ch + 1} — choose the file"
+        player.fileOf(ch)?.parentFile?.let { fc.currentDirectory = it }
+        fc.fileFilter = object : javax.swing.filechooser.FileFilter() {
+            override fun accept(f: File) = f.isDirectory ||
+                f.name.lowercase().let {
+                    it.endsWith(".wav") || it.endsWith(".mp3") ||
+                    it.endsWith(".aif") || it.endsWith(".aiff") }
+            override fun getDescription() = "Audio (wav, mp3, aiff)"
+        }
+        if (fc.showOpenDialog(frame) != JFileChooser.APPROVE_OPTION) return
+        val f = fc.selectedFile
+        if (!player.load(ch, f)) return
+        files[ch] = f
+        val nm = f.name.substringBeforeLast('.')
+            .replace(Regex("^\\s*\\d{1,2}[ _.-]*"), "").trim().take(20)
+        strips[ch].label = nm
+        onChannelLoaded?.invoke(ch, f, nm)
+        note("ch%02d is now %s".format(java.util.Locale.ROOT, ch + 1, nm))
+    }
+
+    private fun chooseFolder() {
+        val fc = JFileChooser()
+        fc.dialogTitle = "Choose the folder holding the night's channels"
+        fc.fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
+        if (fc.showOpenDialog(frame) != JFileChooser.APPROVE_OPTION) return
+        val (fs, ns) = assignFolder(fc.selectedFile)
+        for (c in 0 until 16) {
+            if (fs[c] == null) continue
+            if (!player.load(c, fs[c])) continue
+            files[c] = fs[c]
+            strips[c].label = ns[c]
+            onChannelLoaded?.invoke(c, fs[c], ns[c])
+        }
+        note("loaded ${fs.count { it != null }} channels from " +
+            fc.selectedFile.name)
     }
 }
