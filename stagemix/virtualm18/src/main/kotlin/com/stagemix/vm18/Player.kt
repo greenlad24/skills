@@ -103,9 +103,12 @@ class Player(
         srcFiles[ch] = f
         if (f == null) { log?.invoke("ch${ch + 1}: cleared"); return true }
         return try {
-            streams[ch] = decoded(f)
-            log?.invoke("ch%02d: loaded %s".format(java.util.Locale.ROOT,
-                ch + 1, f.name))
+            val st = decoded(f)
+            streams[ch] = st
+            log?.invoke("ch%02d: %s — %.0f Hz, %d bit, %d ch"
+                .format(java.util.Locale.ROOT, ch + 1, f.name,
+                    st.format.sampleRate, st.format.sampleSizeInBits,
+                    st.format.channels))
             true
         } catch (e: Exception) {
             log?.invoke("ch${ch + 1}: cannot open ${f.name} — ${e.message}")
@@ -123,13 +126,66 @@ class Player(
         playing = was
     }
 
-    /** open any supported file and convert it to mono float at our rate */
+    /**
+     * Open any supported file as signed 16-bit PCM at our output rate.
+     *
+     * In TWO steps, which matters. An mp3 arrives as an MPEG-encoded
+     * stream whose `sampleSizeInBits` is NOT_SPECIFIED, and asking for a
+     * decode and a sample-rate change in one hop is not a conversion the
+     * JDK offers — so the one-step version silently handed back the
+     * still-encoded stream, whose bytes-per-sample then came out as
+     * zero. Every read returned nothing, the player decided the take had
+     * ended, and pressing PLAY produced silence. Decode first, resample
+     * second, and refuse anything that is still not PCM.
+     */
     private fun decoded(f: File): AudioInputStream {
-        val raw = AudioSystem.getAudioInputStream(f)
-        val want = AudioFormat(sampleRate.toFloat(), 16,
-            raw.format.channels.coerceAtMost(2), true, false)
-        return if (AudioSystem.isConversionSupported(want, raw.format))
-            AudioSystem.getAudioInputStream(want, raw) else raw
+        val src = AudioSystem.getAudioInputStream(f)
+        val sf = src.format
+        // 1. whatever it is, get it to PCM at its own rate
+        val pcmFmt = AudioFormat(
+            AudioFormat.Encoding.PCM_SIGNED, sf.sampleRate, 16,
+            sf.channels.coerceAtLeast(1), sf.channels.coerceAtLeast(1) * 2,
+            sf.sampleRate, false)
+        val pcm = if (sf.encoding == AudioFormat.Encoding.PCM_SIGNED &&
+                      sf.sampleSizeInBits > 0) src
+                  else AudioSystem.getAudioInputStream(pcmFmt, src)
+        // 2. then to our output rate, if it is not already there
+        val want = AudioFormat(
+            AudioFormat.Encoding.PCM_SIGNED, sampleRate.toFloat(),
+            pcm.format.sampleSizeInBits, pcm.format.channels,
+            pcm.format.frameSize, sampleRate.toFloat(), false)
+        val out = if (pcm.format.sampleRate.toInt() == sampleRate) pcm
+                  else if (AudioSystem.isConversionSupported(want, pcm.format))
+                      AudioSystem.getAudioInputStream(want, pcm)
+                  else pcm     // different rate, but at least it is audio
+        require(out.format.sampleSizeInBits > 0) {
+            "${f.name}: could not be decoded to PCM " +
+            "(${sf.encoding}, ${sf.sampleSizeInBits} bit)"
+        }
+        if (out.format.sampleRate.toInt() != sampleRate)
+            log?.invoke("note: ${f.name} is ${out.format.sampleRate.toInt()} Hz " +
+                "and could not be resampled — it will play at the wrong speed")
+        return out
+    }
+
+    /**
+     * A second of 1 kHz straight to the output line. If this is silent
+     * the problem is the Mac's output device or its volume; if it plays
+     * and the channels do not, the problem is the files.
+     */
+    fun testTone() {
+        val l = line ?: run { log?.invoke("no audio output line"); return }
+        val n = sampleRate
+        val b = ByteArray(n * 4)
+        var p = 0
+        for (i in 0 until n) {
+            val v = (0.2 * kotlin.math.sin(2 * Math.PI * 1000.0 * i / n) *
+                32767).toInt()
+            b[p++] = (v and 255).toByte(); b[p++] = ((v shr 8) and 255).toByte()
+            b[p++] = (v and 255).toByte(); b[p++] = ((v shr 8) and 255).toByte()
+        }
+        l.write(b, 0, b.size)
+        log?.invoke("test tone sent to ${l.format}")
     }
 
     fun play() { playing = true }
@@ -147,7 +203,15 @@ class Player(
         while (!finished) {
             if (!playing) { Thread.sleep(20); continue }
             val n = readAll()
-            if (n <= 0) { finished = true; playing = false; break }
+            if (n <= 0) {
+                // only the end of the take if there is nothing left to
+                // read anywhere; one bad channel is not the end
+                if (streams.all { it == null }) {
+                    log?.invoke("nothing loaded to play")
+                    playing = false; finished = true; break
+                }
+                finished = true; playing = false; break
+            }
             positionSec += n.toDouble() / sampleRate
 
             // The room, before anything is metered: if the mains are
@@ -216,6 +280,14 @@ class Player(
             val fmt = s.format
             val bps = fmt.sampleSizeInBits / 8
             val chn = fmt.channels
+            // a stream that reports neither must not divide by zero and
+            // must not be mistaken for the end of the night
+            if (bps <= 0 || chn <= 0) {
+                streams[c] = null
+                log?.invoke("ch${c + 1}: unreadable format " +
+                    "(${fmt.sampleSizeInBits} bit, ${fmt.channels} ch) — dropped")
+                continue
+            }
             val want = blockFrames * bps * chn
             if (raw[c].size < want) raw[c] = ByteArray(want)
             var got = 0

@@ -106,6 +106,14 @@ class Bench(
             if (player.playing) { player.pause(); play.text = "▶  PLAY" }
             else { player.play(); play.text = "❚❚ PAUSE" }
         }
+        val tone = JButton("TEST TONE")
+        tone.toolTipText = "a second of 1 kHz straight to the speakers — " +
+            "if you hear this, the output works and the problem is the files"
+        tone.addActionListener {
+            Thread { player.testTone() }.apply { isDaemon = true }.start()
+            note("test tone — if you hear nothing, it is the Mac's output " +
+                "device, not the channels")
+        }
         val mute = JButton("MUTE SPEAKERS")
         mute.addActionListener {
             player.mute = !player.mute
@@ -116,6 +124,7 @@ class Bench(
         val folder = JButton("Choose folder…")
         folder.addActionListener { chooseFolder() }
         p.add(play); p.add(Box.createHorizontalStrut(8)); p.add(rewind)
+        p.add(Box.createHorizontalStrut(8)); p.add(tone)
         p.add(Box.createHorizontalStrut(8)); p.add(mute)
         p.add(Box.createHorizontalStrut(16)); p.add(folder)
 

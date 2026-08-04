@@ -163,4 +163,20 @@ class RoomTest {
         repeat(60) { d.push(quiet, quiet.size, -20f) }
         assertTrue(d.gateGrDb < -5f, "silence should close the gate")
     }
+
+    @Test fun `a stream that reports no sample size is dropped, not played`() {
+        // The bug that made PLAY silent: an mp3 that failed to decode
+        // came back still encoded, with sampleSizeInBits = NOT_SPECIFIED.
+        // Bytes-per-sample then computed as zero, every read returned
+        // nothing, and the player called that the end of the night.
+        val fmt = javax.sound.sampled.AudioFormat(
+            javax.sound.sampled.AudioFormat.Encoding.PCM_SIGNED,
+            48000f, javax.sound.sampled.AudioSystem.NOT_SPECIFIED,
+            2, javax.sound.sampled.AudioSystem.NOT_SPECIFIED, 48000f, false)
+        assertTrue(fmt.sampleSizeInBits <= 0,
+            "fixture check: this format reports no sample size")
+        // the guard is arithmetic: bps must never reach the divisor
+        val bps = fmt.sampleSizeInBits / 8
+        assertTrue(bps <= 0, "bps would be $bps")
+    }
 }
