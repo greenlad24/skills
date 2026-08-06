@@ -59,6 +59,28 @@ class Ensemble(private val channels: Int = 16) {
     private val lastDb = FloatArray(channels) { -128f }
     private val wasUp = BooleanArray(channels)
 
+    /**
+     * How hard this channel falls away after it is struck.
+     *
+     * A drum is a hit and then nothing: 20 Hz metering still catches
+     * eight or ten dB of collapse in the quarter-second after a conga
+     * lands. A sung note, a held chord, a bowed or blown line does the
+     * opposite — it is still there, often louder, a quarter-second in.
+     *
+     * This exists because "fires on the grid" turned out not to mean
+     * "is a drum". It means "is in a band". On a real night every
+     * channel — both singers, both pianos, both guitars — coincided
+     * beautifully with the drums, because that is what playing together
+     * IS, and the engine concluded that all of them were congas. The
+     * missing question was never about timing. It was whether the sound
+     * stops.
+     */
+    private val decaySum = FloatArray(channels)
+    private val decayN = FloatArray(channels)
+    /** frames still to be measured after an onset, per channel */
+    private val decayWait = IntArray(channels)
+    private val decayPeak = FloatArray(channels)
+
     /** cumulative seconds playing / total, since the set began */
     private val playedSec = DoubleArray(channels)
     private var totalSec = 0.0
@@ -84,7 +106,22 @@ class Ensemble(private val channels: Int = 16) {
             // The same onset test the per-channel print uses, so "an
             // onset" means one thing in both places: a real step up
             // after not already rising.
-            if (on && d >= ONSET_DB && !wasUp[ch]) mask = mask or (1 shl ch)
+            val onset = on && d >= ONSET_DB && !wasUp[ch]
+            if (onset) mask = mask or (1 shl ch)
+            // DOES IT STOP? Start a short measurement at every onset and
+            // record how far the channel has fallen from its peak by the
+            // end of it. Overlapping onsets simply restart the window,
+            // which is right: a roll is not a series of measurable
+            // decays and should not be counted as one.
+            if (onset) { decayWait[ch] = DECAY_FRAMES; decayPeak[ch] = db }
+            else if (decayWait[ch] > 0) {
+                if (db > decayPeak[ch]) decayPeak[ch] = db
+                decayWait[ch]--
+                if (decayWait[ch] == 0) {
+                    decaySum[ch] += (decayPeak[ch] - db).coerceIn(0f, 40f)
+                    decayN[ch] += 1f
+                }
+            }
             wasUp[ch] = d >= 1f
             lastDb[ch] = db
 
@@ -133,6 +170,8 @@ class Ensemble(private val channels: Int = 16) {
         for (r in coin) r.fill(0f)
         onsetsOf.fill(0f)
         playedSec.fill(0.0); totalSec = 0.0
+        decaySum.fill(0f); decayN.fill(0f)
+        decayWait.fill(0); decayPeak.fill(-128f)
         for (w in winDuty) w.clear()
         winActive.fill(0); winFrames = 0
         envFilled = 0
@@ -153,11 +192,38 @@ class Ensemble(private val channels: Int = 16) {
     }
 
     /**
-     * How much this channel belongs to whatever cluster of channels is
-     * playing together on a grid — a drum kit, in practice, since
-     * nothing else on a stage fires in lock-step all night.
+     * Is this channel STRUCK? 0..1, from its own envelope alone.
      *
-     * The mean of its two strongest coincidences rather than its single
+     * Deliberately independent of every other channel, so that using it
+     * to weight the kit test below is not circular.
+     */
+    fun percussive(ch: Int): Float {
+        if (ch !in 0 until channels) return 0f
+        if (decayN[ch] < MIN_DECAYS) return 0f
+        val mean = decaySum[ch] / decayN[ch]
+        return ((mean - DECAY_SOFT) / (DECAY_HARD - DECAY_SOFT))
+            .coerceIn(0f, 1f)
+    }
+
+    /**
+     * How much this channel belongs to the DRUM KIT.
+     *
+     * Two things at once, and the second one was missing for a night.
+     *
+     * Firing on the grid with other channels is necessary — but it is
+     * not remotely sufficient, because a band playing together is
+     * sixteen channels all firing on the same grid. Measured on timing
+     * alone this returned a high score for every musician on the stage,
+     * which fed a "congas" verdict to both singers, both pianos and
+     * both guitars, and — because [InstrumentId] used a high kit score
+     * to RULE OUT a voice — made it impossible to recognise a singer
+     * who sings in time with the band. Which is all of them.
+     *
+     * So the partners are weighted by whether they are struck, and the
+     * channel itself has to be struck too. A conga that lands with the
+     * snare is kit. A guitar that lands with the snare is a guitar.
+     *
+     * The mean of its two strongest partners rather than its single
      * strongest: ONE strong partner is a bass locking to a kick, TWO is
      * a kit. Three was the first attempt and it was wrong — plenty of
      * bands mic three drums, and averaging in a partner that does not
@@ -165,10 +231,12 @@ class Ensemble(private val channels: Int = 16) {
      */
     fun kitAffinity(ch: Int): Float {
         if (onsetsOf.getOrElse(ch) { 0f } < MIN_ONSETS) return 0f
+        val me = percussive(ch)
+        if (me <= 0f) return 0f
         val c = (0 until channels).filter { it != ch }
-            .map { coincidence(ch, it) }.sortedDescending()
+            .map { coincidence(ch, it) * percussive(it) }.sortedDescending()
         if (c.size < 2) return 0f
-        return (c[0] + c[1]) / 2f
+        return me * (c[0] + c[1]) / 2f
     }
 
     /** how many other channels this one fires with at all */
@@ -263,6 +331,14 @@ class Ensemble(private val channels: Int = 16) {
         const val SMEAR = 2
         const val ONSET_DB = 4f
         const val MIN_ONSETS = 12f
+        /** 250 ms — long enough for a drum to be gone, short enough
+         *  that a sung note has not yet ended */
+        const val DECAY_FRAMES = 5
+        const val MIN_DECAYS = 8f
+        /** dB fallen from the peak: below `SOFT` it sustains, above
+         *  `HARD` it was struck and is already over */
+        const val DECAY_SOFT = 3f
+        const val DECAY_HARD = 10f
         /** thirty seconds of envelope, for stereo pairing */
         const val PAIR_WINDOW = 600
         const val PAIR_R = 0.92f

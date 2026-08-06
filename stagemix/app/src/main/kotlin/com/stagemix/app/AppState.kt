@@ -56,6 +56,14 @@ object AppState {
          * autopilot and the answer belongs on the strip.
          */
         val heldByYou: Boolean = false,
+        /**
+         * The operator has this channel muted on the desk — read from
+         * `/ch/NN/mix/on`, never written. Worth its own flag on the
+         * strip because the level meter cannot show it: metering is
+         * pre-fader and pre-mute, so a muted channel looks exactly like
+         * a playing one right up until you notice you cannot hear it.
+         */
+        val deskMuted: Boolean = false,
     )
 
     val conn = MutableStateFlow(Conn.DISCONNECTED)
@@ -69,6 +77,8 @@ object AppState {
     val directing = MutableStateFlow(false)
     /** true once there is an adopted balance being defended */
     val balanceKept = MutableStateFlow(false)
+    /** the operator has muted the whole band: the engine does nothing */
+    val stageMuted = MutableStateFlow(false)
     val doctorOn = MutableStateFlow(true)
     val frozenAll = MutableStateFlow(false)
     val lastError = MutableStateFlow<String?>(null)

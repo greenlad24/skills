@@ -264,6 +264,22 @@ class DeskClient(
                         }
                     return
                 }
+                // the mute keys — the only honest report of what is
+                // actually reaching the mains, since the meters we run
+                // on are pre-fader and pre-mute
+                Regex("^/ch/(\\d\\d)/mix/on$").find(m.address)?.let { mt ->
+                    val ch = mt.groupValues[1].toInt() - 1
+                    val on = when (val a = m.args.firstOrNull()) {
+                        is Int -> a != 0
+                        is Float -> a > 0.5f
+                        else -> return
+                    }
+                    if (engine.setChannelMuted(ch, !on))
+                        log?.invoke("ch%02d %s".format(ch + 1,
+                            if (on) "un-muted on the desk"
+                            else "muted on the desk — left alone"))
+                    return
+                }
                 val v = m.args.firstOrNull() as? Float ?: return
                 pending[m.address] = v
                 if (!collecting && directing && engine.ready) {
@@ -309,6 +325,7 @@ class DeskClient(
         pending.clear()
         for (ch in 0 until 16) {
             send(OscMessage(osc("/ch/%02d/mix/fader", ch + 1), emptyList()))
+            send(OscMessage(osc("/ch/%02d/mix/on", ch + 1), emptyList()))
             for (b in 1..4)
                 send(OscMessage(osc("/ch/%02d/eq/%d/g", ch + 1, b), emptyList()))
             send(OscMessage(osc("/ch/%02d/dyn/thr", ch + 1), emptyList()))

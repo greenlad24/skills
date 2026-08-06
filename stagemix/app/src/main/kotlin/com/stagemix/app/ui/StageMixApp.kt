@@ -181,6 +181,7 @@ fun ConsoleScreen() {
     val doctorOn by AppState.doctorOn.collectAsState()
     val frozenAll by AppState.frozenAll.collectAsState()
     val balanceKept by AppState.balanceKept.collectAsState()
+    val stageMuted by AppState.stageMuted.collectAsState()
     val health by AppState.health.collectAsState()
     val nights by AppState.nightsCount.collectAsState()
     val taste by AppState.tasteSummary.collectAsState()
@@ -209,12 +210,18 @@ fun ConsoleScreen() {
             Spacer(Modifier.width(14.dp))
             Text(
                 when {
+                    // Said out loud, because otherwise a muted stage
+                    // and a broken app look identical from the front:
+                    // nothing moving and no explanation.
+                    directing && stageMuted -> "WAITING — you have the band muted"
                     directing && balanceKept -> "KEEPING YOUR BALANCE"
                     directing -> "MIXING — finding the balance"
                     snap -> "SHADOW — watching only"
                     else -> "PAUSED"
                 },
-                color = if (directing) Live else if (snap) Warn else Muted,
+                color = if (directing && stageMuted) Warn
+                        else if (directing) Live
+                        else if (snap) Warn else Muted,
                 fontWeight = FontWeight.Bold, fontSize = 13.sp)
             Spacer(Modifier.width(8.dp))
             Switch(checked = directing, onCheckedChange = {
@@ -417,10 +424,21 @@ fun Strip(s: AppState.StripUi) {
             else "🏷 from the name",
             color = if (s.identHeard) Ok else Muted, fontSize = 8.sp,
             maxLines = 1)
-        // and whether the app will touch this fader at all
-        Text(if (s.heldByYou) "🔒 yours" else "following",
-            color = if (s.heldByYou) Accent else Muted, fontSize = 8.sp,
-            maxLines = 1)
+        // and whether the app will touch this fader at all. A channel
+        // muted on the desk outranks both: the meter above is pre-mute
+        // and goes on showing a healthy signal, so without this the
+        // strip looks identical to a channel that is in the mix.
+        Text(
+            when {
+                s.deskMuted -> "🔇 muted by you"
+                s.heldByYou -> "🔒 yours"
+                else -> "following"
+            },
+            color = when {
+                s.deskMuted -> Warn
+                s.heldByYou -> Accent
+                else -> Muted
+            }, fontSize = 8.sp, maxLines = 1)
         Spacer(Modifier.height(6.dp))
         // VU
         Box(

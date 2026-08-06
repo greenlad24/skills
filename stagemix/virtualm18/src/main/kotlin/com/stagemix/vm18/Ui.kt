@@ -474,8 +474,14 @@ class Bench(
                 }
                 g2.drawString(id.label.take(11), 4, 35)
             }
-            // and whether the app will touch this fader at all
-            if (eng != null && eng.balanceAdopted) {
+            // and whether the app will touch this fader at all. Muted
+            // outranks both: the meter is pre-mute and goes on showing
+            // signal, so nothing else on the strip would give it away.
+            if (eng != null && eng.isDeskMuted(ch)) {
+                g2.font = Font(Font.SANS_SERIF, Font.PLAIN, 8)
+                g2.color = WARN
+                g2.drawString("muted by you", 4, 44)
+            } else if (eng != null && eng.balanceAdopted) {
                 g2.font = Font(Font.SANS_SERIF, Font.PLAIN, 8)
                 if (eng.held(ch)) {
                     g2.color = ACCENT

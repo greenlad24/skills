@@ -342,6 +342,21 @@ data class EngineSettings(
     val identDwellSec: Float = 45f,
     val identMinGapSec: Float = 90f,
     /**
+     * What it costs to stop believing a channel is a singer.
+     *
+     * Asymmetric on purpose, and the asymmetry is the whole point. The
+     * cost of wrongly calling something a voice is a fader that stays
+     * where the operator put it, which is very nearly free. The cost of
+     * wrongly deciding a voice is NOT a voice is that the fader stops
+     * being held — and on the night that produced these numbers it was
+     * two singers, both demoted to percussion by a spectrum, both then
+     * dropped to the bottom of the engine's authority and left there.
+     * Nothing is worth that, so the audio has to be nearly certain and
+     * has to stay certain for four minutes. See [identifyPass].
+     */
+    val demoteVoiceConfidence: Float = 0.80f,
+    val demoteVoiceDwellSec: Float = 240f,
+    /**
      * A channel making no real sound is taken out of the MAINS entirely
      * rather than eased down a few dB. An open mic left in the mix is a
      * feedback path, a bucket of room, and one-sixteenth of the hiss on
@@ -513,6 +528,22 @@ class ChannelState(val cfg: ChannelConfig) {
     var spreadMin = 0f; var spreadMax = -128f
     var spreadSince = 0.0
     var isStatic = false             // hum / room tone, not an instrument
+    /** how many times this channel has been given a place tonight */
+    var placements = 0
+    /** and whether we have already said we are not going to try again */
+    var placeGaveUp = false
+    /**
+     * The operator has this channel muted ON THE DESK.
+     *
+     * Not our doing and not our business to undo — but we have to know,
+     * because the meters cannot tell us. `/meters/1` is PRE-fader and
+     * pre-mute: a channel muted from Mixing Station goes on metering a
+     * healthy signal while contributing precisely nothing to the mains.
+     * The engine spent a whole night balancing a band against channels
+     * the operator had already taken out, and between songs — when they
+     * mute everything — it went on mixing a stage that was not there.
+     */
+    var deskMuted = false
     /** deadband hysteresis: once engaged we converge fully */
     var engaged = false
     /** the same, for KEEP's ride: engaged at the deadband, off well inside */
@@ -550,6 +581,22 @@ const val ENSEMBLE_CH = 16
  * bar. Everything above this is earned by stepping further out.
  */
 const val SOLO_LIFT_FLOOR_DB = 2.0f
+
+/**
+ * How far a placement may be clamped before it stops counting as a
+ * decision. Anything beyond this means the answer ran off the end of
+ * the engine's authority, and a rail is not a considered position.
+ */
+const val RAIL_SLACK_DB = 0.5f
+
+/**
+ * How many times one channel may be placed in a night before the
+ * engine stops re-litigating it. Arrivals are legitimate — a horn comes
+ * in for two songs — but a channel that has arrived nine times is
+ * usually a channel the engine keeps losing and re-finding, and every
+ * one of those is a fader move the audience can hear.
+ */
+const val MAX_PLACEMENTS = 3
 
 class StageEngine(
     channels: List<ChannelConfig>,
@@ -957,7 +1004,15 @@ class StageEngine(
                 log(tSec, "arrive", idx, 0f,
                     "${st.name} came in — listening before placing it")
             }
-            st.active = st.gateOpen
+            // A CHANNEL THE OPERATOR HAS MUTED IS NOT PLAYING, whatever
+            // the meter says. `/meters/1` is pre-fader and pre-mute, so
+            // a channel switched off from Mixing Station goes on
+            // reporting a full-strength signal while sending nothing to
+            // the mains. Reading the meter alone, the engine balanced
+            // the band against players who were not in the mix, and
+            // between songs — when everything gets muted at once — it
+            // carried on mixing an empty stage.
+            st.active = st.gateOpen && !st.deskMuted
             if (st.active) {
                 st.lastActiveT = tSec
                 if (takeoverT >= 0) st.heardSec += dtFrame
@@ -1072,11 +1127,15 @@ class StageEngine(
             st.settled = false; st.atPlaceSince = -1.0; st.settledOffset = 0f
         }
         takeoverT = tSec
+        recomputeStageMuted()
         revertHoldUntil = 0.0
         lastLeadSwitch = tSec
         balanceAdopted = false
         adoptWhenSettled = false
-        for (st in state.values) { st.planContrib = null; st.planFaderDb = 0f }
+        for (st in state.values) {
+            st.planContrib = null; st.planFaderDb = 0f
+            st.placements = 0; st.placeGaveUp = false
+        }
         // initial lead: the configured lead vocal (Vocal Center)
         leadVocal = state.values.firstOrNull { it.role == Role.VOCAL }
             ?.cfg?.index
@@ -1087,6 +1146,42 @@ class StageEngine(
                 "keeping the balance you made"
              else "leading") +
             " (${faderDb.size} faders bounded, monitors untouched)")
+    }
+
+    /**
+     * A channel whose fader position finally arrived, after the
+     * takeover had already given up on it.
+     *
+     * Being unmanaged is a state a channel should be able to LEAVE. On
+     * the night this comes from, five channels missed the takeover
+     * because their replies were lost on a crowded 2.4 GHz AP — the
+     * bass among them — and there was no route back: no baseline meant
+     * every branch in the engine skipped them, silently, for three and
+     * a quarter hours. The console was answering fine the whole time.
+     * Nobody had asked it again.
+     *
+     * Takes effect exactly like a takeover for that one channel: where
+     * the fader is now becomes the centre of its authority, and it
+     * auditions before anything touches it. Returns true if this
+     * channel was previously unmanaged and is now in.
+     */
+    fun adoptLateChannel(ch: Int, faderDb: Float, tSec: Double): Boolean {
+        val st = state[ch] ?: return false
+        if (st.baselineDb != null || !faderDb.isFinite()) return false
+        st.baselineDb = faderDb.coerceIn(FaderLaw.MIN_DB, settings.absFaderCapDb)
+        st.offset = 0f; st.target = 0f; st.duckDb = 0f
+        st.heardSec = 0f; st.takeRef = null
+        st.overrideUntil = 0.0; st.fastUntil = 0.0
+        st.idleRamped = false; st.muted = false
+        st.planContrib = null; st.planFaderDb = 0f
+        st.settled = false; st.atPlaceSince = -1.0; st.settledOffset = 0f
+        st.lastActiveT = tSec
+        recountGroups()
+        recomputeStageMuted()
+        log(tSec, "joined", ch, 0f,
+            "${st.name} answered at last — it is being mixed from now on " +
+            "(it missed the takeover, so it was left alone until now)")
+        return true
     }
 
     /** Hands the mains back exactly as they were at takeover. */
@@ -1175,6 +1270,37 @@ class StageEngine(
             }
             if (tSec - st.pendingSince < settings.identDwellSec) continue
             if (tSec - st.roleChangedT < settings.identMinGapSec) continue
+
+            // A GUESS MAY NOT TAKE A SINGER'S PROTECTION AWAY.
+            //
+            // Being a voice is not just a label here — it is what makes
+            // the engine leave that fader alone, which the operator
+            // asked for in as many words. So a mistake in this function
+            // does not merely mislabel a strip: it silently revokes the
+            // one promise the app has made about the most important
+            // channels on the desk. That is exactly what happened. Both
+            // singers were re-roled to percussion, both lost the hold,
+            // and the lead vocal spent two and a half hours twelve dB
+            // down while the operator pressed REBALANCE twenty times.
+            //
+            // Promotion INTO a vocal role stays cheap — an unused mic
+            // that someone starts singing into should be recognised
+            // quickly. Coming out of one is expensive, and once there is
+            // a balance being kept it is not on offer at all: by then
+            // the operator has heard the mix and approved it, and a
+            // spectrum is not entitled to overrule that.
+            val leavingVoice = (st.role == Role.VOCAL ||
+                st.role == Role.BACKING_VOCAL) &&
+                r.role != Role.VOCAL && r.role != Role.BACKING_VOCAL
+            if (leavingVoice) {
+                if (balanceAdopted) { st.pendingRole = null; continue }
+                if (heard == null ||
+                    heard.confidence < settings.demoteVoiceConfidence) {
+                    st.pendingRole = null; continue
+                }
+                if (tSec - st.pendingSince < settings.demoteVoiceDwellSec)
+                    continue
+            }
 
             val was = st.role
             st.role = r.role
@@ -1416,8 +1542,24 @@ class StageEngine(
                 continue
             }
             if (tSec < st.overrideUntil) continue  // human owns it right now
+            // Already out of the mains, by the operator's hand and on
+            // the one control that says so unambiguously. Pulling its
+            // fader down as well would achieve nothing now and drop the
+            // level out from under them when they unmute it.
+            if (st.deskMuted) continue
             val base = st.baselineDb ?: continue
-            val idleFor = tSec - st.lastActiveT
+            // SILENT SINCE WHEN? Since we started listening, at the
+            // earliest. `lastActiveT` starts at zero meaning "never
+            // heard", so this used to read `tSec - 0` — a number with
+            // no meaning unless the caller's clock also starts at zero.
+            // The tablet's did not: it handed over device uptime, and a
+            // tablet that had been awake a day made every channel
+            // "silent for 95938s" on the first pass. Seven channels went
+            // out of the mains sixty seconds into the show, a singer's
+            // microphone among them. Clamping to `takeoverT` makes the
+            // question answerable from what the engine actually saw,
+            // whatever clock it is handed.
+            val idleFor = tSec - maxOf(st.lastActiveT, takeoverT)
             // A channel making no real sound is OFF IN THE MAINS.
             //
             // Easing it down some fixed number of dB left an open mic
@@ -1723,16 +1865,59 @@ class StageEngine(
                 anchor != null && !st.isStatic && st.arrivedT > 0 &&
                 tSec - st.arrivedT >= settings.placeSec) {
                 val h = effHeight(st)
-                val placed = boundOffset(
-                    st.offset - ((pre + base + st.offset) -
-                        (anchor + (h - anchorPyr))), base)
-                st.planContrib = (st.slowEma ?: pre) + base + placed
-                st.planFaderDb = base + placed
-                st.riding = false
-                log(tSec, "placed", idx, placed,
-                    "${st.name} has a place in the mix now " +
-                    "(%+.1f dB) — held from here like everything else"
-                        .format(java.util.Locale.ROOT, placed))
+                val wanted = st.offset - ((pre + base + st.offset) -
+                    (anchor + (h - anchorPyr)))
+                val placed = boundOffset(wanted, base)
+                // A RAIL IS NOT A PLACE.
+                //
+                // When the pyramid asks for more than the engine is
+                // allowed to give, this used to clamp and then treat the
+                // clamped number as a considered decision — writing it
+                // down as the plan and defending it from then on. On the
+                // night this comes from, four channels were "placed" at
+                // exactly -12.00 dB, the bottom of the authority range,
+                // and held there: the snare, a piano, the guitar amp and
+                // a DI, all pinned at the floor because a guess about
+                // where they belonged ran off the end of the scale.
+                //
+                // Hitting the rail does not mean the channel belongs at
+                // the rail. It means this calculation has no useful
+                // opinion about the channel — so it does not get one,
+                // and the level the operator set is kept instead. That
+                // is the one number on this channel nobody has disputed.
+                val railed = abs(placed - wanted) > RAIL_SLACK_DB
+                if (railed || st.placements >= MAX_PLACEMENTS) {
+                    st.planContrib = (st.slowEma ?: pre) + base + st.offset
+                    st.planFaderDb = base + st.offset
+                    st.riding = false
+                    if (!st.placeGaveUp) {
+                        st.placeGaveUp = true
+                        // Its own kind, not "placed": deciding where a
+                        // channel goes and declining to decide are
+                        // different events, and a log that calls them
+                        // both "placed" reads as though the engine had
+                        // an opinion it did not have.
+                        log(tSec, "leave", idx, st.offset,
+                            ("${st.name} — leaving it where you had it. " +
+                             if (railed)
+                                 "The balance wants it %+.1f dB, which is " +
+                                 "further than this thing is allowed to " +
+                                 "move a fader, and a limit is not a " +
+                                 "judgement."
+                             else "It has been placed enough times " +
+                                 "tonight.").format(
+                                     java.util.Locale.ROOT, wanted))
+                    }
+                } else {
+                    st.planContrib = (st.slowEma ?: pre) + base + placed
+                    st.planFaderDb = base + placed
+                    st.riding = false
+                    st.placements++
+                    log(tSec, "placed", idx, placed,
+                        ("${st.name} has a place in the mix now " +
+                        "(%+.1f dB) — held from here like everything else")
+                            .format(java.util.Locale.ROOT, placed))
+                }
             }
             val plan = st.planContrib
             if (settings.mode == BalanceMode.KEEP && plan != null &&
@@ -2076,9 +2261,25 @@ class StageEngine(
         // to gain: the engine simply stops until the band comes back.
         if (betweenSongs && settings.mode == BalanceMode.KEEP &&
             balanceAdopted) return emptyList()
+        // AND NOTHING MOVES WHEN THE OPERATOR HAS MUTED THE STAGE.
+        //
+        // "When everything is muted the app shouldn't be balancing" —
+        // and it could not tell, because pre-fader meters go on reading
+        // a signal through a closed mute. On the night this comes from
+        // the operator muted the band from Mixing Station whenever the
+        // music stopped, and the engine spent every one of those breaks
+        // rebalancing a mix that nobody could hear, so the band came
+        // back to faders that had moved for reasons that no longer
+        // existed. A muted stage is not a quiet stage: it is no stage.
+        if (stageMuted) return emptyList()
         val writes = ArrayList<FaderWrite>()
         for ((_, st) in state) {
             if (st.frozen) continue
+            // A muted channel is the operator's, not ours. It is
+            // contributing nothing, so there is nothing to correct, and
+            // writing its fader would only mean the level jumps when
+            // they unmute it.
+            if (st.deskMuted) continue
             // TALK channels are released, not driven: the only move
             // allowed is the slew back to where the human left it
             if (st.role == Role.TALK && abs(st.offset) <= 0.01f) continue
@@ -2320,6 +2521,32 @@ class StageEngine(
      * sat over the top of it. Kick and bass therefore each carry the
      * foundation height in full, and share only with their own kind.
      */
+    /**
+     * Where zero is, in the learned balance's own units.
+     *
+     * Learned heights are relative to the whole mix; the pyramid is
+     * relative to the low end. To use one in the other's place they have
+     * to be put on a common reference, and the low end is it — that is
+     * the pyramid's zero by construction.
+     *
+     * The kick, if the audio ever named one. Otherwise whichever
+     * FOUNDATION channel has been learned, which is the same channel by
+     * a weaker route and keeps the learned balance usable on a night
+     * when nothing was recognised at all.
+     */
+    private fun learnedRef(): Float? {
+        learned.heightOf(Instrument.KICK)?.let { return it }
+        learned.heightOf(Instrument.BASS)?.let { return it }
+        var best: Float? = null
+        for (st in state.values) {
+            if (st.role != Role.FOUNDATION) continue
+            val nm = st.deskName?.takeIf { it.isNotBlank() } ?: continue
+            val h = learned.heightOf(LearnedBalance.keyOf(nm)) ?: continue
+            if (best == null || h > best!!) best = h
+        }
+        return best
+    }
+
     private fun effHeight(st: ChannelState): Float {
         // WHAT THIS ENGINEER ACTUALLY DOES, when it is known.
         //
@@ -2333,15 +2560,14 @@ class StageEngine(
         // Learned heights are relative to the WHOLE MIX and the pyramid
         // is relative to the low end, so it is shifted onto the
         // pyramid's own reference rather than mixed with it.
-        recognised[st.cfg.index]?.takeIf {
+        val myKey = recognised[st.cfg.index]?.takeIf {
             it.instrument != Instrument.UNKNOWN &&
                 it.confidence >= ident.settings.recogniseConfidence
-        }?.let { r ->
-            learned.heightOf(r.instrument)?.let { learnedH ->
-                val ref = learned.heightOf(Instrument.KICK)
-                    ?: learned.heightOf(Instrument.BASS)
-                if (ref != null) return learnedH - ref
-            }
+        }?.let { LearnedBalance.keyOf(it.instrument) }
+            ?: st.deskName?.takeIf { it.isNotBlank() }
+                ?.let { LearnedBalance.keyOf(it) }
+        if (myKey != null) learned.heightOf(myKey)?.let { learnedH ->
+            learnedRef()?.let { ref -> return learnedH - ref }
         }
         val h = if (st.role == Role.FOUNDATION)
             (pyramid[Role.FOUNDATION] ?: 0f) +
@@ -2455,6 +2681,40 @@ class StageEngine(
         st.role = role
         st.roleLocked = true
         knownInstruments[st.name.trim().lowercase()] = role
+        // AND UNDO WHAT WE DID WHILE WE WERE WRONG.
+        //
+        // Locking the role stopped the engine getting it wrong AGAIN; it
+        // did nothing about the consequences of having got it wrong
+        // already, and those turned out to be permanent. A channel that
+        // had been mistaken for percussion was, by the time anyone
+        // noticed, sitting at the bottom of the engine's authority —
+        // and being told "this is a singer" then handed it to the hold,
+        // which faithfully defended the exact position the mistake had
+        // put it in. Twelve dB down, now with a guarantee.
+        //
+        // Being told what a channel is is the operator taking the
+        // question back. The right response is to stop doing whatever we
+        // were doing to it and give the fader back to where they had it
+        // — their takeover position, which is the one level on this
+        // channel nobody has disputed.
+        st.muted = false
+        st.idleRamped = false
+        st.planContrib = null
+        st.planFaderDb = 0f
+        st.riding = false
+        st.rideLogged = false
+        st.settled = false
+        st.settledOffset = 0f
+        st.atPlaceSince = -1.0
+        st.arrivedT = -1.0
+        st.pendingRole = null
+        if (abs(st.offset) > 0.01f) {
+            st.target = 0f
+            st.engaged = true
+        }
+        recountGroups()
+        if (role == Role.VOCAL || role == Role.BACKING_VOCAL)
+            reconsiderLead(lastTickT)
         return true
     }
 
@@ -2584,17 +2844,28 @@ class StageEngine(
             // "this is the mix" — the built-in pyramid is a guess about
             // where instruments belong written by somebody who has never
             // heard this band in this room, and this is the answer.
-            val heights = HashMap<Instrument, Float>()
+            val heights = HashMap<String, Float>()
             for ((idx, st) in state) {
-                val inst = recognised[idx]?.takeIf {
+                val c = st.planContrib ?: continue
+                // What this channel IS, if the audio knows — and what
+                // the desk calls it if it does not. Falling back rather
+                // than skipping is the difference between learning
+                // something and learning nothing: on the night this was
+                // written from, the recogniser had no usable opinion
+                // about any channel, so every press of KEEP was
+                // discarded and the log read "learned from 0 balances
+                // so far" both times.
+                val key = recognised[idx]?.takeIf {
                     it.instrument != Instrument.UNKNOWN &&
                         it.confidence >= ident.settings.recogniseConfidence
-                }?.instrument ?: continue
-                val c = st.planContrib ?: continue
-                // one channel per instrument: two piano channels are one
+                }?.let { LearnedBalance.keyOf(it.instrument) }
+                    ?: st.deskName?.takeIf { it.isNotBlank() }
+                        ?.let { LearnedBalance.keyOf(it) }
+                    ?: continue
+                // one channel per identity: two piano channels are one
                 // piano, and counting both would teach that keys sit
                 // three dB lower than they do
-                heights[inst] = maxOf(heights[inst] ?: -140f, c)
+                heights[key] = maxOf(heights[key] ?: -140f, c)
             }
             if (heights.size >= 2) {
                 learned.learn(heights)
@@ -2639,6 +2910,56 @@ class StageEngine(
     private var stagePeak = 0f
 
     /**
+     * The operator has muted the whole band.
+     *
+     * Different from [betweenSongs], which is inferred from levels
+     * falling away together and can be wrong. This is not inferred at
+     * all: it is the mute keys, read off the desk. When it is true there
+     * is no mix, so there is nothing to balance and the engine does
+     * nothing whatsoever.
+     */
+    @Volatile var stageMuted = false; private set
+
+    /**
+     * The operator muted or unmuted a channel — from Mixing Station, the
+     * desk, or anywhere else. Returns true if this is news.
+     *
+     * Worth having a whole channel of information for, because the one
+     * we already had cannot answer it: [onMeters] is fed by `/meters/1`,
+     * which is pre-fader AND pre-mute, so a muted channel meters exactly
+     * like a playing one.
+     */
+    fun setChannelMuted(ch: Int, muted: Boolean): Boolean {
+        val st = state[ch] ?: return false
+        if (st.deskMuted == muted) return false
+        st.deskMuted = muted
+        if (muted) {
+            // Its contribution just went to nothing, so the balance
+            // every other channel found was struck against a mix that
+            // no longer exists — the same argument as a channel leaving.
+            // Not applied on the way back in: unmuting restores the
+            // level everyone was already balanced around.
+            st.active = false
+            st.gateOpen = false
+        } else {
+            // Come back as an arrival: listen before touching it, rather
+            // than acting on a loudness average from before the mute.
+            st.preEma = null; st.fastEma = null; st.slowEma = null
+            st.heardSec = 0f
+        }
+        recomputeStageMuted()
+        return true
+    }
+
+    private fun recomputeStageMuted() {
+        val known = state.values.filter { it.baselineDb != null }
+        stageMuted = known.isNotEmpty() && known.all { it.deskMuted }
+    }
+
+    /** true when the desk says this channel is muted */
+    fun isDeskMuted(ch: Int): Boolean = state[ch]?.deskMuted == true
+
+    /**
      * What the channels are doing to each other. See [Ensemble]: this
      * is where the app stops guessing from labels.
      */
@@ -2662,12 +2983,22 @@ class StageEngine(
             // defend, so it is thrown away and re-adopted from whatever
             // the faders are doing once the mix comes back to rest.
             st.planContrib = null
+            st.placements = 0
+            st.placeGaveUp = false
         }
         balanceAdopted = false
         adoptWhenSettled = true
         log(tSec, "rebalance", null, 0f,
             "finding the balance again from where the faders are now")
     }
+
+    /**
+     * Channels the engine has no authority over, because their fader
+     * position never arrived. The transport re-asks for these.
+     */
+    fun unmanagedChannels(): List<Int> =
+        state.filter { it.value.baselineDb == null && it.value.role != Role.TALK }
+            .keys.sorted()
 
     /** how many channels have found their place, and how many are steered */
     fun settledCount(): Pair<Int, Int> {

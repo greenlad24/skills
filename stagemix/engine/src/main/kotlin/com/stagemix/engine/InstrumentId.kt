@@ -428,11 +428,22 @@ class InstrumentId(val settings: IdSettings = IdSettings()) {
             why[Instrument.SNARE] = ("a body around 200 Hz with a burst of " +
                 "noise on top, peaks %.0f dB over average, on the grid")
                 .format(crest)
+            // AND IT HAS TO STOP. Every other term here is satisfied by
+            // a singer through a stage mic: plenty of low-mid, no air to
+            // speak of once a PA has had its way with it, a healthy
+            // crest, and three or four onsets a second because that is
+            // what singing to a beat looks like on a meter. This was
+            // the runaway of the night — seven channels identified,
+            // every one of them "congas / toms", including both singers
+            // and both pianos. A conga is over a quarter-second after
+            // it is hit. Nothing else here is.
             scores[Instrument.HAND_DRUM] = ramp(low + loMid, 0.25f, 0.55f) *
                 ramp(air, 0.12f, 0.02f) * ramp(crest, 7f, 14f) *
-                ramp(onsets, 0.8f, 2.5f) * ramp(kit, 0.2f, 0.5f)
-            why[Instrument.HAND_DRUM] = ("mid-low, no top, and %.1f hits a " +
-                "second — hands rather than sticks").format(onsets)
+                ramp(onsets, 0.8f, 2.5f) * ramp(kit, 0.2f, 0.5f) *
+                ramp(1f - sustain, 0.30f, 0.60f)
+            why[Instrument.HAND_DRUM] = ("mid-low, no top, %.1f hits a " +
+                "second, and each one is over before the next — hands " +
+                "rather than sticks").format(onsets)
         }
 
         // --- the bed ----------------------------------------------------
@@ -450,8 +461,21 @@ class InstrumentId(val settings: IdSettings = IdSettings()) {
             else "wide and even, playing %.0f%% of the time".format(duty * 100))
 
         // --- things that carry a line -----------------------------------
+        // A SINGER SINGS IN TIME WITH THE BAND.
+        //
+        // `kit` used to be a timing measurement, so this last term —
+        // meant to read "and it is not a drum" — actually read "and it
+        // is not playing along with anyone", which zeroed the voice
+        // score for every singer in every band there has ever been. Two
+        // vocal channels went a whole night unrecognised because of it,
+        // were called percussion instead, lost the protection that
+        // holds a singer's fader still, and sat twelve dB down for two
+        // and a half hours. `kit` now means "is struck, alongside other
+        // things that are struck", which is what this always wanted to
+        // ask, so the term can stay — and can be gentler, because it
+        // now separates what it is aimed at.
         val melodic = ramp(voiceBand, 0.40f, 0.70f) * ramp(sub, 0.12f, 0.02f) *
-            ramp(flux, 0.05f, 0.22f) * ramp(kit, 0.35f, 0.1f)
+            ramp(flux, 0.05f, 0.22f) * ramp(kit, 0.50f, 0.20f)
         if (melodic > 0.05f) {
             // A singer is in most of the night; a horn is in a few songs
             // of it, and in bursts. Below `minWindows` there has not

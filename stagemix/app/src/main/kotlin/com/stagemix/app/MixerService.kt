@@ -309,6 +309,7 @@ class MixerService : Service() {
         var lastRx = now()
         var rtaFocus = -1
         var rtaFocusT = 0.0
+        var lastResync = 0.0
         while (scope.isActive && AppState.conn.value != AppState.Conn.DISCONNECTED) {
             val t = now()
             if (t - lastKeepalive > 5.0) {
@@ -319,6 +320,33 @@ class MixerService : Service() {
                     listOf("/meters/${Meters.BANK_RTA}")))       // RTA
                 send(OscMessage("/meters",
                     listOf("/meters/${Meters.BANK_DYNAMICS}")))  // gate+comp GR
+            }
+            // ASK AGAIN, ALL NIGHT.
+            //
+            // Two things drift out of sync over UDP on a busy AP, and
+            // both did, for hours:
+            //
+            //  · A channel whose fader position was lost at takeover has
+            //    no baseline, so it is skipped everywhere. Re-asking is
+            //    the only way back in, and it costs one packet.
+            //  · The mute keys. They are pushed to us when they change,
+            //    and a pushed packet that goes missing is gone for good
+            //    — leaving the engine mixing a channel the operator has
+            //    switched off, or leaving a channel alone that they
+            //    switched back on. Re-reading them costs sixteen small
+            //    packets a minute and removes the whole failure mode.
+            if (AppState.directing.value && t - lastResync > RESYNC_SEC) {
+                lastResync = t
+                for (ch in engine?.unmanagedChannels().orEmpty()) {
+                    send(OscMessage(osc("/ch/%02d/mix/fader", ch + 1),
+                        emptyList()))
+                    delay(8)
+                }
+                for (ch in 0 until AppState.MIXER_CHANNELS) {
+                    send(OscMessage(osc("/ch/%02d/mix/on", ch + 1),
+                        emptyList()))
+                    delay(4)
+                }
             }
             val m = receiveOnce()
             if (m != null) {
@@ -450,6 +478,34 @@ class MixerService : Service() {
                 }
             }
             else -> {
+                // THE MUTE KEYS — read, never written.
+                //
+                // Handled before the float branch because the console
+                // answers this one as an int, and because it is the only
+                // way to know a channel is out of the mains: `/meters/1`
+                // is pre-fader and pre-mute. On the night this comes
+                // from, the operator muted the band from Mixing Station
+                // every time the music stopped, and the engine — seeing
+                // full-strength meters on all sixteen — went on
+                // balancing a stage that was sending nothing anywhere.
+                //
+                // 1 is ON. 0 is muted.
+                Regex("^/ch/(\\d\\d)/mix/on$").find(m.address)?.let { match ->
+                    val ch = match.groupValues[1].toInt() - 1
+                    val on = when (val a = m.args.firstOrNull()) {
+                        is Int -> a != 0
+                        is Float -> a > 0.5f
+                        else -> return
+                    }
+                    if (e.setChannelMuted(ch, !on)) {
+                        show?.note("MUTE", "${chName(ch)} " +
+                            (if (on) "un-muted on the desk — back in the mix"
+                             else "muted on the desk — left alone until " +
+                                  "it comes back"))
+                        publishStrips(t)
+                    }
+                    return
+                }
                 // parameter enquiry replies / other-client changes
                 val v = m.args.firstOrNull() as? Float
                 if (v != null) {
@@ -464,7 +520,17 @@ class MixerService : Service() {
                                 val db = FaderLaw.floatToDb(v)
                                 // our own write coming back is not a human
                                 val mine = lastSent[ch]
-                                if (mine == null || abs(db - mine) > ECHO_TOL_DB) {
+                                // A channel that missed the takeover has
+                                // no authority to override — this reply
+                                // is the answer we have been re-asking
+                                // for, and it puts the channel INTO the
+                                // mix rather than moving it inside one.
+                                if (e.adoptLateChannel(ch, db, t)) {
+                                    show?.net("${chName(ch)} answered at " +
+                                        "last — being mixed from now on")
+                                    publishStrips(t)
+                                } else if (mine == null ||
+                                           abs(db - mine) > ECHO_TOL_DB) {
                                     e.operatorOverride(ch, db, t)
                                     lastSent.remove(ch)
                                 }
@@ -509,10 +575,12 @@ class MixerService : Service() {
                 identHeard = id?.heard ?: false,
                 identEvidence = id?.evidence ?: 0f,
                 heldByYou = e.held(ch.index),
+                deskMuted = e.isDeskMuted(ch.index),
             )
         }
         AppState.snapshotTaken.value = e.ready
         AppState.balanceKept.value = e.balanceAdopted
+        AppState.stageMuted.value = e.stageMuted
         AppState.health.value = e.health()
     }
 
@@ -580,6 +648,10 @@ class MixerService : Service() {
         val chans = AppState.config.value.channels
         fun enquire(ch: Int) {
             send(OscMessage(osc("/ch/%02d/mix/fader", ch + 1), emptyList()))
+            // The mute key. Nothing else on the desk can tell us: the
+            // meters we run on are pre-fader AND pre-mute, so a muted
+            // channel reads exactly like a playing one.
+            send(OscMessage(osc("/ch/%02d/mix/on", ch + 1), emptyList()))
             for (b in 1..4)
                 send(OscMessage(osc("/ch/%02d/eq/%d/g", ch + 1, b),
                     emptyList()))
@@ -596,11 +668,29 @@ class MixerService : Service() {
                         osc("/ch/%02d/mix/fader", it.index + 1)) })
                 delay(50)
         }
-        // one retry pass for whatever did not answer
-        val missing = chans.filter {
-            !pending.containsKey(osc("/ch/%02d/mix/fader", it.index + 1)) }
-        if (missing.isNotEmpty()) {
-            for (ch in missing) { enquire(ch.index); delay(3) }
+        // KEEP ASKING. A dropped UDP packet must not cost a channel the
+        // whole night.
+        //
+        // There was one retry pass here, and on the venue's own Wi-Fi —
+        // a 2.4 GHz AP in a room full of phones, which is what an M18
+        // always is — one retry was not enough twice in a row. Five
+        // channels went unmixed on the first takeover and five on the
+        // second, and the two sets were not the same five: it was
+        // simply whichever replies happened to be lost, and one of them
+        // was the bass. Nothing was wrong with those channels. The
+        // replies just did not arrive.
+        //
+        // Retries are individually addressed and paced, so each pass is
+        // smaller and likelier to survive than the one before it.
+        for (attempt in 1..TAKEOVER_TRIES) {
+            val missing = chans.filter {
+                !pending.containsKey(osc("/ch/%02d/mix/fader", it.index + 1)) }
+            if (missing.isEmpty()) break
+            if (attempt > 1) show?.net(
+                "still waiting on ${missing.size} fader" +
+                (if (missing.size == 1) "" else "s") +
+                " — asking again (try $attempt of $TAKEOVER_TRIES)")
+            for (ch in missing) { enquire(ch.index); delay(8) }
             withTimeoutOrNull(1500) {
                 while (missing.any {
                         !pending.containsKey(
@@ -741,7 +831,28 @@ class MixerService : Service() {
         }
     }
 
-    private fun now(): Double = System.nanoTime() / 1e9
+    /**
+     * Seconds since this service started — and the zero matters.
+     *
+     * This was `System.nanoTime() / 1e9`, whose origin is arbitrary: on
+     * Android it is time since the device booted. A tablet that had been
+     * awake for a day handed the engine a first timestamp of about
+     * 96 000, and every "how long has this been quiet for" question is
+     * `now - lastActiveT` against a field that starts at zero. So on the
+     * first pass every channel had been silent for twenty-six hours,
+     * and sixty seconds into the night the engine took seven channels
+     * out of the mains at once — one of them a singer's microphone,
+     * logged as "not an instrument — hum or an open mic nobody is
+     * using". The lead vocal never fully came back.
+     *
+     * The bench never showed it because the desk client subtracts its
+     * own `t0` and hands the engine a clock that starts at zero. Same
+     * engine, same night, different answer — which is exactly the class
+     * of bug the Mac cannot catch. It starts at zero here too now.
+     */
+    private val t0 = System.nanoTime()
+
+    private fun now(): Double = (System.nanoTime() - t0) / 1e9
 
     // ------------------------------------------------------------------
     /**
@@ -854,6 +965,10 @@ class MixerService : Service() {
          * above the wire's noise and far below any real fader move.
          */
         private const val ECHO_TOL_DB = 0.1f
+        /** how many times to re-ask for a fader position at takeover */
+        private const val TAKEOVER_TRIES = 4
+        /** how often to re-read the mute keys and chase missing faders */
+        private const val RESYNC_SEC = 30.0
         const val PORT = 10024
         const val CHANNEL = "stagemix"
         const val ACTION_CONNECT = "com.stagemix.CONNECT"
