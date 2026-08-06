@@ -194,8 +194,11 @@ class DeskClient(
                     send(OscMessage(w.address,
                         listOf(FaderLaw.dbToFloat(w.levelDb))))
                 } else engine.tick(t)
-                // the once-per-instrument chain: almost always empty
-                if (directing) for (w in engine.treatmentPass(t)) {
+                // the once-per-instrument chain — behind the same
+                // switch as the rest of the tone work, so "do not touch
+                // my channel processing" means one thing on the bench
+                // and on the tablet
+                if (directing && doctorOn) for (w in engine.treatmentPass(t)) {
                     lastParam[w.address] = w.value
                     send(OscMessage(w.address, listOf(w.value)))
                     log?.invoke("treat %s = %.3f".format(

@@ -418,10 +418,23 @@ class MixerService : Service() {
                 // and FX sends only — ChannelTreatment.isSafeAddress
                 // refuses an aux send outright, because the wedges are
                 // not ours.
-                if (directing) for (w in e.treatmentPass(t)) {
-                    lastParam[w.address] = w.value
-                    send(OscMessage(w.address, listOf(w.value)))
-                }
+                // Behind the same switch as the rest of the tone work.
+                //
+                // It was behind no switch at all, which went unnoticed
+                // only because it never fired: the one-shot chain needs
+                // a confident instrument recognition, and recognition
+                // was naming everything congas at low confidence, so it
+                // wrote nothing all night. Fixing recognition turns this
+                // on for real — sixteen channels of EQ, compressor and
+                // HPF that the operator has never seen it touch — and
+                // an autopilot that starts reaching for new controls
+                // mid-gig with no way to stop it is not one anybody
+                // should take to a show.
+                if (directing && AppState.doctorOn.value)
+                    for (w in e.treatmentPass(t)) {
+                        lastParam[w.address] = w.value
+                        send(OscMessage(w.address, listOf(w.value)))
+                    }
                 doctor?.let { d ->
                     // ensemble hook: while drums play without a bass, the
                     // piano channels fill the low end (EQ low band lift)

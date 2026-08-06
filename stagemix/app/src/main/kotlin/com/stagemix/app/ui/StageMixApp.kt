@@ -201,7 +201,12 @@ fun ConsoleScreen() {
                     fontWeight = FontWeight.Bold)
                 Spacer(Modifier.width(14.dp))
             }
-            Text("DOCTOR", color = if (doctorOn) Ok else Muted,
+            // Named for what it DOES, not for what it is called
+            // internally: this switch is the difference between an app
+            // that only moves faders and one that also sets EQ,
+            // compressors and high-pass filters on your channels.
+            // "DOCTOR" told nobody that.
+            Text("EQ + COMP", color = if (doctorOn) Ok else Muted,
                 fontWeight = FontWeight.Bold, fontSize = 12.sp)
             Spacer(Modifier.width(4.dp))
             Switch(checked = doctorOn, onCheckedChange = {
