@@ -45,6 +45,29 @@ import kotlin.math.abs
  */
 class MixerService : Service() {
 
+    /**
+     * When this service started. Declared FIRST on purpose — see [now].
+     *
+     * `now()` was `System.nanoTime() / 1e9`, whose origin is arbitrary:
+     * on Android it is time since the device booted. A tablet that had
+     * been awake for a day handed the engine a first timestamp of about
+     * 96 000, and every "how long has this been quiet for" question in
+     * there is `now - lastActiveT` against a field that starts at zero.
+     * So on the first pass every channel had been silent for twenty-six
+     * hours, and sixty seconds into the night the engine took seven
+     * channels out of the mains at once — one of them a singer's
+     * microphone, logged as "not an instrument — hum or an open mic
+     * nobody is using". The lead vocal never fully came back.
+     *
+     * The bench never showed it: the desk client subtracts its own `t0`
+     * and hands the engine a clock that starts at zero. Same engine,
+     * same night, different answer — exactly the class of bug the Mac
+     * cannot catch. It starts at zero here too now, and it is declared
+     * above every other property so that no initializer can run before
+     * it and reintroduce the same thing by the back door.
+     */
+    private val t0 = System.nanoTime()
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var socket: DatagramSocket? = null
     private var mixerAddr: InetSocketAddress? = null
@@ -830,27 +853,6 @@ class MixerService : Service() {
             null // timeout — normal
         }
     }
-
-    /**
-     * Seconds since this service started — and the zero matters.
-     *
-     * This was `System.nanoTime() / 1e9`, whose origin is arbitrary: on
-     * Android it is time since the device booted. A tablet that had been
-     * awake for a day handed the engine a first timestamp of about
-     * 96 000, and every "how long has this been quiet for" question is
-     * `now - lastActiveT` against a field that starts at zero. So on the
-     * first pass every channel had been silent for twenty-six hours,
-     * and sixty seconds into the night the engine took seven channels
-     * out of the mains at once — one of them a singer's microphone,
-     * logged as "not an instrument — hum or an open mic nobody is
-     * using". The lead vocal never fully came back.
-     *
-     * The bench never showed it because the desk client subtracts its
-     * own `t0` and hands the engine a clock that starts at zero. Same
-     * engine, same night, different answer — which is exactly the class
-     * of bug the Mac cannot catch. It starts at zero here too now.
-     */
-    private val t0 = System.nanoTime()
 
     private fun now(): Double = (System.nanoTime() - t0) / 1e9
 
