@@ -53,6 +53,28 @@ class MixerService : Service() {
     private val watchdog = com.stagemix.engine.FeedbackWatchdog()
     private var lastVeto = false
     private var wifiLock: WifiManager.WifiLock? = null
+
+    /**
+     * THE MIXER'S WI-FI HAS NO INTERNET, AND ANDROID HATES THAT.
+     *
+     * At a venue the tablet is on the M18's own access point and nothing
+     * else. Android decides within seconds that such a network is
+     * useless — it shows "Wi-Fi has no internet access", and if there is
+     * ANY cellular data it quietly routes the process's traffic out the
+     * mobile interface instead. The app then sends its OSC into a phone
+     * network and never reaches the console standing next to it, while
+     * the Wi-Fi icon sits there looking connected. On some builds the
+     * system goes further and drops the network to "avoid poor
+     * connections".
+     *
+     * The cure is to ask for exactly the network we want and pin our
+     * sockets to it: TRANSPORT_WIFI, and deliberately WITHOUT
+     * NET_CAPABILITY_INTERNET, because not having internet is the whole
+     * point of this one. Holding the request open also tells the system
+     * somebody is using the network, so it stops trying to tidy it away.
+     */
+    private var wifiNetwork: android.net.Network? = null
+    private var netCallback: android.net.ConnectivityManager.NetworkCallback? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var loopJob: Job? = null
 
@@ -161,6 +183,9 @@ class MixerService : Service() {
             DatagramSocket().use { s ->
                 s.broadcast = true
                 s.soTimeout = 300
+                // the broadcast has to go out the console's own AP too,
+                // or it is shouted at a phone network that cannot hear it
+                bindSocket(s)
                 val probe = OscMessage("/xinfo", emptyList()).encode()
                 s.send(DatagramPacket(probe, probe.size,
                     InetAddress.getByName("255.255.255.255"), PORT))
@@ -200,6 +225,7 @@ class MixerService : Service() {
                 }
                 socket?.close()
                 val s = DatagramSocket().apply { soTimeout = 200 }
+                bindSocket(s)
                 socket = s
                 mixerAddr = InetSocketAddress(InetAddress.getByName(ip), PORT)
 
@@ -718,7 +744,52 @@ class MixerService : Service() {
     private fun now(): Double = System.nanoTime() / 1e9
 
     // ------------------------------------------------------------------
+    /**
+     * Ask for the console's Wi-Fi and hold on to it. Best effort: if the
+     * request is refused or times out the app still works exactly as it
+     * did before, because an unbound socket on a tablet with no cellular
+     * goes out over Wi-Fi anyway. This is insurance for the tablet that
+     * has a SIM in it.
+     */
+    private fun bindToMixerWifi() {
+        if (netCallback != null) return
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE)
+            as? android.net.ConnectivityManager ?: return
+        val req = android.net.NetworkRequest.Builder()
+            .addTransportType(android.net.NetworkCapabilities.TRANSPORT_WIFI)
+            // NOT NET_CAPABILITY_INTERNET: the console's AP has none, and
+            // asking for it is asking for the cellular network instead
+            .removeCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .build()
+        val cb = object : android.net.ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: android.net.Network) {
+                wifiNetwork = network
+                runCatching { socket?.let { network.bindSocket(it) } }
+                Log.i(TAG, "bound to the mixer's Wi-Fi")
+            }
+            override fun onLost(network: android.net.Network) {
+                if (wifiNetwork == network) wifiNetwork = null
+            }
+        }
+        runCatching { cm.requestNetwork(req, cb); netCallback = cb }
+            .onFailure { Log.w(TAG, "could not pin to Wi-Fi: ${it.message}") }
+    }
+
+    private fun releaseWifiBinding() {
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE)
+            as? android.net.ConnectivityManager
+        netCallback?.let { cb -> runCatching { cm?.unregisterNetworkCallback(cb) } }
+        netCallback = null
+        wifiNetwork = null
+    }
+
+    /** send this socket out over the console's Wi-Fi, not the phone network */
+    private fun bindSocket(s: DatagramSocket) {
+        wifiNetwork?.let { runCatching { it.bindSocket(s) } }
+    }
+
     private fun acquireLocks() {
+        bindToMixerWifi()
         val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
         wifiLock = wm.createWifiLock(
             WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "stagemix:wifi").apply { acquire() }
@@ -761,6 +832,7 @@ class MixerService : Service() {
         AppState.directing.value = false
         loopJob?.cancel()
         socket?.close(); socket = null
+        releaseWifiBinding()
         wifiLock?.let { if (it.isHeld) it.release() }
         wakeLock?.let { if (it.isHeld) it.release() }
         stopForeground(STOP_FOREGROUND_REMOVE)

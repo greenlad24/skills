@@ -60,6 +60,34 @@ its setpoint. The same operator built the mix they wanted by hand in
 about a minute. KEEP over the same band and the same length of time
 moves the desk about a tenth as far.
 
+## At the venue: the mixer's Wi-Fi has no internet
+
+The tablet joins the M18's own access point and nothing else. Android
+treats such a network as broken — it says "Wi-Fi has no internet
+access", and **if the tablet has any mobile data it will quietly send
+everything out the phone network instead** while the Wi-Fi icon sits
+there looking connected. The app would then be shouting OSC at a
+cellular network with the console two feet away.
+
+So the app asks the system for exactly the network it wants —
+`TRANSPORT_WIFI`, deliberately **without** `NET_CAPABILITY_INTERNET` —
+and pins every socket to it, including the discovery broadcast. Holding
+that request open also stops Android tidying the network away for being
+useless.
+
+Belt and braces, because this one is worth being sure about:
+
+- **Install the APK before you leave.** There is no internet at the desk.
+- **No SIM, mobile data off, or flight mode with Wi-Fi ON.** The one
+  setting that cannot be argued with.
+- If Android asks *"Wi-Fi has no internet access — stay connected?"*,
+  say **yes**.
+
+Nothing else in the app needs a network: it is UDP to the console and
+nothing more, and there is no HTTP anywhere in it. The end-of-night
+**⤴ EXPORT LOG** hands the file to WhatsApp or mail, which queues it
+until the tablet is back on a normal network.
+
 ## The deal: it leads the mains, you own the monitors
 
 - The only parameter the **balancing** engine can write is the **channel

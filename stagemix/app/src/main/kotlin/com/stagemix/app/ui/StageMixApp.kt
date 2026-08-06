@@ -149,8 +149,16 @@ fun Checklist() {
             "Tablet plugged into power (screen stays on while mixing)",
             "Battery optimization OFF for StageMix (Settings → Apps)",
             "Samsung: remove StageMix from “Sleeping apps”",
+            // The mixer's own access point has no internet, and Android
+            // will happily send everything out a phone network instead
+            // while the Wi-Fi icon sits there looking connected. The app
+            // now pins its sockets to the console's Wi-Fi, so this is a
+            // belt to that braces — but flight mode with Wi-Fi on is the
+            // one setting that cannot be argued with.
+            "No SIM / mobile data off — or flight mode with Wi-Fi ON",
+            "Say YES to “stay connected” if Android warns about no internet",
             "Wedges rung out at soundcheck — keep the usual 6 dB margin",
-            "Take the soundcheck snapshot BEFORE flipping DIRECTING on",
+            "Install the APK BEFORE you leave: there is no internet at the desk",
         )) {
             Row(Modifier.padding(vertical = 3.dp)) {
                 Text("•  ", color = Accent)
