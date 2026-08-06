@@ -459,4 +459,69 @@ class TabletNightTest {
             "a channel that keeps being lost and re-found is a channel " +
             "the audience hears being re-found: $n placements")
     }
+
+    // ==================================================================
+    // 8. the ride must not chase the band playing
+    // ==================================================================
+    private fun rideCount(swingDb: Float, seconds: Double,
+                          gainStepAt: Double = -1.0): Pair<Int, Float> {
+        val e = StageEngine(rig, EngineSettings(mode = BalanceMode.KEEP))
+        val r = Run(e)
+        var step = 0f
+        fun band(t: Double) = silence().also {
+            it[0] = -18f; it[3] = -22f; it[8] = -20f; it[11] = -17f
+            // the guitar amp: loud for a chorus, quiet for a verse, on
+            // a forty-second cycle — which is a band playing, not a
+            // fault, and is exactly what was chased all night
+            it[4] = -21f + swingDb *
+                kotlin.math.sin(2 * Math.PI * t / 40.0).toFloat() + step
+        }
+        r.start { band(it) }
+        r.run(60.0) { band(it) }
+        e.adoptBalance(r.t)
+        if (gainStepAt > 0) {
+            r.run(gainStepAt) { band(it) }
+            step = -8f                      // somebody turned the amp down
+        }
+        r.writes.clear()
+        r.run(seconds) { band(it) }
+        // Counted from the WRITES, not from `decisions` — that is a
+        // sixty-entry ring and a half-hour scenario laps it many times
+        // over, which quietly turned this test into a no-op.
+        val rides = r.writes.count { it.second.channel == 4 }
+        var travel = 0f; var prev = 0f; var first = true
+        for ((_, w) in r.writes) {
+            if (w.channel != 4) continue
+            if (!first) travel += abs(w.levelDb - prev)
+            prev = w.levelDb; first = false
+        }
+        return rides to travel
+    }
+
+    @Test fun `a verse and a chorus are not a fault to be corrected`() {
+        // 120 corrections on one guitar in three hours, 340 dB of fader
+        // commanded, up three and down three on a forty-second cycle.
+        // Every one was arithmetically right; the sum of them is the
+        // restlessness KEEP exists to end.
+        val (rides, travel) = rideCount(swingDb = 3f, seconds = 1800.0)
+        println("half an hour of ±3 dB playing: $rides fader moves, " +
+            "%.1f dB of fader".format(travel))
+        assertTrue(rides <= 8,
+            "the band getting louder for a chorus is the band's " +
+            "business: $rides fader moves in half an hour")
+        assertTrue(travel < 30f,
+            "and the fader should barely move: %.1f dB".format(travel))
+    }
+
+    @Test fun `but a preamp that really moved is still caught`() {
+        // The other half. A level that changes and STAYS changed is
+        // what the ride is for, and it must still answer for it —
+        // otherwise this is just a switch turned off.
+        val (rides, _) = rideCount(swingDb = 1f, seconds = 900.0,
+            gainStepAt = 120.0)
+        println("after somebody moved the amp: $rides fader moves")
+        assertTrue(rides >= 1,
+            "a source that has genuinely moved and stayed moved is " +
+            "exactly what this is for: $rides corrections")
+    }
 }

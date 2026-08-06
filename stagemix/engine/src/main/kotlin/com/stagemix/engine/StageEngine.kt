@@ -223,6 +223,17 @@ data class EngineSettings(
     /** the loudness average the ride answers to — deliberately slow */
     val rideTauSec: Float = 45f,
     /**
+     * How long the mix has to stay off the balance before a fader
+     * answers for it, and how long that fader then rests.
+     *
+     * The deadband says how far; these say for how long, and without
+     * them the ride cannot tell a quiet verse from an amp somebody
+     * turned up. On the night these come from it could not, and
+     * corrected one guitar a hundred and twenty times.
+     */
+    val rideDwellSec: Float = 30f,
+    val rideMinGapSec: Float = 45f,
+    /**
      * How long KEEP listens to an instrument that has arrived before
      * giving it a place. Long enough for the loudness average to mean
      * something, short enough that the player is not left wherever the
@@ -528,6 +539,10 @@ class ChannelState(val cfg: ChannelConfig) {
     var spreadMin = 0f; var spreadMax = -128f
     var spreadSince = 0.0
     var isStatic = false             // hum / room tone, not an instrument
+    /** when the ride error first went outside the deadband, or -1 */
+    var rideSince = -1.0
+    /** when this channel was last corrected, so it gets a rest after */
+    var lastRideT = -1000.0
     /** how many times this channel has been given a place tonight */
     var placements = 0
     /** and whether we have already said we are not going to try again */
@@ -872,6 +887,7 @@ class StageEngine(
                 st.planContrib = it + (st.baselineDb ?: 0f)
                 st.planFaderDb = st.baselineDb ?: 0f
                 st.riding = false
+                st.rideSince = -1.0
                 st.soloRide = false
                 st.settled = true
                 st.settledOffset = st.offset
@@ -1000,6 +1016,7 @@ class StageEngine(
                 // not made for half a minute. It gets placed again.
                 st.planContrib = null
                 st.riding = false
+                st.rideSince = -1.0
                 st.rideLogged = false
                 log(tSec, "arrive", idx, 0f,
                     "${st.name} came in — listening before placing it")
@@ -1134,6 +1151,7 @@ class StageEngine(
         adoptWhenSettled = false
         for (st in state.values) {
             st.planContrib = null; st.planFaderDb = 0f
+            st.riding = false; st.rideSince = -1.0
             st.placements = 0; st.placeGaveUp = false
         }
         // initial lead: the configured lead vocal (Vocal Center)
@@ -1947,8 +1965,37 @@ class StageEngine(
                 // deadband, converge fully, and do not engage again
                 // until the mix has genuinely moved that far once more.
                 val err = abs(want - st.offset)
-                if (err > settings.rideDeadbandDb) st.riding = true
-                else if (err < settings.rideDeadbandDb * 0.25f) st.riding = false
+                // AND IT HAS TO MEAN IT.
+                //
+                // The deadband asks "how far off is it?"; that alone
+                // cannot tell a quiet verse from an amp that has been
+                // turned up, and both cross two dB. On a real night the
+                // guitar amp was corrected a hundred and twenty times in
+                // three hours — three hundred and forty dB of fader
+                // commanded on one channel, up three and down three, on
+                // a forty-second cycle. Every one of those corrections
+                // was arithmetically right and the sum of them is the
+                // restlessness this mode exists to end.
+                //
+                // A song is loud for a chorus and quiet for a verse and
+                // that is the band's business. A preamp that has moved
+                // stays moved. So the error has to hold for longer than
+                // a phrase before it is worth a fader, and having just
+                // corrected a channel is itself a reason not to correct
+                // it again for a while.
+                if (err > settings.rideDeadbandDb) {
+                    if (st.rideSince < 0) st.rideSince = tSec
+                } else st.rideSince = -1.0
+                val heldLongEnough = st.rideSince >= 0 &&
+                    tSec - st.rideSince >= settings.rideDwellSec
+                val restedLongEnough =
+                    tSec - st.lastRideT >= settings.rideMinGapSec
+                if (heldLongEnough && restedLongEnough) {
+                    if (!st.riding) st.lastRideT = tSec
+                    st.riding = true
+                } else if (err < settings.rideDeadbandDb * 0.25f) {
+                    st.riding = false
+                }
                 if (st.riding) {
                     if (abs(want - st.target) > 0.25f) {
                         st.target = want
@@ -2983,6 +3030,8 @@ class StageEngine(
             // defend, so it is thrown away and re-adopted from whatever
             // the faders are doing once the mix comes back to rest.
             st.planContrib = null
+            st.riding = false
+            st.rideSince = -1.0
             st.placements = 0
             st.placeGaveUp = false
         }

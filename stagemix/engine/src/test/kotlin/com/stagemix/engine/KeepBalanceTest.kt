@@ -363,12 +363,23 @@ class KeepBalanceTest {
         val st = e.state[15]!!
         assertTrue(st.planContrib != null,
             "once it has found a place, that place becomes its plan")
-        // and from then on it is ridden like everything else
+        // and from then on it is ridden like everything else — though
+        // not instantly, and the order matters. Six dB in one step is
+        // a player stepping out, so the feature hold gives them their
+        // ninety seconds FIRST; only once that expires, and the level
+        // has stayed up rather than being a solo, does the ride settle
+        // it back down. Waiting only two minutes here measured the
+        // feature and called it a failure to ride.
         val at = r.fader(15)
         val louder = band().also { it[15] = -20f }
         r.run(120.0) { louder }
+        assertTrue(r.fader(15) > at,
+            "a sudden six dB is a feature before it is anything else: " +
+            "$at -> ${r.fader(15)}")
+        r.run(200.0) { louder }
         assertTrue(r.fader(15) < at - 2f,
-            "the new arrival must be ridden too: $at -> ${r.fader(15)}")
+            "and once the feature is over, a level that stayed up is " +
+            "ridden like everything else: $at -> ${r.fader(15)}")
     }
 
     @Test fun `the ride is bounded, so a preamp change is not chased to a rail`() {
