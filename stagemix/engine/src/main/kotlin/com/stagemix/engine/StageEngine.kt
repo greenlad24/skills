@@ -559,6 +559,8 @@ class ChannelState(val cfg: ChannelConfig) {
      * mute everything — it went on mixing a stage that was not there.
      */
     var deskMuted = false
+    /** just came back from a desk mute: this is a resume, not an arrival */
+    var resumingFromMute = false
     /** deadband hysteresis: once engaged we converge fully */
     var engaged = false
     /** the same, for KEEP's ride: engaged at the deadband, off well inside */
@@ -982,6 +984,15 @@ class StageEngine(
             // is one of only two things allowed to disturb a settled
             // balance. A source that merely dipped for a bar is not
             // arriving, which is what the silence requirement is for.
+            // Back from the operator's mute — handled BEFORE `wasAway`
+            // is worked out, because that is the number it has to
+            // change. Clearing the flag first and then asking "has this
+            // been away a long time?" against the stale timestamp fires
+            // the arrival anyway, on the very frame meant to prevent it.
+            if (st.resumingFromMute && st.gateOpen && !st.deskMuted) {
+                st.resumingFromMute = false
+                st.lastActiveT = tSec
+            }
             val wasAway = tSec - st.lastActiveT > settings.arrivalSilenceSec
             if (!st.active && st.gateOpen && wasAway && takeoverT >= 0 &&
                 !betweenSongs) {
@@ -2989,10 +3000,24 @@ class StageEngine(
             st.active = false
             st.gateOpen = false
         } else {
-            // Come back as an arrival: listen before touching it, rather
-            // than acting on a loudness average from before the mute.
+            // Listen again before touching it, rather than acting on a
+            // loudness average from before the mute — but do NOT treat
+            // this as an instrument arriving.
+            //
+            // It would otherwise look exactly like one: the channel was
+            // silent, now it is playing, and it has been away long
+            // enough to qualify. On this rig that is every channel at
+            // the end of every song break, because the operator mutes
+            // the band whenever the music stops — so the mix would
+            // re-place itself from scratch between every song, which is
+            // the one thing they asked most plainly for it not to do.
+            //
+            // A mute is not a departure. The player never left, and
+            // where they sat in the balance is still the answer, so the
+            // plan is kept and the fader stays where it was.
             st.preEma = null; st.fastEma = null; st.slowEma = null
             st.heardSec = 0f
+            st.resumingFromMute = true
         }
         recomputeStageMuted()
         return true

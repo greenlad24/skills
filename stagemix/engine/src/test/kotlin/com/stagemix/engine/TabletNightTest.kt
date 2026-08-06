@@ -308,6 +308,40 @@ class TabletNightTest {
             "and it certainly must not be 'muted' a second time by us")
     }
 
+    @Test fun `coming back from a mute is not an instrument arriving`() {
+        // The operator mutes the band whenever the music stops. If
+        // un-muting reads as sixteen instruments arriving at once, the
+        // mix re-places itself from scratch between every song — which
+        // is the single thing they asked most plainly for it not to do.
+        val e = StageEngine(rig, EngineSettings(mode = BalanceMode.KEEP))
+        val r = Run(e)
+        val band = silence().also {
+            it[0] = -18f; it[1] = -20f; it[3] = -22f
+            it[8] = -20f; it[11] = -17f
+        }
+        r.start { band }
+        r.run(90.0) { band }
+        e.adoptBalance(r.t)
+        val plans = (0 until 16).associateWith { e.state[it]!!.planContrib }
+
+        // the song ends: everything muted, a minute of nothing, back on
+        for (ch in 0 until 16) e.setChannelMuted(ch, true)
+        r.run(120.0) { band }
+        for (ch in 0 until 16) e.setChannelMuted(ch, false)
+        r.writes.clear()
+        val before = e.decisions.count { it.kind == "arrive" }
+        r.run(120.0) { band }
+
+        assertEquals(before, e.decisions.count { it.kind == "arrive" },
+            "nobody arrived — they were muted and now they are not")
+        for (ch in intArrayOf(0, 1, 3, 8, 11))
+            assertEquals(plans[ch], e.state[ch]!!.planContrib,
+                "ch$ch must keep the place it had before the break")
+        assertTrue(r.writes.isEmpty(),
+            "and the band comes back to the faders they left. Moved: " +
+            r.writes.map { "ch${it.second.channel}" }.distinct())
+    }
+
     @Test fun `unmuting listens again before touching it`() {
         val e = StageEngine(rig, EngineSettings(mode = BalanceMode.KEEP))
         val r = Run(e)
