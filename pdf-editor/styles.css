@@ -1,0 +1,285 @@
+/* Local PDF Editor — styles. Deliberately plain CSS: no build step, no fonts
+   or assets loaded from the network. */
+
+* { box-sizing: border-box; }
+
+/* Several elements below are display:flex, which would otherwise beat the
+   [hidden] attribute's default display:none. */
+[hidden] { display: none !important; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  color: #16191d;
+  background: #6e747d;
+  -webkit-font-smoothing: antialiased;
+}
+
+body { display: flex; flex-direction: column; overflow: hidden; }
+
+/* ── Toolbar ───────────────────────────────────────────────────────── */
+
+#toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding: 8px 12px;
+  background: #262a31;
+  color: #e9ecf1;
+  border-bottom: 1px solid #14171b;
+  box-shadow: 0 1px 4px rgba(0,0,0,.3);
+  z-index: 20;
+  flex-wrap: wrap;
+}
+
+#toolbar .group { display: flex; align-items: center; gap: 6px; }
+#toolbar .sep { width: 1px; height: 22px; background: #454b55; }
+#toolbar .spacer, .spacer { flex: 1 1 auto; }
+#toolbar .muted { color: #99a1ad; min-width: 74px; text-align: center; }
+
+.btn, .tool {
+  font: inherit;
+  color: #e9ecf1;
+  background: #363c45;
+  border: 1px solid #474e59;
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn:hover, .tool:hover { background: #434a55; }
+.btn:active, .tool:active { background: #2c313a; }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.icon { padding: 5px 10px; font-size: 15px; line-height: 1; }
+.btn.primary { background: #2f6fd8; border-color: #2f6fd8; }
+.btn.primary:hover { background: #3b7ce6; }
+.btn.primary:disabled { background: #3b4553; border-color: #4a5563; }
+
+.tool { display: inline-flex; align-items: center; gap: 6px; }
+.tool.active { background: #2f6fd8; border-color: #2f6fd8; }
+.tool .ico { display: inline-block; width: 15px; text-align: center; font-size: 13px; }
+
+.check { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; user-select: none; }
+.check input { margin: 0; }
+
+#zoomLabel { min-width: 46px; text-align: center; color: #c5ccd6; }
+
+/* ── Contextual property bar ───────────────────────────────────────── */
+
+/* Always present, even with nothing selected: if it came and went, the page
+   would jump under the pointer just as you were placing something. */
+#propbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  padding: 0 12px;
+  background: #eef1f5;
+  border-bottom: 1px solid #ccd2da;
+  z-index: 19;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+}
+#propbar > * { flex: none; }
+#propbar label { display: inline-flex; align-items: center; gap: 5px; color: #3a414b; }
+#propbar select, #propbar input[type=number] {
+  font: inherit; padding: 3px 5px; border: 1px solid #b9c0ca; border-radius: 5px; background: #fff;
+}
+#propbar input[type=color] {
+  width: 30px; height: 24px; padding: 0; border: 1px solid #b9c0ca;
+  border-radius: 5px; background: #fff; cursor: pointer;
+}
+#propbar .pbtn {
+  font: inherit; padding: 4px 9px; border: 1px solid #b9c0ca;
+  border-radius: 5px; background: #fff; cursor: pointer;
+}
+#propbar .pbtn:hover { background: #f6f8fa; }
+#propbar .pbtn.on { background: #2f6fd8; border-color: #2f6fd8; color: #fff; }
+#propbar .pbtn.danger { color: #b3261e; }
+#propbar .hint { color: #6b7380; }
+
+/* ── Viewer ────────────────────────────────────────────────────────── */
+
+#viewer { flex: 1 1 auto; overflow: auto; position: relative; -webkit-overflow-scrolling: touch; }
+
+#pages { padding: 22px 0 60px; display: flex; flex-direction: column; align-items: center; gap: 18px; }
+
+.page {
+  position: relative;
+  background: #fff;
+  box-shadow: 0 2px 10px rgba(0,0,0,.35);
+  flex: none;
+}
+.page canvas { display: block; width: 100%; height: 100%; }
+.page .pagenum {
+  position: absolute; bottom: -17px; right: 2px;
+  font-size: 11px; color: #d6dae1; pointer-events: none;
+}
+
+.overlay { position: absolute; inset: 0; }
+.overlay.t-text     { cursor: text; }
+.overlay.t-signature,
+.overlay.t-image,
+.overlay.t-check    { cursor: copy; }
+.overlay.t-box      { cursor: crosshair; }
+
+/* ── Annotations ───────────────────────────────────────────────────── */
+
+.ann { position: absolute; }
+.ann.selected { outline: 1.5px solid #2f6fd8; outline-offset: 1px; }
+.ann:not(.editing) { cursor: move; }
+
+.ann-text {
+  white-space: pre;
+  min-width: 6px;
+  min-height: 1em;
+  padding: 0;
+  margin: 0;
+  outline: none;
+  line-height: 1.2;
+  transform-origin: 0 0;
+}
+.ann-text.editing { cursor: text; background: rgba(47,111,216,.07); }
+.ann-text:empty::before { content: "Type here"; color: #9aa3af; }
+
+.ann-image img { display: block; width: 100%; height: 100%; pointer-events: none; }
+.ann-box { background: #fff; }
+.ann-check svg { display: block; width: 100%; height: 100%; overflow: visible; }
+
+.handle {
+  position: absolute;
+  width: 11px; height: 11px;
+  right: -6px; bottom: -6px;
+  background: #fff;
+  border: 1.5px solid #2f6fd8;
+  border-radius: 2px;
+  cursor: nwse-resize;
+}
+
+/* ── Dropzone ──────────────────────────────────────────────────────── */
+
+#dropzone {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  text-align: center; color: #eef1f5;
+}
+#dropzone.hidden { display: none; }
+#dropzone.hot .dz-inner { border-color: #9fc0f5; background: rgba(47,111,216,.16); }
+.dz-inner {
+  border: 2px dashed rgba(255,255,255,.35);
+  border-radius: 14px;
+  padding: 40px 52px;
+  max-width: 520px;
+}
+.dz-icon { font-size: 44px; }
+.dz-inner h1 { font-size: 21px; margin: 10px 0 6px; font-weight: 600; }
+.dz-inner p { margin: 6px 0; }
+.dz-inner .small { font-size: 12px; color: #cfd5dd; margin-top: 14px; }
+.linklike {
+  background: none; border: 0; padding: 0; font: inherit;
+  color: #a9c8fb; text-decoration: underline; cursor: pointer;
+}
+
+/* ── Status toast ──────────────────────────────────────────────────── */
+
+#status {
+  position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%);
+  background: #1d2128; color: #eef1f5;
+  padding: 9px 16px; border-radius: 8px;
+  box-shadow: 0 4px 18px rgba(0,0,0,.4);
+  z-index: 60; max-width: 78%; text-align: center;
+}
+#status.err { background: #8c2119; }
+
+/* ── Modal ─────────────────────────────────────────────────────────── */
+
+.modal {
+  position: fixed; inset: 0; z-index: 50;
+  background: rgba(16,19,24,.55);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.modal-card {
+  background: #f7f8fa;
+  border-radius: 12px;
+  width: 820px; max-width: 100%; max-height: 100%;
+  overflow: auto;
+  box-shadow: 0 18px 60px rgba(0,0,0,.45);
+}
+.modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px; border-bottom: 1px solid #dfe3e9; font-size: 14px;
+}
+.modal-head .btn { background: #e6e9ee; color: #333; border-color: #cfd4dc; }
+.modal-foot {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 14px; border-top: 1px solid #dfe3e9;
+}
+.modal-foot .btn { background: #e6e9ee; color: #22262c; border-color: #cfd4dc; }
+.modal-foot .btn.primary { background: #2f6fd8; color: #fff; border-color: #2f6fd8; }
+
+.tabs { display: flex; gap: 4px; padding: 12px 14px 0; }
+.tab {
+  font: inherit; padding: 6px 14px; cursor: pointer;
+  background: #e6e9ee; border: 1px solid #d3d8e0; border-bottom: none;
+  border-radius: 7px 7px 0 0; color: #40474f;
+}
+.tab.active { background: #fff; color: #16191d; font-weight: 600; }
+.tabpane { background: #fff; border: 1px solid #d3d8e0; margin: 0 14px; padding: 14px; }
+.tabpane .row { display: flex; align-items: center; gap: 14px; margin-top: 10px; flex-wrap: wrap; }
+.tabpane .row label { display: inline-flex; align-items: center; gap: 6px; }
+.tabpane input[type=text] {
+  font: 15px inherit; padding: 7px 9px; width: 320px;
+  border: 1px solid #b9c0ca; border-radius: 6px;
+}
+.tabpane select { font: inherit; padding: 4px 6px; border: 1px solid #b9c0ca; border-radius: 5px; }
+.small { color: #5d646d; font-size: 12px; }
+
+.sig-pad-wrap { position: relative; }
+#sigPad {
+  width: 100%; height: 240px; display: block;
+  background: #fff; border: 1px solid #ccd2da; border-radius: 8px;
+  touch-action: none; cursor: crosshair;
+}
+.sig-baseline {
+  position: absolute; left: 26px; right: 26px; bottom: 58px;
+  border-bottom: 1px dashed #c3cad3; pointer-events: none;
+}
+.sig-hint {
+  position: absolute; left: 30px; bottom: 36px;
+  color: #b0b7c0; font-size: 12px; pointer-events: none;
+}
+
+.sig-preview {
+  margin-top: 12px; min-height: 110px;
+  border: 1px solid #e2e6ec; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  background: repeating-conic-gradient(#f2f4f7 0% 25%, #fff 0% 50%) 0 0 / 16px 16px;
+}
+.sig-preview img { max-width: 100%; max-height: 150px; }
+.sig-preview .placeholder { color: #9aa3af; font-size: 12px; }
+
+.saved { margin: 14px 14px 0; }
+.saved-title { font-size: 12px; color: #5d646d; margin-bottom: 6px; }
+.saved-list { display: flex; gap: 10px; flex-wrap: wrap; }
+.saved-item { position: relative; }
+.saved-item button.pick {
+  background: #fff; border: 1px solid #d3d8e0; border-radius: 8px;
+  padding: 6px 10px; cursor: pointer; height: 62px;
+}
+.saved-item button.pick:hover { border-color: #2f6fd8; }
+.saved-item img { height: 46px; display: block; }
+.saved-item .del {
+  position: absolute; top: -7px; right: -7px;
+  width: 20px; height: 20px; line-height: 17px; text-align: center;
+  border-radius: 50%; border: 1px solid #cfd4dc; background: #fff;
+  cursor: pointer; font-size: 12px; color: #777; padding: 0;
+}
+.saved-item .del:hover { color: #b3261e; border-color: #b3261e; }
+
+@media print { #toolbar, #propbar { display: none; } }

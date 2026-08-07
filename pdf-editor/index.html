@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Local PDF Editor</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header id="toolbar">
+  <div class="group">
+    <button class="btn primary" id="openBtn">Open PDF…</button>
+    <input type="file" id="fileInput" accept="application/pdf,.pdf" hidden>
+  </div>
+
+  <div class="sep"></div>
+
+  <div class="group" id="tools">
+    <button class="tool active" data-tool="select" title="Select / move (V)">
+      <span class="ico">➤</span> Select
+    </button>
+    <button class="tool" data-tool="text" title="Add text (T)">
+      <span class="ico">T</span> Text
+    </button>
+    <button class="tool" data-tool="signature" title="Add signature (S)">
+      <span class="ico">✍</span> Signature
+    </button>
+    <button class="tool" data-tool="image" title="Place an image (I)">
+      <span class="ico">▣</span> Image
+    </button>
+    <button class="tool" data-tool="check" title="Add a checkmark (C)">
+      <span class="ico">✓</span> Check
+    </button>
+    <button class="tool" data-tool="box" title="Whiteout box — drag to cover (B)">
+      <span class="ico">▭</span> Whiteout
+    </button>
+    <input type="file" id="imageInput" accept="image/png,image/jpeg,image/jpg" hidden>
+  </div>
+
+  <div class="sep"></div>
+
+  <div class="group">
+    <button class="btn icon" id="zoomOut" title="Zoom out">−</button>
+    <span id="zoomLabel">100%</span>
+    <button class="btn icon" id="zoomIn" title="Zoom in">+</button>
+    <button class="btn" id="fitWidth" title="Fit the whole page on screen">Fit</button>
+  </div>
+
+  <div class="sep"></div>
+
+  <div class="group">
+    <button class="btn icon" id="undoBtn" title="Undo (⌘Z)">↺</button>
+    <span id="pageLabel" class="muted">—</span>
+  </div>
+
+  <div class="spacer"></div>
+
+  <div class="group">
+    <label class="check" title="Bakes existing fillable form fields into the page so they can't be changed after signing.">
+      <input type="checkbox" id="flattenForms"> Flatten form fields
+    </label>
+    <button class="btn primary" id="saveBtn" disabled>Save PDF</button>
+  </div>
+</header>
+
+<div id="propbar"></div>
+
+<main id="viewer">
+  <div id="dropzone">
+    <div class="dz-inner">
+      <div class="dz-icon">📄</div>
+      <h1>Local PDF Editor</h1>
+      <p>Drop a PDF here, or <button class="linklike" id="openBtn2">choose a file</button>.</p>
+      <p class="small">Everything happens on this Mac. Nothing is uploaded, and the app
+      makes no network requests at all.</p>
+    </div>
+  </div>
+  <div id="pages"></div>
+</main>
+
+<div id="status" hidden></div>
+
+<!-- ── Signature dialog ─────────────────────────────────────────────── -->
+<div id="sigModal" class="modal" hidden>
+  <div class="modal-card">
+    <div class="modal-head">
+      <strong>Add a signature</strong>
+      <button class="btn icon" id="sigClose" title="Close">✕</button>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="draw">Draw</button>
+      <button class="tab" data-tab="type">Type</button>
+      <button class="tab" data-tab="upload">Upload</button>
+    </div>
+
+    <section class="tabpane" data-pane="draw">
+      <div class="sig-pad-wrap">
+        <canvas id="sigPad" width="760" height="240"></canvas>
+        <div class="sig-baseline"></div>
+        <span class="sig-hint">Draw with the trackpad or mouse</span>
+      </div>
+      <div class="row">
+        <label>Pen <input type="range" id="penSize" min="1" max="8" step="0.5" value="2.6"></label>
+        <label>Colour
+          <select id="sigColor">
+            <option value="#101820">Black</option>
+            <option value="#12379c">Blue</option>
+          </select>
+        </label>
+        <button class="btn" id="sigClear">Clear</button>
+      </div>
+    </section>
+
+    <section class="tabpane" data-pane="type" hidden>
+      <div class="row">
+        <input type="text" id="sigTypeText" placeholder="Type your name" autocomplete="off">
+      </div>
+      <div class="row">
+        <label>Style
+          <select id="sigTypeFont">
+            <option value='"Snell Roundhand", "Apple Chancery", cursive'>Snell Roundhand</option>
+            <option value='"Zapfino", cursive'>Zapfino</option>
+            <option value='"Brush Script MT", cursive'>Brush Script</option>
+            <option value='"Bradley Hand", "Chalkboard", cursive'>Bradley Hand</option>
+            <option value='"Apple Chancery", cursive'>Apple Chancery</option>
+            <option value='Helvetica, Arial, sans-serif'>Plain</option>
+          </select>
+        </label>
+        <label>Colour
+          <select id="sigTypeColor">
+            <option value="#101820">Black</option>
+            <option value="#12379c">Blue</option>
+          </select>
+        </label>
+      </div>
+      <div id="sigTypePreview" class="sig-preview"></div>
+    </section>
+
+    <section class="tabpane" data-pane="upload" hidden>
+      <p class="small">Pick a photo or scan of your signature (PNG or JPEG).</p>
+      <input type="file" id="sigUpload" accept="image/png,image/jpeg,image/jpg">
+      <label class="check"><input type="checkbox" id="sigRemoveBg" checked> Remove white background</label>
+      <div id="sigUploadPreview" class="sig-preview"></div>
+    </section>
+
+    <div id="sigSaved" class="saved" hidden>
+      <div class="saved-title">Saved signatures — click to place</div>
+      <div id="sigSavedList" class="saved-list"></div>
+    </div>
+
+    <div class="modal-foot">
+      <label class="check"><input type="checkbox" id="sigRemember" checked> Remember on this Mac</label>
+      <span class="spacer"></span>
+      <button class="btn" id="sigCancel">Cancel</button>
+      <button class="btn primary" id="sigUse">Use signature</button>
+    </div>
+  </div>
+</div>
+
+<script src="vendor/pdf.min.js"></script>
+<script src="vendor/pdf-lib.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
