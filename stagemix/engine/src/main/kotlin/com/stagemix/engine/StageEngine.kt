@@ -729,8 +729,13 @@ const val TREAT_WINDOW_SEC = 180f
  * soundcheck: five minutes, once per channel, while the operator is
  * stood there watching it work out what is plugged in. After that the
  * two rules they asked for are the whole story.
+ *
+ * Ten minutes rather than five because the analyzer visits one channel
+ * at a time: a full stage takes about four minutes to go round once, so
+ * a shorter window would mean every chain was built on the book with no
+ * frequency map behind it.
  */
-const val SETUP_WINDOW_SEC = 300f
+const val SETUP_WINDOW_SEC = 600f
 
 /**
  * How far a learned height may pull a channel away from the pyramid.
@@ -3602,13 +3607,35 @@ class StageEngine(
             // performance nobody asked it to change.
             if (!needsTreatment(idx, st, tSec)) continue
             val w = treatment.consider(idx, st.role, ident.verdict(idx),
-                ident.evidence(idx), ident.spectrum(idx), tSec)
+                ident.evidence(idx), ident.spectrum(idx), tSec,
+                shapeOf(idx))
             if (w.isEmpty()) continue
             log(tSec, "treat", idx, 0f,
                 "${st.name}: ${treatment.lastReason}")
             out += w
         }
         return out
+    }
+
+    /**
+     * What the frequency map can tell the chain about this channel —
+     * or nothing at all, which is the answer until the analyzer has
+     * spent enough time parked on it.
+     *
+     * The RTA visits one channel at a time, so a sixteen-piece stage
+     * gives each channel a sixteenth of the night and a map built from
+     * four seconds is a guess wearing a lab coat. `settled` is the
+     * difference, and it is checked here rather than trusted to the
+     * reader.
+     */
+    private fun shapeOf(ch: Int): ChannelTreatment.Shape? {
+        if (!spectrum.settled(ch)) return null
+        val r = spectrum.resonances(ch).firstOrNull()
+        return ChannelTreatment.Shape(
+            lowEdgeHz = spectrum.lowEdgeHz(ch),
+            resonanceHz = r?.hz,
+            resonanceDb = r?.overTrendDb ?: 0f,
+            resonanceQ = r?.q ?: 2f)
     }
 
     /**

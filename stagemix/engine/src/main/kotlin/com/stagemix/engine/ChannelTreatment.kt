@@ -113,6 +113,14 @@ fun isGainAdding(address: String, value: Float): Boolean = when {
 /** float slop, so an exact unity write is not read as a boost */
 const val GAIN_EPS = 0.002f
 
+/**
+ * How big a lump over a channel's own trend is worth a narrow cut, and
+ * how much of it may be taken out. Six dB is well past voicing and into
+ * a ring; four dB of cut is an engineer's move, not a repair.
+ */
+const val RESONANCE_MIN_DB = 6f
+const val RESONANCE_MAX_CUT_DB = 4f
+
 fun isSafeAddress(address: String): Boolean {
     Regex("^/ch/(\\d\\d)/mix/(\\d\\d)/level$").find(address)?.let { m ->
         val send = m.groupValues[2].toIntOrNull() ?: return false
@@ -265,6 +273,8 @@ class ChannelTreatment(
         val role: Role,
         val spec: DoubleArray,
         val tSec: Double,
+        /** was the frequency map settled when this chain was built? */
+        val hadShape: Boolean,
     ) {
         var driftSince = -1.0
     }
@@ -294,6 +304,22 @@ class ChannelTreatment(
      * writes if it does. Empty means "nothing to do", which is the
      * answer almost every time it is called — by design.
      */
+    /**
+     * What the frequency map has measured about this channel, when it
+     * has heard enough of it to have an opinion. See [FrequencyMap] —
+     * and note that every field is allowed to be absent, because a
+     * chain built on a guess about a spectrum is worse than the
+     * preset it replaced.
+     */
+    data class Shape(
+        /** where this instrument's energy actually stops, going down */
+        val lowEdgeHz: Float? = null,
+        /** the worst lump over the channel's own trend, if there is one */
+        val resonanceHz: Float? = null,
+        val resonanceDb: Float = 0f,
+        val resonanceQ: Float = 2f,
+    )
+
     fun consider(
         ch: Int,
         role: Role,
@@ -301,6 +327,7 @@ class ChannelTreatment(
         evidence: Float,
         spectrum: DoubleArray?,
         tSec: Double,
+        shape: Shape? = null,
     ): List<ParamWrite> {
         val chain = STARTING_CHAINS[role] ?: return emptyList()
         val prev = applied[ch]
@@ -313,16 +340,32 @@ class ChannelTreatment(
                 return emptyList()
             if (evidence < settings.minEvidence) return emptyList()
             return apply(ch, role, chain, spectrum, tSec,
-                "first time — ${chain.why}")
+                "first time — ${chain.why}", shape)
         }
 
         if (tSec - prev.tSec < settings.minGapSec) return emptyList()
+
+        // THE MAP ARRIVED LATE, WHICH IT ALWAYS DOES.
+        //
+        // The analyzer visits one channel at a time, so a full stage
+        // takes several minutes to go round once and the first chain is
+        // almost always built on the book alone. When the map finally
+        // has something to say about this channel — where its low end
+        // really stops, a lump that is not part of how it is voiced —
+        // and it would change the chain, that is worth exactly one more
+        // write. Once: `hadShape` is then true and this never fires
+        // again.
+        if (!prev.hadShape && shape != null &&
+            fit(chain, shape).first != chain) {
+            return apply(ch, role, chain, spectrum, tSec,
+                "heard properly now — ${chain.why}", shape)
+        }
 
         // The instrument itself changed. That is material by definition
         // and needs no spectral corroboration.
         if (role != prev.role)
             return apply(ch, role, chain, spectrum, tSec,
-                "now ${role.name.lowercase()} — ${chain.why}")
+                "now ${role.name.lowercase()} — ${chain.why}", shape)
 
         // Otherwise the sound has to have genuinely moved, and stayed
         // moved. A solo, a chorus and a singer leaning into the mic all
@@ -335,7 +378,7 @@ class ChannelTreatment(
         if (tSec - prev.driftSince < settings.materialHoldSec) return emptyList()
         return apply(ch, role, chain, now, tSec,
             "the sound on this channel has changed (%.2f) — re-treating"
-                .format(java.util.Locale.ROOT, d))
+                .format(java.util.Locale.ROOT, d), shape)
     }
 
     /** L1 distance between two normalised spectra, 0..2 */
@@ -349,10 +392,78 @@ class ChannelTreatment(
     /** the last reason a chain was applied, for the log */
     var lastReason: String = ""; private set
 
+    /**
+     * Fit the book to THIS instrument, using what the frequency map has
+     * measured.
+     *
+     * "I think the app is missing a frequency map on each channel to
+     * understand how to treat it." This is where the map earns its
+     * keep. Two moves, both of which a preset cannot make:
+     *
+     *  · THE HIGH-PASS GOES UNDER THE INSTRUMENT, not at a number.
+     *    The vocal preset is 100 Hz, and a baritone whose fundamental
+     *    is 87 Hz loses the bottom of his voice to it — while a bright
+     *    female vocal with nothing under 180 keeps 80 Hz of stage
+     *    rumble it never needed. The map knows where each of them
+     *    actually stops. Bounded to half and one-and-a-half times the
+     *    preset, because a corner frequency derived from a bad estimate
+     *    is exactly the kind of confident mistake worth ruling out.
+     *
+     *  · A RESONANCE GETS A NARROW CUT. Not a tilt — a lump over the
+     *    channel's OWN trend, which is what a ringing shell, a boxy
+     *    cabinet or a room mode in a floor tom looks like, measured
+     *    against how that instrument is voiced rather than against
+     *    flat. Cut only, never more than four dB, at the Q the map
+     *    measured, and only on a middle band: bands 2 and 3 are the
+     *    parametric ones on this desk by default and the band type is
+     *    not something to write on an assumption.
+     */
+    private fun fit(chain: Chain, shape: Shape?): Pair<Chain, String> {
+        if (shape == null) return chain to ""
+        val notes = StringBuilder()
+        var out = chain
+
+        val edge = shape.lowEdgeHz
+        val preset = chain.hpfHz
+        if (edge != null && preset != null) {
+            val want = (edge * 0.9f).coerceIn(preset * 0.5f, preset * 1.5f)
+            if (abs(want - preset) >= 5f) {
+                out = out.copy(hpfHz = want)
+                notes.append(
+                    ". Its low end really stops at %.0f Hz, so the " +
+                    "high-pass goes at %.0f rather than the usual %.0f"
+                        .format(java.util.Locale.ROOT, edge, want, preset))
+            }
+        }
+
+        val rHz = shape.resonanceHz
+        if (rHz != null && shape.resonanceDb >= RESONANCE_MIN_DB) {
+            val used = out.eq.map { it.band }.toSet()
+            val band = (2..3).firstOrNull { it !in used }
+            if (band != null) {
+                val cut = -(shape.resonanceDb - 2f)
+                    .coerceAtMost(RESONANCE_MAX_CUT_DB)
+                val q = shape.resonanceQ.coerceIn(1.5f, 8f)
+                out = out.copy(eq = out.eq + EqBand(band, rHz, cut, q))
+                notes.append(
+                    ". There is a %.0f dB lump at %.0f Hz that is not " +
+                    "part of how this instrument is voiced — %.1f dB out " +
+                    "of it, narrow"
+                        .format(java.util.Locale.ROOT, shape.resonanceDb,
+                            rHz, cut))
+            }
+        }
+        return out to notes.toString()
+    }
+
     private fun apply(
-        ch: Int, role: Role, chain: Chain,
-        spectrum: DoubleArray?, tSec: Double, why: String,
+        ch: Int, role: Role, chain0: Chain,
+        spectrum: DoubleArray?, tSec: Double, why0: String,
+        shape: Shape? = null,
     ): List<ParamWrite> {
+        val fitted = fit(chain0, shape)
+        val chain = fitted.first
+        val why = why0 + fitted.second
         val out = ArrayList<ParamWrite>()
         val skip = handsOff[ch] ?: emptySet<String>()
         fun put(addr: String, v: Float) {
@@ -421,7 +532,8 @@ class ChannelTreatment(
                 FaderLaw.dbToFloat(it))
         }
         if (out.isEmpty()) return emptyList()
-        applied[ch] = Applied(role, spectrum ?: DoubleArray(0), tSec)
+        applied[ch] = Applied(role, spectrum ?: DoubleArray(0), tSec,
+            hadShape = shape != null)
         lastReason = why
         return out
     }

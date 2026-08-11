@@ -379,6 +379,91 @@ class ChannelTreatmentTest {
                 "on: $addrs")
     }
 
+    @Test fun `the high-pass goes under the singer, not at the preset`() {
+        // The whole reason for a per-channel frequency map. The vocal
+        // preset is 100 Hz; a baritone whose voice really starts at
+        // 87 Hz loses his bottom octave to it, and a bright voice with
+        // nothing under 180 keeps 80 Hz of stage rumble it never
+        // needed. Same book, same role, two different corners.
+        fun corner(edgeHz: Float?): Float {
+            val t = ChannelTreatment()
+            val shape = edgeHz?.let { ChannelTreatment.Shape(lowEdgeHz = it) }
+            val w = t.consider(8, Role.VOCAL, verdict(0.95f), 1f, spec(),
+                100.0, shape)
+            val v = w.first { it.address == "/ch/09/preamp/hpf" }.value
+            // invert hpfToFloat
+            return 20f * Math.pow(20.0, v.toDouble()).toFloat()
+        }
+        val preset = corner(null)
+        val bari = corner(87f)
+        val bright = corner(220f)
+        println("high-pass: preset %.0f Hz, baritone %.0f, bright %.0f"
+            .format(preset, bari, bright))
+        assertTrue(abs(preset - 100f) < 3f, "the book is still the book")
+        assertTrue(bari < 90f,
+            "the preset would cut into this singer: %.0f Hz".format(bari))
+        assertTrue(bright > preset + 20f,
+            "and a voice with nothing down there gets a cleaner channel: " +
+            "%.0f Hz".format(bright))
+        // and no estimate, however wrong, may run away with it
+        assertTrue(corner(20f) >= 45f && corner(4000f) <= 155f,
+            "bounded to half and one-and-a-half times the preset")
+    }
+
+    @Test fun `a ringing shell gets a narrow cut, a voicing does not`() {
+        val t = ChannelTreatment()
+        val w = t.consider(2, Role.PERCUSSION, verdict(0.95f), 1f, spec(),
+            100.0, ChannelTreatment.Shape(
+                lowEdgeHz = 90f, resonanceHz = 250f,
+                resonanceDb = 9f, resonanceQ = 4f))
+        val bands = (1..4).mapNotNull { b ->
+            w.firstOrNull { it.address == "/ch/03/eq/$b/f" }?.let { f ->
+                val hz = 20f * Math.pow(1000.0, f.value.toDouble()).toFloat()
+                val g = w.first { it.address == "/ch/03/eq/$b/g" }.value * 30f - 15f
+                Triple(b, hz, g)
+            }
+        }
+        println("bands: " + bands.map { "%d %.0f Hz %+.1f dB".format(it.first, it.second, it.third) })
+        val ring = bands.firstOrNull { abs(it.second - 250f) < 40f }
+        assertTrue(ring != null, "the lump at 250 Hz must be addressed: $bands")
+        assertTrue(ring.third < -3f && ring.third >= -4.01f,
+            "cut, and not more than four dB: ${ring.third}")
+
+        // a channel with no lump gets the book and nothing else
+        val plain = ChannelTreatment().consider(2, Role.PERCUSSION,
+            verdict(0.95f), 1f, spec(), 100.0,
+            ChannelTreatment.Shape(lowEdgeHz = 90f))
+        assertTrue(plain.none { it.address == "/ch/03/eq/3/f" },
+            "a smooth instrument is not a problem to solve")
+    }
+
+    @Test fun `a map that arrives late is still worth one more write`() {
+        // The analyzer parks on one channel at a time, so the first
+        // chain is nearly always built before the map has anything to
+        // say. When it does, and it disagrees with the preset, that is
+        // worth exactly one more write — and then never again.
+        val t = ChannelTreatment()
+        val first = t.consider(8, Role.VOCAL, verdict(0.95f), 1f, spec(),
+            100.0, null)
+        assertTrue(first.isNotEmpty(), "the book goes on first")
+
+        val shape = ChannelTreatment.Shape(lowEdgeHz = 87f)
+        assertTrue(t.consider(8, Role.VOCAL, verdict(0.95f), 1f, spec(),
+            150.0, shape).isEmpty(), "not before the minimum gap")
+
+        val second = t.consider(8, Role.VOCAL, verdict(0.95f), 1f, spec(),
+            400.0, shape)
+        assertTrue(second.any { it.address == "/ch/09/preamp/hpf" },
+            "the high-pass is re-placed under the singer")
+        assertTrue(t.lastReason.contains("87"),
+            "and it says why: ${t.lastReason}")
+
+        val third = t.consider(8, Role.VOCAL, verdict(0.95f), 1f, spec(),
+            900.0, shape)
+        assertTrue(third.isEmpty(),
+            "once is once — nothing further: " + third.map { it.address })
+    }
+
     @Test fun `the monitors are untouched, balance and volume both`() {
         // "The monitors balance and volume are mine 100%." Balance is
         // the per-channel send into a wedge; volume is the bus master.
