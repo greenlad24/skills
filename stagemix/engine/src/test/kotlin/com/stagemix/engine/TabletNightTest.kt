@@ -87,7 +87,7 @@ class TabletNightTest {
         r.start { band }
         r.run(90.0) { band }
 
-        val muted = e.decisions.filter { it.kind == "mute" }
+        val muted = e.decisions.filter { it.kind == "held-down" }
         assertTrue(muted.isEmpty(),
             "every channel is playing and the engine has been listening " +
             "for ninety seconds. Muted anyway: " + muted.map { it.reason })
@@ -103,7 +103,7 @@ class TabletNightTest {
         r2.start { sparse }
         r2.run(120.0) { sparse }
         val claims = Regex("silent (\\d+)s")
-        for (d in e2.decisions.filter { it.kind == "mute" }) {
+        for (d in e2.decisions.filter { it.kind == "held-down" }) {
             val n = claims.find(d.reason)?.groupValues?.get(1)?.toInt()
                 ?: continue
             assertTrue(n <= 130,
@@ -124,7 +124,7 @@ class TabletNightTest {
             }
             r.start { band }
             r.run(120.0) { band }
-            return e.decisions.filter { it.kind == "mute" }
+            return e.decisions.filter { it.kind == "held-down" }
                 .map { "ch${it.channel}" }
         }
         assertEquals(mutesAfter(0.0), mutesAfter(95_877.0),
@@ -304,7 +304,7 @@ class TabletNightTest {
             "a channel the operator has switched off is theirs: the " +
             "engine has nothing to correct and moving it would only " +
             "mean a jump when they switch it back on")
-        assertTrue(e.decisions.none { it.kind == "mute" && it.channel == 1 },
+        assertTrue(e.decisions.none { it.kind == "held-down" && it.channel == 1 },
             "and it certainly must not be 'muted' a second time by us")
     }
 
@@ -340,6 +340,40 @@ class TabletNightTest {
         assertTrue(r.writes.isEmpty(),
             "and the band comes back to the faders they left. Moved: " +
             r.writes.map { "ch${it.second.channel}" }.distinct())
+    }
+
+    @Test fun `an instrument that first plays after a song break still arrives`() {
+        // The other side of the same flag. "This is a resume, not an
+        // arrival" was set with no clock on it, so it waited — through
+        // the rest of the break, through the count-in, through two
+        // minutes of the next song — and was spent on whatever channel
+        // played next. The harmonica player picks the harmonica up in
+        // the second verse, which is the clearest arrival of the night,
+        // and the mute they slept through ate it.
+        val e = StageEngine(rig, EngineSettings(mode = BalanceMode.KEEP))
+        val r = Run(e)
+        var harp = false
+        fun band() = silence().also {
+            it[0] = -18f; it[1] = -20f; it[3] = -22f
+            it[8] = -20f; it[11] = -17f
+            if (harp) it[6] = -21f
+        }
+        r.start { band() }
+        r.run(90.0) { band() }
+        e.adoptBalance(r.t)
+
+        // song ends, everything muted, back on — the harmonica has not
+        // played a note yet and is muted and unmuted with the rest
+        for (ch in 0 until 16) e.setChannelMuted(ch, true)
+        r.run(60.0) { silence() }
+        for (ch in 0 until 16) e.setChannelMuted(ch, false)
+        r.run(120.0) { band() }          // next song, no harmonica
+
+        harp = true                       // second verse
+        r.run(90.0) { band() }
+        assertTrue(e.state[6]!!.arrivedT > 0,
+            "the harmonica came in for the first time tonight and the " +
+            "engine has to meet it: arrivedT ${e.state[6]!!.arrivedT}")
     }
 
     @Test fun `unmuting listens again before touching it`() {
@@ -906,6 +940,14 @@ class TabletNightTest {
         r.run(120.0) { band(it) }
         e.adoptBalance(r.t)
 
+        // The first five minutes are the app's soundcheck: a channel
+        // that was already playing when the operator pressed go may
+        // have its chain set once, or the chain never gets written at
+        // all on a normal night. See SETUP_WINDOW_SEC.
+        assertTrue(e.wantsTreatment(0, r.t),
+            "while it is setting up, a channel may be set up")
+        r.run(SETUP_WINDOW_SEC.toDouble()) { band(it) }
+
         // Steady state: everyone playing, nobody soloing, nothing new.
         // Whatever the identifier thinks it has learned, this is not a
         // moment to be reaching for anybody's EQ.
@@ -988,6 +1030,125 @@ class TabletNightTest {
         assertTrue(r.writes.any { it.second.channel == 4 },
             "one channel out of step with the rest is exactly what the " +
             "ride is for: " + r.writes.map { it.second.channel }.distinct())
+    }
+
+    @Test fun `a quiet verse in the rhythm section must not pull the guitars down`() {
+        // The other way the common-mode term can be wrong, and the way
+        // it WAS wrong the day it was written: it polled every channel
+        // with a plan, including the held ones. The held roles never
+        // ride, so their "how far off am I" is a reading, not an
+        // intention — but it counted toward the median all the same.
+        //
+        // A verse: the drummer goes to the rim, the bass player thins
+        // out, the singer drops to a half voice. Five dB down across
+        // four channels the engine is never going to touch. The guitars
+        // are playing exactly to plan and want nothing. Median of the
+        // old population: +5. Subtracted from a want of zero, and the
+        // guitars came DOWN five dB in the quietest bar of the song,
+        // which is where you can hear a fader move.
+        val e = StageEngine(rig, EngineSettings(mode = BalanceMode.KEEP))
+        val r = Run(e)
+        var verse = 0f
+        fun band(t: Double) = silence().also {
+            // held: kick, snare, bass, lead vocal — these dip
+            it[0] = -18f + verse; it[1] = -21f + verse
+            it[3] = -22f + verse; it[8] = -19f + verse
+            // ridable: guitars, keys, horn — these do not move at all
+            it[4] = -20f; it[5] = -23f; it[7] = -24f; it[14] = -25f
+        }
+        r.start { band(it) }
+        r.run(120.0) { band(it) }
+        e.adoptBalance(r.t)
+        r.writes.clear()
+
+        verse = -5f
+        r.run(300.0) { band(it) }
+        val moved = r.writes.map { it.second.channel }.distinct().sorted()
+        assertTrue(moved.isEmpty(),
+            "the rhythm section played quietly and the guitars played " +
+            "the same as before — nothing about that is a fault to " +
+            "correct. Moved: " + r.writes.groupBy { it.second.channel }
+                .map { (c, w) -> "ch$c %+.2f".format(w.last().second.levelDb) })
+    }
+
+    @Test fun `a channel that is always a little off is not ridden all night`() {
+        // The dwell and the rest between corrections were both defeated
+        // by a latch. `riding` cleared only when the error fell under a
+        // QUARTER of the deadband, and a guitar amp that sits
+        // persistently a dB or so off — which is most guitar amps —
+        // never got there. It stayed engaged, and an engaged channel
+        // tracked its target every tick with no dwell and no deadband
+        // at all: exactly the continuous fader-riding the dwell was
+        // added to stop.
+        val e = StageEngine(rig, EngineSettings(mode = BalanceMode.KEEP))
+        val r = Run(e)
+        var creep = 0f
+        fun band(t: Double) = silence().also {
+            it[0] = -18f; it[1] = -21f; it[3] = -22f; it[8] = -19f
+            it[5] = -23f; it[7] = -24f; it[14] = -25f
+            it[4] = -20f + creep       // the amp, wandering
+        }
+        r.start { band(it) }
+        r.run(120.0) { band(it) }
+        e.adoptBalance(r.t)
+        r.writes.clear()
+
+        // it drifts up slowly and never stops: the error crosses the
+        // deadband and then hangs just under it, forever
+        var t0 = r.t
+        while (r.t - t0 < 600.0) {
+            creep += 0.35f
+            r.run(20.0) { band(it) }
+        }
+        val mine = r.writes.filter { it.second.channel == 4 }.map { it.first }
+        // one engagement is a run of writes as the fader slews; the
+        // question is how many engagements there were
+        val bursts = ArrayList<Double>()
+        var prev = -99.0
+        for (w in mine) { if (w - prev > 10.0) bursts.add(w); prev = w }
+        println("amp corrected ${bursts.size} times: " +
+            bursts.map { "%.0f s".format(it) })
+        assertTrue(bursts.size <= 10,
+            "ten minutes is at most a handful of corrections, not a " +
+            "channel being flown: ${bursts.size}")
+        for (i in 1 until bursts.size)
+            assertTrue(bursts[i] - bursts[i - 1] >= 30.0,
+                "and each one rests afterwards: " +
+                "%.0f s between corrections".format(bursts[i] - bursts[i - 1]))
+    }
+
+    @Test fun `a quiet intro with three players is not a gap between songs`() {
+        // A gap was inferred from a headcount alone: a third of the
+        // channels that were playing recently. Three players out of
+        // twelve satisfies that, and three players out of twelve is a
+        // bridge, a breakdown, or the acoustic number in the middle of
+        // the set. The whole engine froze for the length of it — and
+        // every instrument coming back in at the end had its arrival
+        // swallowed on the way out.
+        val e = StageEngine(rig, EngineSettings(mode = BalanceMode.KEEP))
+        val r = Run(e)
+        val full = silence().also {
+            it[0] = -18f; it[1] = -21f; it[2] = -24f; it[3] = -22f
+            it[4] = -20f; it[5] = -23f; it[6] = -25f; it[7] = -24f
+            it[8] = -19f; it[9] = -26f; it[11] = -17f; it[14] = -25f
+        }
+        r.start { full }
+        r.run(90.0) { full }
+        assertTrue(!e.betweenSongs, "the whole band is playing")
+
+        // voice, piano and one guitar — and the singer is still singing
+        val thin = silence().also {
+            it[8] = -19f; it[4] = -21f; it[3] = -23f
+        }
+        r.run(45.0) { thin }
+        assertTrue(!e.betweenSongs,
+            "three players out of sixteen is a sparse arrangement, not " +
+            "a gap — the loudest thing on the stage has not moved")
+
+        // and the real thing, for contrast
+        r.run(45.0) { silence() }
+        assertTrue(e.betweenSongs,
+            "the band actually stopped and this must still be a gap")
     }
 
     @Test fun `no chain is written while a howl is suspected`() {

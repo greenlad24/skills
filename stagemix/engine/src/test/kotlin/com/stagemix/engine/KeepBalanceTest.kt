@@ -250,14 +250,14 @@ class KeepBalanceTest {
 
         // Channels that were never plugged in have already been muted
         // by now, and rightly — that is not what this test is about.
-        val mutedBefore = e.decisions.count { it.kind == "mute" }
+        val mutedBefore = e.decisions.count { it.kind == "held-down" }
 
         // the song ends: everybody stops for most of a minute
         r.run(50.0) { silence() }
         assertTrue(e.betweenSongs, "a silent stage is a gap, not a mass exit")
-        assertTrue(e.decisions.count { it.kind == "mute" } == mutedBefore,
+        assertTrue(e.decisions.count { it.kind == "held-down" } == mutedBefore,
             "nothing may be muted because the band stopped playing: " +
-            e.decisions.filter { it.kind == "mute" }.drop(mutedBefore)
+            e.decisions.filter { it.kind == "held-down" }.drop(mutedBefore)
                 .map { it.reason })
 
         // and the next song starts
@@ -286,7 +286,7 @@ class KeepBalanceTest {
         val gone = band().also { it[4] = -80f }   // the guitar amp sits out
         r.run(120.0) { gone }
         assertTrue(!e.betweenSongs, "the band is still playing")
-        assertTrue(e.decisions.none { it.kind == "mute" && it.channel == 4 },
+        assertTrue(e.decisions.none { it.kind == "held-down" && it.channel == 4 },
             "a planned channel going quiet is not a departure")
         assertTrue(abs(r.fader(4) - at) < 1f,
             "and its fader stays where the operator left it: " +
@@ -303,7 +303,7 @@ class KeepBalanceTest {
         r.start(src)
         r.run(120.0) { src }
         r.run(80.0) { band().also { it[4] = -80f } }
-        assertTrue(e.decisions.any { it.kind == "mute" && it.channel == 4 })
+        assertTrue(e.decisions.any { it.kind == "held-down" && it.channel == 4 })
     }
 
     @Test fun `nothing moves between songs`() {

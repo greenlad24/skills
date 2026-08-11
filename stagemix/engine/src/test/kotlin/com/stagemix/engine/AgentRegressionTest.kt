@@ -365,25 +365,26 @@ class PerceptionRegressionTest {
             "never automate on an unverified meter index")
     }
 
-    @Test fun `low fill is stable, not fighting the drift corrector`() {
+    @Test fun `a band that has drifted down is not pushed back up`() {
+        // The drift corrector was symmetrical: a band quieter than it
+        // was at snapshot produced a positive target and the doctor
+        // walked the EQ up to +2 dB over the engineer's setting. Half
+        // of a two-sided corrector is exactly the half that is always
+        // safe — take out what has grown, and leave what has gone.
         val d = ToneDoctor(listOf(0), mapOf(0 to Role.KEYS))
-        val hot = FloatArray(100) { -29f }
         var t = 0.0
         repeat(40) { d.onRta(0, FloatArray(100) { -30f }, t); t += 0.5 }
         d.snapshotChannel(0, floatArrayOf(0f, 0f, 0f, 0f), thrDb = null)
-        d.setLowFill(0, true)
-        val targets = ArrayList<Float>()
-        repeat(60) {
-            d.onRta(0, hot, t); t += 0.5
-            d.tick(setOf(0), true, false)
-            targets.add(d.state[0]!!.eqTarget[0])
-        }
-        val reversals = (2 until targets.size).count {
-            (targets[it] - targets[it - 1]) *
-                (targets[it - 1] - targets[it - 2]) < -1e-6
-        }
-        assertTrue(reversals <= 2,
-            "the low-end fill must be a stable floor, not a target that " +
-            "fights the drift corrector every tick ($reversals reversals)")
+        // this channel goes dull: everything below 300 Hz drops 10 dB
+        val dull = FloatArray(100) { i -> if (i < 40) -40f else -30f }
+        val writes = ArrayList<ParamWrite>()
+        repeat(60) { d.onRta(0, dull, t); t += 0.5
+            writes.addAll(d.tick(setOf(0), true, false)) }
+        assertTrue(d.state[0]!!.eqTarget.all { it <= 0f },
+            "no band may ask to be lifted: " +
+            d.state[0]!!.eqTarget.joinToString())
+        assertTrue(writes.none { it.value > 0.5f + 1e-4f },
+            "and none may be written above flat: " +
+            writes.filter { it.value > 0.5f }.map { it.address }.distinct())
     }
 }

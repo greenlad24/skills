@@ -82,28 +82,30 @@ class OpenStageTest {
         assertFalse(e.keysLowFill, "piano hands the low end back")
     }
 
-    @Test fun `low-fill lifts the keys low band in the doctor`() {
+    @Test fun `the doctor never lifts a band above what the engineer set`() {
+        // Low-fill used to reach the EQ as well as the fader: the keys
+        // low band was pushed to +2 dB over the engineer's own setting
+        // while the bass was off the stage. On an X-Air the aux sends
+        // tap AFTER the EQ, so that boost went into all six wedges too.
+        // The fader half of low-fill is unchanged — the piano is still
+        // told to cover the low end — but it does it by being louder,
+        // not by being re-voiced behind the engineer's back.
         val d = ToneDoctor(listOf(5), mapOf(5 to Role.KEYS))
         val flat = FloatArray(100) { -30f }
         var t = 0.0
         repeat(30) { d.onRta(5, flat, t); t += 3.0 }
         d.snapshotChannel(5, floatArrayOf(0f, 0f, 0f, 0f), thrDb = null)
-        // no low-fill: nothing to do
-        assertTrue(d.tick(setOf(5), true, false).none { "eq/1" in it.address })
-        // drums-no-bass: low band lifts toward the +2 rail, slewed
-        d.setLowFill(5, true)
+
+        // the low end drops right out of this channel — the one thing
+        // that used to produce a lift
+        val thin = FloatArray(100) { i -> if (i < 20) -44f else -30f }
         val writes = ArrayList<ParamWrite>()
-        repeat(12) { writes.addAll(d.tick(setOf(5), true, false)) }
-        val low = writes.filter { it.address == "/ch/06/eq/1/g" }
-        assertTrue(low.isNotEmpty(), "low band must lift")
-        assertTrue(low.last().value <= (2f + 15f) / 30f + 1e-4f, "railed at +2")
-        // bass arrives: back to neutral
-        d.setLowFill(5, false)
-        val back = ArrayList<ParamWrite>()
-        repeat(12) { back.addAll(d.tick(setOf(5), true, false)) }
-        assertTrue(back.filter { it.address == "/ch/06/eq/1/g" }
-            .lastOrNull()?.value?.let { it <= (0f + 15f) / 30f + 1e-4f } != false,
-            "low band returns to snapshot once the bass is back")
+        repeat(60) { d.onRta(5, thin, t); t += 0.5; writes.addAll(
+            d.tick(setOf(5), true, false)) }
+        val up = writes.filter { it.value > (0f + 15f) / 30f + 1e-4f }
+        assertTrue(up.isEmpty(),
+            "nothing this app writes may raise a band: " +
+            up.map { "${it.address}=${it.value}" }.distinct())
     }
 
     @Test fun `duet - both vocal mics sit near the top together`() {

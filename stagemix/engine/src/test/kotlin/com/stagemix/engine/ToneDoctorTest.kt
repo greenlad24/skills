@@ -70,15 +70,42 @@ class ToneDoctorTest {
             .none { "eq" in it.address }, "2 dB drift is inside the deadband")
     }
 
-    @Test fun `eq boost waits for the upward gate`() {
+    @Test fun `a band that has gone dull is left alone`() {
+        // This used to be `eq boost waits for the upward gate`. There
+        // is no boost any more: the doctor is cut-only like everything
+        // else that writes to this desk, so a band that has fallen 6 dB
+        // is simply not its business.
         val d = doctor()
         var t = soundcheck(d)
-        // highs collapse 6 dB (dull) -> wants a boost; gate closed
         repeat(60) { d.onRta(0, rta(-30f, -25f, -28f, -41f), t); t += 3.0 }
-        assertTrue(d.tick(setOf(0), upAllowed = false, frozenAll = false)
-            .none { "eq" in it.address }, "boost must respect the gate")
-        val open = d.tick(setOf(0), upAllowed = true, frozenAll = false)
-        assertTrue(open.any { it.address == "/ch/01/eq/4/g" })
+        val writes = ArrayList<ParamWrite>()
+        repeat(30) { writes.addAll(d.tick(setOf(0), true, false)) }
+        assertTrue(writes.none { it.address == "/ch/01/eq/4/g" },
+            "the highs went away; that is not a fault to correct")
+    }
+
+    @Test fun `releasing a cut is upward motion and waits for the gate`() {
+        // What the upward gate is actually for now. A cut we made
+        // ourselves is released when the harshness that earned it goes
+        // away — and coming back up, even only as far as the setting
+        // the engineer approved, waits for the feedback gate like every
+        // other upward move in this app.
+        val d = doctor()
+        var t = soundcheck(d)
+        // high-mids climb: the doctor cuts
+        repeat(60) { d.onRta(0, rta(-30f, -25f, -22f, -35f), t); t += 3.0 }
+        repeat(30) { d.tick(setOf(0), true, false) }
+        val cut = d.state[0]!!.eqOffset[2]
+        assertTrue(cut < -0.5f, "there has to be a cut to release: $cut")
+
+        // it passes
+        repeat(60) { d.onRta(0, rta(-30f, -25f, -28f, -35f), t); t += 3.0 }
+        repeat(20) { d.tick(setOf(0), upAllowed = false, frozenAll = false) }
+        assertEquals(cut, d.state[0]!!.eqOffset[2],
+            "nothing comes back up while a howl is suspected")
+        repeat(30) { d.tick(setOf(0), upAllowed = true, frozenAll = false) }
+        assertTrue(d.state[0]!!.eqOffset[2] > cut + 0.5f,
+            "and once the gate opens, the channel gets its tone back")
     }
 
     @Test fun `comp threshold restores soundcheck gr profile, railed`() {

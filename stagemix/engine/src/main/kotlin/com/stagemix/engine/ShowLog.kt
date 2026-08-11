@@ -248,7 +248,6 @@ class ShowLog(
                     when (st.register) {
                         1 -> "male"; 2 -> "female"; else -> "-" },
                     buildString {
-                        if (st.lowFill) append(" LOW-FILL")
                         if (!st.grTrusted) append(" gr-untrusted")
                         if (st.frozen) append(" locked")
                     }))

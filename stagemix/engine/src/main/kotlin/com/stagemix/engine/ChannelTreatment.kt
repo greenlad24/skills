@@ -377,25 +377,47 @@ class ChannelTreatment(
             put("/ch/$c/preamp/hpon", 1f)
             put("/ch/$c/preamp/hpf", hpfToFloat(it))
         }
-        if (chain.eq.isNotEmpty()) put("/ch/$c/eq/on", 1f)
-        for (b in chain.eq) {
-            put("/ch/$c/eq/${b.band}/f", freqToFloat(b.hz))
-            put("/ch/$c/eq/${b.band}/g", eqGainToFloat(b.gainDb))
-            put("/ch/$c/eq/${b.band}/q", qToFloat(b.q))
+        if (chain.eq.isNotEmpty()) {
+            // SWITCHING THE EQ ON IS NOT A NEUTRAL ACT.
+            //
+            // The chain sets one or two bands and then writes eq/on=1,
+            // and the other bands are whatever is in the desk from the
+            // last time anybody touched it — a previous band's scene, a
+            // house engineer's ring-out, the settings from a soundcheck
+            // three months ago. Turning the EQ on over a stored +8 dB
+            // at 3 kHz is a boost on an open vocal microphone that
+            // isGainAdding never sees, because we never wrote it.
+            //
+            // So every band this chain does not set is written flat
+            // first. What comes out of the EQ is then exactly what this
+            // book asked for and nothing else.
+            val mine = chain.eq.map { it.band }.toSet()
+            for (b in 1..4) if (b !in mine)
+                put("/ch/$c/eq/$b/g", eqGainToFloat(0f))
+            put("/ch/$c/eq/on", 1f)
+            for (b in chain.eq) {
+                put("/ch/$c/eq/${b.band}/f", freqToFloat(b.hz))
+                put("/ch/$c/eq/${b.band}/g", eqGainToFloat(b.gainDb))
+                put("/ch/$c/eq/${b.band}/q", qToFloat(b.q))
+            }
         }
         if (chain.compThrDb != null) {
-            put("/ch/$c/dyn/on", 1f)
             put("/ch/$c/dyn/thr", thrToFloat(chain.compThrDb))
             chain.compRatio?.let { put("/ch/$c/dyn/ratio", ratioToFloat(it)) }
             chain.compAttackMs?.let {
                 put("/ch/$c/dyn/attack", (it / 120f).coerceIn(0f, 1f)) }
             chain.compReleaseMs?.let { put("/ch/$c/dyn/release",
                 msToFloat(it, 5f, 4000f)) }
-            chain.compMakeupDb?.let {
-                put("/ch/$c/dyn/mgain", (it / 24f).coerceIn(0f, 1f)) }
+            // The same argument, and a sharper one: makeup is at its
+            // maximum below the threshold, which is where a ring
+            // decides whether to start. The book never asks for makeup
+            // any more, so the desk's stored value is the only way any
+            // could arrive — write zero and it cannot.
+            put("/ch/$c/dyn/mgain", 0f)
+            put("/ch/$c/dyn/on", 1f)
         }
         if (settings.reverbEnabled) chain.reverbSendDb?.let {
-            put("/ch/$c/mix/%02d/level".format(settings.reverbSend),
+            put(osc("/ch/$c/mix/%02d/level", settings.reverbSend),
                 FaderLaw.dbToFloat(it))
         }
         if (out.isEmpty()) return emptyList()

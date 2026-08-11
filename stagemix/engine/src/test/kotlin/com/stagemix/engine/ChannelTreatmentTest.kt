@@ -329,6 +329,56 @@ class ChannelTreatmentTest {
             "the fader is the level engine's business, not this guard's")
     }
 
+    @Test fun `switching processing on must not enable somebody elses boost`() {
+        // The chain sets one or two bands and then writes eq/on=1. The
+        // OTHER bands are whatever is in the desk — a previous band's
+        // scene, a house engineer's ring-out, a soundcheck from three
+        // months ago. Turning the EQ on over a stored +8 dB at 3 kHz is
+        // a boost on an open vocal microphone that isGainAdding never
+        // sees, because we never wrote it. Same for makeup gain, which
+        // the book no longer asks for and therefore never overwrites.
+        for (role in Role.values()) {
+            val t = ChannelTreatment()
+            val w = t.consider(8, role, verdict(0.95f), 1f, spec(), 100.0)
+            if (w.isEmpty()) continue
+            val addrs = w.map { it.address }
+            if (addrs.any { it == "/ch/09/eq/on" }) {
+                for (b in 1..4)
+                    assertTrue(addrs.contains("/ch/09/eq/$b/g"),
+                        "$role switches the EQ on without saying what " +
+                        "band $b is: $addrs")
+                for (p in w.filter { Regex("eq/[1-4]/g$").containsMatchIn(it.address) })
+                    assertTrue(p.value <= 0.5f + GAIN_EPS,
+                        "$role leaves ${p.address} above flat: ${p.value}")
+            }
+            if (addrs.any { it == "/ch/09/dyn/on" }) {
+                val mg = w.firstOrNull { it.address == "/ch/09/dyn/mgain" }
+                assertTrue(mg != null && mg.value <= GAIN_EPS,
+                    "$role switches the compressor on over whatever " +
+                    "makeup the desk had stored: $addrs")
+            }
+        }
+    }
+
+    @Test fun `the chain switches things on only after it has set them`() {
+        // Order matters on a live desk: eq/on before the band gains is
+        // a moment of the old EQ at full value, which on a vocal mic is
+        // the moment a ring starts.
+        val t = ChannelTreatment()
+        val w = t.consider(8, Role.VOCAL, verdict(0.95f), 1f, spec(), 100.0)
+        val addrs = w.map { it.address }
+        val eqOn = addrs.indexOf("/ch/09/eq/on")
+        if (eqOn >= 0) for (b in 1..4)
+            assertTrue(addrs.indexOf("/ch/09/eq/$b/g") in 0 until eqOn ||
+                       addrs.lastIndexOf("/ch/09/eq/$b/g") > eqOn,
+                "band $b is never set: $addrs")
+        val dynOn = addrs.indexOf("/ch/09/dyn/on")
+        if (dynOn >= 0)
+            assertTrue(addrs.indexOf("/ch/09/dyn/mgain") in 0 until dynOn,
+                "the makeup is zeroed before the compressor is switched " +
+                "on: $addrs")
+    }
+
     @Test fun `the monitors are untouched, balance and volume both`() {
         // "The monitors balance and volume are mine 100%." Balance is
         // the per-channel send into a wedge; volume is the bus master.

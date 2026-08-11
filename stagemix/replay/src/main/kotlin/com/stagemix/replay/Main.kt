@@ -362,9 +362,6 @@ private class Replay(
                     log.fader(w.channel, w.levelDb,
                         src.profile.getOrNull(w.channel)?.name ?: "")
                 }
-                for (ch in 0 until n)
-                    if (src.profile[ch].role == Role.KEYS)
-                        doctor.setLowFill(ch, engine.keysLowFill)
                 for (w in doctor.tick(engine.activeChannels(),
                         upAllowed = engine.boostsAllowed(t),
                         frozenAll = engine.frozenAll)) {
@@ -546,9 +543,6 @@ private fun replayCapture(file: File, opts: Opts, outDir: File, take: String) {
                     faderWrites++
                     l.fader(w.channel, w.levelDb, names[w.channel] ?: "")
                 }
-                for (ch in profile.indices)
-                    if (profile[ch].role == Role.KEYS)
-                        d.setLowFill(ch, e.keysLowFill)
                 for (w in d.tick(e.activeChannels(),
                         upAllowed = e.boostsAllowed(t),
                         frozenAll = e.frozenAll)) {

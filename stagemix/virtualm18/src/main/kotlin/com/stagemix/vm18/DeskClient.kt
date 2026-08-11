@@ -206,9 +206,6 @@ class DeskClient(
                         java.util.Locale.ROOT, w.address, w.value))
                 }
                 doctor?.let { d ->
-                    for (ch in engine.state.keys)
-                        if (engine.state[ch]?.role == Role.KEYS)
-                            d.setLowFill(ch, engine.keysLowFill)
                     if (directing && doctorOn)
                         for (w in d.tick(engine.activeChannels(),
                                 engine.boostsAllowed(t), engine.frozenAll)) {
@@ -245,7 +242,7 @@ class DeskClient(
                         // on every frame — including before the analyzer
                         // had settled on its new focus, which feeds one
                         // channel's spectrum in under another's name.
-                        engine.onRtaFor(rtaFocus, bins)
+                        engine.onRtaFor(rtaFocus, bins, t)
                     }
                 }
             "/meters/${Meters.BANK_DYNAMICS}" ->

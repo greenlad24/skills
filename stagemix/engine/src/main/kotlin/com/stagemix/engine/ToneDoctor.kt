@@ -94,8 +94,6 @@ class ToneDoctor(
         var frozen = false
         var eqEnabled = true
         var compEnabled = true
-        /** drums-without-bass: this (keys) channel fills the low end */
-        var lowFill = false
         /** harshness score: 2-6 kHz vs the channel's own body (EMA) */
         var harshEma: Float? = null
         /** register-change debounce state */
@@ -119,9 +117,6 @@ class ToneDoctor(
     }
 
     fun setRole(ch: Int, role: Role) { state[ch]?.role = role }
-
-    /** Ensemble hook: piano covers the low end while no bass is on. */
-    fun setLowFill(ch: Int, on: Boolean) { state[ch]?.lowFill = on }
 
     // ------------------------------------------------------------------
     /** 100-bin RTA frame (dB) attributed to one channel by the service. */
@@ -281,12 +276,6 @@ class ToneDoctor(
                     val drift = live[b] - ref[b]
                     var t = if (abs(drift) <= settings.eqDeadbandDb) 0f
                     else (-drift).coerceIn(-settings.eqMaxDb, settings.eqMaxDb)
-                    // low-fill: lift the low band toward the rail while
-                    // this channel is covering for a missing bass
-                    // low-fill is a FLOOR, not an addend: adding it to a
-                    // drift correction made the two fight tick to tick
-                    if (b == 0 && st.lowFill)
-                        t = maxOf(t, settings.eqMaxDb)
                     // harshness guard (cut-only, high-mid band): shrill
                     // guitar amps, piercing harmonica, edgy vocal mics —
                     // softened up to the rail, released when it passes.
@@ -311,7 +300,23 @@ class ToneDoctor(
                                 .coerceIn(-settings.eqMaxDb, settings.eqMaxDb)
                         }
                     }
-                    st.eqTarget[b] = t
+                    // CUT-ONLY, LIKE EVERYTHING ELSE THIS APP WRITES.
+                    //
+                    // The rest of the processing path was made cut-only
+                    // and this was left behind: a band that has drifted
+                    // DOWN produced a positive target, so the doctor
+                    // pushed the band up to two dB above the setting the
+                    // engineer approved — on an open microphone, and on
+                    // an X-Air the aux sends tap after the EQ, so it
+                    // landed in all six wedges as well.
+                    //
+                    // A band being quieter than it was is not a fault
+                    // worth reaching for. What is left is the half that
+                    // is always safe: take out what has grown, release
+                    // it when it goes away. Zero is the snapshot, so
+                    // releasing a cut still moves upward — back to what
+                    // the engineer set and no further.
+                    st.eqTarget[b] = minOf(t, 0f)
                 }
             }
             // -- comp threshold target from GR drift

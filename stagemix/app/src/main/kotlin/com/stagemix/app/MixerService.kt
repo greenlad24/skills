@@ -132,7 +132,11 @@ class MixerService : Service() {
                 AppState.directing.value = on
                 show?.user(if (on) "you switched MIXING ON"
                            else "you switched MIXING OFF (shadow mode)")
-                if (on) scope.launch { takeoverNow() }
+                // Switching it back on is the operator saying "try
+                // again": start the error count from zero, or the next
+                // single exception trips a limit that was reached an
+                // hour ago and switches them straight off again.
+                if (on) { tickFailures = 0; scope.launch { takeoverNow() } }
             }
             ACTION_FREEZE_ALL -> {
                 val on = intent.getBooleanExtra("on", true)
@@ -391,7 +395,12 @@ class MixerService : Service() {
                     AppState.everConnected.value = true
                     AppState.lastError.value = null
                 }
-                handle(m, t, rtaFocus, rtaFocusT)
+                // Inside the guard as well — see below. `handle` is
+                // what feeds the engine its meters, twenty times a
+                // second, and an exception there kills the same
+                // coroutine just as dead as one from `tick`.
+                try { handle(m, t, rtaFocus, rtaFocusT) }
+                catch (ex: Exception) { engineFailed(ex) }
             } else if (t - lastRx > 10.0 &&
                        AppState.conn.value == AppState.Conn.CONNECTED) {
                 // radio dropout: show it, keep trying — engine is frozen
@@ -469,11 +478,6 @@ class MixerService : Service() {
                         send(OscMessage(w.address, listOf(w.value)))
                     }
                 doctor?.let { d ->
-                    // ensemble hook: while drums play without a bass, the
-                    // piano channels fill the low end (EQ low band lift)
-                    for (ch in AppState.config.value.channels)
-                        if (ch.role == com.stagemix.engine.Role.KEYS)
-                            d.setLowFill(ch.index, e.keysLowFill)
                     if (directing && AppState.doctorOn.value) {
                         for (w in d.tick(e.activeChannels(),
                                 upAllowed = e.boostsAllowed(t),
@@ -491,26 +495,44 @@ class MixerService : Service() {
                     lg.summary(t, e, AppState.mixerChannelNames.value)
                 }
             }
+                // A tick that got all the way through is the only
+                // evidence that whatever went wrong is over.
+                tickFailures = 0
             } catch (ex: Exception) {
-                // Say it in the one place the operator will look, and in
-                // the log they will send afterwards, then carry on: the
-                // console is still holding the last mix we gave it.
-                tickFailures++
-                show?.net("ENGINE ERROR on tick $tickFailures: " +
-                    "${ex.javaClass.simpleName} ${ex.message ?: ""} — the " +
-                    "mixer is holding the last mix; nothing new is being " +
-                    "written")
-                AppState.lastError.value =
-                    "⚠ Something went wrong inside the app — the mixer is " +
-                    "holding your last mix. Export the log."
-                if (tickFailures >= MAX_TICK_FAILURES) {
-                    // Repeating means it is not a blip. Stop writing
-                    // rather than keep throwing once a second all night.
-                    AppState.directing.value = false
-                    show?.net("MIXING switched off after $tickFailures " +
-                        "errors — the faders are where the app left them")
-                }
+                engineFailed(ex)
             }
+        }
+    }
+
+    /**
+     * Something threw inside the engine. Say it in the one place the
+     * operator will look, and in the log they will send afterwards,
+     * then carry on: the console is still holding the last mix we gave
+     * it.
+     *
+     * The count is CONSECUTIVE. It used to only ever go up, so five
+     * unrelated blips spread across a whole night — one an hour, each
+     * survived — added up to switching mixing off during the last set;
+     * and because nothing reset it, switching mixing back on left the
+     * counter at five, where the very next exception killed it again.
+     * Repeating is what "it is not a blip" means, and repeating is what
+     * this now counts.
+     */
+    private fun engineFailed(ex: Exception) {
+        tickFailures++
+        show?.net("ENGINE ERROR ($tickFailures in a row): " +
+            "${ex.javaClass.simpleName} ${ex.message ?: ""} — the " +
+            "mixer is holding the last mix; nothing new is being " +
+            "written")
+        AppState.lastError.value =
+            "⚠ Something went wrong inside the app — the mixer is " +
+            "holding your last mix. Export the log."
+        if (tickFailures >= MAX_TICK_FAILURES) {
+            // Repeating means it is not a blip. Stop writing rather
+            // than keep throwing once a second all night.
+            AppState.directing.value = false
+            show?.net("MIXING switched off after $tickFailures " +
+                "errors in a row — the faders are where the app left them")
         }
     }
 
@@ -550,7 +572,7 @@ class MixerService : Service() {
                         // on every frame — including before the analyzer
                         // had settled on its new focus, which feeds one
                         // channel's spectrum in under another's name.
-                        engine?.onRtaFor(rtaFocus, bins)
+                        engine?.onRtaFor(rtaFocus, bins, t)
                     }
                 }
             }

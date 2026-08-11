@@ -266,11 +266,13 @@ data class EngineSettings(
      * corrected one guitar a hundred and twenty times.
      */
     /**
-     * How many channels must have a plan before "what everyone is
-     * doing" means anything. Below this the median is one or two
-     * channels' opinion, which is not a band.
+     * How many RIDABLE channels must have a plan before "what everyone
+     * is doing" means anything. Below this the median is one or two
+     * channels' opinion, which is not a band. Four, because this rig
+     * holds ten of its sixteen channels: three out of the remaining
+     * six would let one player speak for the stage.
      */
-    val commonModeMinChannels: Int = 3,
+    val commonModeMinChannels: Int = 4,
     val rideDwellSec: Float = 30f,
     val rideMinGapSec: Float = 45f,
     /**
@@ -470,6 +472,13 @@ data class EngineSettings(
      * reading: silent means silent. See `betweenSongs`.
      */
     val stageQuietChannels: Int = 2,
+    /**
+     * How far the loudest live channel has to fall below what this band
+     * sounds like before a thin stage counts as a gap between songs.
+     * Twelve dB is more than any arrangement takes out of the loudest
+     * thing on the stage and far less than a band stopping.
+     */
+    val gapQuietDropDb: Float = 12f,
     val silentMuteDb: Float = 40f,
     /** a fader move smaller than this is the wire, not a human */
     val overrideMinDb: Float = 0.25f,
@@ -540,6 +549,10 @@ class ChannelState(val cfg: ChannelConfig) {
     var roleLocked = cfg.locked
     /** the listener has re-roled this channel at least once */
     var roleIdentified = false
+    /** the role came from the console's own label, which is a guess too */
+    var roleFromName = false
+    /** a hand set this role, as opposed to the rig profile stating it */
+    var roleByHand = false
     /** a role the audio is proposing, and how long it has proposed it */
     var pendingRole: Role? = null
     var pendingSince = 0.0
@@ -637,12 +650,18 @@ class ChannelState(val cfg: ChannelConfig) {
     var deskMuted = false
     /** just came back from a desk mute: this is a resume, not an arrival */
     var resumingFromMute = false
+    /** when the operator unmuted it, so the line above can go stale */
+    var unmutedAt = -1.0
     /** deadband hysteresis: once engaged we converge fully */
     var engaged = false
     /** the same, for KEEP's ride: engaged at the deadband, off well inside */
     var riding = false
     /** this correction has already been reported: do not repeat it */
     var rideLogged = false
+    /** the offset this engagement is heading for, latched when it starts */
+    var rideAim = 0f
+    /** when this engagement started, so it cannot last all night */
+    var rideStartT = -1.0
     /** how far this channel has stepped up over the rest of the band */
     var riseOverBand = 0f
     /** the operator's lift is for a solo, not a new balance */
@@ -698,6 +717,38 @@ const val MAX_PLACEMENTS = 3
  * justify a write an hour later.
  */
 const val TREAT_WINDOW_SEC = 180f
+
+/**
+ * How long after takeover a channel that was ALREADY playing may have
+ * its chain set for the first time.
+ *
+ * Nothing "arrives" at takeover — a channel has to be silent first —
+ * so on the ordinary night, where the band is up and the operator
+ * presses go, no channel on the stage satisfied either rule and the
+ * chain was never written to anything at all. This is the app's own
+ * soundcheck: five minutes, once per channel, while the operator is
+ * stood there watching it work out what is plugged in. After that the
+ * two rules they asked for are the whole story.
+ */
+const val SETUP_WINDOW_SEC = 300f
+
+/**
+ * How far a learned height may pull a channel away from the pyramid.
+ *
+ * Far enough to carry a real preference — an engineer who keeps their
+ * horns four dB hotter than the book says gets their horns — and not
+ * far enough for a mis-keyed memory from another night to relocate an
+ * instrument entirely. See effHeight.
+ */
+const val LEARNED_SLACK_DB = 4f
+
+/**
+ * The longest a single ride engagement may last. A correction the slew
+ * cannot deliver — the fader is at a rail, or the source keeps moving —
+ * releases anyway rather than holding the channel engaged, where it
+ * would track continuously with no dwell and no deadband.
+ */
+const val RIDE_MAX_SEC = 30.0
 
 class StageEngine(
     channels: List<ChannelConfig>,
@@ -1041,9 +1092,15 @@ class StageEngine(
         val enterGate = max(settings.absoluteFloorDb,
             min(settings.activityEnterDb, loudest - settings.relativeGateDb))
         val exitGate = enterGate - 10f
+        // The loudest thing actually going to the mains, for the gap
+        // test below: a channel the operator has switched off is not
+        // the stage being loud, and neither is the talkback.
+        var loudestLive = -128f
         for ((idx, st) in state) {
             val db = sane(levels.getOrNull(idx) ?: continue) ?: continue
             st.lastLevelDb = db
+            if (st.role != Role.TALK && !st.deskMuted && db > loudestLive)
+                loudestLive = db
             if (!st.gateOpen && db > enterGate) st.gateOpen = true
             else if (st.gateOpen && db < exitGate) st.gateOpen = false
             // Static-source detection: music moves, a ground loop and an
@@ -1073,9 +1130,19 @@ class StageEngine(
             // change. Clearing the flag first and then asking "has this
             // been away a long time?" against the stale timestamp fires
             // the arrival anyway, on the very frame meant to prevent it.
-            if (st.resumingFromMute && st.gateOpen && !st.deskMuted) {
-                st.resumingFromMute = false
-                st.lastActiveT = tSec
+            if (st.resumingFromMute && !st.deskMuted) {
+                val staleAt = st.unmutedAt + settings.arrivalSilenceSec
+                if (st.gateOpen) {
+                    st.resumingFromMute = false
+                    // Came back with the band: a resume. Came back long
+                    // after: it was never in this song to begin with,
+                    // and the timestamp is left alone so the arrival
+                    // below can see the silence it really sat through.
+                    if (st.unmutedAt < 0 || tSec <= staleAt)
+                        st.lastActiveT = tSec
+                } else if (st.unmutedAt >= 0 && tSec > staleAt) {
+                    st.resumingFromMute = false
+                }
             }
             val wasAway = tSec - st.lastActiveT > settings.arrivalSilenceSec
             // A MUTED CHANNEL CANNOT ARRIVE.
@@ -1094,11 +1161,12 @@ class StageEngine(
             // 400,000-line budget for the night burned before the end
             // of it.
             //
-            // Stamping `lastActiveT` when an arrival does fire is the
-            // belt to that: whatever the reason, the same channel can
-            // no longer arrive twice in consecutive frames, because the
-            // question "has it been away a while?" is answered from a
-            // timestamp this very arrival just set.
+            // `!st.deskMuted` is the whole fix. The `lastActiveT` stamp
+            // inside the branch is only bookkeeping — two lines further
+            // down `st.active` becomes true and sets the same field —
+            // and calling it a second line of defence, as this comment
+            // used to, would have somebody trust a belt that buckles
+            // nothing.
             if (!st.active && st.gateOpen && !st.deskMuted && wasAway &&
                 takeoverT >= 0 && !betweenSongs) {
                 st.arrivedT = tSec
@@ -1194,12 +1262,32 @@ class StageEngine(
         stagePeak = if (playingNow > stagePeak) playingNow.toFloat()
                     else max(playingNow.toFloat(),
                         stagePeak - dtFrame / 60f)
+        // AND THE STAGE HAS TO BE QUIET, not merely thin.
+        //
+        // Counting heads alone cannot tell a gap from an arrangement.
+        // Three players out of a remembered twelve satisfies "a third
+        // of the band" — and three players out of twelve is a bridge, a
+        // breakdown, a quiet intro, the acoustic number in the middle
+        // of the set. Freezing the engine there is worse than useless:
+        // that is the part of the night with the most room in it and
+        // the most for a fader to do, and every instrument coming back
+        // in at the end of it had its arrival swallowed too.
+        //
+        // A gap has a level as well as a headcount. When the band stops
+        // the loudest thing on the stage falls off a cliff; in a
+        // breakdown the singer is still a singer and the loudest
+        // channel barely moves. Fast down, slow up, so the reference is
+        // what this band sounds like when it is playing.
+        stageNowDb = max(loudestLive, stageNowDb - dtFrame * 6f)
+        stageLoudPeak = max(stageNowDb, stageLoudPeak - dtFrame * 0.1f)
+        val stageIsQuiet =
+            stageNowDb <= stageLoudPeak - settings.gapQuietDropDb
         // Three channels is the floor for having an opinion at all: with
         // two you cannot tell "the band stopped" from "one of the two
         // stopped", and on a small rig the conservative answer is to
         // treat a silent channel as silent.
         betweenSongs = stagePeak >= settings.stageQuietChannels + 1 &&
-            playingNow * 3 <= stagePeak
+            playingNow * 3 <= stagePeak && stageIsQuiet
 
         // and what the channels are doing to EACH OTHER — the only place
         // the information to tell a kick from a bass, or a singer from a
@@ -1343,15 +1431,29 @@ class StageEngine(
      * The spectrum half of "what is this?" — one channel at a time, from
      * whichever channel the Channel Doctor's RTA is parked on.
      */
-    fun onRtaFor(ch: Int, bins: FloatArray) {
+    /** when the last RTA frame arrived, for real elapsed time */
+    private var lastRtaT = -1.0
+
+    fun onRtaFor(ch: Int, bins: FloatArray, tSec: Double = -1.0) {
         val st = state[ch] ?: return
         val playing = st.active && !st.isStatic
+        // REAL SECONDS, not an assumed frame rate.
+        //
+        // This passed FrequencyMap its default 0.05 s per frame, which
+        // is right only if the console pushes RTA at exactly 20 Hz and
+        // no packet is lost. Over the console's own Wi-Fi neither holds,
+        // so `coverage()` over-counted — and coverage is the whole basis
+        // of the promise that nothing speaks before it has been heard.
+        // A map built from four seconds could report itself settled.
+        val dt = if (tSec < 0 || lastRtaT < 0) 0.05f
+                 else (tSec - lastRtaT).coerceIn(0.02, 0.20).toFloat()
+        if (tSec >= 0) lastRtaT = tSec
         ident.onRta(ch, bins, playing)
         // and the same frame, kept as a SHAPE rather than as band sums
         // — see FrequencyMap. Everything that consumes the RTA today
         // folds it down to seven numbers or four before anything can
         // reason about where this instrument actually lives.
-        spectrum.onRta(ch, bins, playing)
+        spectrum.onRta(ch, bins, playing, dt)
     }
 
     /**
@@ -1375,7 +1477,24 @@ class StageEngine(
         if (lastIdentT >= 0 && tSec - lastIdentT < settings.identEverySec) return
         lastIdentT = tSec
         for ((idx, st) in state) {
-            if (st.roleLocked || st.role == Role.TALK) continue
+            // A LOCKED CHANNEL STILL GETS LISTENED TO.
+            //
+            // Skipping the whole loop meant `recognised[idx]` was never
+            // written for it — and on this rig the locked channels are
+            // the kick, the snare and both bass DIs, which are exactly
+            // the two instruments `learnedRef` looks for when it wants
+            // something durable to measure a balance against. Neither
+            // could ever be populated, so the learned balance quietly
+            // fell back to keying on the console's channel LABEL, which
+            // on a house desk is a previous band's.
+            //
+            // The lock is about not ACTING on a verdict. Recording one
+            // costs nothing and everything downstream needs it.
+            if (st.roleLocked || st.role == Role.TALK) {
+                if (!st.isStatic && st.active && st.role != Role.TALK)
+                    ident.recognise(idx, ensemble)?.let { recognised[idx] = it }
+                continue
+            }
             // A source the engine has judged to be hum, room tone or an
             // empty open mic is NOT an instrument and must never be
             // re-roled. Room noise through a vocal mic looks exactly like
@@ -1454,10 +1573,41 @@ class StageEngine(
             // reclassified out from under them. Promotion INTO a held
             // role stays cheap, and before there is a balance the audio
             // still has to be nearly certain and stay certain.
+            //
+            // BUT NOT A RATCHET.
+            //
+            // "Once there is a balance, leaving a held role is not on
+            // offer at all" read well and was too absolute, because of
+            // when the balance is adopted: about twenty seconds after
+            // takeover, while the earliest possible role change is
+            // seventy. So the expensive bar below — 0.80 confidence
+            // held for four minutes — was never once reached, and no
+            // channel could leave a held role ever, on any evidence.
+            // Entering one stayed cheap. The set could only grow.
+            //
+            // On the rig where the recogniser called six channels
+            // congas, that turns a transient misread into a permanent
+            // one: a guitar DI heard as a hand drum is PERCUSSION for
+            // the night, its fader frozen, and the listener that made
+            // the mistake is forbidden from correcting it.
+            //
+            // What the operator actually asked to protect is the rhythm
+            // section and the voices — and those come from the rig
+            // profile, not from a guess. So: a role the profile
+            // declared, or that a hand set, is never demoted after a
+            // balance. A held role the ENGINE awarded can be taken back
+            // on the expensive bar, which is what that bar is for. And
+            // since entry is nearly irreversible, entry pays the same
+            // price once there is a mix to disturb.
             val leavingHeld = st.role in settings.holdRoles &&
                 r.role !in settings.holdRoles
-            if (leavingHeld) {
-                if (balanceAdopted) { st.pendingRole = null; continue }
+            val enteringHeld = st.role !in settings.holdRoles &&
+                r.role in settings.holdRoles
+            if (leavingHeld || (enteringHeld && balanceAdopted)) {
+                val ours = st.roleIdentified || st.roleFromName
+                if (leavingHeld && balanceAdopted && !ours) {
+                    st.pendingRole = null; continue
+                }
                 if (heard == null ||
                     heard.confidence < settings.demoteVoiceConfidence) {
                     st.pendingRole = null; continue
@@ -1710,10 +1860,26 @@ class StageEngine(
         // instruments squeezed out. The backline gets louder in the room
         // for free; it is the PA-only channels that need to come up with
         // it, not down.
+        //
+        // ONLY THE CHANNELS THAT CAN ACTUALLY MOVE GET A VOTE. The held
+        // roles — the voices, the kick, the snare, the bass — have a
+        // plan and therefore a number for "how far off am I", but that
+        // number is never going to become fader travel, so it is not an
+        // intent to move: it is just a reading. Counting it turned the
+        // term inside out. A quiet verse where the rhythm section drops
+        // five dB and the guitars play exactly to plan gave a median of
+        // +5 ("everybody wants to come up"), which was then subtracted
+        // from the guitars — who wanted nothing — and pulled them five
+        // dB DOWN in the one bar of the song where they are the music.
+        // Common mode means what the ridable channels are doing
+        // together, because those are the only faders this can move.
         val commonRideShift = run {
             val wants = ArrayList<Float>()
             for (st in state.values) {
                 if (!st.active || st.isStatic || st.frozen) continue
+                if (st.role in settings.holdRoles) continue
+                if (st.role == Role.TALK || st.deskMuted) continue
+                if (tSec < st.overrideUntil) continue
                 val plan = st.planContrib ?: continue
                 val base = st.baselineDb ?: continue
                 val slow = st.slowEma ?: continue
@@ -1824,12 +1990,18 @@ class StageEngine(
                     // in the mix. One caught overstatement costs more
                     // trust than the feature is worth.
                     st.target = boundOffset(-settings.silentMuteDb, base)
-                    log(tSec, "mute", idx, st.target,
+                    // KIND, not just the reason string. The text was
+                    // fixed to stop saying "out of the mains"; this
+                    // token was not, and it is the one LogExport counts
+                    // and a developer greps — so a night's summary read
+                    // "mute 47" for channels that were never muted.
+                    log(tSec, "held-down", idx, st.target,
                         "${st.name} " +
                         (if (st.isStatic) "is not an instrument — hum or an " +
                             "open mic nobody is using" else
                             "silent ${idleFor.toInt()}s") +
-                        " — held 12 dB down in the mains " +
+                        " — held %.0f dB down in the mains ".format(
+                            java.util.Locale.ROOT, -st.target) +
                         "(still open; monitors untouched)")
                 }
                 continue
@@ -2148,8 +2320,21 @@ class StageEngine(
                 val slow = st.slowEma ?: pre
                 val planOff = st.planFaderDb - base
                 // only what THIS channel is doing differently from the
-                // rest of them — see commonRideShift
-                val mine = (plan - slow - base) - planOff - commonRideShift
+                // rest of them — see commonRideShift.
+                //
+                // It SHRINKS a correction; it can never create one. A
+                // plain subtraction can turn a channel that wants
+                // nothing into a channel that wants five dB, which is
+                // the worst kind of automatic move: unprompted, on a
+                // channel with no fault, in whichever direction the
+                // rest of the stage happened to go. Take the common
+                // movement out of the size of the error and keep the
+                // sign of the error itself, so the only thing the term
+                // can do is talk the ride out of moving.
+                val raw = (plan - slow - base) - planOff
+                val mine = if (raw >= 0f)
+                    maxOf(0f, raw - abs(commonRideShift))
+                else -maxOf(0f, -raw - abs(commonRideShift))
                 val want = boundOffset((planOff + mine).coerceIn(
                     planOff - settings.rideBandDb,
                     planOff + settings.rideBandDb), base)
@@ -2187,26 +2372,52 @@ class StageEngine(
                     tSec - st.rideSince >= settings.rideDwellSec
                 val restedLongEnough =
                     tSec - st.lastRideT >= settings.rideMinGapSec
-                if (heldLongEnough && restedLongEnough) {
-                    if (!st.riding) st.lastRideT = tSec
+                // ONE CORRECTION PER ENGAGEMENT, AND THEN IT LETS GO.
+                //
+                // `riding` used to clear only when the error fell under
+                // a quarter of the deadband, and an error parked
+                // anywhere between — a guitar that is persistently 1 dB
+                // off, which is most guitars — never got there. So the
+                // channel stayed engaged indefinitely, and while
+                // engaged it TRACKED: target followed `want` every
+                // tick, with no dwell and no deadband, which is the
+                // continuous fader-riding the dwell exists to prevent.
+                //
+                // Engaging latches the correction it engaged FOR. The
+                // fader goes there, and when it arrives the channel is
+                // released and has to earn the next one from scratch.
+                if (heldLongEnough && restedLongEnough && !st.riding) {
                     st.riding = true
-                } else if (err < settings.rideDeadbandDb * 0.25f) {
-                    st.riding = false
+                    st.rideStartT = tSec
+                    st.rideAim = want
                 }
                 if (st.riding) {
-                    if (abs(want - st.target) > 0.25f) {
-                        st.target = want
+                    val aim = st.rideAim
+                    // Arrived, or long enough that it never will —
+                    // a target the slew cannot reach must not hold the
+                    // channel engaged for the rest of the night.
+                    if (abs(st.offset - aim) < 0.3f ||
+                        tSec - st.rideStartT > RIDE_MAX_SEC) {
+                        st.riding = false
+                        st.rideSince = -1.0
+                        st.rideLogged = false
+                        // the rest starts when the move ENDS, not when
+                        // it began: a 20 s slew used to be followed by
+                        // 25 s of quiet, not the 45 that was asked for
+                        st.lastRideT = tSec
+                    } else if (abs(aim - st.target) > 0.25f) {
+                        st.target = aim
                         // Say it ONCE per correction, not once a second.
                         // A channel whose source has moved further than
                         // the ride band allows sits at the rail with the
                         // error still growing, and reporting that every
                         // tick produced pages of "bringing it back up"
                         // about a fader that was not going anywhere.
-                        val atRail = abs(want - planOff) >=
+                        val atRail = abs(aim - planOff) >=
                             settings.rideBandDb - 0.05f
                         if (!st.rideLogged || !atRail) {
                             st.rideLogged = true
-                            log(tSec, "ride", idx, want - planOff,
+                            log(tSec, "ride", idx, aim - planOff,
                                 "${st.name} is %+.1f dB off the balance — %s"
                                     .format(java.util.Locale.ROOT,
                                         contrib - plan,
@@ -2823,19 +3034,39 @@ class StageEngine(
         }?.let { LearnedBalance.keyOf(it.instrument) }
             ?: st.deskName?.takeIf { it.isNotBlank() }
                 ?.let { LearnedBalance.keyOf(it) }
-        if (myKey != null) learned.heightOf(myKey)?.let { learnedH ->
-            learnedRef()?.let { ref -> return learnedH - ref }
-        }
         val h = if (st.role == Role.FOUNDATION)
             (pyramid[Role.FOUNDATION] ?: 0f) +
                 (pyramidBias[Role.FOUNDATION] ?: 0f) +
                 foundationShareDb(st)
         else height(heightRole(st))
-        return when {
+        val base = when {
             isDuetPartner(st) -> h - 1f
             st.role == Role.KEYS && keysLowFill -> h + 2f
             else -> h
         }
+        // AND THE LEARNED HEIGHT IS A CORRECTION, NOT A REPLACEMENT.
+        //
+        // It used to be returned as-is, before the pyramid was even
+        // computed, with nothing bounding it. Two things make that
+        // dangerous. A learned height keyed on `NAME:<desk label>` is
+        // keyed on a previous band's console — a bass all night on a
+        // channel called CONGOS teaches "congas belong at bass height",
+        // and tonight's actual congas inherit it. And `learnedRef` is
+        // one instrument's learned position, so an error in the
+        // reference shifts every channel that consults it.
+        //
+        // What the operator does with an instrument is genuinely better
+        // information than a table in this file — within a few dB of
+        // it. Beyond that it is not taste any more, it is a key
+        // collision, and the pyramid is the thing that keeps the mix
+        // recognisable while one gets sorted out.
+        if (myKey != null) learned.heightOf(myKey)?.let { learnedH ->
+            learnedRef()?.let { ref ->
+                return (learnedH - ref).coerceIn(base - LEARNED_SLACK_DB,
+                                                 base + LEARNED_SLACK_DB)
+            }
+        }
+        return base
     }
 
     /** incoherent (power) sum of a set of dB values — what the room hears */
@@ -2937,6 +3168,7 @@ class StageEngine(
         val st = state[ch] ?: return false
         st.role = role
         st.roleLocked = true
+        st.roleByHand = true
         knownInstruments[st.name.trim().lowercase()] = role
         // AND UNDO WHAT WE DID WHILE WE WERE WRONG.
         //
@@ -3031,6 +3263,7 @@ class StageEngine(
         // the profile left unclassified takes its role from its name.
         if (st.cfg.role != Role.INSTRUMENT) return false
         st.role = role
+        st.roleFromName = true
         return true
     }
 
@@ -3165,6 +3398,10 @@ class StageEngine(
     @Volatile var betweenSongs = false; private set
     /** how many channels were playing recently: rises at once, falls slowly */
     private var stagePeak = 0f
+    /** the loudest live channel, falling 6 dB a second when the stage stops */
+    private var stageNowDb = -128f
+    /** and how loud this band is when it is playing: falls 6 dB a minute */
+    private var stageLoudPeak = -128f
 
     /**
      * The operator has muted the whole band.
@@ -3214,9 +3451,23 @@ class StageEngine(
             // A mute is not a departure. The player never left, and
             // where they sat in the balance is still the answer, so the
             // plan is kept and the fader stays where it was.
+            //
+            // AND IT EXPIRES. The flag was consumed on whatever frame
+            // the gate next opened, with no clock on it at all — so a
+            // harmonica that is silent through the last song, silent
+            // through the break, and picks up two minutes into the next
+            // song had its FIRST entry of the night eaten by a mute it
+            // slept through. No placement, no chain, no "a voice on a
+            // mic that was not in use": the one channel that genuinely
+            // was arriving is the one this suppressed.
+            //
+            // A resume is a channel that comes back when the band comes
+            // back. Anything later than that is a player picking an
+            // instrument up, and the engine should meet it as one.
             st.preEma = null; st.fastEma = null; st.slowEma = null
             st.heardSec = 0f
             st.resumingFromMute = true
+            st.unmutedAt = lastTickT
         }
         recomputeStageMuted()
         return true
@@ -3224,7 +3475,15 @@ class StageEngine(
 
     private fun recomputeStageMuted() {
         val known = state.values.filter { it.baselineDb != null }
-        stageMuted = known.isNotEmpty() && known.all { it.deskMuted }
+        // "Everything is muted" has to be said about a whole stage, not
+        // about the one channel that answered. After a partial takeover
+        // — a Wi-Fi stutter during the enquiry burst — a single known
+        // channel that happens to be muted made this true, and the
+        // engine then did nothing at all until the resync loop found a
+        // second one. Below a handful of channels the plain reading is
+        // the safe one: some of the band is playing.
+        stageMuted = known.size >= settings.stageQuietChannels + 1 &&
+            known.all { it.deskMuted }
     }
 
     /** true when the desk says this channel is muted */
@@ -3307,18 +3566,23 @@ class StageEngine(
         // whole chain written onto it while the room was between
         // numbers and everyone was listening to the PA.
         if (betweenSongs || stageMuted) return emptyList()
-        // AND NOT WHILE A HOWL IS SUSPECTED.
+        // NOTHING HERE REACHES UPWARD, so a feedback veto is not a
+        // reason to stop.
         //
-        // The tone doctor is handed `boostsAllowed` and respects it;
-        // this pass was handed nothing. So during an active feedback
-        // veto — the one moment every other part of the engine has
-        // stopped reaching upward — a chain could still write +2 dB at
-        // 3 kHz onto a vocal microphone and up to +4 dB of compressor
-        // makeup. 2-4 kHz is where a cardioid's presence peak, a wedge
-        // horn's output and a bar room's worst mode all coincide, and
-        // makeup gain is at its maximum below threshold, which is
-        // exactly the level at which a ring decides whether to start.
-        if (!boostsAllowed(tSec)) return emptyList()
+        // It was, for one commit: the pass returned nothing at all
+        // while `boostsAllowed` was false, which read well until you
+        // notice what `boostsAllowed` actually tracks. It is false for
+        // two seconds after ANY channel meters above -3 dBFS, and a
+        // kick on a pre-fader meter does that several times a bar — so
+        // the gate was not "during a howl", it was "during a song".
+        // The chain became dead code on every channel of a real rig.
+        //
+        // And the thing it was guarding against no longer exists. The
+        // book is cut-only, every band the chain does not set is
+        // written flat, makeup gain is never written, and `put()`
+        // refuses anything that raises a level whatever asked for it.
+        // During a suspected ring, a high-pass and a 3 kHz cut are the
+        // two things you would actually want.
         val out = ArrayList<ParamWrite>()
         for ((idx, st) in state) {
             // never a talkback mic, never a frozen channel, never
@@ -3336,7 +3600,7 @@ class StageEngine(
             // reaching for a control mid-song because a number drifted,
             // which is how a chain ends up re-applying itself over a
             // performance nobody asked it to change.
-            if (!needsTreatment(st, tSec)) continue
+            if (!needsTreatment(idx, st, tSec)) continue
             val w = treatment.consider(idx, st.role, ident.verdict(idx),
                 ident.evidence(idx), ident.spectrum(idx), tSec)
             if (w.isEmpty()) continue
@@ -3368,16 +3632,38 @@ class StageEngine(
      * it to change.
      */
     fun wantsTreatment(ch: Int, tSec: Double): Boolean =
-        state[ch]?.let { needsTreatment(it, tSec) } ?: false
+        state[ch]?.let { needsTreatment(ch, it, tSec) } ?: false
 
-    private fun needsTreatment(st: ChannelState, tSec: Double): Boolean {
+    private fun needsTreatment(ch: Int, st: ChannelState,
+                               tSec: Double): Boolean {
         // never treated at all yet, and it has arrived and settled in
         val arrived = st.arrivedT > 0 &&
             tSec - st.arrivedT in settings.placeSec.toDouble()..
                 (settings.placeSec + TREAT_WINDOW_SEC).toDouble()
         val soloing = st.featureStart > 0 && tSec >= st.featureStart &&
             tSec - st.featureStart <= settings.featureHoldSec
-        return arrived || soloing
+        // AND THE ONE THE TWO RULES MISS: a channel that was already
+        // playing when the app was switched on.
+        //
+        // Nothing "arrives" at takeover — `arrivedT` is only stamped
+        // when a silent channel starts — so on a normal night, where
+        // the band is already up and the operator presses go, every
+        // channel on the stage failed both tests and no chain was ever
+        // written to anything. The high-pass on the vocal mics, the
+        // one thing an engineer sets before they set anything else,
+        // was reachable only by a player who happened to sit out a
+        // song first.
+        //
+        // Bounded to the few minutes after the operator presses go —
+        // the app's own soundcheck, when they are stood at the tablet
+        // watching it work out what is plugged in. Outside that window
+        // the two rules are the whole story: a chain that appears in
+        // the third set because a recogniser finally made its mind up
+        // is exactly the mid-song fiddling this is meant to prevent.
+        val settingUp = takeoverT >= 0 &&
+            tSec - takeoverT <= SETUP_WINDOW_SEC &&
+            treatment.treatedAt(ch) == null
+        return arrived || soloing || settingUp
     }
 
     /** the engineer moved something we set — it is theirs now */
@@ -3447,7 +3733,12 @@ class StageEngine(
             confidence = v?.confidence ?: 0f,
             evidence = ident.evidence(ch),
             why = when {
-                st.roleLocked -> "you set this"
+                st.roleByHand -> "you set this"
+                // The profile-locked channels — the kick and snare
+                // mics, both bass DIs — were never touched by anybody
+                // tonight, and telling the operator they set them is
+                // simply untrue.
+                st.roleLocked -> "your rig says so — this one is fixed"
                 heard != null -> heard.why
                 st.roleIdentified -> v?.why ?: "heard"
                 v == null -> "still listening"
