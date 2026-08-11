@@ -75,6 +75,20 @@ class ShowLog(
         // A night is bounded: past the cap we keep counting but stop
         // writing, so a runaway loop can never fill the tablet.
         if (lines >= MAX_LINES) { dropped++; return }
+        // AND THE LAST QUARTER OF IT BELONGS TO THE EVIDENCE.
+        //
+        // The per-channel picture is written every second for every
+        // channel — sixteen lines a second, a quarter of a million over
+        // four hours — so on a long night it is the snapshot that eats
+        // the budget, and everything that says what the app actually
+        // DID goes over the cliff with it. On the night of the 7th
+        // there was not one FADER line in 48 MB, which meant there was
+        // no way to tell how much of the fader travel had been ours.
+        //
+        // Past the soft cap the running picture stops and the record of
+        // decisions, writes, errors and your own presses keeps going.
+        // A log that thins out is worth more than one that stops.
+        if (lines >= SOFT_LINES && tag in BULK_TAGS) { dropped++; return }
         try {
             out.write("%s %7.1f %-5s %s\n".format(Locale.ROOT,
                 clock.format(Date()), (System.currentTimeMillis() - t0) / 1000.0,
@@ -287,13 +301,19 @@ class ShowLog(
             "channels in place ${h.inPlacePct}%, you out-mixed it " +
             "${h.overrides} times over ${h.ticks} ticks")
         if (dropped > 0) put("SUM",
-            "$dropped lines were dropped after the $MAX_LINES-line cap")
+            "$dropped lines of the running picture were dropped — the " +
+            "log passed its $SOFT_LINES-line soft cap and gave the rest " +
+            "of the night to decisions, fader writes and errors")
         flush()
     }
 
     companion object {
         /** ~30 MB of text at the widest lines; a long night is ~150k */
         private const val MAX_LINES = 400_000
+        /** past this, only the tags below keep their place */
+        private const val SOFT_LINES = 300_000
+        /** the running picture: useful, and the first thing to go */
+        private val BULK_TAGS = setOf("LVL", "TONE")
         /** how often the per-channel tone picture is written */
         private const val TONE_SEC = 30.0
     }
