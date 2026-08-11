@@ -281,4 +281,69 @@ class ChannelTreatmentTest {
             if (t >= next) { e.tick(t); next += 1.0 }; t += 0.05 }
         assertTrue(e.treatmentPass(t).isEmpty())
     }
+
+    // ==================================================================
+    // nothing this app writes may ADD gain, by any route
+    // ==================================================================
+    @Test fun `no chain in the book asks for gain`() {
+        // "Messing with gain WILL cause feedback problems on the stage
+        // that the app will find hard to resolve — I want this app to
+        // be precise and never cause problems."
+        //
+        // The preamp was never writable, which is necessary and nowhere
+        // near sufficient: a microphone's loop does not care which gain
+        // stage the dB came from. The book carried +2 dB at 3 kHz for a
+        // lead vocal and +2 dB at 6 kHz for the drum and conga mics —
+        // the band where a cardioid's presence peak, a wedge horn and a
+        // bar room's worst mode all coincide — plus up to +4 dB of
+        // compressor makeup on every voice.
+        for ((role, chain) in STARTING_CHAINS) {
+            for (b in chain.eq)
+                assertTrue(b.gainDb <= 0f,
+                    "$role asks for ${b.gainDb} dB at ${b.hz} Hz — this " +
+                    "app does not boost anything, anywhere")
+            assertTrue(chain.compMakeupDb == null,
+                "$role asks for ${chain.compMakeupDb} dB of makeup. A " +
+                "downward compressor's gain is at its MAXIMUM below the " +
+                "threshold, and a ring starts from the noise floor — so " +
+                "makeup is applied in full at exactly the level where " +
+                "feedback decides whether to begin")
+        }
+    }
+
+    @Test fun `a boost cannot get through the write path either`() {
+        // The book is the thing most likely to be edited by somebody
+        // who has not read the comment, so the refusal lives at the
+        // write itself. This is that test: it tries to sneak one past.
+        assertTrue(isGainAdding("/ch/09/eq/3/g", 0.60f),
+            "an EQ band above unity is a boost")
+        assertTrue(isGainAdding("/ch/09/dyn/mgain", 0.20f),
+            "makeup above zero is gain")
+        assertTrue(!isGainAdding("/ch/09/eq/3/g", 0.40f),
+            "a cut is the whole point and must still get through")
+        assertTrue(!isGainAdding("/ch/09/eq/3/g", 0.5f),
+            "and unity is not a boost")
+        assertTrue(!isGainAdding("/ch/09/preamp/hpf", 0.9f),
+            "a high-pass corner is not a gain, whatever its value")
+        assertTrue(!isGainAdding("/ch/09/mix/fader", 0.9f),
+            "the fader is the level engine's business, not this guard's")
+    }
+
+    @Test fun `the monitors are untouched, balance and volume both`() {
+        // "The monitors balance and volume are mine 100%." Balance is
+        // the per-channel send into a wedge; volume is the bus master.
+        // Neither is writable and no chain can produce one.
+        for (ch in 0 until 16) {
+            for (bus in 1..6) {
+                assertTrue(!isSafeAddress("/ch/%02d/mix/%02d/level".format(ch + 1, bus)),
+                    "a send into wedge $bus is never ours")
+                assertTrue(!isSafeAddress("/ch/%02d/mix/%02d/on".format(ch + 1, bus)))
+            }
+            assertTrue(!isSafeAddress("/ch/%02d/preamp/trim".format(ch + 1)),
+                "and neither is the preamp gain")
+        }
+        for (bus in 1..6)
+            assertTrue(!isSafeAddress("/bus/%02d/mix/fader".format(bus)),
+                "nor a wedge's own master")
+    }
 }

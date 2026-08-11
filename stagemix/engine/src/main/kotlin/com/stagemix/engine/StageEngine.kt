@@ -424,6 +424,38 @@ data class EngineSettings(
      * (where it belongs) reverb — once the audio has said what the
      * channel is. See [ChannelTreatment]: once, then balance work only.
      */
+    /**
+     * Whether the app may set channel EQ and compressors.
+     *
+     * ON, and behind the EQ + COMP switch on the screen, because the
+     * operator asked for exactly that: "I'm ok about the app doing EQ —
+     * but the monitors balance and volume are mine 100%."
+     *
+     * Those two things are separable, and it is worth being exact about
+     * where the line falls, because it is not where the old comment in
+     * this file implied.
+     *
+     *  · MONITOR BALANCE is the aux send level per channel per wedge,
+     *    and MONITOR VOLUME is the bus master. The app writes neither,
+     *    ever, and cannot: `isSafeAddress` refuses sends 1-6 outright
+     *    and there is a test whose only job is to try to sneak one past
+     *    it. That guarantee is total and it is the important one.
+     *
+     *  · MONITOR TONE is not the same thing, and it does cross. On an
+     *    X-Air the aux sends tap the channel after the EQ and the
+     *    dynamics, so a cut this app makes to a channel is heard by the
+     *    players in their wedges as well as by the room. Their balance
+     *    does not move and their volume does not move; what that
+     *    channel SOUNDS like does.
+     *
+     * Which is a real consequence and the operator should hear it from
+     * the app rather than discover it, so it is said here and on the
+     * screen. It is also why the one hard rule below exists: nothing
+     * this app writes may ADD gain, by any route — see
+     * [isGainAdding]. A cut that reaches a wedge makes a monitor
+     * quieter in one band. A boost that reaches a wedge is a step
+     * toward a howl on a stage the app cannot hear.
+     */
     val treatChannels: Boolean = true,
     /**
      * No signal below this is an instrument, however quiet the rest of

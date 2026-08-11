@@ -63,6 +63,56 @@ const val AUX_SEND_LAST = 6
  * mode of getting this wrong is a fader move in a musician's ears in
  * the middle of a song.
  */
+/**
+ * NOTHING THIS APP WRITES MAY ADD GAIN. Not anywhere, not on any
+ * channel, not by any route.
+ *
+ * Stated by the operator as a requirement, and it is the right one:
+ * "messing with gain WILL cause feedback problems on the stage that
+ * the app will find hard to resolve — I want this app to be precise
+ * and never cause problems."
+ *
+ * The preamp was never writable, which is necessary and nowhere near
+ * sufficient, because a microphone's loop does not care WHICH gain
+ * stage the dB came from. Two other routes were open and both were
+ * being used:
+ *
+ *  · EQ BOOSTS ON OPEN MICROPHONES. The book carried +2 dB at 3 kHz
+ *    for a lead vocal and +2 dB at 6 kHz for the drum and conga mics.
+ *    2-4 kHz is where a cardioid's presence peak, a wedge horn's
+ *    output and a bar room's worst mode all coincide — it is the band
+ *    a ring-out cuts most often — and this was applied automatically,
+ *    mid-set, to the channels carrying the most gain on the stage.
+ *
+ *  · MAKEUP GAIN, up to +4 dB on every vocal. Worse than the EQ, for
+ *    a reason that falls straight out of the gain curve: a downward
+ *    compressor's gain is at its MAXIMUM below the threshold, and
+ *    incipient ringing starts from the noise floor. So the full makeup
+ *    is applied at exactly the level at which feedback is deciding
+ *    whether to start.
+ *
+ * And on an X-Air the aux sends tap the channel AFTER the EQ and the
+ * dynamics, so both of those land in all six wedges at full value —
+ * which means the monitor guarantee, which is about faders, never
+ * covered them at all.
+ *
+ * So the rule is not "be careful with boosts", it is that the
+ * processing path is CUT-ONLY, enforced here rather than trusted to
+ * the book. If a chain ever asks for gain again, this refuses it and
+ * says so, and the test in ChannelTreatmentTest exists to try.
+ */
+fun isGainAdding(address: String, value: Float): Boolean = when {
+    // an EQ band gain above the centre of its 0..1 range is a boost
+    Regex("^/ch/\\d\\d/eq/[1-4]/g$").matches(address) ->
+        value > 0.5f + GAIN_EPS
+    // makeup is 0..24 dB over 0..1: anything above zero adds gain
+    Regex("^/ch/\\d\\d/dyn/mgain$").matches(address) -> value > GAIN_EPS
+    else -> false
+}
+
+/** float slop, so an exact unity write is not read as a boost */
+const val GAIN_EPS = 0.002f
+
 fun isSafeAddress(address: String): Boolean {
     Regex("^/ch/(\\d\\d)/mix/(\\d\\d)/level$").find(address)?.let { m ->
         val send = m.groupValues[2].toIntOrNull() ?: return false
@@ -120,57 +170,57 @@ val STARTING_CHAINS: Map<Role, Chain> = mapOf(
         hpfHz = 30f,
         eq = listOf(EqBand(2, 400f, -3f, 1.8f)),
         compThrDb = -18f, compRatio = 4f,
-        compAttackMs = 10f, compReleaseMs = 120f, compMakeupDb = 3f,
+        compAttackMs = 10f, compReleaseMs = 120f, compMakeupDb = null,
         reverbSendDb = null,
         why = "low end: keep the bottom, take out the box, hold it steady"),
     Role.PERCUSSION to Chain(
         hpfHz = 80f,
-        eq = listOf(EqBand(2, 400f, -2f, 1.5f), EqBand(4, 6000f, +2f, 0.8f)),
+        eq = listOf(EqBand(2, 400f, -3f, 1.5f)),
         compThrDb = -16f, compRatio = 3f,
-        compAttackMs = 15f, compReleaseMs = 100f, compMakeupDb = 2f,
+        compAttackMs = 15f, compReleaseMs = 100f, compMakeupDb = null,
         reverbSendDb = -14f,
         why = "kit: high-passed, a little air, a touch of room"),
     Role.VOCAL to Chain(
         hpfHz = 100f,
-        eq = listOf(EqBand(1, 200f, -2f, 1.2f), EqBand(3, 3000f, +2f, 1.0f)),
+        eq = listOf(EqBand(1, 300f, -3f, 1.5f)),
         compThrDb = -20f, compRatio = 3f,
-        compAttackMs = 20f, compReleaseMs = 150f, compMakeupDb = 4f,
+        compAttackMs = 20f, compReleaseMs = 150f, compMakeupDb = null,
         reverbSendDb = -10f,
         why = "lead vocal: high-passed, chest trimmed, presence up, " +
             "held level, real reverb"),
     Role.BACKING_VOCAL to Chain(
         hpfHz = 120f,
-        eq = listOf(EqBand(1, 250f, -3f, 1.2f), EqBand(3, 3000f, +1f, 1.0f)),
+        eq = listOf(EqBand(1, 300f, -3f, 1.5f)),
         compThrDb = -20f, compRatio = 3f,
-        compAttackMs = 20f, compReleaseMs = 150f, compMakeupDb = 4f,
+        compAttackMs = 20f, compReleaseMs = 150f, compMakeupDb = null,
         reverbSendDb = -8f,
         why = "backing vocal: further back, wetter, out of the lead's way"),
     Role.KEYS to Chain(
         hpfHz = 60f,
         eq = listOf(EqBand(2, 300f, -2f, 1.2f)),
         compThrDb = -22f, compRatio = 2f,
-        compAttackMs = 30f, compReleaseMs = 200f, compMakeupDb = 2f,
+        compAttackMs = 30f, compReleaseMs = 200f, compMakeupDb = null,
         reverbSendDb = -16f,
         why = "keys: a wide bed, cleared out of the vocal's low-mids"),
     Role.COLOR to Chain(
         hpfHz = 120f,
         eq = listOf(EqBand(3, 2500f, -2f, 1.5f)),
         compThrDb = -18f, compRatio = 3f,
-        compAttackMs = 20f, compReleaseMs = 150f, compMakeupDb = 3f,
+        compAttackMs = 20f, compReleaseMs = 150f, compMakeupDb = null,
         reverbSendDb = -12f,
         why = "horn or harp: the honk taken off, sitting in some room"),
     Role.SOLO_GTR to Chain(
         hpfHz = 100f,
         eq = listOf(EqBand(3, 2500f, -2f, 1.5f)),
         compThrDb = -18f, compRatio = 3f,
-        compAttackMs = 20f, compReleaseMs = 150f, compMakeupDb = 2f,
+        compAttackMs = 20f, compReleaseMs = 150f, compMakeupDb = null,
         reverbSendDb = -16f,
         why = "lead guitar: harshness trimmed, a little room behind it"),
     Role.RHYTHM_GTR to Chain(
         hpfHz = 120f,
         eq = listOf(EqBand(2, 350f, -2f, 1.2f)),
         compThrDb = -20f, compRatio = 3f,
-        compAttackMs = 25f, compReleaseMs = 180f, compMakeupDb = 2f,
+        compAttackMs = 25f, compReleaseMs = 180f, compMakeupDb = null,
         reverbSendDb = null,
         why = "rhythm guitar: out of the vocal's way, dry, in the bed"),
     // INSTRUMENT and TALK get nothing at all. An unclassified channel is
@@ -220,6 +270,8 @@ class ChannelTreatment(
     }
 
     private val applied = HashMap<Int, Applied>()
+    /** writes refused because they would have added gain — see put() */
+    var refusedGain = 0; private set
     /** bands the human has moved since we set them: never ours again */
     private val handsOff = HashMap<Int, MutableSet<String>>()
 
@@ -306,9 +358,20 @@ class ChannelTreatment(
         fun put(addr: String, v: Float) {
             if (addr in skip) return
             if (!isSafeAddress(addr)) return   // belt and braces; see the test
-            out.add(ParamWrite(addr, v.coerceIn(0f, 1f)))
+            val clamped = v.coerceIn(0f, 1f)
+            // NEVER ADD GAIN — see isGainAdding. Checked at the write
+            // itself rather than trusted to the book above, because the
+            // book is the thing most likely to be edited by somebody who
+            // has not read this comment.
+            if (isGainAdding(addr, clamped)) { refusedGain++; return }
+            out.add(ParamWrite(addr, clamped))
         }
-        val c = "%02d".format(ch + 1)
+        // The channel number, in ASCII digits, whatever the tablet's
+        // locale is. `"%02d".format(ch)` on a device set to a locale
+        // with native digits produces a non-ASCII address that the
+        // console does not answer to and isSafeAddress rejects — which
+        // would silently disable channel treatment for the whole night.
+        val c = osc("%02d", ch + 1)
 
         chain.hpfHz?.let {
             put("/ch/$c/preamp/hpon", 1f)
