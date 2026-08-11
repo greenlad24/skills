@@ -46,6 +46,22 @@ data class ChannelConfig(
      * width instead of being level-matched toward mono.
      */
     val pairWith: Int? = null,
+    /**
+     * This channel IS this, and no amount of listening changes it.
+     *
+     * For the parts of a rig that are physically fixed. On the rig this
+     * was written for, channels 1 and 2 are the kick and snare mics and
+     * always will be — they are taped to a drum kit. That is not a
+     * guess the audio should be re-making every night, and on one night
+     * it re-made it wrongly: the kick was declared congas and taken out
+     * of FOUNDATION, which is the channel the entire pyramid is
+     * measured from, so every other channel's target moved with it.
+     *
+     * A locked channel is skipped by [StageEngine.identifyPass]
+     * outright. The operator can still change it by hand; nothing else
+     * can.
+     */
+    val locked: Boolean = false,
 )
 
 /**
@@ -102,8 +118,15 @@ fun inferRole(name: String): Role {
  * the audio once there is enough of it to be sure.
  */
 fun defaultRigProfile(): List<ChannelConfig> = listOf(
-    ChannelConfig(0, "Kick Drum", Role.FOUNDATION),
-    ChannelConfig(1, "Snare", Role.PERCUSSION),
+    // "The first and second channels will always be Kick and Snare
+    // mics." Said by the person who patches this rig, about microphones
+    // that live on a drum kit — so they are locked, and the listener
+    // does not get a vote. It had already spent one night getting this
+    // wrong in the most expensive way available: the kick was heard as
+    // congas and moved out of FOUNDATION, and the foundation is what
+    // every other channel's height is measured against.
+    ChannelConfig(0, "Kick Drum", Role.FOUNDATION, locked = true),
+    ChannelConfig(1, "Snare", Role.PERCUSSION, locked = true),
     ChannelConfig(2, "Overheads", Role.PERCUSSION),
     ChannelConfig(3, "Bass Mic", Role.FOUNDATION),
     ChannelConfig(4, "Guitar Amp", Role.SOLO_GTR),
@@ -121,9 +144,20 @@ fun defaultRigProfile(): List<ChannelConfig> = listOf(
     // says what their rig IS, and it now outranks the desk's label —
     // see `setRoleFromName`.
     ChannelConfig(10, "Vox 3", Role.VOCAL),
-    ChannelConfig(11, "Bass DI", Role.FOUNDATION),
+    // BOTH OF THESE ARE THE BASS, and both are fixed in place.
+    //
+    // "Bass DI and DI 2 are very important (both are the bass — in the
+    // pyramid)", from the person who patches the rig, along with the
+    // fact that neither channel ever moves. Two DIs carrying the same
+    // low end are one instrument as far as the room is concerned, which
+    // `foundationShareDb` already accounts for — they split the bass
+    // side of the low end between them while the kick keeps its own —
+    // but only for as long as both are still FOUNDATION. Locked, so a
+    // spectrum cannot quietly take one of them out of the low end and
+    // hand the other twice the weight it should have.
+    ChannelConfig(11, "Bass DI", Role.FOUNDATION, locked = true),
     ChannelConfig(12, "Congo 2", Role.PERCUSSION),
-    ChannelConfig(13, "DI2 Synth Bass", Role.FOUNDATION),
+    ChannelConfig(13, "DI2 Synth Bass", Role.FOUNDATION, locked = true),
     // and the saxophone is on the channel labelled UTILITY 3
     ChannelConfig(14, "Sax", Role.COLOR),
     ChannelConfig(15, "Harmonica", Role.COLOR),
@@ -460,8 +494,12 @@ class ChannelState(val cfg: ChannelConfig) {
     val name: String get() = deskName ?: cfg.name
     /** out of the mains because it is making no real sound */
     var muted = false
-    /** the operator set this role by hand: the listener must not move it */
-    var roleLocked = false
+    /**
+     * The operator set this role by hand, or the rig profile says the
+     * channel is physically fixed ([ChannelConfig.locked]). Either way
+     * the listener must not move it.
+     */
+    var roleLocked = cfg.locked
     /** the listener has re-roled this channel at least once */
     var roleIdentified = false
     /** a role the audio is proposing, and how long it has proposed it */

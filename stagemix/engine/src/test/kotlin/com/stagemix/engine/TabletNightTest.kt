@@ -701,4 +701,81 @@ class TabletNightTest {
             "the foundation the mix is measured from does not get " +
             "reclassified after the operator has approved that mix")
     }
+
+    // ==================================================================
+    // 10. the parts of the rig that are physically fixed
+    // ==================================================================
+    @Test fun `channels one and two are the kick and snare, and stay that way`() {
+        // "The first and second channels will always be Kick and Snare
+        // mics." Microphones taped to a drum kit are not a question the
+        // listener gets to re-open every night — and it had already got
+        // this wrong in the most expensive way available, moving the
+        // kick out of FOUNDATION, which is what every other channel's
+        // height is measured against.
+        val e = StageEngine(rig, EngineSettings(mode = BalanceMode.KEEP))
+        assertEquals(Role.FOUNDATION, e.state[0]!!.role)
+        assertEquals(Role.PERCUSSION, e.state[1]!!.role)
+        assertTrue(e.state[0]!!.roleLocked && e.state[1]!!.roleLocked,
+            "both are locked before a single meter frame arrives")
+
+        // A whole night of the band playing, with no balance adopted —
+        // the window in which re-roling is otherwise cheapest.
+        val r = Run(e)
+        val beat = 0.5
+        fun band(t: Double) = silence().also {
+            it[0] = hit(t, beat * 2, 0.0, -18f, 0.18)
+            it[1] = hit(t, beat * 2, beat, -20f, 0.15)
+            it[8] = -20f; it[11] = -17f
+        }
+        r.start { band(it) }
+        r.run(1200.0) { band(it) }
+
+        assertEquals(Role.FOUNDATION, e.state[0]!!.role,
+            "the kick is a kick: " + e.decisions
+                .filter { it.kind == "ident" && it.channel == 0 }
+                .map { it.reason })
+        assertEquals(Role.PERCUSSION, e.state[1]!!.role, "and the snare a snare")
+
+        // The desk's own label does not get a vote either — on this rig
+        // the console's names are a previous band's.
+        e.setChannelName(0, "VOCAL CEN_50")
+        assertEquals(Role.FOUNDATION, e.state[0]!!.role,
+            "a leftover label on the console does not un-tape a mic " +
+            "from a drum")
+
+        // But the operator still can, by hand. It is their rig.
+        assertTrue(e.setRole(0, Role.VOCAL))
+        assertEquals(Role.VOCAL, e.state[0]!!.role,
+            "locked against the listener, never against the person")
+    }
+
+    @Test fun `both bass DIs hold the low end, and split it between them`() {
+        // "Bass DI and DI 2 are very important (both are the bass — in
+        // the pyramid)", and neither channel ever moves.
+        val e = StageEngine(rig, EngineSettings(mode = BalanceMode.KEEP))
+        for (ch in intArrayOf(11, 13)) {
+            assertEquals(Role.FOUNDATION, e.state[ch]!!.role, "ch$ch is low end")
+            assertTrue(e.state[ch]!!.roleLocked, "ch$ch is fixed in place")
+        }
+
+        // Two DIs carrying the same line are one bass to the room, so
+        // they share the bass side of the low end — while the kick,
+        // which occupies a different moment and a different octave,
+        // keeps its own. The three together must still sum to the one
+        // low end the pyramid asked for, or the whole bottom of the mix
+        // moves with the lineup.
+        val r = Run(e)
+        val beat = 0.5
+        fun band(t: Double) = silence().also {
+            it[0] = hit(t, beat * 2, 0.0, -18f, 0.18)
+            it[1] = hit(t, beat * 2, beat, -20f, 0.15)
+            it[11] = -22f; it[13] = -23f
+            it[8] = -20f
+        }
+        r.start { band(it) }
+        r.run(120.0) { band(it) }
+        for (ch in intArrayOf(0, 11, 13))
+            assertTrue(e.state[ch]!!.role == Role.FOUNDATION,
+                "ch$ch stayed in the low end")
+    }
 }
