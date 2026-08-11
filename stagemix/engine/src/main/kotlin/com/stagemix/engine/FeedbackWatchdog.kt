@@ -58,6 +58,27 @@ class FeedbackWatchdog(
     private val streak = IntArray(100)
     private var lastSeenT = -1.0
 
+    /**
+     * The analyzer has been pointed somewhere else — forget the past.
+     *
+     * This watchdog fires on "risen twelve dB at a fixed frequency in
+     * about a second". Moving `/-stat/rta/source` to another channel is
+     * a step change across all one hundred bins at once, which is that
+     * pattern exactly — and the app moves it every three seconds,
+     * round-robin, all night. The harmonic-partner test was catching
+     * most of these, but it was never designed to be the thing standing
+     * between a source switch and a false howl; a false howl freezes
+     * every boost in the mix.
+     *
+     * Clearing here also means the detector needs about a second of the
+     * new channel before it can fire at all, which is honest: it has
+     * not heard enough of that channel to have an opinion yet.
+     */
+    fun sourceChanged() {
+        history.clear()
+        streak.fill(0)
+    }
+
     fun onRta(bins: FloatArray, tSec: Double) {
         if (bins.size < 100) return
         for (v in bins) if (v.isNaN() || v.isInfinite()) return

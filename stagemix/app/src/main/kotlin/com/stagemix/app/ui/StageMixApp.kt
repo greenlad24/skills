@@ -63,8 +63,21 @@ fun StageMixApp() {
                     "ip" to AppState.config.value.mixerIp)
         }
         Surface(Modifier.fillMaxSize(), color = Bg) {
-            when (conn) {
-                AppState.Conn.CONNECTED -> ConsoleScreen()
+            // ONCE THE NIGHT HAS STARTED, A DROPOUT IS A MESSAGE — NOT
+            // A DIFFERENT SCREEN.
+            //
+            // This read `CONNECTED -> console, else -> setup`, and ten
+            // seconds without a meter packet drops the state to
+            // CONNECTING. On the console's own 2.4 GHz AP in a full bar
+            // that happens during shows — it is in both real logs. So
+            // mid-song the console was replaced by the setup page,
+            // offering an IP box and a "find my mixer" button that
+            // builds a NEW engine and a NEW show log: one tap and the
+            // night's takeover baselines and the kept balance are gone,
+            // and every channel is placed again from scratch.
+            val everCon by AppState.everConnected.collectAsState()
+            when {
+                conn == AppState.Conn.CONNECTED || everCon -> ConsoleScreen()
                 else -> ConnectScreen()
             }
         }
@@ -186,8 +199,34 @@ fun ConsoleScreen() {
     val nights by AppState.nightsCount.collectAsState()
     val taste by AppState.tasteSummary.collectAsState()
     val lastNight by AppState.lastNightSummary.collectAsState()
+    val err by AppState.lastError.collectAsState()
+    val conn by AppState.conn.collectAsState()
 
     Column(Modifier.fillMaxSize().padding(14.dp)) {
+        // ---- the things the operator has to be told, and could not be
+        //
+        // `lastError` was collected only on the SETUP screen, so two
+        // messages the service writes into it were never displayed once
+        // mixing had started: "only 9 of 16 faders answered — ch03,
+        // ch07 are NOT being mixed", and the howl warning. Finding out
+        // from the log the next morning that five channels went unmixed
+        // all night is the definition of being let down by a tool.
+        if (err != null || conn != AppState.Conn.CONNECTED) {
+            val feedback = err?.contains("FEEDBACK") == true
+            Row(
+                Modifier.fillMaxWidth()
+                    .background(if (feedback) Bad else Warn,
+                        RoundedCornerShape(8.dp))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    err ?: "NO ANSWER FROM THE MIXER — nothing is moving",
+                    color = Color.Black, fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.height(8.dp))
+        }
         // ---- header bar
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("STAGEMIX", color = Ink, fontWeight = FontWeight.Black,
@@ -274,8 +313,14 @@ fun ConsoleScreen() {
                 Text("MIX HEALTH", color = Muted, fontSize = 10.sp,
                     letterSpacing = 2.sp)
                 Spacer(Modifier.width(8.dp))
-                Text("vocal on top ${h.vocalOnTopPct}%",
-                    color = if (h.vocalOnTopPct >= 85) Ok else Warn,
+                // -1 means "not enough samples yet", not "1% below
+                // zero". Printed raw it read "vocal on top -1%" in
+                // amber for the first minutes of every show, which
+                // looks exactly like a fault.
+                Text(if (h.vocalOnTopPct < 0) "vocal on top — listening"
+                     else "vocal on top ${h.vocalOnTopPct}%",
+                    color = if (h.vocalOnTopPct < 0) Muted
+                            else if (h.vocalOnTopPct >= 85) Ok else Warn,
                     fontSize = 12.sp, fontFamily = FontFamily.Monospace)
                 Spacer(Modifier.width(10.dp))
                 Text("in place ${h.inPlacePct}%",

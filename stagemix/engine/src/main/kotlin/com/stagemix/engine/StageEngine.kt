@@ -2153,14 +2153,21 @@ class StageEngine(
             // stereo pair: decide once, from the pair's mean
             // contribution, and give both halves the same offset
             val mate = st.cfg.pairWith?.let { state[it] }
-            val boundedPair = if (mate != null && mate.baselineDb != null &&
+            // `anchor != null` FIRST. The branch below force-unwrapped
+            // it, but the target above is explicitly written to handle
+            // there being no anchor yet — "everyone is still
+            // auditioning" — so a paired channel whose partner went
+            // active during that window threw NullPointerException out
+            // of tick(), which is the one call the whole show runs on.
+            val boundedPair = if (anchor != null && mate != null &&
+                mate.baselineDb != null &&
                 mate.active && !st.isStatic) {
                 val mPre = mate.preEma
                 if (mPre != null) {
                     val mContrib = mPre + mate.baselineDb!! + mate.offset
                     val myContrib = pre + base + st.offset
                     val pairErr = ((myContrib + mContrib) / 2f) -
-                            (anchor!! + (height - anchorPyr))
+                            (anchor + (height - anchorPyr))
                     boundOffset(st.offset - pairErr, base)
                 } else bounded
             } else bounded

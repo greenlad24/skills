@@ -100,6 +100,8 @@ class MixerService : Service() {
     private var netCallback: android.net.ConnectivityManager.NetworkCallback? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var loopJob: Job? = null
+    /** engine exceptions survived this session — see the tick guard */
+    private var tickFailures = 0
 
     /** parameter enquiry replies parked here by address */
     private val pending = ConcurrentHashMap<String, Float>()
@@ -257,9 +259,19 @@ class MixerService : Service() {
                 show = ShowLog(getExternalFilesDir(null) ?: filesDir)
                 AppState.logPath.value = show?.file?.absolutePath ?: ""
                 engine = StageEngine(cfg.channels).also { eng ->
-                    // continue from last night's progress
-                    eng.pyramidBias.putAll(
-                        AppState.loadBias(this@MixerService))
+                    // CONTINUE FROM LAST NIGHT'S PROGRESS — through the
+                    // front door.
+                    //
+                    // This used to `putAll` into `pyramidBias`, which is
+                    // the OUTPUT of the taste calculation, not its
+                    // input. `chipBias` — what the feedback chips
+                    // actually accumulate into — was left empty, so the
+                    // first chip press of the night computed 0 + 1 and
+                    // overwrote everything the app had learned. On the
+                    // night this was found, the operator's one explicit
+                    // instruction all evening was "more vocal", and it
+                    // took the lead vocal from +3.0 dB to +1.0.
+                    eng.loadBias(AppState.loadBias(this@MixerService))
                     // and from everything the operator has ever told us
                     // is on a channel — the calls the audio cannot make
                     eng.knownInstruments.putAll(
@@ -374,8 +386,11 @@ class MixerService : Service() {
             val m = receiveOnce()
             if (m != null) {
                 lastRx = t
-                if (AppState.conn.value == AppState.Conn.CONNECTING)
+                if (AppState.conn.value == AppState.Conn.CONNECTING) {
                     AppState.conn.value = AppState.Conn.CONNECTED
+                    AppState.everConnected.value = true
+                    AppState.lastError.value = null
+                }
                 handle(m, t, rtaFocus, rtaFocusT)
             } else if (t - lastRx > 10.0 &&
                        AppState.conn.value == AppState.Conn.CONNECTED) {
@@ -398,10 +413,28 @@ class MixerService : Service() {
                     if (next != rtaFocus) {
                         rtaFocus = next
                         send(OscMessage("/-stat/rta/source", listOf(rtaFocus)))
+                        // a different channel's spectrum is not this
+                        // one's getting louder — see sourceChanged()
+                        watchdog.sourceChanged()
                     }
                     rtaFocusT = t
                 }
             }
+            // A BUG IN THE ENGINE MUST NOT END THE SHOW.
+            //
+            // Everything below runs inside the one coroutine that also
+            // receives meters and answers the console. An exception
+            // escaping here kills that loop: no more writes, no more
+            // reads, no more log — and nothing on screen would say so,
+            // because the service is still alive and the notification
+            // still says MIXING. There was a real one to find, a
+            // NullPointerException out of `tick()` when a stereo-paired
+            // channel went active before the mix had an anchor.
+            //
+            // The mixer holds its last state when we stop talking, so
+            // the safe response is to say so loudly and keep the loop
+            // running rather than to die quietly.
+            try {
             if (t - lastTick >= 1.0) {
                 lastTick = t
                 AppState.holdReason.value = e.holdReason(t)
@@ -456,6 +489,26 @@ class MixerService : Service() {
                     lg.snapshot(t, e, doctor, AppState.mixerChannelNames.value,
                         directing)
                     lg.summary(t, e, AppState.mixerChannelNames.value)
+                }
+            }
+            } catch (ex: Exception) {
+                // Say it in the one place the operator will look, and in
+                // the log they will send afterwards, then carry on: the
+                // console is still holding the last mix we gave it.
+                tickFailures++
+                show?.net("ENGINE ERROR on tick $tickFailures: " +
+                    "${ex.javaClass.simpleName} ${ex.message ?: ""} — the " +
+                    "mixer is holding the last mix; nothing new is being " +
+                    "written")
+                AppState.lastError.value =
+                    "⚠ Something went wrong inside the app — the mixer is " +
+                    "holding your last mix. Export the log."
+                if (tickFailures >= MAX_TICK_FAILURES) {
+                    // Repeating means it is not a blip. Stop writing
+                    // rather than keep throwing once a second all night.
+                    AppState.directing.value = false
+                    show?.net("MIXING switched off after $tickFailures " +
+                        "errors — the faders are where the app left them")
                 }
             }
         }
@@ -984,6 +1037,8 @@ class MixerService : Service() {
         private const val TAKEOVER_TRIES = 4
         /** how often to re-read the mute keys and chase missing faders */
         private const val RESYNC_SEC = 30.0
+        /** how many engine errors before it stops trying to mix */
+        private const val MAX_TICK_FAILURES = 5
         const val PORT = 10024
         const val CHANNEL = "stagemix"
         const val ACTION_CONNECT = "com.stagemix.CONNECT"

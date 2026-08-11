@@ -181,6 +181,7 @@ class DeskClient(
                     if (next != rtaFocus) {
                         rtaFocus = next
                         send(OscMessage("/-stat/rta/source", listOf(rtaFocus)))
+                        watchdog.sourceChanged()
                     }
                     rtaFocusT = t
                 }

@@ -778,4 +778,70 @@ class TabletNightTest {
             assertTrue(e.state[ch]!!.role == Role.FOUNDATION,
                 "ch$ch stayed in the low end")
     }
+
+    // ==================================================================
+    // 11. tick() must not throw — it is the call the whole show runs on
+    // ==================================================================
+    @Test fun `a stereo pair going active before there is an anchor`() {
+        // NullPointerException out of tick(). The target above this is
+        // explicitly written to cope with there being no anchor yet —
+        // "everyone is still auditioning" — and then the stereo-pair
+        // branch force-unwrapped it anyway. An exception here kills the
+        // one coroutine that receives meters, writes faders and keeps
+        // the log, while the notification still says MIXING.
+        val chans = listOf(
+            ChannelConfig(5, "Vox B", Role.BACKING_VOCAL, pairWith = 6),
+            ChannelConfig(6, "Piano R", Role.KEYS, pairWith = 5))
+        val e = StageEngine(chans, EngineSettings(mode = BalanceMode.LEAD))
+        val lv = FloatArray(16) { -128f }
+        lv[5] = -30f                       // one half plays from the start
+        var t = 0.0
+        while (t < 2.0) { e.onMeters(lv, t); t += 0.05 }
+        e.takeover(mapOf(5 to -5f, 6 to -5f), t)
+        var next = t + 1.0
+        val end = t + 60.0
+        while (t < end) {
+            if (t > 32.0) lv[6] = -30f     // the pair joins, still unheard
+            e.onMeters(lv, t)
+            if (t >= next) { e.tick(t); next += 1.0 }
+            t += 0.05
+        }
+        // reaching here at all is the assertion
+        assertTrue(true)
+    }
+
+    // ==================================================================
+    // 12. asking for more must never give less
+    // ==================================================================
+    @Test fun `a chip moves last night's taste, it does not replace it`() {
+        // The operator tapped "vocal_up" once, and the lead vocal taste
+        // went from +3.0 dB to +1.0. Everything the app had learned
+        // about this band's vocal over previous nights was thrown away
+        // by the request for more of it.
+        val e = StageEngine(rig, EngineSettings(mode = BalanceMode.KEEP))
+        e.loadBias(mapOf(Role.VOCAL to 1.5f, Role.KEYS to -1.0f))
+        assertEquals(1.5f, e.pyramidBias[Role.VOCAL],
+            "the taste is carried forward")
+
+        e.applyFeedback("vocal_up", 0.0)
+        val after = e.pyramidBias[Role.VOCAL] ?: 0f
+        assertTrue(after > 1.5f,
+            "asking for more vocal must give more vocal, counted from " +
+            "wherever it already was: 1.5 -> $after")
+
+        e.applyFeedback("vocal_down", 1.0)
+        assertTrue((e.pyramidBias[Role.VOCAL] ?: 0f) < after,
+            "and down is down from there, not from zero")
+        assertEquals(-1.0f, e.pyramidBias[Role.KEYS],
+            "a chip for one role does not disturb another")
+
+        // Taste is deliberately bounded to +/-3 dB. At the ceiling,
+        // asking for more must hold — never fall back to a fresh +1.
+        val hot = StageEngine(rig, EngineSettings(mode = BalanceMode.KEEP))
+        hot.loadBias(mapOf(Role.VOCAL to 3.0f))
+        hot.applyFeedback("vocal_up", 0.0)
+        assertEquals(3.0f, hot.pyramidBias[Role.VOCAL],
+            "at the ceiling it stays at the ceiling — this is the one " +
+            "that took the operator's vocal from +3.0 to +1.0")
+    }
 }

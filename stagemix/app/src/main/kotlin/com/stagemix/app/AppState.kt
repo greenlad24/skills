@@ -67,6 +67,22 @@ object AppState {
     )
 
     val conn = MutableStateFlow(Conn.DISCONNECTED)
+    /**
+     * True once this session has talked to the mixer at all.
+     *
+     * The console screen is shown for CONNECTED only, and a ten-second
+     * gap in the meters drops the state to CONNECTING — which on the
+     * M18's own 2.4 GHz AP, in a room full of phones, happens during
+     * shows: it is in both real logs. So mid-song the whole console was
+     * being replaced by the SETUP page, complete with an IP box and a
+     * "find my mixer" button that builds a NEW engine and a NEW show
+     * log. One tap in the dark and the night's takeover baselines and
+     * the balance the operator had kept were gone, and every channel
+     * would be placed again from scratch.
+     *
+     * Once a night has started, a dropout is a message, not a screen.
+     */
+    val everConnected = MutableStateFlow(false)
     val mixer = MutableStateFlow(MixerInfo())
     val discovered = MutableStateFlow<List<MixerInfo>>(emptyList())
     val strips = MutableStateFlow<List<StripUi>>(emptyList())
