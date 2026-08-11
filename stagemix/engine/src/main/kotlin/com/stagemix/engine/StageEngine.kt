@@ -1299,8 +1299,21 @@ class StageEngine(
      */
     fun onRtaFor(ch: Int, bins: FloatArray) {
         val st = state[ch] ?: return
-        ident.onRta(ch, bins, st.active && !st.isStatic)
+        val playing = st.active && !st.isStatic
+        ident.onRta(ch, bins, playing)
+        // and the same frame, kept as a SHAPE rather than as band sums
+        // — see FrequencyMap. Everything that consumes the RTA today
+        // folds it down to seven numbers or four before anything can
+        // reason about where this instrument actually lives.
+        spectrum.onRta(ch, bins, playing)
     }
+
+    /**
+     * What each channel sounds like, in full. The material for deciding
+     * where a high-pass belongs, what is worth a narrow cut, and which
+     * two channels are in each other's way.
+     */
+    val spectrum = FrequencyMap()
 
     /**
      * Re-role whatever the audio has made up its mind about.
