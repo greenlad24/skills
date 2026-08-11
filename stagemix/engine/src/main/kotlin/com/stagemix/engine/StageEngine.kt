@@ -994,9 +994,31 @@ class StageEngine(
                 st.lastActiveT = tSec
             }
             val wasAway = tSec - st.lastActiveT > settings.arrivalSilenceSec
-            if (!st.active && st.gateOpen && wasAway && takeoverT >= 0 &&
-                !betweenSongs) {
+            // A MUTED CHANNEL CANNOT ARRIVE.
+            //
+            // `!active && gateOpen` used to mean "the gate just opened
+            // on something that was quiet" — one frame, then `active`
+            // caught up. Making `active` also require "not muted on the
+            // desk" quietly turned it into a permanent state: the
+            // meters are PRE-mute, so a muted channel with a player
+            // behind it holds the gate open forever while `lastActiveT`
+            // never advances, and every frame looks like a fresh
+            // arrival. On the first night with this in, the operator
+            // muted the band between songs and the engine logged
+            // 281,873 arrivals — nine a second for eight hours, 99.3 %
+            // of every decision it made, 48 MB of log, and the whole
+            // 400,000-line budget for the night burned before the end
+            // of it.
+            //
+            // Stamping `lastActiveT` when an arrival does fire is the
+            // belt to that: whatever the reason, the same channel can
+            // no longer arrive twice in consecutive frames, because the
+            // question "has it been away a while?" is answered from a
+            // timestamp this very arrival just set.
+            if (!st.active && st.gateOpen && !st.deskMuted && wasAway &&
+                takeoverT >= 0 && !betweenSongs) {
                 st.arrivedT = tSec
+                st.lastActiveT = tSec
                 lastArrivalT = tSec
                 // Forget what this channel used to sound like, and listen
                 // again before touching it.
@@ -1318,10 +1340,26 @@ class StageEngine(
             // a balance being kept it is not on offer at all: by then
             // the operator has heard the mix and approved it, and a
             // spectrum is not entitled to overrule that.
-            val leavingVoice = (st.role == Role.VOCAL ||
-                st.role == Role.BACKING_VOCAL) &&
-                r.role != Role.VOCAL && r.role != Role.BACKING_VOCAL
-            if (leavingVoice) {
+            // THE SAME PROTECTION THE SINGERS GET, FOR THE WHOLE
+            // RHYTHM SECTION.
+            //
+            // This guarded VOCAL and BACKING_VOCAL only, and the next
+            // night showed why that was too narrow: the KICK was
+            // re-roled to percussion, and the kick is the channel the
+            // entire pyramid is measured from — every other channel's
+            // target moves when it does. "Do not move the bass and the
+            // kick drum + snare + overhead after a balance has been
+            // made" was asked for in those words, and a role change is
+            // simply a slower way of moving them.
+            //
+            // So the rule is the held roles, not just the voices: once
+            // the operator has approved a mix, nothing in it gets
+            // reclassified out from under them. Promotion INTO a held
+            // role stays cheap, and before there is a balance the audio
+            // still has to be nearly certain and stay certain.
+            val leavingHeld = st.role in settings.holdRoles &&
+                r.role !in settings.holdRoles
+            if (leavingHeld) {
                 if (balanceAdopted) { st.pendingRole = null; continue }
                 if (heard == null ||
                     heard.confidence < settings.demoteVoiceConfidence) {

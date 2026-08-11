@@ -558,4 +558,147 @@ class TabletNightTest {
             "a source that has genuinely moved and stayed moved is " +
             "exactly what this is for: $rides corrections")
     }
+
+    // ==================================================================
+    // 9. the second real night: an arrival storm, and a kick called congas
+    // ==================================================================
+    @Test fun `a muted channel cannot arrive, over and over, all night`() {
+        // 281,873 arrivals in one night — nine a second for eight hours,
+        // 99.3 % of every decision the engine made, 48 MB of log, and
+        // the whole 400,000-line budget spent before the night ended.
+        //
+        // Making `active` mean "gate open AND not muted" turned
+        // `!active && gateOpen` from a one-frame edge into a permanent
+        // state, because the meters are pre-mute: a muted channel with a
+        // player behind it holds the gate open forever.
+        val e = StageEngine(rig, EngineSettings(mode = BalanceMode.KEEP))
+        val r = Run(e)
+        val band = silence().also {
+            it[0] = -18f; it[1] = -20f; it[3] = -22f
+            it[8] = -20f; it[11] = -17f
+        }
+        r.start { band }
+        r.run(60.0) { band }
+        e.adoptBalance(r.t)
+
+        // the operator mutes half the band — and the players keep
+        // playing, which is exactly what the pre-fader meters report
+        for (ch in intArrayOf(0, 1, 3)) e.setChannelMuted(ch, true)
+        val before = e.decisions.count { it.kind == "arrive" }
+        r.run(600.0) { band }
+        val arrivals = e.decisions.count { it.kind == "arrive" } - before
+
+        assertTrue(arrivals == 0,
+            "a channel that is muted is not arriving — it is muted. " +
+            "Fired $arrivals times in ten minutes")
+    }
+
+    @Test fun `one arrival cannot repeat on the very next frame`() {
+        // Belt to the braces above: whatever the reason a channel looks
+        // like it is arriving, answering "has it been away a while?"
+        // from a timestamp the arrival itself just set makes a storm
+        // structurally impossible rather than merely fixed this once.
+        val e = StageEngine(rig, EngineSettings(mode = BalanceMode.KEEP))
+        val r = Run(e)
+        val band = silence().also {
+            it[0] = -18f; it[3] = -22f; it[8] = -20f; it[11] = -17f
+        }
+        r.start { band }
+        r.run(60.0) { band }
+        e.adoptBalance(r.t)
+        // a genuine arrival: silent, then playing
+        val withHarp = band.copyOf().also { it[15] = -24f }
+        r.run(300.0) { withHarp }
+        val n = e.decisions.count { it.kind == "arrive" && it.channel == 15 }
+        assertTrue(n in 1..2,
+            "an instrument coming in is one arrival, not a stream: $n")
+    }
+
+    @Test fun `a kick is not a conga, and neither is a strummed guitar`() {
+        // Both were, on the second night. A kick is low, struck, over
+        // before the next one, and lands with the kit — every test the
+        // hand-drum score applied, passed perfectly — so the kick was
+        // declared congas and taken out of FOUNDATION, the one channel
+        // the whole pyramid is measured from.
+        val ens = Ensemble(6)
+        val id = InstrumentId()
+        val beat = 0.5
+        var t = 0.0
+        val lv = FloatArray(6)
+        val act = BooleanArray(6)
+        while (t < 240.0) {
+            lv[0] = hit(t, beat * 2, 0.0, -18f, 0.18)   // kick
+            lv[1] = hit(t, beat * 2, beat, -20f, 0.15)  // snare
+            lv[2] = hit(t, beat, 0.0, -24f, 0.22)       // congas: struck
+            // a strummed chord RINGS — that is the whole difference
+            lv[3] = hit(t, beat, 0.0, -22f, 0.70)
+            lv[4] = -100f; lv[5] = -100f
+            for (k in 0 until 6) act[k] = lv[k] > -90f
+            ens.onFrame(lv, act, 0.05f)
+            // the envelope half — WITHOUT this `recognise` has no
+            // active seconds on the channel and declines to answer,
+            // which made the first version of this test pass on a null
+            for (k in 0 until 6) id.onLevel(k, lv[k], 0.05f, act[k])
+            t += 0.05
+        }
+        // spectra: a kick is all underneath; a conga has its body around
+        // 200 Hz and nothing below; a guitar carries a line
+        fun feed(ch: Int, bins: FloatArray) = repeat(120) { id.onRta(ch, bins, true) }
+        fun band(lo: Int, hi: Int, peak: Float) = FloatArray(100) { i ->
+            if (i in lo..hi) peak else -70f }
+        // The RTA is 10 bins per octave from 20 Hz, so bin n is
+        // 20 * 2^(n/10) Hz. Getting this wrong is how the first draft
+        // of this test built a "conga" that lived at 53-160 Hz — which
+        // is a kick drum, and the engine was right to say so.
+        feed(0, band(0, 14, -12f))          // kick:   20-53 Hz
+        feed(2, band(30, 54, -12f))         // conga:  160-1.2k, no sub
+        feed(3, band(22, 62, -12f))         // guitar: 90-3.6k
+        for (ch in intArrayOf(0, 2, 3)) {
+            val rd = id.recognise(ch, ens)
+            println("ch$ch -> ${rd?.instrument} conf %.2f  ${rd?.why}"
+                .format(rd?.confidence ?: 0f))
+        }
+        val kick = id.recognise(0, ens)
+        val conga = id.recognise(2, ens)
+        val gtr = id.recognise(3, ens)
+        // A null verdict would satisfy every assertion below without
+        // the scoring ever running. Say so out loud.
+        for ((n, rd) in listOf("kick" to kick, "conga" to conga,
+                               "guitar" to gtr))
+            assertTrue(rd != null, "$n was never actually judged")
+        assertEquals(Instrument.KICK, kick!!.instrument,
+            "all underneath and struck is a kick: ${kick.why}")
+        assertTrue(conga!!.instrument != Instrument.KICK,
+            "and a drum with its body at 200 Hz and nothing below is " +
+            "not a kick: ${conga.instrument} (${conga.why})")
+        // The guitar may still be misread — what must not happen is the
+        // engine ACTING on a misreading. Below the recognise threshold
+        // it keeps its opinion to itself, which is the design.
+        val acts = gtr!!.instrument == Instrument.HAND_DRUM &&
+            gtr.confidence >= IdSettings().recogniseConfidence
+        assertTrue(!acts,
+            "a ringing chord must not be re-roled to percussion: " +
+            "${gtr.instrument} at %.2f".format(gtr.confidence))
+    }
+
+    @Test fun `an approved balance is not reclassified out from under you`() {
+        // The kick was re-roled to percussion at 21:59 on a balance
+        // adopted at 21:45. Every other channel's target is measured
+        // from the foundation, so re-roling it moves the whole mix —
+        // which is just a slower way of moving the faders the operator
+        // asked us to leave alone.
+        val e = StageEngine(rig, EngineSettings(mode = BalanceMode.KEEP))
+        val kick = rig.first { it.role == Role.FOUNDATION }.index
+        val r = Run(e)
+        val band = silence().also {
+            it[kick] = -18f; it[8] = -20f; it[11] = -17f; it[1] = -21f
+        }
+        r.start { band }
+        r.run(60.0) { band }
+        e.adoptBalance(r.t)
+        r.run(900.0) { band }
+        assertEquals(Role.FOUNDATION, e.state[kick]!!.role,
+            "the foundation the mix is measured from does not get " +
+            "reclassified after the operator has approved that mix")
+    }
 }

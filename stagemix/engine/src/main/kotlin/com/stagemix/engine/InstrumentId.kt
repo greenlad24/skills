@@ -437,10 +437,30 @@ class InstrumentId(val settings: IdSettings = IdSettings()) {
             // every one of them "congas / toms", including both singers
             // and both pianos. A conga is over a quarter-second after
             // it is hit. Nothing else here is.
+            // AND IT IS NEITHER THE KICK NOR ANYTHING WITH A TUNE IN IT.
+            //
+            // Two terms that were missing, and both cost a channel on
+            // the next real night. A kick is low, struck, over before
+            // the next one and lands with the kit — every test above,
+            // passed perfectly — so the kick was declared a conga and
+            // taken out of FOUNDATION, which is the one channel the
+            // whole pyramid is measured from. A conga has its body
+            // around 200 Hz and almost nothing underneath, so being
+            // low-end at all now argues against it.
+            //
+            // The second is the mirror of the singer problem. Making
+            // `kit` mean "struck, alongside other struck things" also
+            // made a strummed guitar DI score highly on it — strummed
+            // chords do stop — which zeroed its melodic score and left
+            // congas the only candidate standing. A drum has no tune:
+            // energy in the voice band is a line being played, and
+            // hands on a skin do not play lines.
             scores[Instrument.HAND_DRUM] = ramp(low + loMid, 0.25f, 0.55f) *
                 ramp(air, 0.12f, 0.02f) * ramp(crest, 7f, 14f) *
                 ramp(onsets, 0.8f, 2.5f) * ramp(kit, 0.2f, 0.5f) *
-                ramp(1f - sustain, 0.30f, 0.60f)
+                ramp(1f - sustain, 0.30f, 0.60f) *
+                ramp(isLow, 0.45f, 0.10f) *
+                ramp(voiceBand, 0.45f, 0.20f)
             why[Instrument.HAND_DRUM] = ("mid-low, no top, %.1f hits a " +
                 "second, and each one is over before the next — hands " +
                 "rather than sticks").format(onsets)
