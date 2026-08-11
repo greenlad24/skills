@@ -265,6 +265,12 @@ data class EngineSettings(
      * turned up. On the night these come from it could not, and
      * corrected one guitar a hundred and twenty times.
      */
+    /**
+     * How many channels must have a plan before "what everyone is
+     * doing" means anything. Below this the median is one or two
+     * channels' opinion, which is not a band.
+     */
+    val commonModeMinChannels: Int = 3,
     val rideDwellSec: Float = 30f,
     val rideMinGapSec: Float = 45f,
     /**
@@ -1647,6 +1653,43 @@ class StageEngine(
             }
             if (k > 0) s / k else 0f
         }
+        // WHAT THE WHOLE BAND IS DOING, ON THE RIDE'S OWN TIMESCALE.
+        //
+        // Every channel with a plan wants to shift its fader by some
+        // amount to get back to it. If ONE channel wants to move, that
+        // is a player who has changed position — a singer who has
+        // backed off the microphone — and correcting it is the job. If
+        // they ALL want to move by the same amount, that is the band
+        // playing: a chorus, a build, an outro, or simply three sets of
+        // a stage getting louder. Correcting THAT means pulling the
+        // guitars and the keys down at the climax of the song, which is
+        // about the worst automatic move available in live sound.
+        //
+        // The median of what everyone wants is that common movement.
+        // Subtracting it leaves only what one channel is doing
+        // differently from the rest, which is the only thing the ride
+        // was ever meant to answer for.
+        //
+        // It matters more than it looks on this rig, because the ride
+        // cannot touch the voices, the kick, the snare or the bass —
+        // they are held. So a band-wide rise was being taken out of the
+        // guitars, the piano and the horns ALONE, and over a night the
+        // mix drifted toward drums, bass and voice with the harmony
+        // instruments squeezed out. The backline gets louder in the room
+        // for free; it is the PA-only channels that need to come up with
+        // it, not down.
+        val commonRideShift = run {
+            val wants = ArrayList<Float>()
+            for (st in state.values) {
+                if (!st.active || st.isStatic || st.frozen) continue
+                val plan = st.planContrib ?: continue
+                val base = st.baselineDb ?: continue
+                val slow = st.slowEma ?: continue
+                wants.add((plan - slow - base) - (st.planFaderDb - base))
+            }
+            if (wants.size < settings.commonModeMinChannels) 0f
+            else { wants.sort(); wants[wants.size / 2] }
+        }
         // IS THE BAND PLAYING AT ALL?
         //
         // Between songs the whole stage goes quiet together, and the
@@ -1738,13 +1781,24 @@ class StageEngine(
                     unsettleOthers(idx, tSec, if (st.isStatic)
                         "${st.name} was not an instrument after all"
                         else "${st.name} has left the mix")
+                    // NOTE what this actually does. `silentMuteDb` is
+                    // 40, and boundOffset clamps to maxBelowBaselineDb
+                    // — so the channel goes 12 dB down and stays fully
+                    // open. It is not out of the mains, and the log
+                    // must not say that it is: an open microphone 12 dB
+                    // down still contributes its whole share of the
+                    // feedback loop, because loop gain is set by the
+                    // mic's own path and not by whether you can hear it
+                    // in the mix. One caught overstatement costs more
+                    // trust than the feature is worth.
                     st.target = boundOffset(-settings.silentMuteDb, base)
                     log(tSec, "mute", idx, st.target,
                         "${st.name} " +
                         (if (st.isStatic) "is not an instrument — hum or an " +
                             "open mic nobody is using" else
                             "silent ${idleFor.toInt()}s") +
-                        " — out of the mains (monitors untouched)")
+                        " — held 12 dB down in the mains " +
+                        "(still open; monitors untouched)")
                 }
                 continue
             }
@@ -2061,7 +2115,10 @@ class StageEngine(
             if (settings.mode == BalanceMode.KEEP && plan != null) {
                 val slow = st.slowEma ?: pre
                 val planOff = st.planFaderDb - base
-                val want = boundOffset((plan - slow - base).coerceIn(
+                // only what THIS channel is doing differently from the
+                // rest of them — see commonRideShift
+                val mine = (plan - slow - base) - planOff - commonRideShift
+                val want = boundOffset((planOff + mine).coerceIn(
                     planOff - settings.rideBandDb,
                     planOff + settings.rideBandDb), base)
                 // Hysteresis, or it hunts. The loudness average this is
@@ -3218,6 +3275,18 @@ class StageEngine(
         // whole chain written onto it while the room was between
         // numbers and everyone was listening to the PA.
         if (betweenSongs || stageMuted) return emptyList()
+        // AND NOT WHILE A HOWL IS SUSPECTED.
+        //
+        // The tone doctor is handed `boostsAllowed` and respects it;
+        // this pass was handed nothing. So during an active feedback
+        // veto — the one moment every other part of the engine has
+        // stopped reaching upward — a chain could still write +2 dB at
+        // 3 kHz onto a vocal microphone and up to +4 dB of compressor
+        // makeup. 2-4 kHz is where a cardioid's presence peak, a wedge
+        // horn's output and a bar room's worst mode all coincide, and
+        // makeup gain is at its maximum below threshold, which is
+        // exactly the level at which a ring decides whether to start.
+        if (!boostsAllowed(tSec)) return emptyList()
         val out = ArrayList<ParamWrite>()
         for ((idx, st) in state) {
             // never a talkback mic, never a frozen channel, never

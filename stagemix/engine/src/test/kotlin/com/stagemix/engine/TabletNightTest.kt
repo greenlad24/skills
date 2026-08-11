@@ -923,4 +923,87 @@ class TabletNightTest {
     }
 
     private fun settings2(e: StageEngine) = e.settings
+
+    // ==================================================================
+    // 14. the band playing together is not sixteen channels drifting
+    // ==================================================================
+    @Test fun `a band lifting together moves nothing`() {
+        // "If one channel changed, it is technique — correct it. If
+        // several changed together, it is the music — leave it alone."
+        // The ride error was absolute, so a chorus, a build or simply
+        // three sets of a stage getting louder read as every ridable
+        // channel drifting at once. And the ride cannot touch the
+        // voices, the kick, the snare or the bass, so a band-wide rise
+        // came out of the guitars, the piano and the horns ALONE — over
+        // a night the mix drifts to drums, bass and voice with the
+        // harmony instruments squeezed out.
+        val e = StageEngine(rig, EngineSettings(mode = BalanceMode.KEEP))
+        val r = Run(e)
+        var lift = 0f
+        // EVERYONE lifts — the drums and the voices too. That is what a
+        // chorus is, and it is the distinction the common-mode term is
+        // measuring: the first draft of this fixture raised only the
+        // ridable channels, which is not a band digging in, it is four
+        // channels drifting, and the engine was right to correct it.
+        fun band(t: Double) = silence().also {
+            it[0] = -18f + lift; it[1] = -21f + lift
+            it[3] = -22f + lift; it[11] = -17f + lift
+            it[4] = -20f + lift; it[5] = -23f + lift
+            it[7] = -24f + lift; it[14] = -25f + lift
+            it[8] = -19f + lift
+        }
+        r.start { band(it) }
+        r.run(120.0) { band(it) }
+        e.adoptBalance(r.t)
+        r.writes.clear()
+
+        // the whole band digs in for the last chorus, and stays there
+        lift = 5f
+        r.run(300.0) { band(it) }
+        val moved = r.writes.map { it.second.channel }.distinct().sorted()
+        assertTrue(moved.isEmpty(),
+            "the band got louder together — that is the song, not a " +
+            "fault. Moved: $moved")
+    }
+
+    @Test fun `but one player who changed alone is still corrected`() {
+        // The other half: the common-mode term must not become a way of
+        // never doing anything. A singer backing off the microphone is
+        // one channel moving against the rest, and that is the job.
+        val e = StageEngine(rig, EngineSettings(mode = BalanceMode.KEEP))
+        val r = Run(e)
+        var solo = 0f
+        fun band(t: Double) = silence().also {
+            it[0] = -18f; it[1] = -21f; it[3] = -22f; it[11] = -17f
+            it[4] = -20f + solo          // guitar amp alone
+            it[5] = -23f; it[7] = -24f; it[14] = -25f; it[8] = -19f
+        }
+        r.start { band(it) }
+        r.run(120.0) { band(it) }
+        e.adoptBalance(r.t)
+        r.writes.clear()
+
+        solo = -7f                        // his amp got quieter, alone
+        r.run(300.0) { band(it) }
+        assertTrue(r.writes.any { it.second.channel == 4 },
+            "one channel out of step with the rest is exactly what the " +
+            "ride is for: " + r.writes.map { it.second.channel }.distinct())
+    }
+
+    @Test fun `no chain is written while a howl is suspected`() {
+        // The tone doctor is handed `boostsAllowed` and respects it;
+        // the chain pass was handed nothing, so during a feedback veto
+        // it could still write +2 dB at 3 kHz onto a vocal microphone
+        // and up to +4 dB of compressor makeup.
+        val e = StageEngine(rig, EngineSettings(mode = BalanceMode.KEEP))
+        val r = Run(e)
+        val band = silence().also {
+            it[0] = -18f; it[3] = -22f; it[8] = -20f; it[11] = -17f
+        }
+        r.start { band }
+        r.run(60.0) { band }
+        e.watchdogVeto = true
+        assertTrue(e.treatmentPass(r.t).isEmpty(),
+            "nothing reaches upward while a howl is suspected")
+    }
 }
