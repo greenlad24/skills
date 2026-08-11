@@ -844,4 +844,83 @@ class TabletNightTest {
             "at the ceiling it stays at the ceiling — this is the one " +
             "that took the operator's vocal from +3.0 to +1.0")
     }
+
+    // ==================================================================
+    // 13. between songs, nothing at all
+    // ==================================================================
+    private fun quietThenLoud(e: StageEngine, r: Run) {
+        val beat = 0.5
+        fun playing(t: Double) = silence().also {
+            it[0] = hit(t, beat * 2, 0.0, -18f, 0.18)
+            it[1] = hit(t, beat * 2, beat, -20f, 0.15)
+            it[3] = -22f; it[8] = -20f; it[11] = -17f
+        }
+        r.start { playing(it) }
+        r.run(90.0) { playing(it) }
+        e.adoptBalance(r.t)
+        // The song ends: the stage falls away together. Kept short on
+        // purpose — `betweenSongs` contrasts what is playing NOW against
+        // what was playing recently, so it is a state that decays. The
+        // gap between two songs is what it is for.
+        r.run(12.0) { silence() }
+    }
+
+    @Test fun `between songs the engine does nothing whatever the mode`() {
+        // "In between songs I don't want the app to do rebalancing or
+        // EQ/Compression." The gap was only guarded in KEEP, and only
+        // once a balance had been adopted — so the mode that has not
+        // settled yet, which is the one most inclined to move things,
+        // was free to move them in the silence.
+        for (mode in listOf(BalanceMode.KEEP, BalanceMode.LEAD)) {
+            val e = StageEngine(rig, EngineSettings(mode = mode))
+            val r = Run(e)
+            quietThenLoud(e, r)
+            assertTrue(e.betweenSongs, "$mode: the stage has gone quiet")
+            r.writes.clear()
+            r.run(20.0) { silence() }
+            assertTrue(r.writes.isEmpty(),
+                "$mode: nothing moves in the gap. Moved: " +
+                r.writes.map { "ch${it.second.channel}" }.distinct())
+            assertTrue(e.treatmentPass(r.t).isEmpty(),
+                "$mode: and no EQ or compressor is set in the gap either")
+        }
+    }
+
+    @Test fun `processing is set for a solo or an arrival, and nothing else`() {
+        // The two reasons given: "Solo happening (Sax, guitar,
+        // harmonica)" and "A new instrument has entered that was not
+        // there before". A drifting spectrum is explicitly not one of
+        // them — a chain that re-applies itself because a number moved
+        // changes a performance nobody asked it to change.
+        val e = StageEngine(rig, EngineSettings(mode = BalanceMode.KEEP))
+        val r = Run(e)
+        val beat = 0.5
+        var extra = false
+        fun band(t: Double) = silence().also {
+            it[0] = hit(t, beat * 2, 0.0, -18f, 0.18)
+            it[1] = hit(t, beat * 2, beat, -20f, 0.15)
+            it[3] = -22f; it[8] = -20f; it[11] = -17f
+            if (extra) it[14] = -24f          // a horn picks up mid-song
+        }
+        r.start { band(it) }
+        r.run(120.0) { band(it) }
+        e.adoptBalance(r.t)
+
+        // Steady state: everyone playing, nobody soloing, nothing new.
+        // Whatever the identifier thinks it has learned, this is not a
+        // moment to be reaching for anybody's EQ.
+        for (ch in 0 until 16)
+            assertTrue(!e.wantsTreatment(ch, r.t),
+                "ch$ch has no reason to be treated mid-song")
+
+        // Something arrives.
+        extra = true
+        r.run(settings2(e).placeSec.toDouble() + 8.0) { band(it) }
+        assertTrue(e.wantsTreatment(14, r.t),
+            "an instrument that was not there before is a reason")
+        assertTrue(!e.wantsTreatment(0, r.t),
+            "and it is a reason for THAT channel, not for the kick")
+    }
+
+    private fun settings2(e: StageEngine) = e.settings
 }

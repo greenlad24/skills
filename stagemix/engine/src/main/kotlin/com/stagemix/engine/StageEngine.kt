@@ -653,6 +653,14 @@ const val RAIL_SLACK_DB = 0.5f
  */
 const val MAX_PLACEMENTS = 3
 
+/**
+ * How long after an instrument has settled in the mix its chain may
+ * still be set. Wide enough that the analyzer's round-robin has a
+ * chance to reach the channel, narrow enough that "it arrived" cannot
+ * justify a write an hour later.
+ */
+const val TREAT_WINDOW_SEC = 180f
+
 class StageEngine(
     channels: List<ChannelConfig>,
     val settings: EngineSettings = EngineSettings(),
@@ -2413,8 +2421,14 @@ class StageEngine(
         // than the band, so a fader crawling somewhere is audible in a
         // way it never is mid-song. There is nothing to fix and nothing
         // to gain: the engine simply stops until the band comes back.
-        if (betweenSongs && settings.mode == BalanceMode.KEEP &&
-            balanceAdopted) return emptyList()
+        // Not only in KEEP, and not only once a balance has been
+        // adopted. "In between songs I don't want the app to do
+        // rebalancing or EQ/Compression — only when the band is playing
+        // and only when it feels it is needed." A gap is a gap whatever
+        // mode the engine is in, and the moment an audience is listening
+        // to the PA rather than to the band is the worst possible moment
+        // to be heard moving a fader.
+        if (betweenSongs) return emptyList()
         // AND NOTHING MOVES WHEN THE OPERATOR HAS MUTED THE STAGE.
         //
         // "When everything is muted the app shouldn't be balancing" —
@@ -3195,6 +3209,15 @@ class StageEngine(
     fun treatmentPass(tSec: Double): List<ParamWrite> {
         if (!settings.treatChannels || takeoverT < 0 || !ready)
             return emptyList()
+        // ONLY WHILE THE BAND IS PLAYING.
+        //
+        // Setting a high-pass or a compressor is not a quiet act: it is
+        // instantly audible, and between songs there is nothing for it
+        // to hide behind. This pass was gated on neither of these,
+        // which meant a channel identified during a gap could have a
+        // whole chain written onto it while the room was between
+        // numbers and everyone was listening to the PA.
+        if (betweenSongs || stageMuted) return emptyList()
         val out = ArrayList<ParamWrite>()
         for ((idx, st) in state) {
             // never a talkback mic, never a frozen channel, never
@@ -3202,6 +3225,17 @@ class StageEngine(
             // instrument at all
             if (st.role == Role.TALK || st.frozen || st.isStatic) continue
             if (!st.active || st.heardSec < settings.minHeardSec) continue
+            // AND ONLY FOR THE TWO REASONS THAT WARRANT IT.
+            //
+            // Asked for exactly: a solo happening, or an instrument
+            // arriving that was not there before — a second guitar, a
+            // different player, someone picking up an acoustic. Those
+            // are the moments when a channel genuinely is something the
+            // desk has not been set up for. Anything else is the app
+            // reaching for a control mid-song because a number drifted,
+            // which is how a chain ends up re-applying itself over a
+            // performance nobody asked it to change.
+            if (!needsTreatment(st, tSec)) continue
             val w = treatment.consider(idx, st.role, ident.verdict(idx),
                 ident.evidence(idx), ident.spectrum(idx), tSec)
             if (w.isEmpty()) continue
@@ -3210,6 +3244,39 @@ class StageEngine(
             out += w
         }
         return out
+    }
+
+    /**
+     * Is there a REASON to touch this channel's processing right now?
+     *
+     * Two, and only two:
+     *
+     *  1. THE PLAYER IS SOLOING. A sax, a guitar or a harp stepping out
+     *     is the one moment the channel has to carry the song on its
+     *     own, and it is also the moment the operator would reach for
+     *     it themselves.
+     *
+     *  2. SOMETHING NEW HAS ARRIVED. A channel that was not playing and
+     *     now is — a second electric, an acoustic picked up for one
+     *     number, a different player on the same socket. The desk was
+     *     not set up for it, because it was not there.
+     *
+     * Deliberately NOT included: a spectrum that has drifted. That was
+     * the old trigger, and a chain that re-applies itself because a
+     * number moved is a chain that changes a performance nobody asked
+     * it to change.
+     */
+    fun wantsTreatment(ch: Int, tSec: Double): Boolean =
+        state[ch]?.let { needsTreatment(it, tSec) } ?: false
+
+    private fun needsTreatment(st: ChannelState, tSec: Double): Boolean {
+        // never treated at all yet, and it has arrived and settled in
+        val arrived = st.arrivedT > 0 &&
+            tSec - st.arrivedT in settings.placeSec.toDouble()..
+                (settings.placeSec + TREAT_WINDOW_SEC).toDouble()
+        val soloing = st.featureStart > 0 && tSec >= st.featureStart &&
+            tSec - st.featureStart <= settings.featureHoldSec
+        return arrived || soloing
     }
 
     /** the engineer moved something we set — it is theirs now */

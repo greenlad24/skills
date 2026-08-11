@@ -207,10 +207,18 @@ class ChannelTreatmentTest {
     @Test fun `the engine treats a channel it has identified, once`() {
         // End to end through the engine, so the wiring is tested and not
         // just the book.
+        //
+        // IDENTIFYING A CHANNEL IS NO LONGER, ON ITS OWN, A REASON TO
+        // TOUCH IT. The operator narrowed that deliberately: "only when
+        // the band is playing and only when it feels it is needed —
+        // a solo happening, or a new instrument that was not there
+        // before." So this arranges an arrival, which is one of the two
+        // reasons, and still asserts what it always did: the chain is
+        // set once and then the channel is left alone.
         val e = StageEngine(defaultRigProfile())
         var t = 0.0; var next = 1.0
         val src = FloatArray(16) { -80f }.also {
-            it[0] = -18f; it[8] = -20f; it[11] = -17f }
+            it[0] = -18f; it[11] = -17f }
         fun run(sec: Double) {
             val end = t + sec - 1e-9
             while (t < end) {
@@ -221,6 +229,13 @@ class ChannelTreatmentTest {
         }
         run(5.0)
         e.takeover((0 until 16).associateWith { -10f }, t)
+        run(60.0)
+        // The singer steps up to the microphone for the first time.
+        // The spectrum has to be fed AFTER that: onRtaFor only listens
+        // to a channel that is actually playing, so a spectrum offered
+        // while it was silent teaches the identifier nothing.
+        src[8] = -20f
+        run(6.0)
         // a plainly voice-shaped spectrum on the singer's channel
         // A voice, not a pad: the energy sits in the 400 Hz-5 kHz band
         // AND it moves. A spectrum that never moves reads as a held
@@ -230,10 +245,11 @@ class ChannelTreatmentTest {
             e.onRtaFor(8, FloatArray(100) { i ->
                 if (i in lo..(lo + 20)) -20f else -60f })
         }
-        run(60.0)
+        run(e.settings.placeSec.toDouble() + 4.0)
 
         val w = e.treatmentPass(t)
-        assertTrue(w.isNotEmpty(), "an identified channel gets its chain")
+        assertTrue(w.isNotEmpty(),
+            "an instrument that has just arrived gets its chain")
         assertTrue(w.all { isSafeAddress(it.address) })
         assertTrue(w.any { it.address.startsWith("/ch/09/") },
             "and it is the channel that was identified: ${w.map { it.address }}")
