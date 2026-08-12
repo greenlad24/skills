@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Menu editor — Vibration</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="theme-color" content="#141210" />
+    <link rel="stylesheet" href="/assets/admin.css" />
+  </head>
+  <body>
+    <!-- Sign in -->
+    <section id="login-view" class="login" hidden>
+      <form id="login-form" class="login-card" autocomplete="on">
+        <h1>Menu editor</h1>
+        <p class="login-hint">Enter the password to edit the menu.</p>
+        <label class="field">
+          <span class="field-label">Password</span>
+          <input
+            id="password"
+            name="password"
+            type="password"
+            autocomplete="current-password"
+            required
+            enterkeyhint="go"
+          />
+        </label>
+        <p id="login-error" class="error" role="alert" hidden></p>
+        <button type="submit" class="btn btn-primary btn-block">Sign in</button>
+      </form>
+    </section>
+
+    <!-- Editor -->
+    <section id="editor-view" hidden>
+      <header class="topbar">
+        <h1>Menu editor</h1>
+        <div class="topbar-actions">
+          <a class="btn btn-quiet" href="/" target="_blank" rel="noopener">View menu</a>
+          <button id="logout" type="button" class="btn btn-quiet">Sign out</button>
+        </div>
+      </header>
+
+      <main class="editor">
+        <details class="panel">
+          <summary class="panel-summary">Venue details</summary>
+          <div class="panel-body">
+            <label class="field">
+              <span class="field-label">Venue name</span>
+              <input id="venue-name" type="text" />
+            </label>
+            <label class="field">
+              <span class="field-label">Tagline <em>(optional)</em></span>
+              <input id="venue-tagline" type="text" />
+            </label>
+            <label class="field">
+              <span class="field-label">Footer note <em>(optional)</em></span>
+              <input id="venue-note" type="text" placeholder="e.g. A 12.5% service charge applies" />
+            </label>
+            <label class="field field-narrow">
+              <span class="field-label">Currency symbol</span>
+              <input id="currency" type="text" maxlength="3" inputmode="text" />
+            </label>
+          </div>
+        </details>
+
+        <details class="panel">
+          <summary class="panel-summary">Paste a menu in</summary>
+          <div class="panel-body">
+            <p class="panel-hint">
+              One section heading per line starting with <code>##</code>, then one item per line as
+              <code>Name | price | description</code>. Replaces everything below.
+            </p>
+            <textarea id="bulk-input" rows="8" spellcheck="false" placeholder="## Cocktails
+Old Fashioned | 14 | Bourbon, bitters, orange
+Negroni | 13
+
+## Small Plates
+Olives | 5"></textarea>
+            <button id="bulk-apply" type="button" class="btn">Replace menu with this</button>
+          </div>
+        </details>
+
+        <div id="sections"></div>
+
+        <button id="add-section" type="button" class="btn btn-block btn-dashed">
+          + Add a section
+        </button>
+      </main>
+
+      <!-- Sticky save bar, thumb-reachable on a phone -->
+      <div class="savebar">
+        <span id="save-status" class="save-status">All changes saved</span>
+        <button id="save" type="button" class="btn btn-primary" disabled>Save</button>
+      </div>
+    </section>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+    <template id="section-template">
+      <article class="section-card">
+        <div class="section-head">
+          <input class="section-name" type="text" placeholder="Section name" aria-label="Section name" />
+          <div class="row-tools">
+            <button type="button" class="icon-btn" data-act="section-up" aria-label="Move section up">↑</button>
+            <button type="button" class="icon-btn" data-act="section-down" aria-label="Move section down">↓</button>
+            <button type="button" class="icon-btn danger" data-act="section-delete" aria-label="Delete section">✕</button>
+          </div>
+        </div>
+        <input class="section-desc" type="text" placeholder="Section description (optional)" aria-label="Section description" />
+        <div class="items"></div>
+        <button type="button" class="btn btn-block btn-dashed" data-act="item-add">+ Add an item</button>
+      </article>
+    </template>
+
+    <template id="item-template">
+      <div class="item-card">
+        <div class="item-row">
+          <input class="item-name" type="text" placeholder="Item name" aria-label="Item name" />
+          <input class="item-price" type="text" inputmode="decimal" placeholder="Price" aria-label="Price" />
+        </div>
+        <textarea class="item-desc" rows="2" placeholder="Description (optional)" aria-label="Description"></textarea>
+        <div class="item-foot">
+          <label class="toggle">
+            <input class="item-available" type="checkbox" />
+            <span>Available</span>
+          </label>
+          <div class="row-tools">
+            <button type="button" class="icon-btn" data-act="item-up" aria-label="Move item up">↑</button>
+            <button type="button" class="icon-btn" data-act="item-down" aria-label="Move item down">↓</button>
+            <button type="button" class="icon-btn danger" data-act="item-delete" aria-label="Delete item">✕</button>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <script src="/assets/admin.js" type="module"></script>
+  </body>
+</html>

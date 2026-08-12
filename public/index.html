@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Vibration — Menu</title>
+    <meta name="description" content="The current menu at Vibration." />
+    <meta name="theme-color" content="#141210" />
+    <link rel="stylesheet" href="/assets/menu.css" />
+  </head>
+  <body>
+    <header class="masthead">
+      <h1 id="venue-name">Vibration</h1>
+      <p id="venue-tagline" class="tagline" hidden></p>
+    </header>
+
+    <nav id="section-nav" class="section-nav" aria-label="Menu sections" hidden></nav>
+
+    <main id="menu" aria-live="polite" aria-busy="true">
+      <p class="state">Loading the menu…</p>
+    </main>
+
+    <footer class="foot">
+      <p id="venue-note" class="note" hidden></p>
+      <p id="updated" class="updated" hidden></p>
+    </footer>
+
+    <script src="/assets/menu.js" type="module"></script>
+  </body>
+</html>
