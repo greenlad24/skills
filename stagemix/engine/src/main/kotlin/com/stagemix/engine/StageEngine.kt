@@ -658,6 +658,22 @@ class ChannelState(val cfg: ChannelConfig) {
     var riding = false
     /** this correction has already been reported: do not repeat it */
     var rideLogged = false
+    /** the fader this channel had when the app took over, for the log */
+    var takeoverDb: Float? = null
+    /** how long this channel has been playing, and how long we watched */
+    var activeSecTotal = 0f
+    var seenSecTotal = 0f
+    /** how many times it has arrived, and been held down out of the mains */
+    var arrivals = 0
+    var heldDowns = 0
+    /** how many dB of fader this app has commanded on this channel */
+    var appDbMoved = 0f
+    var appWrites = 0
+    /** and how many the operator has, by hand */
+    var humanDbMoved = 0f
+    var humanMoves = 0
+    /** the last level we wrote, so a move can be reported as from -> to */
+    var lastWrittenDb: Float? = null
     /** the offset this engagement is heading for, latched when it starts */
     var rideAim = 0f
     /** when this engagement started, so it cannot last all night */
@@ -1016,6 +1032,7 @@ class StageEngine(
                 st.soloRide = true
                 learnSoloist(st)
                 overrideCount++
+                st.humanDbMoved += abs(moved); st.humanMoves++
                 log(tSec, "soloride", ch, moved,
                     "${st.name} — you lifted it %+.1f dB while it was "
                         .format(java.util.Locale.ROOT, moved) +
@@ -1035,6 +1052,7 @@ class StageEngine(
                 st.settledOffset = st.offset
             }
             overrideCount++
+            st.humanDbMoved += abs(moved); st.humanMoves++
             var learned = ""
             if (st.role.inLadder() && abs(moved) >= 1f) {
                 // AVERAGE the lessons instead of integrating them: a fixed
@@ -1176,6 +1194,7 @@ class StageEngine(
                 takeoverT >= 0 && !betweenSongs) {
                 st.arrivedT = tSec
                 st.lastActiveT = tSec
+                st.arrivals++
                 lastArrivalT = tSec
                 // Forget what this channel used to sound like, and listen
                 // again before touching it.
@@ -1220,7 +1239,9 @@ class StageEngine(
             // between songs — when everything gets muted at once — it
             // carried on mixing an empty stage.
             st.active = st.gateOpen && !st.deskMuted
+            st.seenSecTotal += dtFrame
             if (st.active) {
+                st.activeSecTotal += dtFrame
                 st.lastActiveT = tSec
                 if (takeoverT >= 0) st.heardSec += dtFrame
                 val alpha = (dtFrame / settings.emaTauSec).coerceIn(0f, 1f)
@@ -1291,8 +1312,28 @@ class StageEngine(
         // two you cannot tell "the band stopped" from "one of the two
         // stopped", and on a small rig the conservative answer is to
         // treat a silent channel as silent.
-        betweenSongs = stagePeak >= settings.stageQuietChannels + 1 &&
+        val gapNow = stagePeak >= settings.stageQuietChannels + 1 &&
             playingNow * 3 <= stagePeak && stageIsQuiet
+        // SAY WHEN IT THINKS THE BAND HAS STOPPED.
+        //
+        // This one flag silences the whole engine — no ride, no
+        // treatment, no arrivals — and until now it left no trace at
+        // all, so a log showing an app that did nothing for twenty
+        // minutes gave no way to tell "nothing needed doing" from "it
+        // decided the band had gone home". Both edges, with the
+        // evidence that produced them.
+        if (gapNow != betweenSongs) {
+            val what = if (gapNow)
+                "the band has stopped — nothing moves until they play again"
+                else "the band is back"
+            val evidence = ("%d of about %d channels playing, loudest " +
+                "%+.0f dB against %+.0f when they play")
+                .format(java.util.Locale.ROOT, playingNow,
+                    stagePeak.toInt(), stageNowDb, stageLoudPeak)
+            log(tSec, if (gapNow) "gap" else "music", null, 0f,
+                "$what ($evidence)")
+        }
+        betweenSongs = gapNow
 
         // and what the channels are doing to EACH OTHER — the only place
         // the information to tell a kick from a bass, or a singer from a
@@ -1334,6 +1375,11 @@ class StageEngine(
             val st = state[ch] ?: continue
             if (!db.isFinite()) continue
             st.baselineDb = db.coerceIn(FaderLaw.MIN_DB, settings.absFaderCapDb)
+            // where this channel started, kept for the whole night: the
+            // baseline moves whenever the operator does, so it cannot
+            // answer "how far has this fader come since we began"
+            if (st.takeoverDb == null) st.takeoverDb = st.baselineDb
+            st.lastWrittenDb = st.baselineDb
             st.offset = 0f; st.target = 0f; st.duckDb = 0f
             st.heardSec = 0f
             st.takeRef = null   // re-learned during the listening window
@@ -2000,6 +2046,7 @@ class StageEngine(
                     // token was not, and it is the one LogExport counts
                     // and a developer greps — so a night's summary read
                     // "mute 47" for channels that were never muted.
+                    st.heldDowns++
                     log(tSec, "held-down", idx, st.target,
                         "${st.name} " +
                         (if (st.isStatic) "is not an instrument — hum or an " +
@@ -2798,9 +2845,17 @@ class StageEngine(
             val minStep = min(0.01f, (settings.cutPerSecDb * dt).toFloat() * 0.5f)
             if (abs(step) < minStep) continue
             st.offset = cur + step
-            writes.add(FaderWrite(st.cfg.index,
-                (base + st.offset).coerceIn(FaderLaw.MIN_DB,
-                    settings.absFaderCapDb)))
+            val level = (base + st.offset).coerceIn(FaderLaw.MIN_DB,
+                settings.absFaderCapDb)
+            // What this app has actually done to this channel tonight,
+            // counted where it happens. Reading it off the log afterwards
+            // was not possible on either real night — the fader lines
+            // were dropped — and "how much of that was you and how much
+            // was me" is the first question worth asking of a mix.
+            st.lastWrittenDb?.let { st.appDbMoved += abs(level - it) }
+            st.lastWrittenDb = level
+            st.appWrites++
+            writes.add(FaderWrite(st.cfg.index, level))
         }
         return writes
     }
@@ -3479,6 +3534,7 @@ class StageEngine(
     }
 
     private fun recomputeStageMuted() {
+        val was = stageMuted
         val known = state.values.filter { it.baselineDb != null }
         // "Everything is muted" has to be said about a whole stage, not
         // about the one channel that answered. After a partial takeover
@@ -3489,6 +3545,12 @@ class StageEngine(
         // the safe one: some of the band is playing.
         stageMuted = known.size >= settings.stageQuietChannels + 1 &&
             known.all { it.deskMuted }
+        if (stageMuted != was) log(lastTickT, "stage-mute", null, 0f,
+            if (stageMuted)
+                "you have the whole band muted (${known.size} channels) " +
+                "— there is no mix to make, so nothing is being written"
+            else "the band is unmuted again — picking the mix back up " +
+                "where you left it")
     }
 
     /** true when the desk says this channel is muted */

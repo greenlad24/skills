@@ -98,7 +98,7 @@ fun main(args: Array<String>) {
 
     val r = Replay(src, engine, doctor, log, opts, outDir, take)
     r.run()
-    log.footer(engine)
+    log.footer(engine, names)
     log.close()
 
     println()
@@ -360,7 +360,10 @@ private class Replay(
                     faderWrites++
                     if (w.channel < n) gain[w.channel] = db2lin(w.levelDb)
                     log.fader(w.channel, w.levelDb,
-                        src.profile.getOrNull(w.channel)?.name ?: "")
+                        src.profile.getOrNull(w.channel)?.name ?: "",
+                        null,
+                        engine.decisions.firstOrNull { it.channel == w.channel }
+                            ?.let { "— ${it.kind}: ${it.reason}" }, t)
                 }
                 for (w in doctor.tick(engine.activeChannels(),
                         upAllowed = engine.boostsAllowed(t),
@@ -541,7 +544,10 @@ private fun replayCapture(file: File, opts: Opts, outDir: File, take: String) {
                 nextTick = t + TICK_SEC
                 for (w in e.tick(t)) {
                     faderWrites++
-                    l.fader(w.channel, w.levelDb, names[w.channel] ?: "")
+                    l.fader(w.channel, w.levelDb, names[w.channel] ?: "",
+                        null,
+                        e.decisions.firstOrNull { it.channel == w.channel }
+                            ?.let { "— ${it.kind}: ${it.reason}" }, t)
                 }
                 for (w in d.tick(e.activeChannels(),
                         upAllowed = e.boostsAllowed(t),
@@ -573,7 +579,7 @@ private fun replayCapture(file: File, opts: Opts, outDir: File, take: String) {
         onRta = { t, ch, bins -> doctor?.onRta(ch, bins, t) })
 
     val e = engine ?: return
-    log?.footer(e); log?.close()
+    log?.footer(e, names); log?.close()
     println()
     println("=== replay of $take (meter tape) ===")
     println("  %.1f minutes replayed".format(Locale.ROOT, last / 60.0))

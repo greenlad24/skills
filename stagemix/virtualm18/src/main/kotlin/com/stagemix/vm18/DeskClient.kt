@@ -49,6 +49,8 @@ class DeskClient(
     var doctor: ToneDoctor? = null; private set
     private val watchdog = FeedbackWatchdog()
     private var show: ShowLog? = null
+    /** the last level written per channel, so the log can say from -> to */
+    private val lastFader = HashMap<Int, Float>()
 
     private val sock = DatagramSocket().apply { soTimeout = 200 }
     private val addr = InetSocketAddress(InetAddress.getByName(host), port)
@@ -105,7 +107,7 @@ class DeskClient(
 
     fun stop() {
         running = false
-        show?.let { s -> s.footer(engine); s.close() }
+        show?.let { s -> s.footer(engine, names); s.close() }
         sock.close()
     }
 
@@ -191,7 +193,11 @@ class DeskClient(
                 lastTick = t
                 if (directing) for (w in engine.tick(t)) {
                     lastSent[w.channel] = w.levelDb
-                    show?.fader(w.channel, w.levelDb, nameOf(w.channel))
+                    show?.fader(w.channel, w.levelDb, nameOf(w.channel),
+                        lastFader[w.channel],
+                        engine.decisions.firstOrNull { it.channel == w.channel }
+                            ?.let { "— ${it.kind}: ${it.reason}" }, t)
+                    lastFader[w.channel] = w.levelDb
                     send(OscMessage(w.address,
                         listOf(FaderLaw.dbToFloat(w.levelDb))))
                 } else engine.tick(t)

@@ -132,6 +132,10 @@ class MixerService : Service() {
                 AppState.directing.value = on
                 show?.user(if (on) "you switched MIXING ON"
                            else "you switched MIXING OFF (shadow mode)")
+                show?.mark(if (on) "MIXING ON" else "MIXING OFF",
+                    if (on) "the app has the mains"
+                    else "you have the mains; the app is only watching",
+                    now())
                 // Switching it back on is the operator saying "try
                 // again": start the error count from zero, or the next
                 // single exception trips a limit that was reached an
@@ -322,7 +326,10 @@ class MixerService : Service() {
                         "fw='${mi.firmware}' ip=${mi.ip}", eng,
                         AppState.mixerChannelNames.value,
                         AppState.nightsCount.value,
-                        AppState.tasteSummary.value)
+                        AppState.tasteSummary.value,
+                        build = "${BuildConfig.GIT_SHA} " +
+                            "(built ${BuildConfig.BUILT_AT}, " +
+                            "v${BuildConfig.VERSION_NAME})")
                 }
                 show?.net("connected to $ip:$PORT — meters and RTA " +
                     "subscribed, offline on the mixer's own Wi-Fi")
@@ -476,6 +483,15 @@ class MixerService : Service() {
                     for (w in e.treatmentPass(t)) {
                         lastParam[w.address] = w.value
                         send(OscMessage(w.address, listOf(w.value)))
+                        // Every processing write, decoded. The engine
+                        // logs one "treat" line with the reasoning; the
+                        // actual values that reached the desk were not
+                        // in the file at all, which makes a chain
+                        // impossible to check afterwards.
+                        val ch = Regex("^/ch/(\\d\\d)/").find(w.address)
+                            ?.groupValues?.get(1)?.toIntOrNull()?.minus(1)
+                        show?.param(w.address, w.value,
+                            ch?.let { chName(it) } ?: "", tSec = t)
                     }
                 doctor?.let { d ->
                     if (directing && AppState.doctorOn.value) {
@@ -520,6 +536,8 @@ class MixerService : Service() {
      */
     private fun engineFailed(ex: Exception) {
         tickFailures++
+        show?.mark("ERROR", "${ex.javaClass.simpleName}: " +
+            (ex.message ?: "") + " (#$tickFailures in a row)", now())
         show?.net("ENGINE ERROR ($tickFailures in a row): " +
             "${ex.javaClass.simpleName} ${ex.message ?: ""} — the " +
             "mixer is holding the last mix; nothing new is being " +
@@ -553,6 +571,9 @@ class MixerService : Service() {
                     if (watchdog.vetoActive != lastVeto) {
                         lastVeto = watchdog.vetoActive
                         e.watchdogVeto = watchdog.vetoActive
+                        show?.mark(if (watchdog.vetoActive) "FEEDBACK"
+                                   else "FEEDBACK CLEAR",
+                            "~${watchdog.lastFreqHz} Hz", t)
                         show?.note("HOWL", if (watchdog.vetoActive)
                             "feedback suspected at ~${watchdog.lastFreqHz} Hz " +
                             "— every boost frozen until it clears"
@@ -836,6 +857,8 @@ class MixerService : Service() {
                 " are NOT being mixed. Tap MIXING again to retry."
         }
         e.takeover(faders, now())
+        show?.mark("TAKEOVER", "${faders.size} channels adopted as the " +
+            "centre of the app's authority", now())
         show?.takeover(faders, AppState.mixerChannelNames.value)
         lastSent.clear()
         lastParam.clear()
@@ -912,8 +935,14 @@ class MixerService : Service() {
     }
 
     private fun sendFader(ch: Int, db: Float) {
+        val from = lastSent[ch]
         lastSent[ch] = db
-        show?.fader(ch, db, chName(ch))
+        // The reason the engine last gave for touching this channel:
+        // a fader line that says only where the fader went is a number
+        // without a cause, and a night of those cannot be read.
+        show?.fader(ch, db, chName(ch), from,
+            engine?.decisions?.firstOrNull { it.channel == ch }
+                ?.let { "— ${it.kind}: ${it.reason}" }, now())
         send(OscMessage(osc("/ch/%02d/mix/fader", ch + 1),
             listOf(FaderLaw.dbToFloat(db))))
     }
@@ -1026,7 +1055,7 @@ class MixerService : Service() {
             AppState.saveBias(this, e.pyramidBias)
             val h = e.health()
             if (h.ticks > 600) AppState.saveNight(this, h)  // >10 min mixed
-            show?.footer(e)
+            show?.footer(e, AppState.mixerChannelNames.value)
         }
         show?.close()
         AppState.conn.value = AppState.Conn.DISCONNECTED

@@ -4,6 +4,32 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+/**
+ * Which commit is in this APK. The show log prints it, because reading
+ * a night's log means knowing which version's behaviour is on the page
+ * — and the behaviour changes between gigs.
+ *
+ * Read off the environment (CI sets it) or straight out of .git, never
+ * by shelling out: a build that fails because `git` is missing would be
+ * a silly way to lose a gig.
+ */
+fun gitSha(): String {
+    System.getenv("GITHUB_SHA")?.takeIf { it.isNotBlank() }
+        ?.let { return it.take(7) }
+    return try {
+        val gitDir = rootProject.file("../.git")
+        val head = File(gitDir, "HEAD").readText().trim()
+        if (!head.startsWith("ref:")) head.take(7) else {
+            val ref = head.removePrefix("ref:").trim()
+            val f = File(gitDir, ref)
+            if (f.exists()) f.readText().trim().take(7)
+            else File(gitDir, "packed-refs").readLines()
+                .firstOrNull { it.endsWith(" $ref") }
+                ?.take(7) ?: "unknown"
+        }
+    } catch (e: Exception) { "unknown" }
+}
+
 android {
     namespace = "com.stagemix.app"
     compileSdk = 35
@@ -14,6 +40,9 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
+        buildConfigField("String", "GIT_SHA", "\"${gitSha()}\"")
+        buildConfigField("String", "BUILT_AT",
+            "\"${java.time.LocalDateTime.now()}\"")
     }
 
     signingConfigs {
@@ -50,6 +79,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
