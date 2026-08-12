@@ -1,3 +1,6 @@
+import java.io.File
+import java.time.LocalDateTime
+
 plugins {
     id("com.android.application")
     kotlin("android")
@@ -42,7 +45,7 @@ android {
         versionName = "0.1.0"
         buildConfigField("String", "GIT_SHA", "\"${gitSha()}\"")
         buildConfigField("String", "BUILT_AT",
-            "\"${java.time.LocalDateTime.now()}\"")
+            "\"${LocalDateTime.now()}\"")
     }
 
     signingConfigs {
