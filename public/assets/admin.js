@@ -343,7 +343,7 @@ for (const type of ['dragover', 'drop']) {
 async function addPostersFromFiles(files) {
   const shows = menu.liveShows;
   const total = files.length;
-  let read = 0, failed = 0;
+  let read = 0, failed = 0, off = false;
 
   for (let i = 0; i < total; i += 1) {
     toast(`Adding poster ${i + 1} of ${total}…`);
@@ -364,7 +364,8 @@ async function addPostersFromFiles(files) {
         Object.assign(event, data.event);
         read += 1;
       } else if (res.ok && data.configured === false) {
-        // No API key configured — posters still attach, fields stay blank.
+        // No API key on the site — posters still attach, fields stay blank.
+        off = true;
       } else {
         failed += 1;
       }
@@ -379,10 +380,18 @@ async function addPostersFromFiles(files) {
     render();
   }
 
+  // Blank fields have two very different causes, and saying which saves a hunt:
+  // the site has no key at all, or the model could not read that poster.
+  if (off) {
+    toast(`${total} poster${total === 1 ? '' : 's'} added — reading posters is switched `
+      + 'off on this site, so fill the details in by hand', true);
+    return;
+  }
+
   const parts = [`${total} poster${total === 1 ? '' : 's'} added`];
   if (read) parts.push(`${read} filled in automatically`);
-  if (failed) parts.push(`${failed} needs details`);
-  toast(parts.join(' · ') + ' — review, then Save');
+  if (failed) parts.push(`${failed} could not be read`);
+  toast(parts.join(' · ') + ' — review, then Save', failed > 0);
 }
 
 /* ---------------- screens ---------------- */
