@@ -93,12 +93,15 @@ function field(label, value, kind, onInput, hint) {
 function priceRow(entry) {
   const row = document.createElement('div');
   row.className = 'price-row';
-  row.append(
-    field('Price', entry.price, 'input', (v) => { entry.price = v; },
-      'Number only — THB is added automatically.'),
-  );
+
+  // priceHtml wins over price on the page, so showing both would let someone
+  // edit the plain field and see nothing change. Show whichever is in force.
   if (entry.priceHtml) {
-    row.append(field('Price (custom)', entry.priceHtml, 'input', (v) => { entry.priceHtml = v; }));
+    row.append(field('Price', entry.priceHtml, 'textarea', (v) => { entry.priceHtml = v; },
+      'This item shows two prices, so it carries layout markup. Change the numbers and leave the tags alone.'));
+  } else {
+    row.append(field('Price', entry.price, 'input', (v) => { entry.price = v; },
+      'Number only — THB is added automatically.'));
   }
   return row;
 }
