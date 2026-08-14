@@ -241,12 +241,32 @@ function groqBody(model, imageUrl, today, structured) {
 
 /** An error the editor can act on: "wait and retry" reads very differently from
     "this poster is unreadable", and only the reason tells them apart. */
-function failure(reason, message, retryAfter = 0, status = 0) {
+function failure(reason, message, retryAfter = 0, status = 0, detail = '') {
   const error = new Error(message);
   error.reason = reason;
   error.retryAfter = retryAfter;
   error.status = status;
+  error.detail = detail;
   return error;
+}
+
+/**
+ * Groq's own words for why it said no, short enough for a toast.
+ *
+ * The body is JSON when Groq is refusing on purpose and HTML when something in
+ * front of it fell over, so this digs out the message and gives up quietly
+ * rather than putting a page of markup on screen.
+ */
+export function groqReason(body) {
+  try {
+    const parsed = JSON.parse(body);
+    const message = parsed?.error?.message || parsed?.message;
+    if (message) return String(message).slice(0, 140);
+  } catch {
+    // Not JSON — fall through.
+  }
+  const plain = String(body || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  return plain.length && plain.length < 140 ? plain : '';
 }
 
 /** True when the failure is about the model itself, so another one is worth trying. */
@@ -326,7 +346,8 @@ async function readWithGroq({ apiKey, bytes, mime, key, today }) {
       }
       // The status travels with the error: "refused" alone sends someone
       // hunting, while "refused (413)" says which thing to go and fix.
-      throw failure('http', `groq ${res.status}: ${detail.slice(0, 200)}`, 0, res.status);
+      throw failure('http', `groq ${res.status}: ${detail.slice(0, 200)}`,
+        0, res.status, groqReason(detail));
     }
   }
 

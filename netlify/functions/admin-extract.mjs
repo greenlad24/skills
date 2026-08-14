@@ -48,8 +48,10 @@ export default async (request) => {
     const reason = error.reason || 'unknown';
     const explanation = EXPLANATION[reason] || 'could not be read';
     return Response.json({
-      // Groq's own status, when it gave one, so a refusal names itself.
-      error: error.status ? `${explanation} (${error.status})` : explanation,
+      // Groq's own status and words, when it gave them, so a refusal names
+      // itself instead of sending someone to the logs.
+      error: [explanation, error.status ? `(${error.status})` : '', error.detail ? `— ${error.detail}` : '']
+        .filter(Boolean).join(' '),
       reason,
       retryAfter: error.retryAfter || 0,
     }, { status: reason === 'rate_limit' ? 429 : 502 });
