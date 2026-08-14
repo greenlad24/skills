@@ -80,8 +80,12 @@
         + body
         + '<div class="lp-end">Vibration &mdash; Koh Samui</div></div>';
     }
+    // Per-image mobile framing; the >=700px rule ignores both.
+    const frame = (e.zoom ? '--z:' + e.zoom + ';' : '')
+      + (e.focusY != null ? '--fy:' + e.focusY + '%;' : '');
+
     return '<div class="itempage">'
-      + '<div class="herobox"><img src="' + e.hero + '"></div>'
+      + '<div class="herobox"><img' + (frame ? ' style="' + frame + '"' : '') + ' src="' + e.hero + '"></div>'
       + '<div class="fadeT"></div><div class="fadeB"></div>'
       + '<div class="eyeb">' + esc(e.eyebrow) + '</div><div class="eyerl"></div>'
       + '<div class="txt">'

@@ -57,8 +57,11 @@ html,body{height:100%;background:#000;overflow:hidden;color:#EFEBE2;
 /* hero owns the space above the text and can never sit behind it */
 .itempage .herobox{order:-1;flex:1 1 auto;min-height:0;position:relative;overflow:hidden;
   margin-top:clamp(6px,1.2vh,18px)}
-.itempage .herobox img{width:100%;max-width:690px;height:100%;object-fit:cover;object-position:center 35%;
-  display:block;margin:0 auto;transform:scale(1.2)}
+/* --fy / --z are set per image from where the subject sits in that photo, so a
+   wide plate is not cropped and a tall glass is not cut off. Defaults apply if
+   an image has no framing data. */
+.itempage .herobox img{width:100%;max-width:690px;height:100%;object-fit:cover;
+  object-position:center var(--fy,35%);display:block;margin:0 auto;transform:scale(var(--z,1.2))}
 .itempage .herobox::after{content:'';position:absolute;left:-6vw;right:-6vw;bottom:0;height:26%;
   background:linear-gradient(180deg,rgba(0,0,0,0),#000 100%);pointer-events:none}
 .itempage .fadeT,.itempage .fadeB{display:none}
