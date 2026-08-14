@@ -213,8 +213,10 @@ function groqBody(model, imageUrl, today, structured) {
     model,
     temperature: 0,
     // Headroom for a model that reasons before it answers, without letting one
-    // poster think for long enough to hit the function timeout.
-    max_completion_tokens: 1200,
+    // poster think for long enough to hit the function timeout. The plain-JSON
+    // attempt gets more, because it is the one made after a constrained
+    // generation already came back empty.
+    max_completion_tokens: structured ? 2000 : 3000,
     response_format: structured
       ? { type: 'json_schema', json_schema: { name: 'gig_poster', schema: EVENT_SCHEMA, strict: true } }
       : { type: 'json_object' },
@@ -269,6 +271,26 @@ export function groqReason(body) {
   return plain.length && plain.length < 140 ? plain : '';
 }
 
+/** The model will not take a JSON schema at all — worth remembering, since it
+    will be just as true for the next poster. */
+function isSchemaUnsupported(text) {
+  // Narrow on purpose: "unsupported" on its own also shows up in complaints
+  // about the image, which have nothing to do with the response format.
+  return /response_format|json_schema|\bschema\b/i.test(text)
+    && !/json_validate_failed|failed to validate json/i.test(text);
+}
+
+/**
+ * A schema the model accepted but could not fill this time. Groq answers
+ * `json_validate_failed`, often with an empty `failed_generation` — the model
+ * spent its budget and produced nothing the schema would accept. That is about
+ * this one poster, not about the model, so the same poster is asked again in
+ * plain JSON mode and schema mode stays on for the rest of the batch.
+ */
+function isSchemaGenerationFailure(text) {
+  return /json_validate_failed|failed to validate json/i.test(text);
+}
+
 /** True when the failure is about the model itself, so another one is worth trying. */
 function isModelFault(status, text) {
   return (status === 404 || status === 400 || status === 403)
@@ -308,7 +330,10 @@ async function readWithGroq({ apiKey, bytes, mime, key, today }) {
       const res = await groqPost(groqBody(model, sources[source], today, structured), apiKey);
 
       if (res.ok) {
-        schemaAccepted = structured;
+        // Only a schema request proves schemas work. Succeeding in plain JSON
+        // mode after a hard poster says nothing about the next one, and
+        // demoting on it would quietly turn the schema off for the batch.
+        if (structured) schemaAccepted = true;
         const json = await res.json();
         const choice = json.choices?.[0];
         const text = choice?.message?.content;
@@ -336,10 +361,12 @@ async function readWithGroq({ apiKey, bytes, mime, key, today }) {
         continue;
       }
       if (isModelFault(res.status, detail)) break;          // wrong model — next model
-      if (structured && /response_format|json_schema|schema/i.test(detail)) {
+      if (structured && isSchemaUnsupported(detail)) {
         schemaAccepted = false;                             // remember, then retry plain JSON
         continue;
       }
+      // Retry this poster without the schema, but leave schema mode on.
+      if (structured && isSchemaGenerationFailure(detail)) continue;
       if (res.status === 429) {
         throw failure('rate_limit', 'Groq is rate limiting the free tier',
           Number(res.headers.get('retry-after')) || 20);
