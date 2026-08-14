@@ -13,8 +13,10 @@ export const EVENT_SCHEMA = {
   properties: {
     name: { type: 'string', description: 'The act or event name, as printed. Empty string if unreadable.' },
     on: { type: 'string', description: 'Date as YYYY-MM-DD, or empty string if the poster shows no date.' },
+    dateText: { type: 'string', description: 'The date exactly as printed, e.g. "SAT 16 AUG" or "16/08". Empty if the poster shows no date.' },
+    weekday: { type: 'string', description: 'The weekday printed with no calendar date, e.g. "FRIDAY" for a weekly night. Empty if the poster gives a real date.' },
     genre: { type: 'string', description: 'Genre or style, e.g. "Funk / Soul". Separate multiple with " / ". Empty if absent.' },
-    description: { type: 'string', description: 'One short sentence for the event page, in the venue\'s warm, understated voice. Empty if there is nothing to say.' },
+    description: { type: 'string', description: 'One or two inviting sentences for the event page that make someone want to come, true to what the poster shows.' },
     confident: { type: 'boolean', description: 'False if the poster was hard to read and the fields are a guess.' },
   },
   required: ['name', 'on', 'genre', 'description', 'confident'],
@@ -23,25 +25,106 @@ export const EVENT_SCHEMA = {
 
 const SYSTEM =
   'You read gig posters for Vibration, a live-music bar on Koh Samui, and turn them into '
-  + 'schedule entries. Transcribe only what the poster actually shows — never invent an act, '
-  + 'a date, or a genre. If a field is not on the poster, return an empty string for it. '
-  + 'Answer with the JSON straight away; this is transcription, not a puzzle to work through.';
+  + 'schedule entries. Facts come only from the poster — never invent an act, a date, or a '
+  + 'genre, and leave a field empty rather than guessing at it. The description is the one '
+  + 'place you write rather than transcribe: it is the copy that sells the night. '
+  + 'Answer with the JSON straight away; this is not a puzzle to work through.';
 
 const askFor = (today) =>
   `Today is ${today}. Read this poster and return the event details.\n\n`
-  + 'If the poster shows a day and month but no year, choose the year that puts the date '
-  + 'in the near future rather than the past. The description is one short sentence for '
-  + 'the event page — warm and understated, no exclamation marks, no marketing copy.';
+  + 'Dates: put the calendar date in "on" as YYYY-MM-DD, and whatever the poster literally '
+  + 'prints in "dateText". If it shows a day and month but no year, choose the year that puts '
+  + 'the date in the near future rather than the past. If it names only a weekday — a weekly '
+  + 'night like "FREESTYLE FRIDAY" — put that weekday in "weekday" and leave "on" empty.\n\n'
+  + 'Description: one or two sentences that make someone want to come out for this, written '
+  + 'for the event page. Lead with what the night actually gives them — the sound, the room, '
+  + 'the energy — and work in any detail the poster gives you, such as the start time or an '
+  + 'open invitation to join in. Confident and inviting, never a list of facts, and never a '
+  + 'claim the poster does not support.';
+
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+/** Rejects 31 February and friends: a date is real only if it survives the round trip. */
+function realDate(iso) {
+  const d = new Date(`${iso}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === iso;
+}
+
+/**
+ * Turns what a poster actually prints into an ISO date.
+ *
+ * Posters write dates every way there is — "SAT 16 AUG", "16/08", "August 16th"
+ * — and dropping everything that is not already YYYY-MM-DD left the Date field
+ * empty on posters that plainly carried one. Day comes before month in the
+ * numeric form: that is how it is written here, and how the posters read.
+ */
+export function normaliseDate(raw, today) {
+  const text = String(raw || '').trim().toLowerCase();
+  if (!text) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return realDate(text) ? text : '';
+
+  let day, month, year;
+  let m = text.match(/(\d{1,2})\s*(?:st|nd|rd|th)?\s+([a-z]{3,})\.?,?\s*(\d{4})?/);
+  if (m && MONTHS.includes(m[2].slice(0, 3))) {
+    [day, month, year] = [+m[1], MONTHS.indexOf(m[2].slice(0, 3)), m[3] ? +m[3] : null];
+  } else if ((m = text.match(/([a-z]{3,})\.?\s+(\d{1,2})\s*(?:st|nd|rd|th)?,?\s*(\d{4})?/))
+             && MONTHS.includes(m[1].slice(0, 3))) {
+    [month, day, year] = [MONTHS.indexOf(m[1].slice(0, 3)), +m[2], m[3] ? +m[3] : null];
+  } else if ((m = text.match(/(\d{1,2})[/.\-](\d{1,2})(?:[/.\-](\d{2,4}))?/))) {
+    day = +m[1];
+    month = +m[2] - 1;
+    year = m[3] ? (+m[3] < 100 ? 2000 + +m[3] : +m[3]) : null;
+  } else {
+    return '';
+  }
+
+  if (!(day >= 1 && day <= 31) || !(month >= 0 && month <= 11)) return '';
+  const iso = (y) => `${y}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+  if (year) return realDate(iso(year)) ? iso(year) : '';
+  // A poster with no year means the coming one, not the one just gone.
+  const thisYear = +today.slice(0, 4);
+  for (const y of [thisYear, thisYear + 1]) {
+    if (realDate(iso(y)) && iso(y) >= today) return iso(y);
+  }
+  return '';
+}
+
+/**
+ * "FREESTYLE FRIDAY, 9PM–LATE" carries no date at all, so the next Friday is
+ * the only sensible reading — leaving Date blank made a real event look like a
+ * failed one. Recurring nights belong under Weekly entertainment, and the
+ * editor says so rather than deciding for you.
+ */
+export function nextWeekday(raw, today) {
+  const name = String(raw || '').trim().toLowerCase();
+  const target = DAYS.findIndex((d) => name.startsWith(d.slice(0, 3)) && d.startsWith(name.slice(0, 3)));
+  if (target < 0) return '';
+
+  const start = new Date(`${today}T00:00:00Z`);
+  if (Number.isNaN(start.getTime())) return '';
+  const ahead = (target - start.getUTCDay() + 7) % 7;
+  start.setUTCDate(start.getUTCDate() + ahead);
+  return start.toISOString().slice(0, 10);
+}
 
 /** Normalise whatever the model returned into the fields the editor stores. */
-function toEvent(data) {
+function toEvent(data, today) {
+  const printed = /^\d{4}-\d{2}-\d{2}$/.test(data.on) && realDate(data.on)
+    ? data.on
+    : normaliseDate(data.dateText, today);
+  const weekly = !printed ? nextWeekday(data.weekday, today) : '';
+
   return {
     event: {
       name: String(data.name || ''),
-      on: /^\d{4}-\d{2}-\d{2}$/.test(data.on) ? data.on : '',
+      on: printed || weekly,
       genre: String(data.genre || ''),
       description: String(data.description || ''),
     },
+    // A weekday with no date is a recurring night, not a one-off.
+    recurring: Boolean(weekly),
     confident: data.confident !== false,
   };
 }
@@ -115,8 +198,9 @@ function groqBody(model, imageUrl, today, structured) {
         // Without schema enforcement the shape has to be spelled out instead.
         content: structured ? SYSTEM
           : `${SYSTEM}\n\nReply with JSON only, exactly these keys: `
-            + '{"name": string, "on": "YYYY-MM-DD" or "", "genre": string, '
-            + '"description": string, "confident": boolean}.',
+            + '{"name": string, "on": "YYYY-MM-DD" or "", "dateText": string, '
+            + '"weekday": string, "genre": string, "description": string, '
+            + '"confident": boolean}.',
       },
       {
         role: 'user',
@@ -127,6 +211,15 @@ function groqBody(model, imageUrl, today, structured) {
       },
     ],
   };
+}
+
+/** An error the editor can act on: "wait and retry" reads very differently from
+    "this poster is unreadable", and only the reason tells them apart. */
+function failure(reason, message, retryAfter = 0) {
+  const error = new Error(message);
+  error.reason = reason;
+  error.retryAfter = retryAfter;
+  return error;
 }
 
 /** True when the failure is about the model itself, so another one is worth trying. */
@@ -150,7 +243,7 @@ function parseModelJson(text) {
 
 async function readWithGroq({ apiKey, bytes, mime, key, today }) {
   const imageUrl = groqImageUrl(bytes, mime, key);
-  if (!imageUrl) throw new Error('poster too large to send');
+  if (!imageUrl) throw failure('too_big', 'that poster is too large to send');
 
   const pinned = (process.env.GROQ_MODEL || '').trim();
   const models = pinned ? [pinned] : GROQ_MODELS;
@@ -166,13 +259,22 @@ async function readWithGroq({ apiKey, bytes, mime, key, today }) {
       if (res.ok) {
         schemaAccepted = structured;
         const json = await res.json();
-        const text = json.choices?.[0]?.message?.content;
-        if (!text) throw new Error('groq returned no content');
-        return {
-          provider: `groq:${model}`,
-          ...toEvent(parseModelJson(text)),
-          usage: { input: json.usage?.prompt_tokens ?? 0, output: json.usage?.completion_tokens ?? 0 },
-        };
+        const choice = json.choices?.[0];
+        const text = choice?.message?.content;
+        // Running out of tokens mid-answer leaves JSON with no closing brace.
+        if (choice?.finish_reason === 'length' && !text?.trimEnd().endsWith('}')) {
+          throw failure('too_long', 'the model ran out of room before finishing');
+        }
+        if (!text) throw failure('empty', 'the model returned nothing');
+        try {
+          return {
+            provider: `groq:${model}`,
+            ...toEvent(parseModelJson(text), today),
+            usage: { input: json.usage?.prompt_tokens ?? 0, output: json.usage?.completion_tokens ?? 0 },
+          };
+        } catch (error) {
+          throw failure('unreadable', error.message);
+        }
       }
 
       const detail = await res.text();
@@ -183,11 +285,15 @@ async function readWithGroq({ apiKey, bytes, mime, key, today }) {
         schemaAccepted = false;                             // remember, then retry plain JSON
         continue;
       }
-      throw new Error(`groq ${res.status}: ${detail.slice(0, 200)}`);
+      if (res.status === 429) {
+        throw failure('rate_limit', 'Groq is rate limiting the free tier',
+          Number(res.headers.get('retry-after')) || 20);
+      }
+      throw failure('http', `groq ${res.status}: ${detail.slice(0, 200)}`);
     }
   }
 
-  throw new Error(`no usable Groq vision model (tried ${tried.join(', ')})`);
+  throw failure('model', `no usable Groq vision model (tried ${tried.join(', ')})`);
 }
 
 /* ---------------------------- entry ---------------------------- */
@@ -197,6 +303,6 @@ export const extractionConfigured = () => Boolean(process.env.GROQ_API_KEY);
 /** Read one poster. Throws if it cannot be read; the caller keeps the upload. */
 export async function extractEvent({ bytes, mime, key, today }) {
   const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) throw new Error('GROQ_API_KEY is not set');
+  if (!apiKey) throw failure('unconfigured', 'GROQ_API_KEY is not set');
   return readWithGroq({ apiKey, bytes, mime, key, today });
 }

@@ -37,15 +37,33 @@ export default async (request) => {
   }
 
   try {
-    const { event, confident, provider, usage } = await extractEvent({
+    const { event, confident, recurring, provider, usage } = await extractEvent({
       bytes, mime, key, today: venueToday(),
     });
-    return Response.json({ configured: true, event, confident, provider, usage });
+    return Response.json({ configured: true, event, confident, recurring, provider, usage });
   } catch (error) {
     console.error('extract: model call failed', error);
-    // The editor still has the uploaded poster; only the auto-fill failed.
-    return Response.json({ error: 'Could not read that poster automatically' }, { status: 502 });
+    // The editor still has the uploaded poster; only the auto-fill failed. Which
+    // way it failed decides what the editor does next — waiting out a rate limit
+    // is worth doing, re-reading an unreadable poster is not.
+    const reason = error.reason || 'unknown';
+    return Response.json({
+      error: EXPLANATION[reason] || 'could not be read',
+      reason,
+      retryAfter: error.retryAfter || 0,
+    }, { status: reason === 'rate_limit' ? 429 : 502 });
   }
+};
+
+/** Said plainly enough for whoever is adding posters to know what to do next. */
+const EXPLANATION = {
+  rate_limit: 'Groq is rate limiting the free tier',
+  too_long: 'the model ran long on this one',
+  too_big: 'the image is too large to send',
+  unreadable: 'nothing readable came back',
+  empty: 'the model returned nothing',
+  model: 'no working vision model — check GROQ_MODEL',
+  http: 'Groq refused the request',
 };
 
 export const config = { path: '/api/admin/extract', method: 'POST' };

@@ -33,7 +33,9 @@ export default async () => {
   const cutoffDay = cutoff.toISOString().slice(0, 10);
 
   const before = menu.liveShows.events.length;
-  menu.liveShows.events = menu.liveShows.events.filter((e) => !e.on || e.on >= cutoffDay);
+  // Weekly nights are never old — their date rolls forward instead of passing.
+  menu.liveShows.events = menu.liveShows.events
+    .filter((e) => e.repeat === 'weekly' || !e.on || e.on >= cutoffDay);
   const pruned = before - menu.liveShows.events.length;
 
   if (pruned === 0) return Response.json({ pruned: 0, cutoff: cutoffDay });

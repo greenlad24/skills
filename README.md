@@ -63,9 +63,21 @@ free tier's rate limit is retried once — a month of posters goes through in on
 pass. Posters small enough are sent inline; larger ones are sent as an
 `/api/img` URL, which Groq accepts up to 20 MB.
 
-Nothing is invented: the prompt says to transcribe only what the poster shows
-and leave a field empty otherwise, and dates without a year resolve forward
-rather than into the past.
+Facts are transcribed, never invented — an act, a date or a genre that is not on
+the poster comes back empty. The description is the exception: that is written
+rather than read, as copy meant to make someone want to come, built only from
+what the poster actually shows.
+
+Dates are taken as printed. "SAT 22 AUG", "22/08", "August 22nd" all resolve, and
+a date with no year resolves forward rather than into the past. A poster naming
+only a weekday — "FREESTYLE FRIDAY, 9PM–LATE" — is a weekly night: it is dated to
+the coming Friday and marked **Weekly**, which means it rolls on to next week
+instead of dropping off the schedule. The switch is on the event screen, so any
+show can be made recurring by hand.
+
+When a poster cannot be read, the editor says why rather than leaving a blank
+form: a Groq rate limit is waited out and retried on its own, while an unreadable
+poster is reported as one so you know to fill it in.
 
 ## What the editor can change
 

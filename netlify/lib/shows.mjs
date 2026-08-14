@@ -40,6 +40,9 @@ export function sanitiseLiveShows(incoming, current) {
       genre: str(e.genre),
       poster: safeImage(e.poster),
       description: str(e.description),
+      // A weekly night has a poster and belongs on the schedule like any other
+      // show; it just moves to next week instead of expiring.
+      repeat: str(e.repeat) === 'weekly' ? 'weekly' : '',
     }));
 
   const weeklySrc = src.weekly && typeof src.weekly === 'object' ? src.weekly : {};
@@ -78,14 +81,30 @@ export function venueToday(now = new Date()) {
   }).format(now);
 }
 
+/** The next time a weekly night comes round, counting today as still to come. */
+export function rollForward(on, today) {
+  const start = new Date(`${on}T00:00:00Z`);
+  const from = new Date(`${today}T00:00:00Z`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(from.getTime())) return on;
+  if (start >= from) return on;
+
+  const weeks = Math.ceil((from - start) / (7 * 86400000));
+  start.setUTCDate(start.getUTCDate() + weeks * 7);
+  return start.toISOString().slice(0, 10);
+}
+
 /**
  * Upcoming shows, soonest first. Past shows are hidden rather than deleted, so
  * nothing is lost and the editor can still see them. Events without a date are
  * always kept — an undated entry is unfinished, not expired.
+ *
+ * A weekly night never expires: last Friday's date rolls on to this Friday's,
+ * so a recurring poster keeps its place on the schedule week after week.
  */
 export function withUpcomingOnly(shows, today = venueToday()) {
   if (!shows || !Array.isArray(shows.events)) return shows;
   const events = shows.events
+    .map((e) => (e.repeat === 'weekly' && e.on ? { ...e, on: rollForward(e.on, today) } : e))
     .filter((e) => !e.on || e.on >= today)
     .sort((a, b) => (a.on || '9999').localeCompare(b.on || '9999'));
   return { ...shows, events };

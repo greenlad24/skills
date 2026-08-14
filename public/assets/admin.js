@@ -240,15 +240,22 @@ function moveControls(list, index, onChanged) {
  * published, so "we're out of the snapper tonight" is one tap, and so is
  * putting it back.
  */
-function visibilityToggle(read, write, onChanged) {
+function visibilityToggle(read, write, onChanged, labels = {}) {
+  const {
+    on = 'Hidden', off = 'Shown',
+    // Which of the two states is the quiet one — hidden is, weekly is not.
+    mutedWhen = true,
+    titles = { on: 'Hidden from the menu — tap to show it', off: 'On the menu — tap to hide it' },
+  } = labels;
+
   const b = document.createElement('button');
   b.type = 'button';
   const paint = () => {
-    const off = read() === true;
-    b.className = off ? 'pill off' : 'pill';
-    b.textContent = off ? 'Hidden' : 'Shown';
-    b.setAttribute('aria-pressed', String(off));
-    b.title = off ? 'Hidden from the menu — tap to show it' : 'On the menu — tap to hide it';
+    const state = read() === true;
+    b.className = state === mutedWhen ? 'pill off' : 'pill';
+    b.textContent = state ? on : off;
+    b.setAttribute('aria-pressed', String(state));
+    b.title = state ? titles.on : titles.off;
   };
   paint();
   b.addEventListener('click', (event) => {
@@ -340,14 +347,34 @@ for (const type of ['dragover', 'drop']) {
  * act, date and genre off it. Extraction is best-effort — a poster that cannot
  * be read still becomes an event with its poster attached, ready to fill in.
  */
+const wait = (seconds) => new Promise((r) => setTimeout(r, seconds * 1000));
+
+/** Reads one uploaded poster, waiting out Groq's free-tier rate limit once. */
+async function readPoster(key) {
+  for (let attempt = 0; ; attempt += 1) {
+    const res = await api('/api/admin/extract', { method: 'POST', body: JSON.stringify({ key }) });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok || attempt > 0 || data.reason !== 'rate_limit') return { res, data };
+
+    // The free tier counts tokens per minute, and a poster is a lot of them, so
+    // the wait is measured in tens of seconds rather than retried immediately.
+    const seconds = Math.min(30, Number(data.retryAfter) || 20);
+    toast(`Groq is busy — waiting ${seconds}s, then trying this poster again`);
+    await wait(seconds);
+  }
+}
+
 async function addPostersFromFiles(files) {
   const shows = menu.liveShows;
   const total = files.length;
-  let read = 0, failed = 0, off = false;
+  let read = 0, failed = 0, weekly = 0, off = false;
+  let why = '';
 
   for (let i = 0; i < total; i += 1) {
     toast(`Adding poster ${i + 1} of ${total}…`);
-    const event = { id: newId(), on: '', name: '', genre: '', poster: '', description: '' };
+    const event = {
+      id: newId(), on: '', name: '', genre: '', poster: '', description: '', repeat: '',
+    };
 
     try {
       const body = new FormData();
@@ -357,17 +384,19 @@ async function addPostersFromFiles(files) {
       if (!up.ok) throw new Error(upData.error || 'Upload failed');
       event.poster = upData.url;
 
-      const key = upData.url.split('/').pop();
-      const res = await api('/api/admin/extract', { method: 'POST', body: JSON.stringify({ key }) });
-      const data = await res.json().catch(() => ({}));
+      const { res, data } = await readPoster(upData.url.split('/').pop());
       if (res.ok && data.configured && data.event) {
         Object.assign(event, data.event);
+        // A poster naming only a weekday is a weekly night: it keeps its place
+        // on the schedule instead of dropping off after the first one.
+        if (data.recurring) { event.repeat = 'weekly'; weekly += 1; }
         read += 1;
       } else if (res.ok && data.configured === false) {
         // No API key on the site — posters still attach, fields stay blank.
         off = true;
       } else {
         failed += 1;
+        why = data.error || why;
       }
     } catch (err) {
       toast(err.message || 'Could not add that poster', true);
@@ -390,7 +419,8 @@ async function addPostersFromFiles(files) {
 
   const parts = [`${total} poster${total === 1 ? '' : 's'} added`];
   if (read) parts.push(`${read} filled in automatically`);
-  if (failed) parts.push(`${failed} could not be read`);
+  if (weekly) parts.push(`${weekly} set to repeat weekly`);
+  if (failed) parts.push(`${failed} could not be read${why ? ` (${why})` : ''}`);
   toast(parts.join(' · ') + ' — review, then Save', failed > 0);
 }
 
@@ -591,7 +621,28 @@ function screenEvent(idx) {
     'Instagram post size works best. JPEG, PNG or WebP, up to 8MB.'));
   f.append(field('Name', e.name, 'input', (v) => { e.name = v; navTitle.textContent = v || 'Event'; }));
   f.append(dateField('Date', e.on, (v) => { e.on = v; },
-    'The day and date shown on the card come from this. Once it passes, the show drops off the schedule automatically.'));
+    e.repeat === 'weekly'
+      ? 'The next time this night runs. It moves on a week by itself, so it never drops off.'
+      : 'The day and date shown on the card come from this. Once it passes, the show drops off the schedule automatically.'));
+
+  const rep = document.createElement('div');
+  rep.className = 'visrow';
+  rep.append(
+    Object.assign(document.createElement('span'), { textContent: 'Every week' }),
+    visibilityToggle(
+      () => e.repeat === 'weekly',
+      (v) => { e.repeat = v ? 'weekly' : ''; },
+      () => render(),
+      {
+        on: 'Weekly', off: 'One-off', mutedWhen: false,
+        titles: {
+          on: 'Runs every week — tap to make it a one-off',
+          off: 'A single night — tap if it runs every week',
+        },
+      },
+    ),
+  );
+  f.append(rep);
   f.append(field('Genre', e.genre, 'input', (v) => { e.genre = v; }, 'Separate with " / " for gold dots.'));
   f.append(field('Description', e.description, 'textarea', (v) => { e.description = v; },
     'Shown under the poster on the event page.'));
