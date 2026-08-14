@@ -234,6 +234,41 @@ function moveControls(list, index, onChanged) {
 }
 
 
+/**
+ * Show/hide switch for anything on the menu — a section, a page, or a single
+ * line on a list. Hidden things stay in the editor and simply stop being
+ * published, so "we're out of the snapper tonight" is one tap, and so is
+ * putting it back.
+ */
+function visibilityToggle(read, write, onChanged) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  const paint = () => {
+    const off = read() === true;
+    b.className = off ? 'pill off' : 'pill';
+    b.textContent = off ? 'Hidden' : 'Shown';
+    b.setAttribute('aria-pressed', String(off));
+    b.title = off ? 'Hidden from the menu — tap to show it' : 'On the menu — tap to hide it';
+  };
+  paint();
+  b.addEventListener('click', (event) => {
+    event.stopPropagation();
+    write(read() !== true);
+    setDirty(true);
+    paint();
+    if (onChanged) onChanged();
+  });
+  return b;
+}
+
+/** A list row plus its show/hide switch, dimmed while it is hidden. */
+function withVisibility(node, read, write, onChanged) {
+  const wrap = document.createElement('div');
+  wrap.className = read() === true ? 'listitem dim' : 'listitem';
+  wrap.append(node, visibilityToggle(read, write, onChanged));
+  return wrap;
+}
+
 /** Drop zone for a batch of posters: drag a week's worth in, or tap to pick. */
 function posterDropZone() {
   const zone = document.createElement('button');
@@ -357,15 +392,29 @@ function screenHome() {
   navBack.hidden = true;
   const f = document.createDocumentFragment();
 
-  f.append(navRow('Cover', 'Tagline and footer', () => go({ view: 'cover' })));
+  const cover = document.createElement('div');
+  cover.className = 'listitem';
+  cover.append(
+    navRow('Cover', 'Tagline and footer', () => go({ view: 'cover' })),
+    // The cover is the menu itself, so it has no switch — just the space one takes.
+    Object.assign(document.createElement('span'), { className: 'pillspace', ariaHidden: 'true' }),
+  );
+  f.append(cover);
+
   const shows = menu.liveShows;
-  f.append(navRow(shows.title || 'Live Shows',
-    `${shows.events.length} events · ${shows.weekly.items.length} weekly`,
-    () => go({ view: 'shows' }),
-    shows.thumb || (shows.events.find((e) => e.poster) || {}).poster || ''));
+  f.append(withVisibility(
+    navRow(shows.title || 'Live Shows',
+      `${shows.events.length} events · ${shows.weekly.items.length} weekly`,
+      () => go({ view: 'shows' }),
+      shows.thumb || (shows.events.find((e) => e.poster) || {}).poster || ''),
+    () => shows.hidden, (v) => { shows.hidden = v; }, render,
+  ));
 
   menu.sections.forEach((s, idx) => {
-    f.append(navRow(s.title, `${s.entries.length} pages`, () => go({ view: 'section', idx }), s.thumb));
+    f.append(withVisibility(
+      navRow(s.title, `${s.entries.length} pages`, () => go({ view: 'section', idx }), s.thumb),
+      () => s.hidden, (v) => { s.hidden = v; }, render,
+    ));
   });
   screenEl.replaceChildren(f);
 }
@@ -392,8 +441,15 @@ function screenSection(idx) {
   s.entries.forEach((e, eIdx) => {
     const label = e.name || e.title || (e.type === 'back' ? 'Back cover' : 'Page ' + (eIdx + 1));
     const kind = e.type === 'item' ? 'Item' : e.type === 'back' ? 'Back cover' : 'List page';
-    f.append(navRow(label, kind, () => go({ view: 'entry', sIdx: idx, eIdx }), e.hero));
+    f.append(withVisibility(
+      navRow(label, kind, () => go({ view: 'entry', sIdx: idx, eIdx }), e.hero),
+      () => e.hidden, (v) => { e.hidden = v; }, render,
+    ));
   });
+  f.append(Object.assign(document.createElement('p'), {
+    className: 'hint',
+    textContent: 'Hidden pages stay here but come off the menu — useful when a dish is off.',
+  }));
   screenEl.replaceChildren(f);
 }
 
@@ -408,6 +464,14 @@ function screenEntry(sIdx, eIdx) {
     img.className = 'heroprev'; img.src = entry.hero; img.alt = '';
     f.append(img);
   }
+
+  const vis = document.createElement('div');
+  vis.className = 'visrow';
+  vis.append(
+    Object.assign(document.createElement('span'), { textContent: 'On the menu' }),
+    visibilityToggle(() => entry.hidden, (v) => { entry.hidden = v; }, () => render()),
+  );
+  f.append(vis);
 
   for (const [key, label, kind, hint] of MENU_FIELDS[entry.type] || []) {
     f.append(field(label, entry[key], kind, (v) => {
@@ -433,7 +497,8 @@ function screenEntry(sIdx, eIdx) {
         f.append(field('Category', block.cat, 'input', (v) => { block.cat = v; }));
         for (const row of block.rows || []) {
           const line = document.createElement('div');
-          line.className = 'lrow';
+          const paintLine = () => { line.className = row[3] === true ? 'lrow dim' : 'lrow'; };
+          paintLine();
           const mk = (cls, i, ph) => {
             const input = document.createElement('input');
             input.type = 'text'; input.className = cls; input.value = row[i] ?? '';
@@ -442,6 +507,8 @@ function screenEntry(sIdx, eIdx) {
             return input;
           };
           line.append(mk('nm', 0, 'Name'), mk('pr', 1, 'Price'), mk('sz', 2, 'Size'));
+          // Each line on a list is a menu item in its own right, so it hides on its own.
+          line.append(visibilityToggle(() => row[3], (v) => { row[3] = v; }, paintLine));
           f.append(line);
         }
       }

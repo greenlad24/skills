@@ -1,9 +1,10 @@
-import { readMenu } from '../lib/store.mjs';
+import { readMenu, withVisibleOnly } from '../lib/store.mjs';
 import { withUpcomingOnly } from '../lib/shows.mjs';
 
 /** Public menu feed. No auth: this is what diners see. */
 export default async () => {
-  const menu = await readMenu();
+  // Hidden pages and sold-out lines are dropped here, not in the page.
+  const menu = withVisibleOnly(await readMenu());
   // Past shows never reach the public page; the editor still sees them.
   if (menu.liveShows) menu.liveShows = withUpcomingOnly(menu.liveShows);
   return Response.json(menu, {

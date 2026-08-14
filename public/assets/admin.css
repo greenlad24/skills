@@ -242,6 +242,70 @@ input:focus-visible, textarea:focus-visible, button:focus-visible, summary:focus
 
 .rowtools { display: flex; gap: 4px }
 
+/* show / hide */
+
+.pill {
+  flex: 0 0 auto;
+  min-height: var(--tap);
+  /* Fixed width, so a row does not jump about as the word changes length. */
+  min-width: 92px;
+  padding: 0 12px;
+  border: 1px solid var(--gold-line);
+  border-radius: 999px;
+  background: rgba(201, 169, 106, .14);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.pill.off {
+  border-color: rgba(255, 255, 255, .16);
+  background: transparent;
+  color: var(--muted);
+}
+
+/* Hidden things stay legible — dimmed enough to scan past, not to squint at. */
+.dim > .navrow, .dim > input { opacity: .45 }
+
+.listitem .pill { margin-bottom: 10px }
+
+/* Keeps a row without a switch — the cover — flush with the ones that have it. */
+.pillspace { flex: 0 0 92px }
+
+.visrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 10px 4px 10px 14px;
+  background: var(--surface);
+  border: 1px solid rgba(255, 255, 255, .09);
+  border-radius: 12px;
+}
+
+.visrow > span {
+  font-size: 12px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.visrow .pill { margin-right: 10px }
+
+/* On a phone the name is the field being edited, so it takes the full width and
+   price, size and the switch share the line below it. */
+@media (max-width: 480px) {
+  /* Tighter inside a line than between lines, so a wrapped pair still reads as one. */
+  .lrow { flex-wrap: wrap; gap: 6px; margin-bottom: 18px }
+  .lrow .nm { flex: 1 1 100% }
+  .lrow .pr, .lrow .sz { flex: 1 1 0 }
+}
+
 .icon-btn {
   width: 38px;
   min-height: 38px;
@@ -267,8 +331,13 @@ input:focus-visible, textarea:focus-visible, button:focus-visible, summary:focus
 
 .heroprev {
   width: 100%;
-  max-height: 190px;
+  /* Square, so the preview reads as the item's picture rather than as a banner.
+     Capped by width rather than height, or the ratio would not hold. */
+  max-width: 420px;
+  aspect-ratio: 1 / 1;
+  height: auto;
   object-fit: cover;
+  margin-inline: auto;
   border-radius: 12px;
   border: 1px solid var(--gold-line);
   margin-bottom: 18px;

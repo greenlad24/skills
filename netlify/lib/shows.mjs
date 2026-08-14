@@ -58,6 +58,7 @@ export function sanitiseLiveShows(incoming, current) {
 
   return {
     key: 'live',
+    hidden: src.hidden === true,
     title: str(src.title) || base.title || 'Live Shows',
     sub: str(src.sub),
     thumb: safeImage(src.thumb),

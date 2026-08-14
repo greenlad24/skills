@@ -73,9 +73,9 @@ rather than into the past.
 
 ## What the editor can change
 
-**In the menu, text only.** Photography, layout, fonts, the number of pages,
-entry types and page order are fixed. **Live Shows is fully editable**, including
-images.
+**In the menu, text and visibility.** Photography, layout, fonts, the number of
+pages, entry types and page order are fixed. **Live Shows is fully editable**,
+including images.
 
 - **Cover** — tagline and footer
 - **Sections** — title and subtitle
@@ -87,10 +87,22 @@ images.
 The editor navigates like the app: a list of sections, each tapping through to
 its own page rather than expanding in place.
 
+### Showing and hiding
+
+Every section, every page and every line on a list carries a **Shown / Hidden**
+switch. Hiding is not deleting: the page stays in the editor, dimmed, and one tap
+puts it back — which is what "the snapper is off tonight" actually needs.
+
+Hidden things are removed from `/api/menu` itself, so they never reach a diner's
+browser. A category whose lines are all hidden disappears rather than printing a
+heading over nothing, and a section whose pages are all hidden disappears rather
+than opening an empty book. Live Shows has the same switch.
+
 The menu restriction is enforced on the server, not just hidden in the UI. `applyTextEdits()`
-walks the *stored* menu and copies across only whitelisted text fields, so a
-malformed or hostile payload cannot add, remove or reorder pages, change an entry
-type, or point an image somewhere else. Anything omitted keeps its current value.
+walks the *stored* menu and copies across only whitelisted text fields plus the
+visibility flag, so a malformed or hostile payload cannot add, remove or reorder
+pages, change an entry type, or point an image somewhere else. Anything omitted
+keeps its current value.
 
 Prices are free text — `160`, `240<span class="bar">|</span>1100` and
 `Chicken 120 / Shrimp 150` all work. `THB` is added by the page.

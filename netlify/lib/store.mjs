@@ -14,6 +14,13 @@ function store() {
 const str = (v) => (typeof v === 'string' ? v : '');
 
 /**
+ * Visibility is the one non-text thing the editor may set on the menu: a dish
+ * that has run out comes off the published menu without deleting the page it
+ * lives on, so putting it back is one tap rather than a rebuild.
+ */
+const isHidden = (v) => v === true;
+
+/**
  * Text fields the editor is allowed to change, per entry type. Everything else
  * — images, layout, entry types, the number of sections/entries/rows — is
  * structural and stays exactly as designed.
@@ -49,6 +56,7 @@ export function applyTextEdits(stored, incoming) {
 
     if ('title' in inSection) section.title = str(inSection.title);
     if ('sub' in inSection) section.sub = str(inSection.sub);
+    if ('hidden' in inSection) section.hidden = isHidden(inSection.hidden);
 
     const inEntries = Array.isArray(inSection.entries) ? inSection.entries : [];
 
@@ -59,6 +67,8 @@ export function applyTextEdits(stored, incoming) {
       for (const field of TEXT_FIELDS[entry.type] || []) {
         if (field in inEntry) entry[field] = str(inEntry[field]);
       }
+
+      if ('hidden' in inEntry) entry.hidden = isHidden(inEntry.hidden);
 
       // List pages carry their own nested rows of name / price / size.
       if (entry.type === 'list') {
@@ -81,6 +91,8 @@ export function applyTextEdits(stored, incoming) {
               for (let c = 0; c < 3; c += 1) {
                 if (typeof inRow[c] === 'string') row[c] = inRow[c];
               }
+              // A fourth cell hides the line; the page renderer only reads 0–2.
+              if (inRow.length > 3) row[3] = isHidden(inRow[3]);
             });
           });
         }
@@ -89,6 +101,41 @@ export function applyTextEdits(stored, incoming) {
   });
 
   return next;
+}
+
+/**
+ * The published view of the menu: everything marked hidden is removed here
+ * rather than in the page, so a hidden dish is not merely invisible — it never
+ * reaches the browser at all. The editor keeps reading the full stored menu.
+ *
+ * Emptied containers go too: a category with no lines left would print a
+ * heading over nothing, and a section with no pages would open an empty book.
+ */
+export function withVisibleOnly(menu) {
+  const visible = structuredClone(menu);
+
+  visible.sections = visible.sections
+    .filter((section) => !section.hidden)
+    .map((section) => {
+      section.entries = section.entries.filter((entry) => !entry.hidden);
+
+      for (const entry of section.entries) {
+        if (entry.type !== 'list') continue;
+        for (const col of ['col1', 'col2']) {
+          if (!Array.isArray(entry[col])) continue;
+          entry[col] = entry[col]
+            .map((block) => ({ ...block, rows: (block.rows || []).filter((row) => row[3] !== true) }))
+            .filter((block) => block.rows.length);
+        }
+      }
+
+      return section;
+    })
+    .filter((section) => section.entries.length);
+
+  if (visible.liveShows?.hidden) delete visible.liveShows;
+
+  return visible;
 }
 
 /** Reads the live menu, falling back to the bundled seed on an empty/failed store. */
