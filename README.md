@@ -48,18 +48,11 @@ becomes an event with its poster attached — you just fill in the fields. Dropp
 anywhere else on the page is ignored rather than opening the file, so unsaved
 edits survive a near miss.
 
-Reading the poster is a vision model call with a JSON schema, so the response is
-always the right shape. Two providers are supported:
-
-| Key | Used when | Cost |
-|-----|-----------|------|
-| `GROQ_API_KEY` | Preferred, tried first | Free tier covers this volume |
-| `ANTHROPIC_API_KEY` | Only key set, or Groq failed | Well under a cent per poster |
-
-Set neither and the endpoint reports itself unconfigured: the batch add still
-works, minus the auto-fill. Set both and Groq does the work, with Anthropic
-picking up anything Groq can't — a retired preview model or a rate limit
-degrades to a slightly pricier read rather than to no read.
+Reading the poster is a Groq vision call with a JSON schema, so the response is
+always the right shape, and it runs on Groq's free tier. Without `GROQ_API_KEY`
+the endpoint reports itself unconfigured: the batch add still works, minus the
+auto-fill. There is no second provider and no paid fallback — a poster Groq
+cannot read is one you fill in yourself.
 
 Groq's vision line-up is served as preview models and IDs get retired, so the
 code carries a preference list and uses the first model the account can reach.
@@ -133,9 +126,8 @@ changing the password invalidates every existing session.
 | ---------------- | -------- | ---------------------------------------- |
 | `ADMIN_PASSWORD` | Yes      | The editor password                      |
 | `SESSION_SECRET` | No       | Cookie signing key; `openssl rand -hex 32` |
-| `GROQ_API_KEY`   | No       | Reads posters automatically, on the free tier |
+| `GROQ_API_KEY`   | No       | Reads posters automatically, on Groq's free tier |
 | `GROQ_MODEL`     | No       | Pins one Groq vision model instead of auto-picking |
-| `ANTHROPIC_API_KEY` | No    | Fallback for poster reading |
 
 Set `ADMIN_PASSWORD` with **all** scopes. Setting it scoped to `functions` alone
 has repeatedly failed to persist through the Netlify MCP connector.

@@ -1,13 +1,10 @@
-import Anthropic from '@anthropic-ai/sdk';
-
 /**
  * Reading a gig poster into a schedule entry.
  *
- * Two providers, same contract. Groq is tried first because its vision models
- * are free at the volumes this venue posts at — a month of posters is a few
- * dozen calls. Anthropic is the fallback for when Groq cannot read a poster, or
- * when only ANTHROPIC_API_KEY is set. With neither key the caller degrades to
- * typing the details in by hand.
+ * Groq does this, on its free tier — a month of posters is a few dozen calls.
+ * Without GROQ_API_KEY the caller degrades to typing the details in by hand,
+ * which is the only fallback: no key, no cost, no second provider to keep an
+ * account with.
  */
 
 /** The shape the editor expects back. Enforced by the API, not by parsing. */
@@ -165,58 +162,13 @@ async function readWithGroq({ apiKey, bytes, mime, key, today }) {
   throw new Error(`no usable Groq vision model (tried ${tried.join(', ')})`);
 }
 
-/* --------------------------- Anthropic --------------------------- */
-
-async function readWithAnthropic({ bytes, mime, today }) {
-  const response = await new Anthropic().messages.create({
-    model: 'claude-opus-5',
-    max_tokens: 4000,
-    // Low effort suits a scoped read-and-transcribe task, and structured
-    // output means the result is schema-valid without any parsing.
-    output_config: { effort: 'low', format: { type: 'json_schema', schema: EVENT_SCHEMA } },
-    system: SYSTEM,
-    messages: [{
-      role: 'user',
-      content: [
-        { type: 'image', source: { type: 'base64', media_type: mime, data: bytes.toString('base64') } },
-        { type: 'text', text: askFor(today) },
-      ],
-    }],
-  });
-
-  const block = response.content.find((b) => b.type === 'text');
-  if (!block) throw new Error('no content returned');
-
-  return {
-    provider: 'anthropic',
-    ...toEvent(JSON.parse(block.text)),
-    usage: { input: response.usage.input_tokens, output: response.usage.output_tokens },
-  };
-}
-
 /* ---------------------------- entry ---------------------------- */
 
-export const extractionConfigured = () =>
-  Boolean(process.env.GROQ_API_KEY || process.env.ANTHROPIC_API_KEY);
+export const extractionConfigured = () => Boolean(process.env.GROQ_API_KEY);
 
-/**
- * Read one poster. Groq first when its key is present; Anthropic picks up both
- * when it is the only key configured and when Groq fails, so a rate limit or a
- * retired model degrades to a slightly pricier read rather than to no read.
- */
+/** Read one poster. Throws if it cannot be read; the caller keeps the upload. */
 export async function extractEvent({ bytes, mime, key, today }) {
-  const groqKey = process.env.GROQ_API_KEY;
-  const hasAnthropic = Boolean(process.env.ANTHROPIC_API_KEY);
-
-  if (groqKey) {
-    try {
-      return await readWithGroq({ apiKey: groqKey, bytes, mime, key, today });
-    } catch (error) {
-      if (!hasAnthropic) throw error;
-      console.warn('extract: Groq failed, falling back to Anthropic —', error.message);
-    }
-  }
-
-  if (!hasAnthropic) throw new Error('no extraction provider configured');
-  return readWithAnthropic({ bytes, mime, today });
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) throw new Error('GROQ_API_KEY is not set');
+  return readWithGroq({ apiKey, bytes, mime, key, today });
 }
