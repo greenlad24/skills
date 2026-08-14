@@ -203,12 +203,29 @@ async function groqPost(body, apiKey) {
       body: JSON.stringify(body),
     });
     if (res.status !== 429 || attempt > 0) return res;
-    const wait = Math.min(4, Number(res.headers.get('retry-after')) || 2);
-    await sleep(wait * 1000);
+
+    // The free tier's window is measured in tens of seconds. Sitting here for
+    // that long would spend the function's whole budget and time out anyway, so
+    // only a short wait is worth taking; a long one goes back to the editor,
+    // which can wait properly and ask again.
+    const asked = Number(res.headers.get('retry-after')) || 0;
+    if (asked > 5) return res;
+    await sleep((asked || 2) * 1000);
   }
 }
 
-function groqBody(model, imageUrl, today, structured) {
+/**
+ * How hard the reply is pinned down. Groq validates the output in both
+ * constrained modes, so a model that answers with nothing fails *both* — which
+ * is what a poster carrying a slogan and a time rather than an act and a date
+ * managed to do. The last rung asks in the prompt alone and lets the parser
+ * pick the JSON out of whatever comes back, which cannot fail that way.
+ */
+const FORMATS = ['schema', 'json', 'free'];
+
+function groqBody(model, imageUrl, today, format) {
+  const structured = format === 'schema';
+  const constrained = format !== 'free';
   return {
     model,
     temperature: 0,
@@ -217,9 +234,13 @@ function groqBody(model, imageUrl, today, structured) {
     // attempt gets more, because it is the one made after a constrained
     // generation already came back empty.
     max_completion_tokens: structured ? 2000 : 3000,
-    response_format: structured
-      ? { type: 'json_schema', json_schema: { name: 'gig_poster', schema: EVENT_SCHEMA, strict: true } }
-      : { type: 'json_object' },
+    ...(constrained
+      ? {
+        response_format: structured
+          ? { type: 'json_schema', json_schema: { name: 'gig_poster', schema: EVENT_SCHEMA, strict: true } }
+          : { type: 'json_object' },
+      }
+      : {}),
     messages: [
       {
         role: 'system',
@@ -322,12 +343,13 @@ async function readWithGroq({ apiKey, bytes, mime, key, today }) {
   const models = pinned ? [pinned] : GROQ_MODELS;
   // Once a schema has been refused, stop paying a rejected request per poster
   // to rediscover it; otherwise try the schema first and fall back to JSON mode.
-  const modes = schemaAccepted === false ? [false] : [true, false];
+  const modes = schemaAccepted === false ? FORMATS.slice(1) : FORMATS;
   const tried = [];
 
   for (const model of models) {
-    for (const structured of modes) {
-      const res = await groqPost(groqBody(model, sources[source], today, structured), apiKey);
+    for (const format of modes) {
+      const structured = format === 'schema';
+      const res = await groqPost(groqBody(model, sources[source], today, format), apiKey);
 
       if (res.ok) {
         // Only a schema request proves schemas work. Succeeding in plain JSON
@@ -354,7 +376,7 @@ async function readWithGroq({ apiKey, bytes, mime, key, today }) {
       }
 
       const detail = await res.text();
-      tried.push(`${model}${structured ? '' : ' (json mode)'}: ${res.status}`);
+      tried.push(`${model} (${format}): ${res.status}`);
 
       if (isTooBig(res.status, detail) && source + 1 < sources.length) {
         source += 1;                                        // hand over the link instead
@@ -365,8 +387,9 @@ async function readWithGroq({ apiKey, bytes, mime, key, today }) {
         schemaAccepted = false;                             // remember, then retry plain JSON
         continue;
       }
-      // Retry this poster without the schema, but leave schema mode on.
-      if (structured && isSchemaGenerationFailure(detail)) continue;
+      // Groq validates json mode too, so an empty answer fails there as well;
+      // either way the next rung down is worth a go.
+      if (format !== 'free' && isSchemaGenerationFailure(detail)) continue;
       if (res.status === 429) {
         throw failure('rate_limit', 'Groq is rate limiting the free tier',
           Number(res.headers.get('retry-after')) || 20);

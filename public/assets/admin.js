@@ -358,7 +358,8 @@ async function readPoster(key) {
 
     // The free tier counts tokens per minute, and a poster is a lot of them, so
     // the wait is measured in tens of seconds rather than retried immediately.
-    const seconds = Math.min(30, Number(data.retryAfter) || 20);
+    // Groq asks for tens of seconds; waiting less than it asked just fails again.
+    const seconds = Math.min(60, Number(data.retryAfter) || 20);
     toast(`Groq is busy — waiting ${seconds}s, then trying this poster again`);
     await wait(seconds);
   }
