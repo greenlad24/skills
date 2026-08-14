@@ -1,0 +1,10 @@
+# Netlify config for the Poster Studio.
+# In the Netlify UI set the site's *base directory* to "studio" so this file
+# (and studio/package.json) are picked up.
+[build]
+  publish = "public"
+  command = "echo 'static site — nothing to build'"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"

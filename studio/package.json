@@ -1,10 +1,14 @@
 {
   "name": "vibration-poster-studio",
-  "version": "1.0.0",
-  "description": "Local poster designer + Instagram/Facebook scheduler for the Vibration live music bar",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Poster designer + Instagram/Facebook scheduler for the Vibration live music bar. Runs locally (node server.js, zero deps) or on Netlify (Functions + Blobs).",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0"
   },
   "engines": {
     "node": ">=18"

@@ -8,10 +8,9 @@
 //   2. Settings → Upload → Upload presets → Add upload preset
 //      → Signing Mode: "Unsigned" → Save; note the preset name
 //   3. Put your cloud name + preset name in the app's Settings.
-const fs = require('fs');
-const path = require('path');
 
-async function uploadPublicImage(settings, localPath) {
+/** file: {buffer, mime, name}. Returns a public https URL. */
+async function uploadPublicImage(settings, file) {
   const cloud = (settings.cloudinaryCloudName || '').trim();
   const preset = (settings.cloudinaryUploadPreset || '').trim();
   if (!cloud || !preset) {
@@ -20,12 +19,9 @@ async function uploadPublicImage(settings, localPath) {
       'Add your Cloudinary cloud name + unsigned upload preset in Settings (free account, see README).'
     );
   }
-  const buf = fs.readFileSync(localPath);
-  const ext = path.extname(localPath).toLowerCase();
-  const mime = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' }[ext] || 'image/png';
 
   const form = new FormData();
-  form.append('file', `data:${mime};base64,${buf.toString('base64')}`);
+  form.append('file', `data:${file.mime};base64,${file.buffer.toString('base64')}`);
   form.append('upload_preset', preset);
 
   const res = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(cloud)}/image/upload`, {

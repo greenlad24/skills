@@ -1,8 +1,6 @@
 // Postiz API client — schedules the finished posters to Instagram and
 // Facebook. Works with Postiz cloud (https://api.postiz.com/public/v1) or a
 // self-hosted instance ({backend-url}/public/v1). Docs: https://docs.postiz.com/public-api
-const fs = require('fs');
-const path = require('path');
 
 const DEFAULT_BASE = 'https://api.postiz.com/public/v1';
 
@@ -35,13 +33,10 @@ async function listIntegrations(apiKey, settings) {
   return Array.isArray(json) ? json : json?.integrations || [];
 }
 
-/** Upload a local image; returns the media object ({ id, path, ... }). */
-async function uploadMedia(apiKey, settings, localPath) {
-  const buf = fs.readFileSync(localPath);
-  const ext = path.extname(localPath).toLowerCase();
-  const mime = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' }[ext] || 'image/png';
+/** Upload an image {buffer, mime, name}; returns the media object ({ id, path, ... }). */
+async function uploadMedia(apiKey, settings, file) {
   const form = new FormData();
-  form.append('file', new Blob([buf], { type: mime }), path.basename(localPath));
+  form.append('file', new Blob([file.buffer], { type: file.mime }), file.name || 'poster.png');
   const json = await api(apiKey, baseUrl(settings), 'POST', '/upload', form, true);
   if (!json?.id) throw new Error('Postiz /upload returned no media id');
   return json;

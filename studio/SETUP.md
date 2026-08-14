@@ -31,17 +31,29 @@ Node.js is the engine that runs the app. No coding involved.
 > Everything you create is saved in the `data` folder next to `start.bat`.
 > Copy that folder somewhere safe = full backup.
 
-## Part 3 — OpenAI key (for generating posters) (10 min)
+## Part 3 — Image engine keys (100% free) (10 min)
 
-1. Go to <https://platform.openai.com> and sign up / log in.
-2. **Add billing credit**: click the gear (Settings) → **Billing** → **Add payment method**,
-   then add e.g. $10 of credit. (A full week of posters ≈ $4.)
-3. **Verify your organization** — required for the image model `gpt-image-1`:
-   Settings → **Organization** → **Verification** → follow the ID check.
-   Without this step, poster generation will fail with a "must be verified" error.
-4. **Create the key**: <https://platform.openai.com/api-keys> → **Create new secret key** →
-   copy the key that starts with `sk-…` (you won't see it again — paste it straight into the
-   app in Part 7).
+**Cloudflare Workers AI** generates the posters for free — every account gets 10,000 free
+AI "neurons" per day (renews daily at midnight UTC, no credit card, not a trial):
+
+1. Create a free account at <https://dash.cloudflare.com/sign-up>.
+2. Copy your **Account ID** (dashboard right sidebar, or the hex string in the URL).
+3. Profile icon (top right) → **API Tokens** → **Create Token** → use the **Workers AI**
+   template → Create → copy the token.
+4. In the app's Settings you can pick the model: **FLUX.2 klein 9B** (default, ~6 free
+   posters/day), **FLUX.2 dev** (best typography, ~1 free/day), or **klein 4B** (~57
+   free/day, drafts).
+
+**Google Gemini** writes the captions for free:
+
+5. Go to <https://aistudio.google.com/apikey>, log in with any Google account, **Create API
+   key**, copy it. (Gemini's free tier covers text; its *image* generation became paid-only
+   in Dec 2025 — as a paid option, nano-banana at ~$0.04/image is the closest match to your
+   original posters' quality.)
+
+> Other paid engines (switchable anytime in Settings): **Segmind** (~$0.04/image, needs a
+> $10 minimum top-up at cloud.segmind.com) and **OpenAI gpt-image-1** (~$0.25/image; needs
+> billing credit AND a verified organization).
 
 ## Part 4 — Prepare Instagram & Facebook (10 min)
 
@@ -85,11 +97,12 @@ A free Cloudinary account handles this invisibly.
 Back in the studio (`http://localhost:5713`):
 
 1. Click **⚙ Settings** (top right) and fill in:
-   - **OpenAI API key** → from Part 3.
-   - **Scheduling service** → Buffer.
-   - **Buffer API key** → from Part 5.
+   - **Image engine** → Google Gemini, and paste the **Gemini API key** from Part 3.
+   - **Scheduling service** → Buffer, and the **Buffer API key** from Part 5.
    - **Cloudinary cloud name** + **Cloudinary upload preset** → from Part 6.
    - **Default post time** → when each day's post should go live (e.g. 17:00).
+   - If you deployed to Netlify: set **Bar's UTC offset** (e.g. `+07:00`) so post times mean
+     your local time.
 2. Click **Load my channels** → your Instagram and Facebook appear → click
    **→ Instagram** next to the Instagram channel and **→ Facebook** next to the Page.
 3. **Upload your logo**: in the "Brand logo" section, upload your circular V logo
@@ -130,8 +143,10 @@ Back in the studio (`http://localhost:5713`):
 | Problem | Fix |
 |---|---|
 | Browser shows "can't connect to localhost:5713" | The black console window isn't running — double-click `start.bat`. |
-| Poster generation fails with "organization must be verified" | Do Part 3 step 3 (OpenAI org verification), wait ~15 min, retry. |
-| Generation fails with "billing / quota" | Add credit on the OpenAI Billing page (Part 3 step 2). |
+| Cloudflare generation fails with a quota/neuron error | You used the day's 10,000 free neurons — they reset at 00:00 UTC. Switch to the klein 4B model for cheap drafts, or wait for the reset. |
+| Cloudflare posters misspell a word | FLUX models are good-not-perfect at stylized text — regenerate that variation (each retry is free), or switch the model to FLUX.2 dev, or use the Gemini engine (~$0.04/img) for headline-critical posters. |
+| OpenAI engine fails with "organization must be verified" | platform.openai.com → Settings → Organization → Verification, wait ~15 min, retry. |
+| OpenAI engine fails with "billing / quota" | Add credit on the OpenAI Billing page. |
 | Pinterest search returns nothing | Pinterest occasionally blocks anonymous search — press **⬆ upload reference** instead and use any saved image; results are identical. |
 | "Image hosting is not configured" when scheduling | Fill in the two Cloudinary fields (Part 6) in Settings. |
 | Buffer error mentioning Instagram permissions | Make sure Instagram is a *professional* account linked to your Facebook Page (Part 4), then reconnect the channel in Buffer. |

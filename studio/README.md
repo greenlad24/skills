@@ -1,8 +1,20 @@
 # Vibration Poster Studio
 
-A local poster designer + social scheduler for **Vibration**, the live music bar.
-Runs entirely on your own computer — no server, no deployment. Your API keys and
-all images stay in the app's `data/` folder on your machine.
+A poster designer + social scheduler for **Vibration**, the live music bar.
+Runs two ways from the same code:
+
+- **Local** — double-click `start.bat` (zero dependencies, Node 18+); data lives in `data/`.
+- **Netlify** — deployed as a password-protected web app (Functions + Blobs storage), so you
+  can use it from any device. See "Deploying to Netlify" below.
+
+Image generation is pluggable (verified against current pricing, Aug 2026):
+
+| Engine | Cost | Notes |
+|---|---|---|
+| **Cloudflare Workers AI** (default) | **$0 forever** | 10,000 free neurons/day, renews at 00:00 UTC, no card. FLUX.2 klein 9B ≈ 6 posters/day; FLUX.2 dev (best typography) ≈ 1/day; klein 4B ≈ 57/day for drafts. Text quality is good but below the paid engines — cherry-pick from variants. Reference images are capped at 4, downscaled. |
+| Google Gemini "nano banana" | ~$0.04/image | Matches your original posters' text & face fidelity. Its free *image* API tier ended Dec 2025, but a free Gemini key still writes the **captions** at $0. |
+| Segmind | ~$0.04/image | Requires a $10 minimum top-up to start (their free daily credits program ended). |
+| OpenAI gpt-image-1 | ~$0.25/image | Premium; needs billing + verified org. |
 
 Every week you build five posters (Tuesday → Saturday):
 
@@ -87,16 +99,43 @@ generate → pick → schedule.
 - The generated posters keep their full prompt in `data/db.json`, so you can inspect what
   was asked and iterate.
 
+## Deploying to Netlify
+
+1. In Netlify: **Add new project → Import an existing project** → pick this GitHub repo.
+2. Set **Base directory** to `studio` (build settings are read from `studio/netlify.toml`;
+   the publish dir is `studio/public` and the API runs as a Netlify Function with Blobs
+   storage — no database to set up).
+3. Add an environment variable **`STUDIO_PASSWORD`** — the password the studio asks for
+   before letting anyone in. (Without it the site would be open to the whole internet.)
+4. Deploy. Open the site, log in, run the setup wizard. In Settings set **"Bar's UTC
+   offset"** (e.g. `+07:00`) so scheduled post times mean *your* local time — Netlify's
+   servers run in UTC.
+
+Notes for the hosted mode:
+- All data (settings, weeks, images) lives in Netlify Blobs under the site.
+- Serverless functions have execution-time limits; Gemini/Segmind generations typically
+  finish in 10–20s and fit fine. If a variation times out, generate again — each of the 3
+  variations is its own request.
+- Pinterest search may be blocked from datacenter IPs more often than from home; the
+  upload-a-reference fallback always works.
+
 ## Project layout
 
 ```
-server.js            zero-dependency HTTP server (Node 18+)
-lib/prompt.js        the brand system + style presets + 3 creative takes
-lib/openaiClient.js  gpt-image-1 generation, caption/voice models
-lib/pinterest.js     keyword → style reference search
-lib/buffer.js        Instagram/Facebook scheduling via Buffer (GraphQL API)
-lib/imagehost.js     free public image hosting (Cloudinary) for Buffer posts
-lib/postiz.js        alternative scheduler: Postiz (direct upload, no Cloudinary)
-public/              the studio UI
-assets/style-presets your past posters, used as style anchors
+server.js                  local shell: zero-dependency HTTP server (Node 18+)
+netlify/functions/api.mjs  hosted shell: same routes on Netlify Functions + Blobs
+lib/routes.js              all API logic, shared by both shells
+lib/store.js               storage behind a driver (local disk / Netlify Blobs)
+lib/imagegen.js            image-engine dispatcher (gemini | segmind | openai)
+lib/gemini.js              Google Gemini: free-tier images + captions
+lib/segmind.js             Segmind (nano-banana et al), ~$0.04/image
+lib/openaiClient.js        OpenAI gpt-image-1 + chat captions (premium)
+lib/captions.js            voice analysis + caption writing (engine-agnostic)
+lib/prompt.js              the brand system + style presets + 3 creative takes
+lib/pinterest.js           keyword → style reference search
+lib/buffer.js              Instagram/Facebook scheduling via Buffer (GraphQL API)
+lib/imagehost.js           free public image hosting (Cloudinary) for Buffer posts
+lib/postiz.js              alternative scheduler: Postiz
+lib/auth.js                password gate for the hosted deployment
+public/                    the studio UI (+ style-preset posters under assets/)
 ```

@@ -1,67 +1,73 @@
-// Simple JSON persistence for the studio. Everything lives in data/db.json,
-// uploaded/generated images live in data/files/.
-const fs = require('fs');
-const path = require('path');
-
-const ROOT = path.join(__dirname, '..');
-const DATA_DIR = path.join(ROOT, 'data');
-const FILES_DIR = path.join(DATA_DIR, 'files');
-const DB_PATH = path.join(DATA_DIR, 'db.json');
-
+// Storage-agnostic persistence. A "driver" supplies four async primitives so
+// the same code runs on a local disk (server.js) and on Netlify Blobs
+// (netlify/functions/api.mjs):
+//   getJson(key) -> object|null      setJson(key, obj)
+//   getFile(name) -> Buffer|null     putFile(name, buffer)
 const DAY_KEYS = ['tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
 const DEFAULT_SETTINGS = {
+  // image generation
+  // cloudflare = the verified 100%-free engine (10k neurons/day, renews daily)
+  // gemini     = nano-banana class, ~$0.04/image (free tier for images was removed Dec 2025)
+  // segmind    = aggregator, ~$0.04/image (requires a $10 top-up to start)
+  // openai     = gpt-image-1 premium, ~$0.25/image
+  imageEngine: 'cloudflare',
+  cfAccountId: '',
+  cfApiToken: '',
+  cfModel: '@cf/black-forest-labs/flux-2-klein-9b',
+  geminiApiKey: '',
+  geminiModel: 'gemini-3.1-flash-image-preview',
+  segmindApiKey: '',
+  segmindModel: 'nano-banana',
   openaiApiKey: '',
+  imageQuality: 'high', // openai only: low | medium | high
+  // captions
+  captionModel: 'gpt-4.1', // used when OpenAI key present; otherwise Gemini writes captions
+  // scheduling
   scheduler: 'buffer', // buffer | postiz
   bufferApiKey: '',
   cloudinaryCloudName: '',
   cloudinaryUploadPreset: '',
   postizApiKey: '',
   postizBaseUrl: 'https://api.postiz.com/public/v1',
-  captionModel: 'gpt-4.1',
-  imageQuality: 'high', // low | medium | high
   instagramIntegrationId: '',
   instagramIdentifier: 'instagram',
   facebookIntegrationId: '',
   facebookIdentifier: 'facebook',
-  // Local time each poster gets published on its own day, per day override allowed.
   defaultPostTime: '17:00',
   postTimes: {}, // e.g. { friday: '15:30' }
+  // When hosted (Netlify runs in UTC), set the bar's UTC offset, e.g. "+07:00".
+  // Empty = use the machine's local timezone (fine for the local app).
+  postTimezone: '',
   venueName: 'Vibration',
   venueBlurb: 'Live music bar — bands & singers five nights a week.',
   onboarded: false,
 };
 
-function ensureDirs() {
-  fs.mkdirSync(FILES_DIR, { recursive: true });
+const SECRET_KEYS = ['openaiApiKey', 'geminiApiKey', 'segmindApiKey', 'postizApiKey', 'bufferApiKey', 'cfApiToken'];
+
+let driver = null;
+function setDriver(d) { driver = d; }
+
+// Local-timezone yyyy-mm-dd (toISOString would shift the date in UTC+ zones).
+function ymd(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function emptyDay(dayKey) {
   return {
     day: dayKey,
-    date: '', // yyyy-mm-dd, set when the week is created
-    characters: [], // [{ id, file, name }]
+    date: '',
+    characters: [],
     keyword: '',
-    references: [], // [{ id, file, source }]
-    info: {
-      artistName: '',
-      genres: '',
-      showTime: '',
-      special: '',
-      mustWords: '',
-      notes: '',
-    },
+    references: [],
+    info: { artistName: '', genres: '', showTime: '', special: '', mustWords: '', notes: '' },
     stylePreset: 'auto',
-    generations: [], // [{ id, createdAt, variants: [{ file, label, prompt }] }]
-    winner: '', // file path of chosen image
+    generations: [],
+    winner: '',
     captions: { instagram: '', facebook: '' },
-    scheduled: null, // { at, instagram: {...}, facebook: {...} }
+    scheduled: null,
   };
-}
-
-// Local-timezone yyyy-mm-dd (toISOString would shift the date in UTC+ zones).
-function ymd(d) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function emptyWeek(weekStart) {
@@ -86,17 +92,9 @@ function defaultDb() {
   };
 }
 
-let db = null;
-
-function load() {
-  ensureDirs();
-  if (db) return db;
-  try {
-    db = JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
-  } catch {
-    db = defaultDb();
-  }
-  // Backfill new settings keys after upgrades.
+async function load() {
+  if (!driver) throw new Error('storage driver not initialised');
+  const db = (await driver.getJson('db.json')) || defaultDb();
   db.settings = { ...DEFAULT_SETTINGS, ...db.settings };
   if (!db.voice) db.voice = { profile: null, examples: [] };
   if (!db.brand) db.brand = { logoFile: '' };
@@ -104,23 +102,17 @@ function load() {
   return db;
 }
 
-function save() {
-  ensureDirs();
-  fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
+async function save(db) {
+  await driver.setJson('db.json', db);
 }
 
-function getWeek(weekStart) {
-  load();
-  if (!db.weeks[weekStart]) {
-    db.weeks[weekStart] = emptyWeek(weekStart);
-    save();
-  }
+function getWeek(db, weekStart) {
+  if (!db.weeks[weekStart]) db.weeks[weekStart] = emptyWeek(weekStart);
   return db.weeks[weekStart];
 }
 
-function getDay(weekStart, dayKey) {
-  const week = getWeek(weekStart);
-  const day = week.days[dayKey];
+function getDay(db, weekStart, dayKey) {
+  const day = getWeek(db, weekStart).days[dayKey];
   if (!day) throw new Error(`Unknown day "${dayKey}"`);
   return day;
 }
@@ -129,47 +121,52 @@ function newId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
-// Saves a base64 data URL (or raw base64) to data/files, returns relative file name.
-function saveFileFromBase64(base64, extHint) {
-  ensureDirs();
+const MIME_BY_EXT = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
+function mimeForName(name) {
+  return MIME_BY_EXT[String(name).split('.').pop().toLowerCase()] || 'image/png';
+}
+
+/** Save a base64 data URL (or raw base64) as a stored file; returns the file name. */
+async function saveFileFromBase64(base64, extHint) {
   let ext = extHint || 'png';
   let data = base64;
   const m = /^data:([\w/+.-]+);base64,(.*)$/s.exec(base64);
   if (m) {
-    const mime = m[1];
     data = m[2];
-    ext = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }[mime] || ext;
+    ext = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }[m[1]] || ext;
   }
   const name = `${newId()}.${ext}`;
-  fs.writeFileSync(path.join(FILES_DIR, name), Buffer.from(data, 'base64'));
+  await driver.putFile(name, Buffer.from(data, 'base64'));
   return name;
 }
 
-function saveFileFromBuffer(buf, ext) {
-  ensureDirs();
+async function saveFileFromBuffer(buf, ext) {
   const name = `${newId()}.${ext || 'jpg'}`;
-  fs.writeFileSync(path.join(FILES_DIR, name), buf);
+  await driver.putFile(name, buf);
   return name;
 }
 
-function filePath(name) {
-  const resolved = path.resolve(FILES_DIR, name);
-  if (!resolved.startsWith(path.resolve(FILES_DIR))) throw new Error('Bad file path');
-  return resolved;
+/** Read a stored file as {buffer, mime, name}; throws if missing. */
+async function readFile(name) {
+  if (!/^[\w.-]+$/.test(name)) throw new Error('Bad file name');
+  const buffer = await driver.getFile(name);
+  if (!buffer) throw new Error(`Stored file not found: ${name}`);
+  return { buffer, mime: mimeForName(name), name };
 }
 
 module.exports = {
-  ymd,
   DAY_KEYS,
-  DATA_DIR,
-  FILES_DIR,
+  DEFAULT_SETTINGS,
+  SECRET_KEYS,
+  setDriver,
+  ymd,
   load,
   save,
   getWeek,
   getDay,
-  emptyWeek,
   newId,
+  mimeForName,
   saveFileFromBase64,
   saveFileFromBuffer,
-  filePath,
+  readFile,
 };
