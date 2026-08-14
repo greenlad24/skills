@@ -159,15 +159,33 @@ const GROQ_MODELS = [
  */
 let schemaAccepted = null;
 
-/** A request carrying an image URL may be up to 20 MB; base64 has to fit inside
-    the request body, so anything sizeable goes by URL — /api/img is public and
-    content-addressed, so the link is stable and safe to hand out. */
-const INLINE_LIMIT = 3_500_000;
+/**
+ * A request carrying an image URL may be up to 20 MB, but an inline data: URI
+ * has to fit Groq's 4 MB base64 ceiling — and base64 is a third larger than the
+ * bytes it encodes. Measuring the poster instead of the encoding was the trap: a
+ * 3.4 MB photo inlines to 4.6 MB and comes back refused, while a smaller one
+ * from the same batch goes through. Anything that would not fit goes by URL
+ * instead — /api/img is public and content-addressed, so the link is stable and
+ * safe to hand out.
+ */
+const BASE64_CEILING = 4_000_000;
+const encodedSize = (byteCount) => Math.ceil(byteCount / 3) * 4;
 
-function groqImageUrl(bytes, mime, key) {
-  if (bytes.length <= INLINE_LIMIT) return `data:${mime};base64,${bytes.toString('base64')}`;
+/** The ways this poster can be handed over, best first. */
+function imageSources(bytes, mime, key) {
+  const sources = [];
+  // Leaves room for the "data:image/jpeg;base64," preamble itself.
+  if (encodedSize(bytes.length) + mime.length + 32 <= BASE64_CEILING) {
+    sources.push(`data:${mime};base64,${bytes.toString('base64')}`);
+  }
   const site = process.env.DEPLOY_URL || process.env.URL;
-  return site ? `${site}/api/img/${key}` : null;
+  if (site) sources.push(`${site}/api/img/${key}`);
+  return sources;
+}
+
+/** A refusal about the size of what was sent, rather than about the request. */
+function isTooBig(status, text) {
+  return status === 413 || (status === 400 && /size|large|payload|byte|limit/i.test(text));
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -223,10 +241,11 @@ function groqBody(model, imageUrl, today, structured) {
 
 /** An error the editor can act on: "wait and retry" reads very differently from
     "this poster is unreadable", and only the reason tells them apart. */
-function failure(reason, message, retryAfter = 0) {
+function failure(reason, message, retryAfter = 0, status = 0) {
   const error = new Error(message);
   error.reason = reason;
   error.retryAfter = retryAfter;
+  error.status = status;
   return error;
 }
 
@@ -250,8 +269,12 @@ function parseModelJson(text) {
 }
 
 async function readWithGroq({ apiKey, bytes, mime, key, today }) {
-  const imageUrl = groqImageUrl(bytes, mime, key);
-  if (!imageUrl) throw failure('too_big', 'that poster is too large to send');
+  // Predicting Groq's ceiling exactly is a losing game, so the link is kept in
+  // reserve: if an inline poster comes back refused for its size, the same
+  // request goes again pointing at /api/img instead of carrying the bytes.
+  const sources = imageSources(bytes, mime, key);
+  if (!sources.length) throw failure('too_big', 'that poster is too large to send');
+  let source = 0;
 
   const pinned = (process.env.GROQ_MODEL || '').trim();
   const models = pinned ? [pinned] : GROQ_MODELS;
@@ -262,7 +285,7 @@ async function readWithGroq({ apiKey, bytes, mime, key, today }) {
 
   for (const model of models) {
     for (const structured of modes) {
-      const res = await groqPost(groqBody(model, imageUrl, today, structured), apiKey);
+      const res = await groqPost(groqBody(model, sources[source], today, structured), apiKey);
 
       if (res.ok) {
         schemaAccepted = structured;
@@ -288,6 +311,10 @@ async function readWithGroq({ apiKey, bytes, mime, key, today }) {
       const detail = await res.text();
       tried.push(`${model}${structured ? '' : ' (json mode)'}: ${res.status}`);
 
+      if (isTooBig(res.status, detail) && source + 1 < sources.length) {
+        source += 1;                                        // hand over the link instead
+        continue;
+      }
       if (isModelFault(res.status, detail)) break;          // wrong model — next model
       if (structured && /response_format|json_schema|schema/i.test(detail)) {
         schemaAccepted = false;                             // remember, then retry plain JSON
@@ -297,7 +324,9 @@ async function readWithGroq({ apiKey, bytes, mime, key, today }) {
         throw failure('rate_limit', 'Groq is rate limiting the free tier',
           Number(res.headers.get('retry-after')) || 20);
       }
-      throw failure('http', `groq ${res.status}: ${detail.slice(0, 200)}`);
+      // The status travels with the error: "refused" alone sends someone
+      // hunting, while "refused (413)" says which thing to go and fix.
+      throw failure('http', `groq ${res.status}: ${detail.slice(0, 200)}`, 0, res.status);
     }
   }
 

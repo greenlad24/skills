@@ -46,8 +46,10 @@ export default async (request) => {
     // way it failed decides what the editor does next — waiting out a rate limit
     // is worth doing, re-reading an unreadable poster is not.
     const reason = error.reason || 'unknown';
+    const explanation = EXPLANATION[reason] || 'could not be read';
     return Response.json({
-      error: EXPLANATION[reason] || 'could not be read',
+      // Groq's own status, when it gave one, so a refusal names itself.
+      error: error.status ? `${explanation} (${error.status})` : explanation,
       reason,
       retryAfter: error.retryAfter || 0,
     }, { status: reason === 'rate_limit' ? 429 : 502 });
