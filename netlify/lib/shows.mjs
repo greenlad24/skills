@@ -32,6 +32,8 @@ export function sanitiseLiveShows(incoming, current) {
     .slice(0, MAX_EVENTS)
     .map((e) => ({
       id: str(e.id) || newId(),
+      // ISO date drives ordering and the drop-off of past shows.
+      on: /^\d{4}-\d{2}-\d{2}$/.test(str(e.on)) ? str(e.on) : '',
       date: str(e.date),
       day: str(e.day),
       name: str(e.name),
@@ -65,4 +67,25 @@ export function sanitiseLiveShows(incoming, current) {
     events,
     weekly,
   };
+}
+
+/** Today in Koh Samui, as YYYY-MM-DD. A show runs into the evening, so the venue's
+    own calendar day is what decides whether it has passed — not the server's. */
+export function venueToday(now = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(now);
+}
+
+/**
+ * Upcoming shows, soonest first. Past shows are hidden rather than deleted, so
+ * nothing is lost and the editor can still see them. Events without a date are
+ * always kept — an undated entry is unfinished, not expired.
+ */
+export function withUpcomingOnly(shows, today = venueToday()) {
+  if (!shows || !Array.isArray(shows.events)) return shows;
+  const events = shows.events
+    .filter((e) => !e.on || e.on >= today)
+    .sort((a, b) => (a.on || '9999').localeCompare(b.on || '9999'));
+  return { ...shows, events };
 }

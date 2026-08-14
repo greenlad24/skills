@@ -1,8 +1,11 @@
 import { readMenu } from '../lib/store.mjs';
+import { withUpcomingOnly } from '../lib/shows.mjs';
 
 /** Public menu feed. No auth: this is what diners see. */
 export default async () => {
   const menu = await readMenu();
+  // Past shows never reach the public page; the editor still sees them.
+  if (menu.liveShows) menu.liveShows = withUpcomingOnly(menu.liveShows);
   return Response.json(menu, {
     headers: {
       // Short cache so a price change shows up promptly, with SWR to keep the

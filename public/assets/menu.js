@@ -131,8 +131,22 @@
   const showsBack = document.getElementById('shows-back');
   let cameFromShows = false;
 
+  /** Display date and weekday come from the ISO date when there is one. */
+  function eventWhen(e) {
+    if (e.on) {
+      const [y, m, d] = e.on.split('-');
+      const dt = new Date(Date.UTC(+y, +m - 1, +d));
+      return {
+        date: d + '.' + m,
+        day: dt.toLocaleDateString('en-GB', { weekday: 'long', timeZone: 'UTC' }),
+      };
+    }
+    return { date: e.date || '', day: e.day || '' };
+  }
+
   function eventHTML(e) {
-    const when = [e.date, e.day].filter(Boolean).join(' &middot; ');
+    const w = eventWhen(e);
+    const when = [w.date, w.day].filter(Boolean).join(' &middot; ');
     return '<div class="itempage eventpage">'
       + '<div class="herobox posterbox">'
         + (e.poster ? '<img src="' + e.poster + '" alt="">'
@@ -149,7 +163,10 @@
 
   function renderShows() {
     document.getElementById('shows-eyebrow').innerHTML = shows.eyebrow || '';
-    document.getElementById('shows-title').innerHTML = shows.heading || shows.title || '';
+    // The heading is optional — with none, the eyebrow and rule stand alone.
+    const titleEl = document.getElementById('shows-title');
+    titleEl.innerHTML = shows.heading || '';
+    titleEl.hidden = !shows.heading;
     document.getElementById('shows-foot').innerHTML = shows.foot || '';
 
     const list = document.getElementById('ev-list');
@@ -161,10 +178,11 @@
     shows.events.forEach((e, idx) => {
       const row = document.createElement('div');
       row.className = 'ev';
+      const w = eventWhen(e);
       row.innerHTML = (e.poster ? '<img class="ev-bg" src="' + e.poster + '" alt="">' : '')
         + '<div class="ev-scrim"></div>'
-        + '<div class="ev-date"><div class="ev-d">' + esc(e.date) + '</div>'
-          + (e.day ? '<div class="ev-day">' + esc(e.day) + '</div>' : '') + '</div>'
+        + '<div class="ev-date"><div class="ev-d">' + esc(w.date) + '</div>'
+          + (w.day ? '<div class="ev-day">' + esc(w.day) + '</div>' : '') + '</div>'
         + '<div class="ev-txt"><div class="ev-nm">' + esc(e.name) + '</div>'
           + (e.genre ? '<div class="ev-gen">' + esc(e.genre) + '</div>' : '') + '</div>'
         + '<div class="ev-arw">&#10095;</div>';

@@ -67,6 +67,18 @@ window.addEventListener('beforeunload', (event) => { if (dirty) event.preventDef
 
 const newId = () => (crypto.randomUUID?.() ?? String(Math.random()).slice(2)).slice(0, 8);
 
+/** Today in Koh Samui, so "past" matches what the public page hides. */
+const todayISO = () => new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit',
+}).format(new Date());
+
+function prettyDate(on) {
+  if (!on) return 'No date';
+  const [y, m, d] = on.split('-');
+  const dt = new Date(Date.UTC(+y, +m - 1, +d));
+  return dt.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+}
+
 /* ---------------- building blocks ---------------- */
 
 function field(label, value, kind, onInput, hint) {
@@ -76,6 +88,19 @@ function field(label, value, kind, onInput, hint) {
   const input = document.createElement(kind === 'textarea' ? 'textarea' : 'input');
   if (kind === 'textarea') input.rows = 3; else input.type = 'text';
   input.value = value ?? '';
+  input.addEventListener('input', () => { onInput(input.value); setDirty(true); });
+  wrap.append(input);
+  if (hint) wrap.append(Object.assign(document.createElement('p'), { className: 'hint', textContent: hint }));
+  return wrap;
+}
+
+function dateField(label, value, onInput, hint) {
+  const wrap = document.createElement('label');
+  wrap.className = 'field';
+  wrap.append(Object.assign(document.createElement('span'), { className: 'field-label', textContent: label }));
+  const input = document.createElement('input');
+  input.type = 'date';
+  input.value = value || '';
   input.addEventListener('input', () => { onInput(input.value); setDirty(true); });
   wrap.append(input);
   if (hint) wrap.append(Object.assign(document.createElement('p'), { className: 'hint', textContent: hint }));
@@ -327,13 +352,14 @@ function screenShows() {
   s.events.forEach((e, idx) => {
     const wrap = document.createElement('div');
     wrap.className = 'listitem';
-    wrap.append(navRow(e.name, [e.date, e.genre].filter(Boolean).join(' · '),
+    const past = e.on && e.on < todayISO();
+    wrap.append(navRow(e.name, [prettyDate(e.on), e.genre, past ? 'Past' : ''].filter(Boolean).join(' · '),
       () => go({ view: 'event', idx }), e.poster));
     wrap.append(moveControls(s.events, idx, render));
     f.append(wrap);
   });
   f.append(button('+ Add an event', () => {
-    s.events.push({ id: newId(), date: '', day: '', name: 'New event', genre: '', poster: '', description: '' });
+    s.events.push({ id: newId(), on: '', name: 'New event', genre: '', poster: '', description: '' });
     setDirty(true);
     go({ view: 'event', idx: s.events.length - 1 });
   }));
@@ -365,8 +391,8 @@ function screenEvent(idx) {
   f.append(imageField('Poster', e.poster, (url) => { e.poster = url; },
     'Instagram post size works best. JPEG, PNG or WebP, up to 8MB.'));
   f.append(field('Name', e.name, 'input', (v) => { e.name = v; navTitle.textContent = v || 'Event'; }));
-  f.append(field('Date', e.date, 'input', (v) => { e.date = v; }, 'Shown on the card, e.g. 05.09'));
-  f.append(field('Day', e.day, 'input', (v) => { e.day = v; }, 'e.g. Saturday'));
+  f.append(dateField('Date', e.on, (v) => { e.on = v; },
+    'The day and date shown on the card come from this. Once it passes, the show drops off the schedule automatically.'));
   f.append(field('Genre', e.genre, 'input', (v) => { e.genre = v; }, 'Separate with " / " for gold dots.'));
   f.append(field('Description', e.description, 'textarea', (v) => { e.description = v; },
     'Shown under the poster on the event page.'));

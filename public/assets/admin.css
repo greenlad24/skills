@@ -82,7 +82,7 @@ input, textarea, button { font: inherit; color: inherit }
 .btn-quiet { background: none; border-color: transparent; color: var(--muted); padding: 12px 14px }
 .btn-block { display: flex; width: 100% }
 
-input[type='text'], input[type='password'], textarea {
+input[type='text'], input[type='password'], input[type='date'], textarea {
   width: 100%;
   min-height: var(--tap);
   padding: 11px 14px;

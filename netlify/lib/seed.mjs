@@ -1726,45 +1726,41 @@ export const SEED_MENU = {
     "title": "Live Shows",
     "sub": "Sunset Sets · Live Bands",
     "thumb": "",
-    "heading": "September",
-    "eyebrow": "Live Music Lineup",
+    "heading": "",
+    "eyebrow": "This Month",
     "foot": "Dinner from 6 &middot; Bands from 9",
     "events": [
       {
         "id": "0f27bcb2",
-        "date": "05.09",
-        "day": "Saturday",
         "name": "Sunrise Jam",
         "genre": "Funk · Soul",
         "poster": "",
-        "description": ""
+        "description": "",
+        "on": "2026-09-05"
       },
       {
         "id": "f50a7200",
-        "date": "12.09",
-        "day": "Saturday",
         "name": "Nalani &amp; The Neon",
         "genre": "R&B · Neo-Soul",
         "poster": "",
-        "description": ""
+        "description": "",
+        "on": "2026-09-12"
       },
       {
         "id": "f6a018c8",
-        "date": "19.09",
-        "day": "Saturday",
         "name": "Marisa &amp; The Tide",
         "genre": "Jazz · Bossa",
         "poster": "",
-        "description": ""
+        "description": "",
+        "on": "2026-09-19"
       },
       {
         "id": "a2edb7e9",
-        "date": "26.09",
-        "day": "Saturday",
         "name": "The Coral Room",
         "genre": "Soul · Motown",
         "poster": "",
-        "description": ""
+        "description": "",
+        "on": "2026-09-26"
       }
     ],
     "weekly": {
