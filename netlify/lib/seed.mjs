@@ -4,10 +4,11 @@
 // public/img and are referenced by path. Served only when the Blobs store is
 // empty; once the menu is saved from /admin the stored copy always wins.
 //
-// zoom / focusY are per-image mobile framing, computed from where the subject
-// sits in each photo and from the hero box each item actually gets (the box is
-// flex-sized, so longer text leaves a shorter box). They are structural, not
-// text, so the editor cannot change them.
+// zoom / focusY are per-image mobile framing. focusY is 5% wherever the subject
+// still fits there; four photos with tall subjects need a lower anchor. zoom is
+// solved against the hero box each item actually gets (the box is flex-sized,
+// so longer text leaves a shorter box). Structural, not text, so the editor
+// cannot change them.
 
 export const SEED_MENU = {
   "brand": {
@@ -35,7 +36,7 @@ export const SEED_MENU = {
           "price": "160",
           "priceHtml": "",
           "zoom": 0.94,
-          "focusY": 0
+          "focusY": 5
         },
         {
           "type": "item",
@@ -50,7 +51,7 @@ export const SEED_MENU = {
           "price": "",
           "priceHtml": "<span style=\"display:inline-block; transform:translateX(-25px);\"><small>THB</small>80<span class=\"bar\">|</span>120</span>",
           "zoom": 1.2,
-          "focusY": 0
+          "focusY": 5
         },
         {
           "type": "item",
@@ -65,7 +66,7 @@ export const SEED_MENU = {
           "price": "",
           "priceHtml": "<span class=\"split\"><span class=\"sz\">BASE</span>120<span class=\"gap\"></span><span class=\"sz\">EGG</span>140</span>",
           "zoom": 1.087,
-          "focusY": 0
+          "focusY": 5
         },
         {
           "type": "item",
@@ -80,7 +81,7 @@ export const SEED_MENU = {
           "price": "",
           "priceHtml": "<span class=\"split\"><span class=\"sz\">CHICKEN</span>120<span class=\"gap\"></span><span class=\"sz\">SHRIMP</span>150</span>",
           "zoom": 1.169,
-          "focusY": 0
+          "focusY": 5
         },
         {
           "type": "item",
@@ -95,7 +96,7 @@ export const SEED_MENU = {
           "price": "160",
           "priceHtml": "",
           "zoom": 1.049,
-          "focusY": 0
+          "focusY": 5
         },
         {
           "type": "item",
@@ -110,7 +111,7 @@ export const SEED_MENU = {
           "price": "120",
           "priceHtml": "",
           "zoom": 1.188,
-          "focusY": 0
+          "focusY": 5
         },
         {
           "type": "item",
@@ -125,7 +126,7 @@ export const SEED_MENU = {
           "price": "200",
           "priceHtml": "",
           "zoom": 1.2,
-          "focusY": 0
+          "focusY": 5
         },
         {
           "type": "item",
@@ -140,7 +141,7 @@ export const SEED_MENU = {
           "price": "160",
           "priceHtml": "",
           "zoom": 1.127,
-          "focusY": 0
+          "focusY": 5
         },
         {
           "type": "item",
@@ -155,7 +156,7 @@ export const SEED_MENU = {
           "price": "240",
           "priceHtml": "",
           "zoom": 1.125,
-          "focusY": 0
+          "focusY": 5
         },
         {
           "type": "item",
@@ -170,7 +171,7 @@ export const SEED_MENU = {
           "price": "120",
           "priceHtml": "",
           "zoom": 1.2,
-          "focusY": 0
+          "focusY": 5
         },
         {
           "type": "item",
@@ -185,7 +186,7 @@ export const SEED_MENU = {
           "price": "110",
           "priceHtml": "",
           "zoom": 1.061,
-          "focusY": 0
+          "focusY": 5
         },
         {
           "type": "back",
@@ -215,8 +216,8 @@ export const SEED_MENU = {
           "serve": "Served in the glacier highball",
           "price": "180",
           "priceHtml": "",
-          "zoom": 1.182,
-          "focusY": 11
+          "zoom": 1.132,
+          "focusY": 5
         },
         {
           "type": "item",
@@ -230,8 +231,8 @@ export const SEED_MENU = {
           "serve": "Served in the crystal martini glass",
           "price": "180",
           "priceHtml": "",
-          "zoom": 1.112,
-          "focusY": 7
+          "zoom": 1.099,
+          "focusY": 5
         },
         {
           "type": "item",
@@ -246,7 +247,7 @@ export const SEED_MENU = {
           "price": "180",
           "priceHtml": "",
           "zoom": 1.151,
-          "focusY": 0
+          "focusY": 5
         },
         {
           "type": "item",
@@ -260,8 +261,8 @@ export const SEED_MENU = {
           "serve": "Served in the diamond-cut rocks glass",
           "price": "200",
           "priceHtml": "",
-          "zoom": 1.14,
-          "focusY": 11
+          "zoom": 1.088,
+          "focusY": 5
         },
         {
           "type": "item",
@@ -276,7 +277,7 @@ export const SEED_MENU = {
           "price": "200",
           "priceHtml": "",
           "zoom": 1.151,
-          "focusY": 0
+          "focusY": 5
         },
         {
           "type": "item",
@@ -291,7 +292,7 @@ export const SEED_MENU = {
           "price": "200",
           "priceHtml": "",
           "zoom": 1.116,
-          "focusY": 0
+          "focusY": 5
         },
         {
           "type": "item",
@@ -320,8 +321,8 @@ export const SEED_MENU = {
           "serve": "Served in the crystal martini glass",
           "price": "220",
           "priceHtml": "",
-          "zoom": 1.135,
-          "focusY": 7
+          "zoom": 1.121,
+          "focusY": 5
         },
         {
           "type": "item",
@@ -336,7 +337,7 @@ export const SEED_MENU = {
           "price": "220",
           "priceHtml": "",
           "zoom": 1.187,
-          "focusY": 0
+          "focusY": 5
         },
         {
           "type": "item",
@@ -350,8 +351,8 @@ export const SEED_MENU = {
           "serve": "Served in the tall glass",
           "price": "220",
           "priceHtml": "",
-          "zoom": 1.127,
-          "focusY": 7
+          "zoom": 1.11,
+          "focusY": 5
         },
         {
           "type": "item",
@@ -380,8 +381,8 @@ export const SEED_MENU = {
           "serve": "Served in the tiki glass",
           "price": "240",
           "priceHtml": "",
-          "zoom": 1.039,
-          "focusY": 26
+          "zoom": 0.901,
+          "focusY": 5
         },
         {
           "type": "item",
@@ -396,7 +397,7 @@ export const SEED_MENU = {
           "price": "240",
           "priceHtml": "",
           "zoom": 1.116,
-          "focusY": 0
+          "focusY": 5
         },
         {
           "type": "item",
@@ -411,7 +412,7 @@ export const SEED_MENU = {
           "price": "240",
           "priceHtml": "",
           "zoom": 1.133,
-          "focusY": 0
+          "focusY": 5
         },
         {
           "type": "item",
@@ -440,8 +441,8 @@ export const SEED_MENU = {
           "serve": "Served in the glacier highball",
           "price": "260",
           "priceHtml": "",
-          "zoom": 1.155,
-          "focusY": 10
+          "zoom": 1.11,
+          "focusY": 5
         },
         {
           "type": "item",
@@ -456,7 +457,7 @@ export const SEED_MENU = {
           "price": "260",
           "priceHtml": "",
           "zoom": 1.178,
-          "focusY": 0
+          "focusY": 5
         },
         {
           "type": "item",
@@ -470,8 +471,8 @@ export const SEED_MENU = {
           "serve": "Served in the glacier highball",
           "price": "280",
           "priceHtml": "",
-          "zoom": 1.17,
-          "focusY": 9
+          "zoom": 1.132,
+          "focusY": 5
         },
         {
           "type": "item",
@@ -485,8 +486,8 @@ export const SEED_MENU = {
           "serve": "Served in the crystal martini glass",
           "price": "320",
           "priceHtml": "",
-          "zoom": 1.108,
-          "focusY": 0
+          "zoom": 1.107,
+          "focusY": 5
         },
         {
           "type": "list",
@@ -994,7 +995,7 @@ export const SEED_MENU = {
           "price": "240<span class=\"bar\">|</span>1100",
           "priceHtml": "",
           "zoom": 1.133,
-          "focusY": 0
+          "focusY": 5
         },
         {
           "type": "item",
@@ -1009,7 +1010,7 @@ export const SEED_MENU = {
           "price": "1300",
           "priceHtml": "",
           "zoom": 1.142,
-          "focusY": 0
+          "focusY": 5
         },
         {
           "type": "item",
@@ -1023,8 +1024,8 @@ export const SEED_MENU = {
           "serve": "Served in the wine goblet",
           "price": "1450",
           "priceHtml": "",
-          "zoom": 1.135,
-          "focusY": 7
+          "zoom": 1.121,
+          "focusY": 5
         },
         {
           "type": "item",
@@ -1038,8 +1039,8 @@ export const SEED_MENU = {
           "serve": "Served in the wine goblet",
           "price": "240<span class=\"bar\">|</span>1100",
           "priceHtml": "",
-          "zoom": 1.14,
-          "focusY": 9
+          "zoom": 1.11,
+          "focusY": 5
         },
         {
           "type": "item",
@@ -1053,8 +1054,8 @@ export const SEED_MENU = {
           "serve": "Served in the wine goblet",
           "price": "240<span class=\"bar\">|</span>1100",
           "priceHtml": "",
-          "zoom": 1.08,
-          "focusY": 13
+          "zoom": 1.017,
+          "focusY": 5
         },
         {
           "type": "item",
@@ -1069,7 +1070,7 @@ export const SEED_MENU = {
           "price": "1100",
           "priceHtml": "",
           "zoom": 1.169,
-          "focusY": 0
+          "focusY": 5
         },
         {
           "type": "item",
@@ -1083,8 +1084,8 @@ export const SEED_MENU = {
           "serve": "Served in the wine goblet",
           "price": "1300",
           "priceHtml": "",
-          "zoom": 1.034,
-          "focusY": 10
+          "zoom": 0.993,
+          "focusY": 5
         },
         {
           "type": "item",
@@ -1113,8 +1114,8 @@ export const SEED_MENU = {
           "serve": "Served in the wine goblet",
           "price": "240<span class=\"bar\">|</span>1100",
           "priceHtml": "",
-          "zoom": 1.03,
-          "focusY": 22
+          "zoom": 0.916,
+          "focusY": 5
         },
         {
           "type": "item",
@@ -1128,8 +1129,8 @@ export const SEED_MENU = {
           "serve": "Served in the wine goblet",
           "price": "1300",
           "priceHtml": "",
-          "zoom": 1.055,
-          "focusY": 9
+          "zoom": 1.022,
+          "focusY": 5
         },
         {
           "type": "back",
@@ -1174,7 +1175,7 @@ export const SEED_MENU = {
           "price": "170<span class=\"bar\">|</span>210",
           "priceHtml": "",
           "zoom": 1.133,
-          "focusY": 0
+          "focusY": 5
         },
         {
           "type": "item",
@@ -1188,8 +1189,8 @@ export const SEED_MENU = {
           "serve": "Served in the tall glass",
           "price": "180",
           "priceHtml": "",
-          "zoom": 1.1,
-          "focusY": 0
+          "zoom": 1.096,
+          "focusY": 5
         },
         {
           "type": "item",
@@ -1203,8 +1204,8 @@ export const SEED_MENU = {
           "serve": "Served in the tall glass",
           "price": "180",
           "priceHtml": "",
-          "zoom": 1.084,
-          "focusY": 0
+          "zoom": 1.075,
+          "focusY": 5
         },
         {
           "type": "item",
@@ -1218,8 +1219,8 @@ export const SEED_MENU = {
           "serve": "Served in the tall glass",
           "price": "190",
           "priceHtml": "",
-          "zoom": 1.1,
-          "focusY": 9
+          "zoom": 1.067,
+          "focusY": 5
         },
         {
           "type": "item",
@@ -1233,8 +1234,8 @@ export const SEED_MENU = {
           "serve": "Served in the tall glass",
           "price": "190",
           "priceHtml": "",
-          "zoom": 1.092,
-          "focusY": 0
+          "zoom": 1.085,
+          "focusY": 5
         },
         {
           "type": "item",
@@ -1248,8 +1249,8 @@ export const SEED_MENU = {
           "serve": "Served in the tall glass",
           "price": "240",
           "priceHtml": "",
-          "zoom": 1.061,
-          "focusY": 0
+          "zoom": 1.044,
+          "focusY": 5
         },
         {
           "type": "item",
@@ -1263,8 +1264,8 @@ export const SEED_MENU = {
           "serve": "Served in the tall glass",
           "price": "200",
           "priceHtml": "",
-          "zoom": 1.092,
-          "focusY": 3
+          "zoom": 1.085,
+          "focusY": 5
         },
         {
           "type": "item",
@@ -1278,8 +1279,8 @@ export const SEED_MENU = {
           "serve": "Served in the tall glass",
           "price": "230",
           "priceHtml": "",
-          "zoom": 1.1,
-          "focusY": 0
+          "zoom": 1.096,
+          "focusY": 5
         },
         {
           "type": "item",
@@ -1293,8 +1294,8 @@ export const SEED_MENU = {
           "serve": "Served in the tall glass",
           "price": "300",
           "priceHtml": "",
-          "zoom": 1.076,
-          "focusY": 0
+          "zoom": 1.064,
+          "focusY": 5
         },
         {
           "type": "item",
@@ -1323,8 +1324,8 @@ export const SEED_MENU = {
           "serve": "Served in the tall glass",
           "price": "250",
           "priceHtml": "",
-          "zoom": 1.092,
-          "focusY": 0
+          "zoom": 1.085,
+          "focusY": 5
         },
         {
           "type": "item",
@@ -1338,8 +1339,8 @@ export const SEED_MENU = {
           "serve": "Served in the tall glass",
           "price": "250",
           "priceHtml": "",
-          "zoom": 1.068,
-          "focusY": 9
+          "zoom": 1.037,
+          "focusY": 5
         },
         {
           "type": "list",
