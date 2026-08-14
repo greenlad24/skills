@@ -234,6 +234,72 @@ function moveControls(list, index, onChanged) {
 }
 
 
+/** Drop zone for a batch of posters: drag a week's worth in, or tap to pick. */
+function posterDropZone() {
+  const zone = document.createElement('button');
+  zone.type = 'button';
+  zone.className = 'dropzone';
+  zone.append(
+    Object.assign(document.createElement('span'), { className: 'dz-mark', textContent: '+' }),
+    Object.assign(document.createElement('span'), { className: 'dz-t', textContent: 'Add posters' }),
+    Object.assign(document.createElement('span'), {
+      className: 'dz-s', textContent: 'Drag them here, or tap to choose',
+    }),
+  );
+
+  const take = async (files) => {
+    if (!files.length) return;
+    zone.disabled = true;
+    zone.classList.add('over');
+    try {
+      await addPostersFromFiles(files);
+    } finally {
+      // render() replaces this element, so only a failed batch lands here.
+      zone.disabled = false;
+      zone.classList.remove('over');
+    }
+  };
+
+  zone.addEventListener('click', () => {
+    fileInput.value = '';
+    fileInput.multiple = true;
+    fileInput.onchange = async () => {
+      const files = [...(fileInput.files || [])];
+      fileInput.multiple = false;
+      await take(files);
+    };
+    fileInput.click();
+  });
+
+  // Children are pointer-events:none, so dragleave only fires on a real exit.
+  zone.addEventListener('dragenter', (e) => { e.preventDefault(); zone.classList.add('over'); });
+  zone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+  });
+  zone.addEventListener('dragleave', () => { if (!zone.disabled) zone.classList.remove('over'); });
+  zone.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    zone.classList.remove('over');
+    if (zone.disabled) return;
+    const files = [...(e.dataTransfer?.files || [])]
+      .filter((f) => /^image\/(jpeg|png|webp)$/.test(f.type));
+    if (!files.length) {
+      toast('Drop poster images — JPEG, PNG or WebP', true);
+      return;
+    }
+    await take(files);
+  });
+
+  return zone;
+}
+
+// A poster dropped anywhere else would otherwise navigate away from the editor,
+// losing unsaved edits. The zone's own handler runs first, so this only catches misses.
+for (const type of ['dragover', 'drop']) {
+  window.addEventListener(type, (e) => e.preventDefault());
+}
+
 /**
  * Add a batch of posters in one go: upload each, then ask the model to read the
  * act, date and genre off it. Extraction is best-effort — a poster that cannot
@@ -409,19 +475,10 @@ function screenShows() {
     wrap.append(moveControls(s.events, idx, render));
     f.append(wrap);
   });
-  f.append(button('+ Add posters', () => {
-    fileInput.value = '';
-    fileInput.multiple = true;
-    fileInput.onchange = async () => {
-      const files = [...(fileInput.files || [])];
-      fileInput.multiple = false;
-      if (files.length) await addPostersFromFiles(files);
-    };
-    fileInput.click();
-  }));
+  f.append(posterDropZone());
   f.append(Object.assign(document.createElement('p'), {
     className: 'hint',
-    textContent: 'Pick a whole month of posters at once. Each one is read for the act, date and genre — check them before saving.',
+    textContent: 'A whole month at once is fine. Each poster is read for the act, date and genre — check them before saving.',
   }));
 
   f.append(button('+ Add an event by hand', () => {

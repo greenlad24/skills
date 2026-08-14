@@ -300,6 +300,46 @@ input:focus-visible, textarea:focus-visible, button:focus-visible, summary:focus
 .imgacts { display: flex; flex-direction: column; gap: 8px; flex: 1 1 auto }
 .imgacts .btn { width: 100% }
 
+/* poster drop zone — drag a week's worth in, or tap to pick */
+
+.dropzone {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 22px 18px;
+  background: var(--surface-2);
+  border: 1px dashed var(--gold-line);
+  border-radius: 14px;
+  cursor: pointer;
+  text-align: center;
+  transition: border-color .15s, background .15s;
+}
+
+.dropzone .dz-mark {
+  font-size: 22px;
+  line-height: 1;
+  color: var(--gold);
+}
+
+.dropzone .dz-t {
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.dropzone .dz-s { font-size: 12px; color: var(--muted) }
+
+/* Lit while a drag is over it, and while a batch is being read. */
+.dropzone.over { border-color: var(--gold); background: rgba(201, 169, 106, .10) }
+.dropzone[disabled] { cursor: default; opacity: .6 }
+
+/* Pointer-events off inside, so dragging over a child never reads as leaving. */
+.dropzone > * { pointer-events: none }
+
 /* list-page rows */
 
 .lrow { display: flex; gap: 8px; margin-bottom: 8px }

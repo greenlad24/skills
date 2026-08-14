@@ -41,17 +41,31 @@ trusted from the client, and only JPEG, PNG and WebP under 8MB are accepted.
 
 ### Adding a month of posters at once
 
-**Live Shows → Add posters** takes a whole batch. Each poster is uploaded, then
-read for the act, date and genre, and becomes a draft event you review before
-saving. A poster that can't be read still becomes an event with its poster
-attached — you just fill in the fields.
+**Live Shows** has a drop zone: drag in a week's or a month's posters, or tap it
+to pick them. Each poster is uploaded, then read for the act, date and genre, and
+becomes a draft event you review before saving. A poster that can't be read still
+becomes an event with its poster attached — you just fill in the fields. Dropping
+anywhere else on the page is ignored rather than opening the file, so unsaved
+edits survive a near miss.
 
-This uses Claude vision (`claude-opus-5`) with a JSON schema, so the response is
-always the right shape. It needs `ANTHROPIC_API_KEY` set on the site; without
-it the endpoint reports itself unconfigured and the batch add still works, minus
-the auto-fill. Cost is roughly 2–5k input tokens per poster — at $5 per million
-input tokens that is well under a cent each, so a month of posters costs a few
-cents.
+Reading the poster is a vision model call with a JSON schema, so the response is
+always the right shape. Two providers are supported:
+
+| Key | Used when | Cost |
+|-----|-----------|------|
+| `GROQ_API_KEY` | Preferred, tried first | Free tier covers this volume |
+| `ANTHROPIC_API_KEY` | Only key set, or Groq failed | Well under a cent per poster |
+
+Set neither and the endpoint reports itself unconfigured: the batch add still
+works, minus the auto-fill. Set both and Groq does the work, with Anthropic
+picking up anything Groq can't — a retired preview model or a rate limit
+degrades to a slightly pricier read rather than to no read.
+
+Groq's vision line-up is served as preview models and IDs get retired, so the
+code carries a preference list and uses the first model the account can reach.
+`GROQ_MODEL` pins a specific one if you'd rather not rely on that. Its free tier
+is roughly 30 requests a minute; the batch runs one poster at a time and retries
+once when it hits the limit, so a month of posters goes through in one pass.
 
 Nothing is invented: the prompt says to transcribe only what the poster shows
 and leave a field empty otherwise, and dates without a year resolve forward
@@ -107,7 +121,9 @@ changing the password invalidates every existing session.
 | ---------------- | -------- | ---------------------------------------- |
 | `ADMIN_PASSWORD` | Yes      | The editor password                      |
 | `SESSION_SECRET` | No       | Cookie signing key; `openssl rand -hex 32` |
-| `ANTHROPIC_API_KEY` | No    | Enables reading posters automatically (see below) |
+| `GROQ_API_KEY`   | No       | Reads posters automatically, on the free tier |
+| `GROQ_MODEL`     | No       | Pins one Groq vision model instead of auto-picking |
+| `ANTHROPIC_API_KEY` | No    | Fallback for poster reading |
 
 Set `ADMIN_PASSWORD` with **all** scopes. Setting it scoped to `functions` alone
 has repeatedly failed to persist through the Netlify MCP connector.
