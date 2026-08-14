@@ -63,6 +63,18 @@
   // The grid was written for exactly five rows.
   grid.style.gridTemplateRows = 'repeat(' + grid.children.length + ',1fr)';
 
+  /* Card titles scale to the card, not the viewport: adding a section shortens
+     every card, and a width-only size would not notice. */
+  function sizeCardTitles() {
+    const first = grid.firstElementChild;
+    if (!first) return;
+    const h = first.getBoundingClientRect().height;
+    if (!h) return;
+    grid.style.setProperty('--cardfs', Math.min(41, Math.max(21, h * 0.30)).toFixed(1) + 'px');
+  }
+  requestAnimationFrame(sizeCardTitles);
+  window.addEventListener('resize', sizeCardTitles);
+
   const esc = s => String(s == null ? '' : s);
   function buildDots(t) { return esc(t).split(' / ').map(x => x.trim()).join(' <span class="dot">&middot;</span> '); }
 

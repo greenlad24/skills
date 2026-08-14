@@ -29,9 +29,11 @@ html,body{height:100%;background:#000;overflow:hidden;color:#EFEBE2;
 .card .lbl{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding-left:5.5vw}
 /* home titles +20% */
 .card .lbl h2{font-family:'Cormorant Garamond',serif;font-style:italic;font-weight:500;
-  font-size:clamp(24px,6.7vw,41px);color:#F4F0E6;line-height:1}
-.card .lbl span{margin-top:.5vh;font-size:clamp(8px,2.1vw,11px);letter-spacing:.28em;
-  text-transform:uppercase;color:#C9A96A;padding-left:.28em}
+  /* --cardfs is set from the measured card height, so titles stay in proportion
+     however many cards the grid holds. The clamp keeps it readable either way. */
+  font-size:clamp(21px,var(--cardfs,6.7vw),41px);color:#F4F0E6;line-height:1.05}
+.card .lbl span{margin-top:.6vh;font-size:clamp(10px,2.6vw,12px);letter-spacing:.2em;
+  text-transform:uppercase;color:#C9A96A;padding-left:.2em}
 .card .arw{position:absolute;right:5vw;top:50%;transform:translateY(-50%);color:#C9A96A;font-size:clamp(14px,3.4vw,19px)}
 #home .foot{flex:0 0 auto;text-align:center;margin-top:1.6vh;font-size:clamp(7px,1.9vw,10px);
   letter-spacing:.34em;text-transform:uppercase;color:#5C574C;padding-left:.34em}
