@@ -233,6 +233,57 @@ function moveControls(list, index, onChanged) {
   return row;
 }
 
+
+/**
+ * Add a batch of posters in one go: upload each, then ask the model to read the
+ * act, date and genre off it. Extraction is best-effort — a poster that cannot
+ * be read still becomes an event with its poster attached, ready to fill in.
+ */
+async function addPostersFromFiles(files) {
+  const shows = menu.liveShows;
+  const total = files.length;
+  let read = 0, failed = 0;
+
+  for (let i = 0; i < total; i += 1) {
+    toast(`Adding poster ${i + 1} of ${total}…`);
+    const event = { id: newId(), on: '', name: '', genre: '', poster: '', description: '' };
+
+    try {
+      const body = new FormData();
+      body.append('file', files[i]);
+      const up = await api('/api/admin/upload', { method: 'POST', body });
+      const upData = await up.json().catch(() => ({}));
+      if (!up.ok) throw new Error(upData.error || 'Upload failed');
+      event.poster = upData.url;
+
+      const key = upData.url.split('/').pop();
+      const res = await api('/api/admin/extract', { method: 'POST', body: JSON.stringify({ key }) });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.configured && data.event) {
+        Object.assign(event, data.event);
+        read += 1;
+      } else if (res.ok && data.configured === false) {
+        // No API key configured — posters still attach, fields stay blank.
+      } else {
+        failed += 1;
+      }
+    } catch (err) {
+      toast(err.message || 'Could not add that poster', true);
+      continue;
+    }
+
+    if (!event.name) event.name = files[i].name.replace(/\.[^.]+$/, '');
+    shows.events.push(event);
+    setDirty(true);
+    render();
+  }
+
+  const parts = [`${total} poster${total === 1 ? '' : 's'} added`];
+  if (read) parts.push(`${read} filled in automatically`);
+  if (failed) parts.push(`${failed} needs details`);
+  toast(parts.join(' · ') + ' — review, then Save');
+}
+
 /* ---------------- screens ---------------- */
 
 function screenHome() {
@@ -358,7 +409,22 @@ function screenShows() {
     wrap.append(moveControls(s.events, idx, render));
     f.append(wrap);
   });
-  f.append(button('+ Add an event', () => {
+  f.append(button('+ Add posters', () => {
+    fileInput.value = '';
+    fileInput.multiple = true;
+    fileInput.onchange = async () => {
+      const files = [...(fileInput.files || [])];
+      fileInput.multiple = false;
+      if (files.length) await addPostersFromFiles(files);
+    };
+    fileInput.click();
+  }));
+  f.append(Object.assign(document.createElement('p'), {
+    className: 'hint',
+    textContent: 'Pick a whole month of posters at once. Each one is read for the act, date and genre — check them before saving.',
+  }));
+
+  f.append(button('+ Add an event by hand', () => {
     s.events.push({ id: newId(), on: '', name: 'New event', genre: '', poster: '', description: '' });
     setDirty(true);
     go({ view: 'event', idx: s.events.length - 1 });

@@ -20,6 +20,7 @@ rebuild, no redeploy.
 | `/api/admin/login` | Public (POST) | Exchanges the password for a session cookie |
 | `/api/admin/menu`  | Session       | Reads the menu and saves edits              |
 | `/api/admin/upload`| Session       | Uploads a poster, returns its URL           |
+| `/api/admin/extract`| Session      | Reads event details off an uploaded poster  |
 | `/api/img/:key`    | Public        | Serves an uploaded image                    |
 
 ## Live Shows
@@ -37,6 +38,24 @@ Uploads go to Netlify Blobs and are served from `/api/img/<hash>`. The key is a
 SHA-256 of the bytes, so re-uploading the same image reuses it and the URL can be
 cached forever. The type is sniffed from the file's magic bytes rather than
 trusted from the client, and only JPEG, PNG and WebP under 8MB are accepted.
+
+### Adding a month of posters at once
+
+**Live Shows → Add posters** takes a whole batch. Each poster is uploaded, then
+read for the act, date and genre, and becomes a draft event you review before
+saving. A poster that can't be read still becomes an event with its poster
+attached — you just fill in the fields.
+
+This uses Claude vision (`claude-opus-5`) with a JSON schema, so the response is
+always the right shape. It needs `ANTHROPIC_API_KEY` set on the site; without
+it the endpoint reports itself unconfigured and the batch add still works, minus
+the auto-fill. Cost is roughly 2–5k input tokens per poster — at $5 per million
+input tokens that is well under a cent each, so a month of posters costs a few
+cents.
+
+Nothing is invented: the prompt says to transcribe only what the poster shows
+and leave a field empty otherwise, and dates without a year resolve forward
+rather than into the past.
 
 ## What the editor can change
 
@@ -88,6 +107,7 @@ changing the password invalidates every existing session.
 | ---------------- | -------- | ---------------------------------------- |
 | `ADMIN_PASSWORD` | Yes      | The editor password                      |
 | `SESSION_SECRET` | No       | Cookie signing key; `openssl rand -hex 32` |
+| `ANTHROPIC_API_KEY` | No    | Enables reading posters automatically (see below) |
 
 Set `ADMIN_PASSWORD` with **all** scopes. Setting it scoped to `functions` alone
 has repeatedly failed to persist through the Netlify MCP connector.

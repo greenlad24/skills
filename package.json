@@ -5,6 +5,7 @@
   "description": "Public menu for Vibration plus a password-protected, mobile-first menu editor.",
   "type": "module",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.117.1",
     "@netlify/blobs": "^8.1.0"
   }
 }
