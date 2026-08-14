@@ -146,6 +146,7 @@ async function boot() {
     presets: data.presets,
   });
   const hash = location.hash.slice(1);
+  S.initialHash = S.initialHash ?? hash;
   if (DAY_KEYS.includes(hash)) S.view = hash;
   renderAll();
 }
@@ -1164,7 +1165,10 @@ function renderOnboarding() {
 // ---------- go ----------
 boot()
   .then(() => {
-    if (!S.settings.onboarded) {
+    if (S.initialHash === 'settings') {
+      renderSettings();
+      openModal('settings-modal');
+    } else if (S.initialHash === 'setup' || !S.settings.onboarded) {
       OB.step = 0;
       renderOnboarding();
       openModal('onboarding-modal');
