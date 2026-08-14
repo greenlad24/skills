@@ -349,8 +349,91 @@ for (const type of ['dragover', 'drop']) {
  */
 const wait = (seconds) => new Promise((r) => setTimeout(r, seconds * 1000));
 
+/* ---------------- batch progress ---------------- */
+
+/**
+ * A run of posters can take a minute or more — uploads, a model read each, and
+ * a rate limit waited out in between. A toast that replaces itself every few
+ * seconds cannot carry that, so the batch keeps its own panel: a bar for how
+ * far along it is, and a line per poster saying what happened to it.
+ *
+ * It lives outside the screen it is drawn on, so re-rendering the event list
+ * after each poster puts the same element back rather than a fresh empty one.
+ */
+let batch = null;
+
+function startBatch(total) {
+  const el = document.createElement('section');
+  el.className = 'batch';
+
+  const head = document.createElement('div');
+  head.className = 'batch-head';
+  const title = Object.assign(document.createElement('span'), { textContent: 'Adding posters' });
+  const count = Object.assign(document.createElement('span'), { className: 'batch-count' });
+  head.append(title, count);
+
+  const track = document.createElement('div');
+  track.className = 'bar-track';
+  const fill = document.createElement('div');
+  fill.className = 'bar-fill';
+  track.append(fill);
+  track.setAttribute('role', 'progressbar');
+  track.setAttribute('aria-valuemin', '0');
+  track.setAttribute('aria-valuemax', String(total));
+
+  const list = document.createElement('ol');
+  list.className = 'batch-log';
+  // Announced politely, so a screen reader follows the run without interrupting.
+  list.setAttribute('aria-live', 'polite');
+
+  el.append(head, track, list);
+  batch = { el, fill, count, list, track, total, done: 0 };
+  paintBatch();
+  return el;
+}
+
+function paintBatch() {
+  const { done, total } = batch;
+  batch.count.textContent = `${done} of ${total}`;
+  batch.fill.style.width = `${total ? (done / total) * 100 : 0}%`;
+  batch.track.setAttribute('aria-valuenow', String(done));
+  keepBatchInView();
+}
+
+/**
+ * The drop zone sits below the event list, and that list grows by a row with
+ * every poster — so the panel walks down the page as the run goes on. This
+ * keeps it where it can be read; `nearest` means it only moves when it has to.
+ */
+function keepBatchInView() {
+  batch?.el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+/** Adds a line to the log and hands it back, so it can be updated in place. */
+function batchLine(text) {
+  const li = document.createElement('li');
+  li.className = 'blog work';
+  li.textContent = text;
+  batch.list.append(li);
+  batch.list.scrollTop = batch.list.scrollHeight;
+  return li;
+}
+
+const setLine = (li, text, kind) => { li.textContent = text; li.className = `blog ${kind}`; };
+
+/** Leaves the log on screen to be read, with a way to put it away. */
+function endBatch(summary, bad) {
+  batch.el.append(Object.assign(document.createElement('p'), {
+    className: bad ? 'batch-done bad' : 'batch-done',
+    textContent: summary,
+  }));
+  batch.el.append(button('Close', () => { batch = null; render(); }));
+  render();
+  keepBatchInView();
+}
+
 /** Reads one uploaded poster, waiting out Groq's free-tier rate limit once. */
-async function readPoster(key) {
+async function readPoster(key, onWait) {
   for (let attempt = 0; ; attempt += 1) {
     const res = await api('/api/admin/extract', { method: 'POST', body: JSON.stringify({ key }) });
     const data = await res.json().catch(() => ({}));
@@ -360,7 +443,7 @@ async function readPoster(key) {
     // the wait is measured in tens of seconds rather than retried immediately.
     // Groq asks for tens of seconds; waiting less than it asked just fails again.
     const seconds = Math.min(60, Number(data.retryAfter) || 20);
-    toast(`Groq is busy — waiting ${seconds}s, then trying this poster again`);
+    if (onWait) onWait(seconds);
     await wait(seconds);
   }
 }
@@ -369,10 +452,14 @@ async function addPostersFromFiles(files) {
   const shows = menu.liveShows;
   const total = files.length;
   let read = 0, failed = 0, weekly = 0, off = false;
-  let why = '';
+
+  startBatch(total);
+  render();
 
   for (let i = 0; i < total; i += 1) {
-    toast(`Adding poster ${i + 1} of ${total}…`);
+    const label = files[i].name.replace(/\.[^.]+$/, '');
+    const short = label.length > 28 ? `${label.slice(0, 27)}…` : label;
+    const line = batchLine(`${short} — uploading`);
     const event = {
       id: newId(), on: '', name: '', genre: '', poster: '', description: '', repeat: '',
     };
@@ -385,27 +472,40 @@ async function addPostersFromFiles(files) {
       if (!up.ok) throw new Error(upData.error || 'Upload failed');
       event.poster = upData.url;
 
-      const { res, data } = await readPoster(upData.url.split('/').pop());
+      setLine(line, `${short} — reading the poster`, 'work');
+      const { res, data } = await readPoster(
+        upData.url.split('/').pop(),
+        (seconds) => setLine(line, `${short} — Groq is busy, waiting ${seconds}s`, 'wait'),
+      );
+
       if (res.ok && data.configured && data.event) {
         Object.assign(event, data.event);
         // A poster naming only a weekday is a weekly night: it keeps its place
         // on the schedule instead of dropping off after the first one.
         if (data.recurring) { event.repeat = 'weekly'; weekly += 1; }
         read += 1;
+        const said = [event.name || short, prettyDate(event.on), event.repeat ? 'weekly' : '']
+          .filter(Boolean).join(' · ');
+        setLine(line, said, 'ok');
       } else if (res.ok && data.configured === false) {
         // No API key on the site — posters still attach, fields stay blank.
         off = true;
+        setLine(line, `${short} — added, reading is switched off on this site`, 'warn');
       } else {
         failed += 1;
-        why = data.error || why;
+        setLine(line, `${short} — ${data.error || 'could not be read'}`, 'bad');
       }
     } catch (err) {
-      toast(err.message || 'Could not add that poster', true);
+      setLine(line, `${short} — ${err.message || 'could not be added'}`, 'bad');
+      batch.done += 1;
+      paintBatch();
       continue;
     }
 
-    if (!event.name) event.name = files[i].name.replace(/\.[^.]+$/, '');
+    if (!event.name) event.name = label;
     shows.events.push(event);
+    batch.done += 1;
+    paintBatch();
     setDirty(true);
     render();
   }
@@ -413,16 +513,16 @@ async function addPostersFromFiles(files) {
   // Blank fields have two very different causes, and saying which saves a hunt:
   // the site has no key at all, or the model could not read that poster.
   if (off) {
-    toast(`${total} poster${total === 1 ? '' : 's'} added — reading posters is switched `
-      + 'off on this site, so fill the details in by hand', true);
+    endBatch(`${total} added — reading posters is switched off on this site, `
+      + 'so fill the details in by hand', true);
     return;
   }
 
   const parts = [`${total} poster${total === 1 ? '' : 's'} added`];
   if (read) parts.push(`${read} filled in automatically`);
   if (weekly) parts.push(`${weekly} set to repeat weekly`);
-  if (failed) parts.push(`${failed} could not be read${why ? ` (${why})` : ''}`);
-  toast(parts.join(' · ') + ' — review, then Save', failed > 0);
+  if (failed) parts.push(`${failed} could not be read`);
+  endBatch(`${parts.join(' · ')} — review, then Save`, failed > 0);
 }
 
 /* ---------------- screens ---------------- */
@@ -582,6 +682,7 @@ function screenShows() {
     wrap.append(moveControls(s.events, idx, render));
     f.append(wrap);
   });
+  if (batch) f.append(batch.el);
   f.append(posterDropZone());
   f.append(Object.assign(document.createElement('p'), {
     className: 'hint',

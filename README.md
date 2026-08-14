@@ -75,9 +75,12 @@ the coming Friday and marked **Weekly**, which means it rolls on to next week
 instead of dropping off the schedule. The switch is on the event screen, so any
 show can be made recurring by hand.
 
-When a poster cannot be read, the editor says why rather than leaving a blank
-form: a Groq rate limit is waited out and retried on its own, while an unreadable
-poster is reported as one so you know to fill it in.
+A run has its own panel rather than a toast: a bar showing how far along it is,
+and a line per poster saying what happened to that one — uploading, reading,
+waiting out a rate limit with the seconds counted, then either what was found
+(act, date, and whether it repeats) or why it could not be read, in Groq's own
+words. The log stays on screen after the run until you close it, since the whole
+point is being able to read back what happened while you were not watching.
 
 ## What the editor can change
 
