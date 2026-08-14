@@ -98,8 +98,16 @@ export function normaliseDate(raw, today) {
  * editor says so rather than deciding for you.
  */
 export function nextWeekday(raw, today) {
-  const name = String(raw || '').trim().toLowerCase();
-  const target = DAYS.findIndex((d) => name.startsWith(d.slice(0, 3)) && d.startsWith(name.slice(0, 3)));
+  // Every word gets a look, so "FREESTYLE FRIDAY" finds its day, and a word only
+  // counts when the day name actually starts with it — "THURS" and "FRI-YAY" do,
+  // "Saturnalia" does not.
+  const words = String(raw || '').toLowerCase().match(/[a-z]+/g) || [];
+  let target = -1;
+  for (const word of words) {
+    if (word.length < 3) continue;
+    target = DAYS.findIndex((d) => d.startsWith(word));
+    if (target >= 0) break;
+  }
   if (target < 0) return '';
 
   const start = new Date(`${today}T00:00:00Z`);
