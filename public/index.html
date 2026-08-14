@@ -174,6 +174,64 @@ html,body{height:100%;background:#000;overflow:hidden;color:#EFEBE2;
 .l-foot{position:absolute;bottom:90px;width:100%;text-align:center;font-size:31px;letter-spacing:.4em;
   color:#565144;text-transform:uppercase;font-weight:500}
 
+/* ================= LIVE SHOWS ================= */
+#shows{position:fixed;inset:0;z-index:20;display:none;background:#000;overflow-y:auto;overflow-x:hidden;
+  -webkit-overflow-scrolling:touch}
+#shows.on{display:block}
+#shows::-webkit-scrollbar{width:0}
+.showsback{position:fixed;z-index:23;top:calc(env(safe-area-inset-top,0px) + 14px);left:16px;
+  border:1px solid rgba(201,169,106,.34);background:rgba(0,0,0,.55);color:#EFEBE2;
+  font:500 13.5px/1 'Jost',sans-serif;letter-spacing:.22em;text-transform:uppercase;padding:13.5px 21.5px;
+  border-radius:999px;cursor:pointer;backdrop-filter:blur(8px);display:none;align-items:center;gap:8px}
+#shows.on ~ .showsback,.showsback.on{display:inline-flex}
+.showswrap{width:100%;max-width:620px;margin:0 auto;
+  padding:calc(env(safe-area-inset-top,0px) + 92px) clamp(16px,5vw,34px) calc(env(safe-area-inset-bottom,0px) + 54px)}
+.shows-eyebrow{text-align:center;font-size:clamp(13px,2.4vw,17px);letter-spacing:.68em;color:#8D8778;
+  text-transform:uppercase;padding-left:.68em;font-weight:500;margin-top:14px}
+.shows-rule{width:110px;height:1px;margin:16px auto 0;
+  background:linear-gradient(90deg,transparent,rgba(201,169,106,.55),transparent)}
+.shows-title{text-align:center;font-family:'Cormorant Garamond',serif;font-style:italic;font-weight:500;
+  font-size:clamp(38px,11vw,62px);color:#F4F0E6;margin-top:14px;line-height:1.05}
+.ev{position:relative;display:flex;align-items:center;margin-top:14px;min-height:94px;
+  border:1px solid rgba(201,169,106,.28);border-radius:12px;overflow:hidden;background:#0a0a0a;cursor:pointer}
+.ev-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 45%;opacity:.55}
+.ev-scrim{position:absolute;inset:0;
+  background:linear-gradient(90deg,#000 0%,rgba(0,0,0,.86) 50%,rgba(0,0,0,.28) 100%)}
+.ev-date{position:relative;flex:0 0 auto;width:clamp(78px,23vw,100px);text-align:center}
+.ev-d{font-size:clamp(17px,4.6vw,22px);color:#C9A96A;font-weight:600;letter-spacing:.03em;
+  font-variant-numeric:tabular-nums}
+.ev-day{margin-top:3px;font-size:clamp(8px,2vw,10px);letter-spacing:.22em;text-transform:uppercase;color:#8D8778}
+.ev-txt{position:relative;min-width:0;flex:1 1 auto;padding-right:8px}
+.ev-nm{font-family:'Cormorant Garamond',serif;font-style:italic;font-weight:500;
+  font-size:clamp(20px,5.6vw,30px);color:#F4F0E6;line-height:1.1}
+.ev-gen{margin-top:4px;font-size:clamp(8px,2vw,11px);letter-spacing:.22em;text-transform:uppercase;color:#C9A96A}
+.ev-arw{position:relative;flex:0 0 auto;padding:0 14px;color:#C9A96A;font-size:clamp(13px,3.2vw,17px)}
+.shows-empty{margin-top:30px;text-align:center;color:#6B6558;font-style:italic;font-size:15px}
+.wk-h{margin-top:46px;text-align:center;font-size:clamp(11px,2.4vw,14px);letter-spacing:.5em;
+  text-transform:uppercase;color:#8D8778;padding-left:.5em;font-weight:500}
+.wk{display:grid;grid-template-columns:1fr;gap:12px;margin-top:18px}
+.wkc{position:relative;min-height:92px;border:1px solid rgba(201,169,106,.22);border-radius:12px;
+  overflow:hidden;background:#0a0a0a;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;text-align:center;padding:16px}
+.wkc img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.45}
+.wkc .sc{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.5),rgba(0,0,0,.82))}
+.wkc .nm{position:relative;font-family:'Cormorant Garamond',serif;font-style:italic;font-weight:500;
+  font-size:clamp(19px,5vw,26px);color:#F4F0E6;line-height:1.15}
+.wkc .wh{position:relative;margin-top:5px;font-size:clamp(8px,2vw,11px);letter-spacing:.2em;
+  text-transform:uppercase;color:#C9A96A}
+.shows-foot{margin-top:42px;text-align:center;font-size:clamp(10px,2.4vw,13px);letter-spacing:.32em;
+  text-transform:uppercase;color:#8D8778;padding-left:.32em}
+@media (min-width:700px){.wk{grid-template-columns:repeat(3,1fr)}}
+
+/* event page: same typography as an item page, but the poster is shown whole */
+.itempage .herobox.posterbox img{object-fit:contain;transform:none;max-width:100%;max-height:100%}
+.itempage .herobox.posterbox::after{display:none}
+.itempage .posterbox .noposter{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  border:1px dashed rgba(201,169,106,.3);border-radius:12px;color:#6B6558;font-size:13px;
+  letter-spacing:.24em;text-transform:uppercase}
+.itempage .ev-when{margin-top:.55em;font-size:clamp(13px,3vw,20px);letter-spacing:.22em;
+  text-transform:uppercase;color:#C9A96A;padding-left:.22em}
+
 /* chrome */
 #bars{position:fixed;top:0;left:0;right:0;z-index:21;display:flex;gap:2px;padding:0 8px;
   margin-top:calc(env(safe-area-inset-top,0px) + 4px);transition:opacity .35s}
@@ -1571,6 +1629,19 @@ c255 -2 519 -1 588 3 123 7 124 7 157 40 l33 33 0 2545 c0 2082 2 2547 13
   <div id="grid"></div>
   <div class="foot">Koh Samui</div>
 </div>
+
+<div id="shows">
+  <div class="showswrap">
+    <div class="shows-eyebrow" id="shows-eyebrow"></div>
+    <div class="shows-rule"></div>
+    <div class="shows-title" id="shows-title"></div>
+    <div id="ev-list"></div>
+    <div class="wk-h" id="wk-h"></div>
+    <div class="wk" id="wk-list"></div>
+    <div class="shows-foot" id="shows-foot"></div>
+  </div>
+</div>
+<button class="showsback" id="shows-back">&#10094; Menu</button>
 
 <div id="viewer">
   <div id="bars"></div>

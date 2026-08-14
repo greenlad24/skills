@@ -37,15 +37,31 @@
   if (tagEl) tagEl.innerHTML = menu.brand.tag;
   if (footEl) footEl.innerHTML = menu.brand.foot;
 
+  const shows = menu.liveShows;
+
+  function makeCard(thumb, title, sub, onClick) {
+    const c = document.createElement('div'); c.className = 'card';
+    c.innerHTML = (thumb ? '<img src="' + thumb + '" alt="">' : '')
+      + '<div class="scrim"></div><div class="lbl"><h2>' + title + '</h2><span>' + (sub || '') + '</span></div>'
+      + '<div class="arw">&#10095;</div>';
+    c.onclick = onClick;
+    grid.appendChild(c);
+  }
+
+  // Live Shows sits above the menu sections. Its card falls back to the first
+  // event poster until a dedicated thumbnail is uploaded.
+  if (shows) {
+    makeCard(shows.thumb || (shows.events.find(e => e.poster) || {}).poster || '',
+      shows.title, shows.sub, openShows);
+  }
+
   ORDER.forEach(k => {
     const s = DATA[k]; if (!s) return;
-    const c = document.createElement('div'); c.className = 'card';
-    c.innerHTML = '<img src="' + s.thumb + '" alt="">'
-      + '<div class="scrim"></div><div class="lbl"><h2>' + s.title + '</h2><span>' + (SUB[k] || '') + '</span></div>'
-      + '<div class="arw">&#10095;</div>';
-    c.onclick = () => openBook(k);
-    grid.appendChild(c);
+    makeCard(s.thumb, s.title, SUB[k] || '', () => openBook(k));
   });
+
+  // The grid was written for exactly five rows.
+  grid.style.gridTemplateRows = 'repeat(' + grid.children.length + ',1fr)';
 
   const esc = s => String(s == null ? '' : s);
   function buildDots(t) { return esc(t).split(' / ').map(x => x.trim()).join(' <span class="dot">&middot;</span> '); }
@@ -97,6 +113,111 @@
       + '</div></div>';
   }
 
+  /* ---------------- Live Shows ---------------- */
+
+  const showsEl = document.getElementById('shows');
+  const showsBack = document.getElementById('shows-back');
+  let cameFromShows = false;
+
+  function eventHTML(e) {
+    const when = [e.date, e.day].filter(Boolean).join(' &middot; ');
+    return '<div class="itempage eventpage">'
+      + '<div class="herobox posterbox">'
+        + (e.poster ? '<img src="' + e.poster + '" alt="">'
+                    : '<div class="noposter">Poster coming soon</div>')
+      + '</div>'
+      + '<div class="eyeb">' + esc(shows.eyebrow || shows.title) + '</div><div class="eyerl"></div>'
+      + '<div class="txt">'
+        + '<div class="nm">' + esc(e.name) + '</div>'
+        + (when ? '<div class="ev-when">' + when + '</div>' : '')
+        + (e.genre ? '<div class="bd">' + buildDots(e.genre) + '</div>' : '')
+        + (e.description ? '<div class="st">' + esc(e.description) + '</div>' : '')
+      + '</div></div>';
+  }
+
+  function renderShows() {
+    document.getElementById('shows-eyebrow').innerHTML = shows.eyebrow || '';
+    document.getElementById('shows-title').innerHTML = shows.heading || shows.title || '';
+    document.getElementById('shows-foot').innerHTML = shows.foot || '';
+
+    const list = document.getElementById('ev-list');
+    list.replaceChildren();
+    if (!shows.events.length) {
+      list.append(Object.assign(document.createElement('div'),
+        { className: 'shows-empty', textContent: 'The next line-up is on its way.' }));
+    }
+    shows.events.forEach((e, idx) => {
+      const row = document.createElement('div');
+      row.className = 'ev';
+      row.innerHTML = (e.poster ? '<img class="ev-bg" src="' + e.poster + '" alt="">' : '')
+        + '<div class="ev-scrim"></div>'
+        + '<div class="ev-date"><div class="ev-d">' + esc(e.date) + '</div>'
+          + (e.day ? '<div class="ev-day">' + esc(e.day) + '</div>' : '') + '</div>'
+        + '<div class="ev-txt"><div class="ev-nm">' + esc(e.name) + '</div>'
+          + (e.genre ? '<div class="ev-gen">' + esc(e.genre) + '</div>' : '') + '</div>'
+        + '<div class="ev-arw">&#10095;</div>';
+      row.onclick = () => openEvent(idx);
+      list.append(row);
+    });
+
+    const weekly = (shows.weekly && shows.weekly.items) || [];
+    document.getElementById('wk-h').innerHTML = weekly.length ? (shows.weekly.title || '') : '';
+    const wkL = document.getElementById('wk-list');
+    wkL.replaceChildren();
+    weekly.forEach(w => {
+      const c = document.createElement('div');
+      c.className = 'wkc';
+      c.innerHTML = (w.image ? '<img src="' + w.image + '" alt="">' : '')
+        + '<div class="sc"></div>'
+        + '<div class="nm">' + esc(w.name) + '</div>'
+        + (w.when ? '<div class="wh">' + esc(w.when) + '</div>' : '');
+      wkL.append(c);
+    });
+  }
+
+  function openShows() {
+    renderShows();
+    home.classList.add('gone');
+    showsEl.classList.add('on');
+    showsBack.classList.add('on');
+    showsEl.scrollTop = 0;
+  }
+
+  function closeShows() {
+    showsEl.classList.remove('on');
+    showsBack.classList.remove('on');
+    home.classList.remove('gone');
+  }
+
+  showsBack.onclick = closeShows;
+
+  function openEvent(start) {
+    const list = shows.events;
+    book = 'live'; n = list.length; i = start;
+    sectEl.textContent = shows.title;
+    track.innerHTML = ''; bars.innerHTML = '';
+    list.forEach(e => {
+      const sl = document.createElement('div');
+      sl.className = 'slide';
+      sl.innerHTML = eventHTML(e);
+      track.appendChild(sl);
+      const b = document.createElement('div'); b.className = 'bar'; b.innerHTML = '<i></i>'; bars.appendChild(b);
+    });
+    cameFromShows = true;
+    showsEl.classList.remove('on');
+    showsBack.classList.remove('on');
+    viewer.classList.add('on');
+    fit(); render(false); wake(); autofitNames();
+    hint.classList.remove('hide'); setTimeout(() => hint.classList.add('hide'), 3600);
+  }
+
+  /** Leaving the viewer returns to wherever it was opened from. */
+  function leaveViewer() {
+    viewer.classList.remove('on');
+    if (cameFromShows) { cameFromShows = false; openShows(); }
+    else home.classList.remove('gone');
+  }
+
   let book = null, i = 0, n = 0;
   /* keep every title at 180px; shrink only the rare one that would overflow */
   function autofitLine(el, minRatio) {
@@ -140,6 +261,7 @@
     /* item pages are responsive now; nothing to scale */
   }
   function openBook(key) {
+    cameFromShows = false;
     book = key; const list = DATA[key].entries; n = list.length; i = 0;
     sectEl.textContent = DATA[key].title;
     track.innerHTML = ''; bars.innerHTML = '';
@@ -159,7 +281,7 @@
     fit(); render(false); wake(); autofitNames();
     hint.classList.remove('hide'); setTimeout(() => hint.classList.add('hide'), 3600);
   }
-  document.getElementById('back').onclick = () => { viewer.classList.remove('on'); home.classList.remove('gone'); };
+  document.getElementById('back').onclick = leaveViewer;
 
   function render(anim = true) {
     track.style.transition = anim ? 'transform .38s cubic-bezier(.22,.61,.36,1)' : 'none';
@@ -201,7 +323,7 @@
   window.addEventListener('keydown', e => {
     if (!viewer.classList.contains('on')) return;
     if (e.key === 'ArrowRight') go(1); if (e.key === 'ArrowLeft') go(-1);
-    if (e.key === 'Escape') { viewer.classList.remove('on'); home.classList.remove('gone'); }
+    if (e.key === 'Escape') leaveViewer();
   });
   nextB.onclick = () => go(1); prevB.onclick = () => go(-1);
   let idleT;

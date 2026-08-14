@@ -18,12 +18,31 @@ rebuild, no redeploy.
 | `/admin`           | Password      | The text editor                             |
 | `/api/menu`        | Public        | Menu JSON, fetched by the menu              |
 | `/api/admin/login` | Public (POST) | Exchanges the password for a session cookie |
-| `/api/admin/menu`  | Session       | Reads the menu and saves text edits         |
+| `/api/admin/menu`  | Session       | Reads the menu and saves edits              |
+| `/api/admin/upload`| Session       | Uploads a poster, returns its URL           |
+| `/api/img/:key`    | Public        | Serves an uploaded image                    |
+
+## Live Shows
+
+A `Live Shows` card sits above Food on the cover screen. It opens a scrollable
+schedule — eyebrow, month heading, one card per event (date, name, genre), then
+the weekly entertainment block and a footer line. Tapping an event opens its own
+page: the poster, then title, date, genre and description, swipeable between
+events exactly like the menu pages.
+
+Unlike the menu, Live Shows is **fully editable**: events and weekly slots can be
+added, renamed, reordered and deleted, and posters are uploaded from the editor.
+
+Uploads go to Netlify Blobs and are served from `/api/img/<hash>`. The key is a
+SHA-256 of the bytes, so re-uploading the same image reuses it and the URL can be
+cached forever. The type is sniffed from the file's magic bytes rather than
+trusted from the client, and only JPEG, PNG and WebP under 8MB are accepted.
 
 ## What the editor can change
 
-**Text only.** Everything else — photography, layout, fonts, the number of pages,
-entry types, page order — is fixed.
+**In the menu, text only.** Photography, layout, fonts, the number of pages,
+entry types and page order are fixed. **Live Shows is fully editable**, including
+images.
 
 - **Cover** — tagline and footer
 - **Sections** — title and subtitle
@@ -32,7 +51,10 @@ entry types, page order — is fixed.
 - **List pages** — eyebrow, title, category headings, and each row's name, price
   and size
 
-This is enforced on the server, not just hidden in the UI. `applyTextEdits()`
+The editor navigates like the app: a list of sections, each tapping through to
+its own page rather than expanding in place.
+
+The menu restriction is enforced on the server, not just hidden in the UI. `applyTextEdits()`
 walks the *stored* menu and copies across only whitelisted text fields, so a
 malformed or hostile payload cannot add, remove or reorder pages, change an entry
 type, or point an image somewhere else. Anything omitted keeps its current value.

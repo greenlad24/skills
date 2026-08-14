@@ -147,7 +147,9 @@ input:focus-visible, textarea:focus-visible, button:focus-visible, summary:focus
   backdrop-filter: blur(8px);
 }
 
-.topbar .serif { font-size: 26px; line-height: 1 }
+.topbar .serif { font-size: 24px; line-height: 1; flex: 1 1 auto; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+#nav-back { padding: 10px 12px; font-size: 15px; flex: 0 0 auto }
 .topbar-actions { display: flex; gap: 4px }
 
 .wrap {
@@ -190,52 +192,120 @@ input:focus-visible, textarea:focus-visible, button:focus-visible, summary:focus
 
 .panel-body { padding: 4px 16px 18px; border-top: 1px solid rgba(255, 255, 255, .06) }
 
-/* entry cards */
+/* drill-down rows — the app's card idea at list scale */
 
-.entry {
-  margin-top: 14px;
-  padding: 14px;
-  background: var(--surface-2);
-  border: 1px solid rgba(255, 255, 255, .07);
-  border-radius: 10px;
+.navrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 68px;
+  margin-bottom: 10px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--gold-line);
+  border-radius: 12px;
+  text-align: left;
+  cursor: pointer;
 }
 
-.entry-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px }
+.navrow:active { transform: translateY(1px) }
 
-.entry-head img {
+.navrow > img {
   width: 52px;
   height: 52px;
   flex: 0 0 auto;
   object-fit: cover;
   border-radius: 8px;
-  border: 1px solid var(--gold-line);
+  border: 1px solid rgba(201, 169, 106, .28);
   background: #000;
 }
 
-.entry-head .who { min-width: 0; flex: 1 1 auto }
-.entry-head .who .serif { font-size: 21px; line-height: 1.15; display: block }
+.navrow-t { flex: 1 1 auto; min-width: 0 }
+.navrow-t .serif { display: block; font-size: 22px; line-height: 1.15 }
 
-.entry-head .kind {
-  font-size: 9px;
-  letter-spacing: .24em;
+.navrow-m {
+  display: block;
+  margin-top: 3px;
+  font-size: 10px;
+  letter-spacing: .2em;
   text-transform: uppercase;
-  color: var(--gold);
-  padding-left: .24em;
+  color: var(--muted);
 }
 
-.price-row { display: flex; gap: 10px }
-.price-row .field { flex: 1 1 0; min-width: 0 }
+.navrow .chev { flex: 0 0 auto; color: var(--gold); font-size: 14px }
+
+/* a row plus its reorder/delete controls */
+.listitem { display: flex; align-items: center; gap: 8px }
+.listitem .navrow { flex: 1 1 auto; min-width: 0 }
+.listitem .rowtools { flex: 0 0 auto; margin-bottom: 10px }
+
+.rowtools { display: flex; gap: 4px }
+
+.icon-btn {
+  width: 38px;
+  min-height: 38px;
+  background: none;
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 9px;
+  color: var(--ink);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.icon-btn.danger { color: var(--danger) }
+.icon-btn:disabled { opacity: .3; cursor: default }
+
+.shead {
+  margin: 26px 0 12px;
+  font-size: 10px;
+  letter-spacing: .32em;
+  text-transform: uppercase;
+  color: var(--gold);
+  padding-left: .32em;
+}
+
+.heroprev {
+  width: 100%;
+  max-height: 190px;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 1px solid var(--gold-line);
+  margin-bottom: 18px;
+  display: block;
+}
+
+/* image picker */
+
+.imgpick { display: flex; align-items: center; gap: 12px }
+
+.imgprev {
+  width: 84px;
+  height: 84px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  background: var(--surface-2);
+  border: 1px solid rgba(255, 255, 255, .1);
+  border-radius: 10px;
+  overflow: hidden;
+  color: var(--faint);
+  font-size: 10px;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+}
+
+.imgprev img { width: 100%; height: 100%; object-fit: cover }
+
+.imgacts { display: flex; flex-direction: column; gap: 8px; flex: 1 1 auto }
+.imgacts .btn { width: 100% }
 
 /* list-page rows */
-
-.block { margin-top: 18px; padding-top: 14px; border-top: 1px solid rgba(255, 255, 255, .07) }
 
 .lrow { display: flex; gap: 8px; margin-bottom: 8px }
 .lrow .nm { flex: 1 1 auto; min-width: 0 }
 .lrow .pr { flex: 0 0 78px }
 .lrow .sz { flex: 0 0 74px }
-
-.hint { margin: 2px 0 0; font-size: 11px; color: var(--faint); letter-spacing: .04em }
 
 /* save bar */
 

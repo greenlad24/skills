@@ -1,5 +1,6 @@
 import { getStore } from '@netlify/blobs';
 import { SEED_MENU } from './seed.mjs';
+import { sanitiseLiveShows } from './shows.mjs';
 
 const STORE_NAME = 'vibration-menu';
 const MENU_KEY = 'menu';
@@ -94,17 +95,28 @@ export function applyTextEdits(stored, incoming) {
 export async function readMenu() {
   try {
     const stored = await store().get(MENU_KEY, { type: 'json' });
-    if (stored && Array.isArray(stored.sections) && stored.sections.length) return stored;
+    if (stored && Array.isArray(stored.sections) && stored.sections.length) {
+      // Menus saved before Live Shows existed have no such key.
+      if (!stored.liveShows) stored.liveShows = structuredClone(SEED_MENU.liveShows);
+      return stored;
+    }
   } catch (error) {
     console.error('Blobs read failed, serving bundled seed menu:', error);
   }
   return structuredClone(SEED_MENU);
 }
 
-/** Merges text edits onto the current menu and persists the result. */
-export async function saveTextEdits(incoming) {
+/**
+ * Persists an edit.
+ *
+ * The menu and Live Shows have deliberately different rules: the menu is
+ * text-only because its pages, photography and framing are designed, while Live
+ * Shows is fully editable because events come and go every month.
+ */
+export async function saveEdits(incoming) {
   const current = await readMenu();
   const next = applyTextEdits(current, incoming);
+  next.liveShows = sanitiseLiveShows(incoming?.liveShows, current.liveShows);
   next.updatedAt = new Date().toISOString();
   await store().setJSON(MENU_KEY, next);
   return next;

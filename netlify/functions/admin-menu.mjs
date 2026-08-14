@@ -1,5 +1,5 @@
 import { isAuthenticated, hasCsrfHeader, unauthorized } from '../lib/auth.mjs';
-import { readMenu, saveTextEdits } from '../lib/store.mjs';
+import { readMenu, saveEdits } from '../lib/store.mjs';
 
 /**
  * Authenticated read/write of the whole menu document.
@@ -49,7 +49,7 @@ export default async (request) => {
     );
   }
 
-  const saved = await saveTextEdits(incoming);
+  const saved = await saveEdits(incoming);
   return Response.json(saved, { headers: { 'Cache-Control': 'no-store' } });
 };
 

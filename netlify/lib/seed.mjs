@@ -1720,5 +1720,75 @@ export const SEED_MENU = {
       ]
     }
   ],
-  "updatedAt": null
+  "updatedAt": null,
+  "liveShows": {
+    "key": "live",
+    "title": "Live Shows",
+    "sub": "Sunset Sets · Live Bands",
+    "thumb": "",
+    "heading": "September",
+    "eyebrow": "Live Music Lineup",
+    "foot": "Dinner from 6 &middot; Bands from 9",
+    "events": [
+      {
+        "id": "0f27bcb2",
+        "date": "05.09",
+        "day": "Saturday",
+        "name": "Sunrise Jam",
+        "genre": "Funk · Soul",
+        "poster": "",
+        "description": ""
+      },
+      {
+        "id": "f50a7200",
+        "date": "12.09",
+        "day": "Saturday",
+        "name": "Nalani &amp; The Neon",
+        "genre": "R&B · Neo-Soul",
+        "poster": "",
+        "description": ""
+      },
+      {
+        "id": "f6a018c8",
+        "date": "19.09",
+        "day": "Saturday",
+        "name": "Marisa &amp; The Tide",
+        "genre": "Jazz · Bossa",
+        "poster": "",
+        "description": ""
+      },
+      {
+        "id": "a2edb7e9",
+        "date": "26.09",
+        "day": "Saturday",
+        "name": "The Coral Room",
+        "genre": "Soul · Motown",
+        "poster": "",
+        "description": ""
+      }
+    ],
+    "weekly": {
+      "title": "Every Week",
+      "items": [
+        {
+          "id": "d6c29e03",
+          "name": "Dinner Sessions",
+          "when": "Tue — Sat · 6PM",
+          "image": ""
+        },
+        {
+          "id": "6f3a8e02",
+          "name": "Jam Nights",
+          "when": "Tue & Wed · 9PM",
+          "image": ""
+        },
+        {
+          "id": "065312af",
+          "name": "Ladies Night",
+          "when": "Saturdays · 9PM",
+          "image": ""
+        }
+      ]
+    }
+  }
 };

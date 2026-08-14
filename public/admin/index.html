@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
     <meta name="theme-color" content="#000000" />
     <meta name="robots" content="noindex, nofollow" />
-    <title>Vibration &middot; Menu Editor</title>
+    <title>Vibration &middot; Editor</title>
     <link
       href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Jost:wght@300;400;500;600&display=swap"
       rel="stylesheet"
@@ -13,11 +13,10 @@
     <link rel="stylesheet" href="/assets/admin.css" />
   </head>
   <body>
-    <!-- Sign in -->
     <section id="login-view" class="login" hidden>
       <div class="login-card">
         <div class="eyebrow">Vibration</div>
-        <div class="serif">Menu Editor</div>
+        <div class="serif">Editor</div>
         <div class="rule"></div>
         <form id="login-form">
           <label class="field">
@@ -30,37 +29,17 @@
       </div>
     </section>
 
-    <!-- Editor -->
     <section id="editor-view" hidden>
       <header class="topbar">
-        <div class="serif">Menu Editor</div>
+        <button id="nav-back" class="btn btn-quiet" type="button" hidden>&#10094;</button>
+        <div class="serif" id="nav-title">Editor</div>
         <div class="topbar-actions">
           <a class="btn btn-quiet" href="/" target="_blank" rel="noopener">View</a>
           <button id="logout" type="button" class="btn btn-quiet">Sign out</button>
         </div>
       </header>
 
-      <main class="wrap">
-        <details class="panel">
-          <summary>
-            <span class="serif">Cover</span>
-            <span class="chev">&#10095;</span>
-          </summary>
-          <div class="panel-body">
-            <label class="field">
-              <span class="field-label">Tagline</span>
-              <input id="brand-tag" type="text" />
-              <p class="hint">Shown under the logo on the cover screen.</p>
-            </label>
-            <label class="field">
-              <span class="field-label">Footer</span>
-              <input id="brand-foot" type="text" />
-            </label>
-          </div>
-        </details>
-
-        <div id="sections"></div>
-      </main>
+      <main class="wrap" id="screen"></main>
 
       <div class="savebar">
         <span id="save-status" class="save-status">All changes saved</span>
@@ -69,6 +48,7 @@
     </section>
 
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    <input id="file-input" type="file" accept="image/jpeg,image/png,image/webp" hidden />
 
     <script src="/assets/admin.js" type="module"></script>
   </body>
