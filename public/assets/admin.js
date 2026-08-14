@@ -7,31 +7,41 @@ const saveBtn = document.getElementById('save');
 const saveStatus = document.getElementById('save-status');
 const toastEl = document.getElementById('toast');
 
-const sectionTemplate = document.getElementById('section-template');
-const itemTemplate = document.getElementById('item-template');
-
-/** Working copy of the menu, plus the version stamp we loaded it at. */
 let menu = null;
 let baseUpdatedAt = null;
 let dirty = false;
 
-// Each maps to the matching key on menu.restaurant.
-const VENUE_FIELDS = ['venue-name', 'venue-tagline', 'venue-note'];
+/* Only these are editable. Structure, images and layout are fixed — the server
+   enforces the same list, this is just what gets rendered. */
+const FIELDS = {
+  item: [
+    ['eyebrow', 'Eyebrow', 'input'],
+    ['name', 'Name', 'input'],
+    ['story', 'Story', 'textarea'],
+    ['build', 'Build', 'input', 'Separate with " / " — shown as gold dots.'],
+    ['serve', 'Serve', 'input'],
+  ],
+  back: [
+    ['kicker', 'Kicker', 'input'],
+    ['quote', 'Quote', 'textarea'],
+    ['attrib', 'Attribution', 'input'],
+    ['fine', 'Fine print', 'textarea'],
+  ],
+  list: [
+    ['eyebrow', 'Eyebrow', 'input'],
+    ['title', 'Title', 'input'],
+  ],
+};
 
 function api(path, options = {}) {
   return fetch(path, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
-      // Paired with the SameSite=Strict cookie, this blocks cross-site posts.
       'X-Requested-With': 'vibration-admin',
       ...options.headers,
     },
   });
-}
-
-function newId() {
-  return (crypto.randomUUID?.() ?? String(Math.random()).slice(2)).slice(0, 8);
 }
 
 let toastTimer;
@@ -40,9 +50,7 @@ function toast(message, isError = false) {
   toastEl.className = isError ? 'toast error' : 'toast';
   toastEl.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => {
-    toastEl.hidden = true;
-  }, isError ? 6000 : 2500);
+  toastTimer = setTimeout(() => { toastEl.hidden = true; }, isError ? 6000 : 2600);
 }
 
 function setDirty(value) {
@@ -52,26 +60,173 @@ function setDirty(value) {
   saveStatus.className = value ? 'save-status dirty' : 'save-status';
 }
 
-// Guards against losing edits to an accidental back-swipe or tab close.
 window.addEventListener('beforeunload', (event) => {
   if (dirty) event.preventDefault();
 });
 
-/* ---------------- Sign in ---------------- */
+/* ---------------- field builders ---------------- */
+
+function field(label, value, kind, onInput, hint) {
+  const wrap = document.createElement('label');
+  wrap.className = 'field';
+
+  const name = document.createElement('span');
+  name.className = 'field-label';
+  name.textContent = label;
+  wrap.append(name);
+
+  const input = document.createElement(kind === 'textarea' ? 'textarea' : 'input');
+  if (kind === 'textarea') input.rows = 2; else input.type = 'text';
+  input.value = value ?? '';
+  input.addEventListener('input', () => { onInput(input.value); setDirty(true); });
+  wrap.append(input);
+
+  if (hint) {
+    const h = document.createElement('p');
+    h.className = 'hint';
+    h.textContent = hint;
+    wrap.append(h);
+  }
+  return wrap;
+}
+
+function priceRow(entry) {
+  const row = document.createElement('div');
+  row.className = 'price-row';
+  row.append(
+    field('Price', entry.price, 'input', (v) => { entry.price = v; },
+      'Number only — THB is added automatically.'),
+  );
+  if (entry.priceHtml) {
+    row.append(field('Price (custom)', entry.priceHtml, 'input', (v) => { entry.priceHtml = v; }));
+  }
+  return row;
+}
+
+function listBlocks(entry) {
+  const frag = document.createDocumentFragment();
+
+  for (const col of ['col1', 'col2']) {
+    for (const block of entry[col] || []) {
+      const wrap = document.createElement('div');
+      wrap.className = 'block';
+      wrap.append(field('Category', block.cat, 'input', (v) => { block.cat = v; }));
+
+      for (const row of block.rows || []) {
+        const line = document.createElement('div');
+        line.className = 'lrow';
+
+        const mk = (cls, index, placeholder) => {
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.className = cls;
+          input.value = row[index] ?? '';
+          input.placeholder = placeholder;
+          input.setAttribute('aria-label', placeholder);
+          input.addEventListener('input', () => { row[index] = input.value; setDirty(true); });
+          return input;
+        };
+
+        line.append(mk('nm', 0, 'Name'), mk('pr', 1, 'Price'), mk('sz', 2, 'Size'));
+        wrap.append(line);
+      }
+      frag.append(wrap);
+    }
+  }
+  return frag;
+}
+
+function entryCard(entry, index) {
+  const card = document.createElement('div');
+  card.className = 'entry';
+
+  const head = document.createElement('div');
+  head.className = 'entry-head';
+
+  if (entry.hero) {
+    const img = document.createElement('img');
+    img.src = entry.hero;
+    img.alt = '';
+    img.loading = 'lazy';
+    head.append(img);
+  }
+
+  const who = document.createElement('div');
+  who.className = 'who';
+  const title = document.createElement('span');
+  title.className = 'serif';
+  title.textContent = entry.name || entry.title || (entry.type === 'back' ? 'Back cover' : 'Page ' + (index + 1));
+  const kind = document.createElement('span');
+  kind.className = 'kind';
+  kind.textContent = entry.type === 'item' ? 'Item' : entry.type === 'back' ? 'Back cover' : 'List page';
+  who.append(title, kind);
+  head.append(who);
+  card.append(head);
+
+  for (const [key, label, kind_, hint] of FIELDS[entry.type] || []) {
+    card.append(field(label, entry[key], kind_, (v) => {
+      entry[key] = v;
+      if (key === 'name' || key === 'title') title.textContent = v || 'Untitled';
+    }, hint));
+  }
+
+  if (entry.type === 'item') card.append(priceRow(entry));
+  if (entry.type === 'list') card.append(listBlocks(entry));
+
+  return card;
+}
+
+function sectionPanel(section) {
+  const panel = document.createElement('details');
+  panel.className = 'panel';
+
+  const summary = document.createElement('summary');
+  summary.innerHTML = '<span class="serif"></span>'
+    + '<span class="count"></span><span class="chev">&#10095;</span>';
+  summary.querySelector('.serif').textContent = section.title;
+  summary.querySelector('.count').textContent = section.entries.length + ' pages';
+  panel.append(summary);
+
+  const body = document.createElement('div');
+  body.className = 'panel-body';
+
+  body.append(field('Section title', section.title, 'input', (v) => {
+    section.title = v;
+    summary.querySelector('.serif').textContent = v || 'Untitled';
+  }));
+  body.append(field('Subtitle', section.sub, 'input', (v) => { section.sub = v; },
+    'Shown under the section name on the cover.'));
+
+  section.entries.forEach((entry, index) => body.append(entryCard(entry, index)));
+
+  panel.append(body);
+  return panel;
+}
+
+function render() {
+  document.getElementById('brand-tag').value = menu.brand.tag;
+  document.getElementById('brand-foot').value = menu.brand.foot;
+  sectionsEl.replaceChildren(...menu.sections.map(sectionPanel));
+}
+
+document.getElementById('brand-tag').addEventListener('input', (e) => {
+  menu.brand.tag = e.target.value; setDirty(true);
+});
+document.getElementById('brand-foot').addEventListener('input', (e) => {
+  menu.brand.foot = e.target.value; setDirty(true);
+});
+
+/* ---------------- auth ---------------- */
 
 function showLogin(message) {
   loginView.hidden = false;
   editorView.hidden = true;
-  if (message) {
-    loginError.textContent = message;
-    loginError.hidden = false;
-  }
+  if (message) { loginError.textContent = message; loginError.hidden = false; }
 }
 
 loginForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   loginError.hidden = true;
-
   const button = loginForm.querySelector('button');
   button.disabled = true;
   button.textContent = 'Signing in…';
@@ -81,19 +236,17 @@ loginForm.addEventListener('submit', async (event) => {
       method: 'POST',
       body: JSON.stringify({ password: document.getElementById('password').value }),
     });
-
     if (!response.ok) {
       const { error } = await response.json().catch(() => ({}));
       loginError.textContent = error || 'Could not sign in';
       loginError.hidden = false;
       return;
     }
-
     document.getElementById('password').value = '';
     loginView.hidden = true;
     await loadMenu();
   } catch {
-    loginError.textContent = 'Network problem. Check your connection and try again.';
+    loginError.textContent = 'Network problem — check your connection.';
     loginError.hidden = false;
   } finally {
     button.disabled = false;
@@ -108,247 +261,19 @@ document.getElementById('logout').addEventListener('click', async () => {
   location.reload();
 });
 
-/* ---------------- Load ---------------- */
+/* ---------------- load & save ---------------- */
 
 async function loadMenu() {
   const response = await api('/api/admin/menu');
-  if (response.status === 401) {
-    showLogin();
-    return;
-  }
-  if (!response.ok) {
-    toast('Could not load the menu', true);
-    return;
-  }
+  if (response.status === 401) { showLogin(); return; }
+  if (!response.ok) { toast('Could not load the menu', true); return; }
 
   menu = await response.json();
-  baseUpdatedAt = menu.updatedAt;
-
-  document.getElementById('venue-name').value = menu.restaurant.name;
-  document.getElementById('venue-tagline').value = menu.restaurant.tagline;
-  document.getElementById('venue-note').value = menu.restaurant.note;
-  document.getElementById('currency').value = menu.currency;
-
+  baseUpdatedAt = menu.updatedAt ?? null;
   editorView.hidden = false;
-  renderSections();
+  render();
   setDirty(false);
 }
-
-/* ---------------- Venue fields ---------------- */
-
-for (const id of VENUE_FIELDS) {
-  document.getElementById(id).addEventListener('input', (event) => {
-    const key = id.replace('venue-', '');
-    menu.restaurant[key] = event.target.value;
-    setDirty(true);
-  });
-}
-
-document.getElementById('currency').addEventListener('input', (event) => {
-  menu.currency = event.target.value;
-  setDirty(true);
-});
-
-/* ---------------- Rendering ----------------
-   Structural changes (add/remove/reorder) re-render; plain typing mutates the
-   model in place so the field never loses focus mid-word. */
-
-function findSection(id) {
-  return menu.sections.find((section) => section.id === id);
-}
-
-function buildItem(item, section, index, total) {
-  const node = itemTemplate.content.firstElementChild.cloneNode(true);
-  node.dataset.itemId = item.id;
-
-  const name = node.querySelector('.item-name');
-  const price = node.querySelector('.item-price');
-  const desc = node.querySelector('.item-desc');
-  const available = node.querySelector('.item-available');
-
-  name.value = item.name;
-  price.value = item.price;
-  desc.value = item.description;
-  available.checked = item.available;
-  price.placeholder = menu.currency ? `Price (${menu.currency})` : 'Price';
-
-  name.addEventListener('input', () => {
-    item.name = name.value;
-    setDirty(true);
-  });
-  price.addEventListener('input', () => {
-    item.price = price.value;
-    setDirty(true);
-  });
-  desc.addEventListener('input', () => {
-    item.description = desc.value;
-    setDirty(true);
-  });
-  available.addEventListener('change', () => {
-    item.available = available.checked;
-    setDirty(true);
-  });
-
-  node.querySelector('[data-act="item-up"]').disabled = index === 0;
-  node.querySelector('[data-act="item-down"]').disabled = index === total - 1;
-
-  node.querySelector('[data-act="item-up"]').addEventListener('click', () => {
-    moveWithin(section.items, index, -1);
-  });
-  node.querySelector('[data-act="item-down"]').addEventListener('click', () => {
-    moveWithin(section.items, index, 1);
-  });
-  node.querySelector('[data-act="item-delete"]').addEventListener('click', () => {
-    if (item.name && !confirm(`Delete "${item.name}"?`)) return;
-    section.items.splice(index, 1);
-    renderSections();
-    setDirty(true);
-  });
-
-  return node;
-}
-
-function buildSection(section, index, total) {
-  const node = sectionTemplate.content.firstElementChild.cloneNode(true);
-  node.dataset.sectionId = section.id;
-
-  const name = node.querySelector('.section-name');
-  const desc = node.querySelector('.section-desc');
-  name.value = section.name;
-  desc.value = section.description;
-
-  name.addEventListener('input', () => {
-    section.name = name.value;
-    setDirty(true);
-  });
-  desc.addEventListener('input', () => {
-    section.description = desc.value;
-    setDirty(true);
-  });
-
-  node.querySelector('[data-act="section-up"]').disabled = index === 0;
-  node.querySelector('[data-act="section-down"]').disabled = index === total - 1;
-
-  node.querySelector('[data-act="section-up"]').addEventListener('click', () => {
-    moveWithin(menu.sections, index, -1);
-  });
-  node.querySelector('[data-act="section-down"]').addEventListener('click', () => {
-    moveWithin(menu.sections, index, 1);
-  });
-  node.querySelector('[data-act="section-delete"]').addEventListener('click', () => {
-    const label = section.name || 'this section';
-    const count = section.items.length;
-    const warning = count
-      ? `Delete "${label}" and its ${count} item${count === 1 ? '' : 's'}?`
-      : `Delete "${label}"?`;
-    if (!confirm(warning)) return;
-    menu.sections.splice(index, 1);
-    renderSections();
-    setDirty(true);
-  });
-
-  const itemsEl = node.querySelector('.items');
-  if (section.items.length === 0) {
-    itemsEl.append(
-      Object.assign(document.createElement('p'), {
-        className: 'empty-hint',
-        textContent: 'No items in this section yet.',
-      }),
-    );
-  } else {
-    section.items.forEach((item, itemIndex) => {
-      itemsEl.append(buildItem(item, section, itemIndex, section.items.length));
-    });
-  }
-
-  node.querySelector('[data-act="item-add"]').addEventListener('click', () => {
-    section.items.push({ id: newId(), name: '', description: '', price: '', available: true });
-    renderSections();
-    setDirty(true);
-    // Drop the cursor straight into the new item's name field.
-    const cards = sectionsEl
-      .querySelector(`[data-section-id="${section.id}"]`)
-      .querySelectorAll('.item-card');
-    cards[cards.length - 1]?.querySelector('.item-name')?.focus();
-  });
-
-  return node;
-}
-
-function moveWithin(list, index, delta) {
-  const target = index + delta;
-  if (target < 0 || target >= list.length) return;
-  [list[index], list[target]] = [list[target], list[index]];
-  renderSections();
-  setDirty(true);
-}
-
-function renderSections() {
-  sectionsEl.replaceChildren(
-    ...menu.sections.map((section, index) => buildSection(section, index, menu.sections.length)),
-  );
-}
-
-document.getElementById('add-section').addEventListener('click', () => {
-  menu.sections.push({ id: newId(), name: '', description: '', items: [] });
-  renderSections();
-  setDirty(true);
-  const cards = sectionsEl.querySelectorAll('.section-card');
-  cards[cards.length - 1]?.querySelector('.section-name')?.focus();
-});
-
-/* ---------------- Bulk paste ---------------- */
-
-function parseBulk(text) {
-  const sections = [];
-  let current = null;
-
-  for (const rawLine of text.split('\n')) {
-    const line = rawLine.trim();
-    if (!line) continue;
-
-    if (line.startsWith('##')) {
-      current = { id: newId(), name: line.replace(/^#+/, '').trim(), description: '', items: [] };
-      sections.push(current);
-      continue;
-    }
-
-    // Items before any heading still need somewhere to live.
-    if (!current) {
-      current = { id: newId(), name: 'Menu', description: '', items: [] };
-      sections.push(current);
-    }
-
-    const [name, price = '', description = ''] = line.split('|').map((part) => part.trim());
-    if (!name) continue;
-    current.items.push({ id: newId(), name, price, description, available: true });
-  }
-
-  return sections;
-}
-
-document.getElementById('bulk-apply').addEventListener('click', () => {
-  const text = document.getElementById('bulk-input').value;
-  const parsed = parseBulk(text);
-
-  if (parsed.length === 0) {
-    toast('Nothing to import — check the format', true);
-    return;
-  }
-
-  const itemCount = parsed.reduce((total, section) => total + section.items.length, 0);
-  if (!confirm(`Replace the whole menu with ${parsed.length} section(s) and ${itemCount} item(s)?`)) {
-    return;
-  }
-
-  menu.sections = parsed;
-  renderSections();
-  setDirty(true);
-  document.getElementById('bulk-input').value = '';
-  toast(`Loaded ${itemCount} items — review, then Save`);
-});
-
-/* ---------------- Save ---------------- */
 
 saveBtn.addEventListener('click', async () => {
   saveBtn.disabled = true;
@@ -365,7 +290,6 @@ saveBtn.addEventListener('click', async () => {
       showLogin('Your session expired. Sign in again — your edits are still on screen.');
       return;
     }
-
     if (response.status === 409) {
       const { error } = await response.json();
       saveStatus.textContent = 'Not saved';
@@ -374,7 +298,6 @@ saveBtn.addEventListener('click', async () => {
       saveBtn.disabled = false;
       return;
     }
-
     if (!response.ok) {
       const { error } = await response.json().catch(() => ({}));
       throw new Error(error || 'Save failed');
@@ -383,7 +306,7 @@ saveBtn.addEventListener('click', async () => {
     const saved = await response.json();
     baseUpdatedAt = saved.updatedAt;
     setDirty(false);
-    toast('Menu updated — it is live now');
+    toast('Menu updated — live now');
   } catch (error) {
     saveStatus.textContent = 'Not saved';
     saveStatus.className = 'save-status error';
@@ -392,7 +315,4 @@ saveBtn.addEventListener('click', async () => {
   }
 });
 
-/* ---------------- Start ---------------- */
-
-// An existing cookie means we can skip the login screen entirely.
 loadMenu().catch(() => showLogin());

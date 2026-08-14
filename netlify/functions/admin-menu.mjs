@@ -1,5 +1,5 @@
 import { isAuthenticated, hasCsrfHeader, unauthorized } from '../lib/auth.mjs';
-import { readMenu, writeMenu } from '../lib/store.mjs';
+import { readMenu, saveTextEdits } from '../lib/store.mjs';
 
 /**
  * Authenticated read/write of the whole menu document.
@@ -31,6 +31,9 @@ export default async (request) => {
     return Response.json({ error: 'Menu must contain a list of sections' }, { status: 400 });
   }
 
+  // Only text crosses the boundary — see applyTextEdits. Images, layout and
+  // structure are taken from the stored menu regardless of what was sent.
+
   // Last-writer-wins is the wrong default when two phones are open on the same
   // menu. The editor sends the updatedAt it loaded; if the stored copy has moved
   // on, refuse rather than silently discard the other person's edit.
@@ -46,7 +49,7 @@ export default async (request) => {
     );
   }
 
-  const saved = await writeMenu(incoming);
+  const saved = await saveTextEdits(incoming);
   return Response.json(saved, { headers: { 'Cache-Control': 'no-store' } });
 };
 

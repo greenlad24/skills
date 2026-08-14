@@ -1,74 +1,111 @@
 import { getStore } from '@netlify/blobs';
-import { randomUUID } from 'node:crypto';
 import { SEED_MENU } from './seed.mjs';
 
 const STORE_NAME = 'vibration-menu';
 const MENU_KEY = 'menu';
 
-// Strong consistency: after the editor hits Save, the very next read of the
-// public menu must show the new price rather than a stale cached one.
+// Strong consistency: after Save, the next read of the public menu must show the
+// new price rather than a stale cached one.
 function store() {
   return getStore({ name: STORE_NAME, consistency: 'strong' });
 }
 
-function id() {
-  return randomUUID().slice(0, 8);
-}
-
-function cleanString(value, fallback = '') {
-  return typeof value === 'string' ? value.trim() : fallback;
-}
+const str = (v) => (typeof v === 'string' ? v : '');
 
 /**
- * Coerces whatever is in the store (or came from the editor) into the shape the
- * rest of the app relies on. Prices stay strings on purpose so "14", "9 / 12"
- * and "market price" are all expressible.
+ * Text fields the editor is allowed to change, per entry type. Everything else
+ * — images, layout, entry types, the number of sections/entries/rows — is
+ * structural and stays exactly as designed.
  */
-export function normalizeMenu(input) {
-  const raw = input && typeof input === 'object' ? input : {};
-  const sections = Array.isArray(raw.sections) ? raw.sections : [];
+const TEXT_FIELDS = {
+  item: ['eyebrow', 'name', 'story', 'build', 'serve', 'price', 'priceHtml'],
+  back: ['kicker', 'quote', 'attrib', 'fine'],
+  list: ['eyebrow', 'title'],
+};
 
-  return {
-    restaurant: {
-      name: cleanString(raw.restaurant?.name, SEED_MENU.restaurant.name),
-      tagline: cleanString(raw.restaurant?.tagline),
-      note: cleanString(raw.restaurant?.note),
-    },
-    currency: cleanString(raw.currency, '$'),
-    sections: sections
-      .filter((section) => section && typeof section === 'object')
-      .map((section) => ({
-        id: cleanString(section.id) || id(),
-        name: cleanString(section.name, 'Untitled section'),
-        description: cleanString(section.description),
-        items: (Array.isArray(section.items) ? section.items : [])
-          .filter((item) => item && typeof item === 'object')
-          .map((item) => ({
-            id: cleanString(item.id) || id(),
-            name: cleanString(item.name, 'Untitled item'),
-            description: cleanString(item.description),
-            price: cleanString(item.price),
-            available: item.available !== false,
-          })),
-      })),
-    updatedAt: cleanString(raw.updatedAt) || null,
-  };
+/**
+ * Applies incoming text onto the stored structure.
+ *
+ * The merge is deliberately one-directional: we walk the *stored* menu and pull
+ * matching text across, so a malformed or hostile payload cannot add, remove or
+ * reorder anything, and cannot touch an image path. Anything the payload omits
+ * keeps its current value.
+ */
+export function applyTextEdits(stored, incoming) {
+  const next = structuredClone(stored);
+  const src = incoming && typeof incoming === 'object' ? incoming : {};
+
+  if (src.brand && typeof src.brand === 'object') {
+    if ('tag' in src.brand) next.brand.tag = str(src.brand.tag);
+    if ('foot' in src.brand) next.brand.foot = str(src.brand.foot);
+  }
+
+  const srcSections = Array.isArray(src.sections) ? src.sections : [];
+
+  next.sections.forEach((section, sIndex) => {
+    const inSection = srcSections[sIndex];
+    if (!inSection || typeof inSection !== 'object') return;
+
+    if ('title' in inSection) section.title = str(inSection.title);
+    if ('sub' in inSection) section.sub = str(inSection.sub);
+
+    const inEntries = Array.isArray(inSection.entries) ? inSection.entries : [];
+
+    section.entries.forEach((entry, eIndex) => {
+      const inEntry = inEntries[eIndex];
+      if (!inEntry || typeof inEntry !== 'object') return;
+
+      for (const field of TEXT_FIELDS[entry.type] || []) {
+        if (field in inEntry) entry[field] = str(inEntry[field]);
+      }
+
+      // List pages carry their own nested rows of name / price / size.
+      if (entry.type === 'list') {
+        for (const col of ['col1', 'col2']) {
+          if (!Array.isArray(entry[col])) continue;
+          const inCol = Array.isArray(inEntry[col]) ? inEntry[col] : [];
+
+          entry[col].forEach((block, bIndex) => {
+            const inBlock = inCol[bIndex];
+            if (!inBlock || typeof inBlock !== 'object') return;
+            if ('cat' in inBlock) block.cat = str(inBlock.cat);
+
+            if (!Array.isArray(block.rows)) return;
+            const inRows = Array.isArray(inBlock.rows) ? inBlock.rows : [];
+
+            block.rows.forEach((row, rIndex) => {
+              const inRow = inRows[rIndex];
+              if (!Array.isArray(inRow)) return;
+              // [name, price, size] — each cell optional, order fixed.
+              for (let c = 0; c < 3; c += 1) {
+                if (typeof inRow[c] === 'string') row[c] = inRow[c];
+              }
+            });
+          });
+        }
+      }
+    });
+  });
+
+  return next;
 }
 
 /** Reads the live menu, falling back to the bundled seed on an empty/failed store. */
 export async function readMenu() {
   try {
     const stored = await store().get(MENU_KEY, { type: 'json' });
-    if (stored && Array.isArray(stored.sections)) return normalizeMenu(stored);
+    if (stored && Array.isArray(stored.sections) && stored.sections.length) return stored;
   } catch (error) {
-    console.error('Blobs read failed, serving bundled fallback menu:', error);
+    console.error('Blobs read failed, serving bundled seed menu:', error);
   }
-  return normalizeMenu(SEED_MENU);
+  return structuredClone(SEED_MENU);
 }
 
-export async function writeMenu(menu) {
-  const normalized = normalizeMenu(menu);
-  normalized.updatedAt = new Date().toISOString();
-  await store().setJSON(MENU_KEY, normalized);
-  return normalized;
+/** Merges text edits onto the current menu and persists the result. */
+export async function saveTextEdits(incoming) {
+  const current = await readMenu();
+  const next = applyTextEdits(current, incoming);
+  next.updatedAt = new Date().toISOString();
+  await store().setJSON(MENU_KEY, next);
+  return next;
 }
