@@ -54,11 +54,14 @@ the endpoint reports itself unconfigured: the batch add still works, minus the
 auto-fill. There is no second provider and no paid fallback — a poster Groq
 cannot read is one you fill in yourself.
 
-Groq's vision line-up is served as preview models and IDs get retired, so the
-code carries a preference list and uses the first model the account can reach.
-`GROQ_MODEL` pins a specific one if you'd rather not rely on that. Its free tier
-is roughly 30 requests a minute; the batch runs one poster at a time and retries
-once when it hits the limit, so a month of posters goes through in one pass.
+The model is `qwen/qwen3.6-27b`, the one Groq documents for image input. Groq
+retires image model IDs, so the code carries two further names and falls through
+to them rather than going dark until someone redeploys; `GROQ_MODEL` pins one and
+skips the list. Whether the model accepts a JSON schema is worked out once and
+remembered, so only the first poster of a batch can pay for finding out, and the
+free tier's rate limit is retried once — a month of posters goes through in one
+pass. Posters small enough are sent inline; larger ones are sent as an
+`/api/img` URL, which Groq accepts up to 20 MB.
 
 Nothing is invented: the prompt says to transcribe only what the poster shows
 and leave a field empty otherwise, and dates without a year resolve forward

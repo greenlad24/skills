@@ -24,7 +24,8 @@ export const EVENT_SCHEMA = {
 const SYSTEM =
   'You read gig posters for Vibration, a live-music bar on Koh Samui, and turn them into '
   + 'schedule entries. Transcribe only what the poster actually shows — never invent an act, '
-  + 'a date, or a genre. If a field is not on the poster, return an empty string for it.';
+  + 'a date, or a genre. If a field is not on the poster, return an empty string for it. '
+  + 'Answer with the JSON straight away; this is transcription, not a puzzle to work through.';
 
 const askFor = (today) =>
   `Today is ${today}. Read this poster and return the event details.\n\n`
@@ -50,20 +51,26 @@ function toEvent(data) {
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
 /**
- * Groq's vision line-up is served as preview models and IDs get retired, so
- * this is a preference list rather than one hard-coded name: the first model
- * the account can actually reach wins, and a retirement stops being an outage.
- * Set GROQ_MODEL to pin one instead.
+ * qwen/qwen3.6-27b is the model Groq documents for vision. The others are
+ * insurance only: Groq retires image model IDs, and trying the next name beats
+ * going dark until someone redeploys. GROQ_MODEL pins one and skips the list.
  */
 const GROQ_MODELS = [
+  'qwen/qwen3.6-27b',
   'meta-llama/llama-4-scout-17b-16e-instruct',
   'meta-llama/llama-4-maverick-17b-128e-instruct',
-  'llama-3.2-90b-vision-preview',
-  'llama-3.2-11b-vision-preview',
 ];
 
-/** Groq caps inline base64 at 4 MB. Bigger posters go by URL — /api/img is
-    public and content-addressed, so the link is stable and safe to hand out. */
+/**
+ * Whether the chosen model accepted a JSON schema, remembered for the life of
+ * the function instance. A month of posters is one call each; without this,
+ * every one of them would spend a rejected request rediscovering the answer.
+ */
+let schemaAccepted = null;
+
+/** A request carrying an image URL may be up to 20 MB; base64 has to fit inside
+    the request body, so anything sizeable goes by URL — /api/img is public and
+    content-addressed, so the link is stable and safe to hand out. */
 const INLINE_LIMIT = 3_500_000;
 
 function groqImageUrl(bytes, mime, key) {
@@ -96,7 +103,9 @@ function groqBody(model, imageUrl, today, structured) {
   return {
     model,
     temperature: 0,
-    max_completion_tokens: 700,
+    // Headroom for a model that reasons before it answers, without letting one
+    // poster think for long enough to hit the function timeout.
+    max_completion_tokens: 1200,
     response_format: structured
       ? { type: 'json_schema', json_schema: { name: 'gig_poster', schema: EVENT_SCHEMA, strict: true } }
       : { type: 'json_object' },
@@ -126,26 +135,42 @@ function isModelFault(status, text) {
     && /model|decommission|not found|does not exist|unsupported/i.test(text);
 }
 
+/**
+ * The documented vision model reasons before it answers, and that reasoning can
+ * arrive in the reply, so the JSON is taken out of what came back rather than
+ * the whole reply being trusted to be JSON.
+ */
+function parseModelJson(text) {
+  const cleaned = text.replace(/<think>[\s\S]*?<\/think>/gi, '');
+  const start = cleaned.indexOf('{');
+  const end = cleaned.lastIndexOf('}');
+  if (start === -1 || end <= start) throw new Error('model did not return JSON');
+  return JSON.parse(cleaned.slice(start, end + 1));
+}
+
 async function readWithGroq({ apiKey, bytes, mime, key, today }) {
   const imageUrl = groqImageUrl(bytes, mime, key);
   if (!imageUrl) throw new Error('poster too large to send');
 
   const pinned = (process.env.GROQ_MODEL || '').trim();
   const models = pinned ? [pinned] : GROQ_MODELS;
+  // Once a schema has been refused, stop paying a rejected request per poster
+  // to rediscover it; otherwise try the schema first and fall back to JSON mode.
+  const modes = schemaAccepted === false ? [false] : [true, false];
   const tried = [];
 
   for (const model of models) {
-    // Not every Groq model accepts a JSON schema; plain JSON mode is the fallback.
-    for (const structured of [true, false]) {
+    for (const structured of modes) {
       const res = await groqPost(groqBody(model, imageUrl, today, structured), apiKey);
 
       if (res.ok) {
+        schemaAccepted = structured;
         const json = await res.json();
         const text = json.choices?.[0]?.message?.content;
         if (!text) throw new Error('groq returned no content');
         return {
           provider: `groq:${model}`,
-          ...toEvent(JSON.parse(text)),
+          ...toEvent(parseModelJson(text)),
           usage: { input: json.usage?.prompt_tokens ?? 0, output: json.usage?.completion_tokens ?? 0 },
         };
       }
@@ -154,7 +179,10 @@ async function readWithGroq({ apiKey, bytes, mime, key, today }) {
       tried.push(`${model}${structured ? '' : ' (json mode)'}: ${res.status}`);
 
       if (isModelFault(res.status, detail)) break;          // wrong model — next model
-      if (structured && /response_format|json_schema|schema/i.test(detail)) continue; // retry unstructured
+      if (structured && /response_format|json_schema|schema/i.test(detail)) {
+        schemaAccepted = false;                             // remember, then retry plain JSON
+        continue;
+      }
       throw new Error(`groq ${res.status}: ${detail.slice(0, 200)}`);
     }
   }
