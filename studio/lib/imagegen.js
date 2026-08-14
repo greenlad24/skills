@@ -20,6 +20,7 @@ async function generatePoster(settings, { prompt, images }) {
   if (engine === 'openai') {
     return openai.generateImage({
       apiKey: settings.openaiApiKey || process.env.OPENAI_API_KEY,
+      model: settings.openaiImageModel || 'gpt-image-2',
       prompt,
       images,
       quality: settings.imageQuality,

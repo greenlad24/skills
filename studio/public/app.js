@@ -659,36 +659,42 @@ function renderSettings() {
     <div class="settings-note">Keys are stored only on this computer (in the app's <b>data/</b> folder). Nothing runs on a server.</div>
     <h3 style="margin:0 0 4px">Image engine</h3>
     <div class="settings-note">
-      <b>Cloudflare (free):</b> every Cloudflare account gets 10,000 free "neurons" every day — with the default
-      FLUX.2 klein 9B model that's ~6 posters/day, forever, no card. Typography is good but a notch below the paid
-      engines: generate, cherry-pick, regenerate. <b>Gemini "nano banana"</b> (~$0.04/image) matches your original
-      posters' text & face quality — its free API tier for images ended Dec 2025, but a Gemini key still writes your
-      <i>captions</i> free. <b>Segmind</b> (~$0.04/img, $10 minimum top-up) and <b>OpenAI</b> (~$0.25/img) are alternatives.
+      <b>OpenAI GPT Image 2 (recommended):</b> the quality tier your original posters live in — exact faces from your
+      photos and clean stylized typography, ~$0.03–0.06/image (a full week ≈ $1–3). Needs an OpenAI key with billing
+      and a verified organization. <b>Cloudflare</b> stays 100% free (10,000 neurons/day) but is draft
+      quality — text and likeness come out noticeably rougher. <b>Gemini "nano banana"</b> (~$0.04/img) and
+      <b>Segmind</b> (~$0.04/img, $10 min top-up) are alternatives; a free Gemini key also writes captions at $0
+      when no OpenAI key is set.
     </div>
     <div class="grid2">
       <div class="field"><label>Engine</label>
         <select id="st-engine">
-          <option value="cloudflare" ${s.imageEngine === 'cloudflare' ? 'selected' : ''}>Cloudflare Workers AI — 100% free</option>
+          <option value="openai" ${s.imageEngine === 'openai' ? 'selected' : ''}>OpenAI GPT Image 2 — best (~$0.04/img)</option>
+          <option value="cloudflare" ${s.imageEngine === 'cloudflare' ? 'selected' : ''}>Cloudflare Workers AI — free, drafts</option>
           <option value="gemini" ${s.imageEngine === 'gemini' ? 'selected' : ''}>Google Gemini nano-banana — ~$0.04/img</option>
           <option value="segmind" ${s.imageEngine === 'segmind' ? 'selected' : ''}>Segmind — ~$0.04/img ($10 min top-up)</option>
-          <option value="openai" ${s.imageEngine === 'openai' ? 'selected' : ''}>OpenAI gpt-image-1 — premium</option>
         </select></div>
-      <div class="field"><label>Cloudflare model</label>
-        <select id="st-cf-model">
-          <option value="@cf/black-forest-labs/flux-2-klein-9b" ${s.cfModel.includes('klein-9b') ? 'selected' : ''}>FLUX.2 klein 9B — ~6 free posters/day</option>
-          <option value="@cf/black-forest-labs/flux-2-dev" ${s.cfModel.includes('flux-2-dev') ? 'selected' : ''}>FLUX.2 dev — best text, ~1 free/day</option>
-          <option value="@cf/black-forest-labs/flux-2-klein-4b" ${s.cfModel.includes('klein-4b') ? 'selected' : ''}>FLUX.2 klein 4B — ~57 free/day, drafts</option>
+      <div class="field"><label>OpenAI API key</label><input id="st-openai" type="password" placeholder="sk-…" value="${esc(s.openaiApiKey)}"></div>
+    </div>
+    <div class="grid2">
+      <div class="field"><label>OpenAI image model</label>
+        <select id="st-openai-model">
+          <option value="gpt-image-2" ${s.openaiImageModel !== 'gpt-image-1' ? 'selected' : ''}>GPT Image 2 (recommended)</option>
+          <option value="gpt-image-1" ${s.openaiImageModel === 'gpt-image-1' ? 'selected' : ''}>GPT Image 1 (legacy)</option>
         </select></div>
+      <div class="field"><label>Gemini API key (free captions + paid images)</label><input id="st-gemini" type="password" placeholder="aistudio.google.com/apikey" value="${esc(s.geminiApiKey)}"></div>
     </div>
     <div class="grid2">
       <div class="field"><label>Cloudflare account ID</label><input id="st-cf-account" placeholder="dash.cloudflare.com → right sidebar" value="${esc(s.cfAccountId)}"></div>
       <div class="field"><label>Cloudflare API token</label><input id="st-cf-token" type="password" placeholder="dash.cloudflare.com → profile → API Tokens" value="${esc(s.cfApiToken)}"></div>
     </div>
-    <div class="grid2">
-      <div class="field"><label>Gemini API key (captions free + paid images)</label><input id="st-gemini" type="password" placeholder="aistudio.google.com/apikey" value="${esc(s.geminiApiKey)}"></div>
-      <div class="field"><label>OpenAI API key</label><input id="st-openai" type="password" placeholder="sk-…" value="${esc(s.openaiApiKey)}"></div>
-    </div>
-    <div class="grid2">
+    <div class="grid3">
+      <div class="field"><label>Cloudflare model</label>
+        <select id="st-cf-model">
+          <option value="@cf/black-forest-labs/flux-2-klein-9b" ${s.cfModel.includes('klein-9b') ? 'selected' : ''}>FLUX.2 klein 9B — ~6 free/day</option>
+          <option value="@cf/black-forest-labs/flux-2-dev" ${s.cfModel.includes('flux-2-dev') ? 'selected' : ''}>FLUX.2 dev — best text, ~1 free/day</option>
+          <option value="@cf/black-forest-labs/flux-2-klein-4b" ${s.cfModel.includes('klein-4b') ? 'selected' : ''}>FLUX.2 klein 4B — ~57 free/day</option>
+        </select></div>
       <div class="field"><label>Segmind API key</label><input id="st-segmind" type="password" placeholder="cloud.segmind.com" value="${esc(s.segmindApiKey)}"></div>
       <div class="field"><label>Segmind model</label><input id="st-segmind-model" value="${esc(s.segmindModel)}"></div>
     </div>
@@ -845,6 +851,7 @@ function renderSettings() {
     const out = await api('PUT', '/api/settings', {
       settings: {
         imageEngine: $('#st-engine', body).value,
+        openaiImageModel: $('#st-openai-model', body).value,
         cfAccountId: $('#st-cf-account', body).value.trim(),
         cfApiToken: $('#st-cf-token', body).value.trim(),
         cfModel: $('#st-cf-model', body).value,
@@ -991,7 +998,7 @@ function renderOnboarding() {
           <li><span class="n">2</span><span>Captions are written in <b>your</b> voice, learned from your past posts.</span></li>
           <li><span class="n">3</span><span>One click schedules the whole week to Instagram + Facebook.</span></li>
         </ul>
-        <div class="settings-note">You'll need about 30 minutes and these free accounts: Cloudflare (free poster generation, 10k neurons/day), Google Gemini (free captions), Buffer, Cloudinary. The guide walks you through each. The full manual lives in <b>SETUP.md</b> in the app folder.</div>`,
+        <div class="settings-note">You'll need about 30 minutes: an OpenAI key for GPT Image 2 posters (~$1–3/week; a free draft engine also exists in Settings), plus free Buffer and Cloudinary accounts for scheduling. The full manual lives in <b>SETUP.md</b> in the app folder.</div>`,
         { title: 'Welcome to your Poster Studio', sub: 'a 6-step setup, done once', showBack: false, nextLabel: "Let's set up →", hero: true }
       );
       break;
@@ -999,21 +1006,19 @@ function renderOnboarding() {
     case 1:
       obShell(
         `<ul class="ob-list">
-          <li><span class="n">1</span><span>Create a free account at <a href="https://dash.cloudflare.com/sign-up" target="_blank">dash.cloudflare.com</a> (no card). Every account gets <b>10,000 free AI "neurons" per day, forever</b> — about 6 posters/day on the default model.</span></li>
-          <li><span class="n">2</span><span>On the dashboard, copy your <b>Account ID</b> (right sidebar of any zone page, or the URL after dash.cloudflare.com/).</span></li>
-          <li><span class="n">3</span><span>Profile icon → <b>API Tokens → Create Token → "Workers AI" template</b> → create, copy the token.</span></li>
-          <li><span class="n">4</span><span>Also grab a free <a href="https://aistudio.google.com/apikey" target="_blank">Google Gemini key</a> — it writes your captions for free (and unlocks the ~$0.04/img nano-banana engine if you ever want maximum fidelity).</span></li>
+          <li><span class="n">1</span><span>Sign up / log in at <a href="https://platform.openai.com" target="_blank">platform.openai.com</a>.</span></li>
+          <li><span class="n">2</span><span><b>Billing:</b> Settings → Billing → add ~$5 credit (posters cost ~$0.03–0.06 each — a full week ≈ $1–3).</span></li>
+          <li><span class="n">3</span><span><b>Verify organization:</b> Settings → Organization → Verification — required for image models; without it generation fails.</span></li>
+          <li><span class="n">4</span><span><a href="https://platform.openai.com/api-keys" target="_blank">Create an API key</a> and paste it below.</span></li>
+          <li><span class="n">5</span><span>Prefer $0? A free draft-quality engine (Cloudflare Workers AI, 10k free neurons/day) can be set up in ⚙ Settings instead — but text and faces come out noticeably rougher.</span></li>
         </ul>` +
-        obField('ob-cf-account', 'Cloudflare account ID', s.cfAccountId, '32-character hex id') +
-        obField('ob-cf-token', 'Cloudflare API token', s.cfApiToken, 'from the Workers AI template', 'password') +
-        obField('ob-gemini', 'Google Gemini API key (for captions, free)', s.geminiApiKey, 'AIza…', 'password'),
+        obField('ob-openai', 'OpenAI API key', s.openaiApiKey, 'sk-…', 'password'),
         {
-          title: 'Step 1 · Image engine', sub: '100% free posters via Cloudflare Workers AI',
+          title: 'Step 1 · Image engine', sub: 'GPT Image 2 — the quality your posters deserve',
           onNext: async (b) => obSave({
-            imageEngine: 'cloudflare',
-            cfAccountId: $('#ob-cf-account', b).value.trim(),
-            cfApiToken: $('#ob-cf-token', b).value.trim(),
-            geminiApiKey: $('#ob-gemini', b).value.trim(),
+            imageEngine: 'openai',
+            openaiImageModel: 'gpt-image-2',
+            openaiApiKey: $('#ob-openai', b).value.trim(),
           }),
         }
       );

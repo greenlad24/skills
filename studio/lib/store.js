@@ -7,11 +7,12 @@ const DAY_KEYS = ['tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
 const DEFAULT_SETTINGS = {
   // image generation
-  // cloudflare = the verified 100%-free engine (10k neurons/day, renews daily)
+  // openai     = GPT Image 2, best text + face fidelity, ~$0.03-0.06/image (default)
+  // cloudflare = the verified 100%-free engine (10k neurons/day) — draft quality
   // gemini     = nano-banana class, ~$0.04/image (free tier for images was removed Dec 2025)
   // segmind    = aggregator, ~$0.04/image (requires a $10 top-up to start)
-  // openai     = gpt-image-1 premium, ~$0.25/image
-  imageEngine: 'cloudflare',
+  imageEngine: 'openai',
+  openaiImageModel: 'gpt-image-2',
   cfAccountId: '',
   cfApiToken: '',
   cfModel: '@cf/black-forest-labs/flux-2-klein-9b',

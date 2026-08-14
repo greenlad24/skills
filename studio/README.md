@@ -11,10 +11,10 @@ Image generation is pluggable (verified against current pricing, Aug 2026):
 
 | Engine | Cost | Notes |
 |---|---|---|
-| **Cloudflare Workers AI** (default) | **$0 forever** | 10,000 free neurons/day, renews at 00:00 UTC, no card. FLUX.2 klein 9B ≈ 6 posters/day; FLUX.2 dev (best typography) ≈ 1/day; klein 4B ≈ 57/day for drafts. Text quality is good but below the paid engines — cherry-pick from variants. Reference images are capped at 4, downscaled. |
-| Google Gemini "nano banana" | ~$0.04/image | Matches your original posters' text & face fidelity. Its free *image* API tier ended Dec 2025, but a free Gemini key still writes the **captions** at $0. |
-| Segmind | ~$0.04/image | Requires a $10 minimum top-up to start (their free daily credits program ended). |
-| OpenAI gpt-image-1 | ~$0.25/image | Premium; needs billing + verified org. |
+| **OpenAI GPT Image 2** (default) | ~$0.03–0.06/image | The quality tier the original Vibration posters live in: exact faces from reference photos (high input fidelity), clean stylized typography. A full week ≈ $1–3. Needs billing + a verified organization. |
+| Cloudflare Workers AI | $0 forever | 10,000 free neurons/day (renews 00:00 UTC, no card). Draft quality: FLUX.2 klein 9B ≈ 6 posters/day, dev ≈ 1/day (best text of the three), klein 4B ≈ 57/day. Faces come out "similar", text often needs retries — fine for drafts/layout exploration, not finals. |
+| Google Gemini "nano banana" | ~$0.04/image | Comparable class to GPT Image 2. Its free *image* API tier ended Dec 2025, but a free Gemini key still writes the **captions** at $0 when no OpenAI key is set. |
+| Segmind | ~$0.04/image | Aggregator; requires a $10 minimum top-up to start. |
 
 Every week you build five posters (Tuesday → Saturday):
 

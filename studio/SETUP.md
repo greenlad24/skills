@@ -31,29 +31,27 @@ Node.js is the engine that runs the app. No coding involved.
 > Everything you create is saved in the `data` folder next to `start.bat`.
 > Copy that folder somewhere safe = full backup.
 
-## Part 3 — Image engine keys (100% free) (10 min)
+## Part 3 — Image engine key (OpenAI GPT Image 2) (10 min)
 
-**Cloudflare Workers AI** generates the posters for free — every account gets 10,000 free
-AI "neurons" per day (renews daily at midnight UTC, no credit card, not a trial):
+GPT Image 2 is the default engine — it's the class of model the original posters were made
+with (exact faces from your photos, clean stylized typography), at ~$0.03–0.06 per image
+(a full week ≈ $1–3):
 
-1. Create a free account at <https://dash.cloudflare.com/sign-up>.
-2. Copy your **Account ID** (dashboard right sidebar, or the hex string in the URL).
-3. Profile icon (top right) → **API Tokens** → **Create Token** → use the **Workers AI**
-   template → Create → copy the token.
-4. In the app's Settings you can pick the model: **FLUX.2 klein 9B** (default, ~6 free
-   posters/day), **FLUX.2 dev** (best typography, ~1 free/day), or **klein 4B** (~57
-   free/day, drafts).
+1. Sign up / log in at <https://platform.openai.com>.
+2. **Billing:** gear icon → Billing → add a payment method and ~$5 of credit.
+3. **Verify your organization:** Settings → Organization → Verification → follow the ID
+   check. Required for image models — without it generation fails.
+4. **Create the key:** <https://platform.openai.com/api-keys> → Create new secret key →
+   copy the `sk-…` key.
 
-**Google Gemini** writes the captions for free:
-
-5. Go to <https://aistudio.google.com/apikey>, log in with any Google account, **Create API
-   key**, copy it. (Gemini's free tier covers text; its *image* generation became paid-only
-   in Dec 2025 — as a paid option, nano-banana at ~$0.04/image is the closest match to your
-   original posters' quality.)
-
-> Other paid engines (switchable anytime in Settings): **Segmind** (~$0.04/image, needs a
-> $10 minimum top-up at cloud.segmind.com) and **OpenAI gpt-image-1** (~$0.25/image; needs
-> billing credit AND a verified organization).
+> **Want a $0 option?** Switch the engine to **Cloudflare Workers AI** in Settings — every
+> free Cloudflare account gets 10,000 AI neurons/day (Account ID from the dashboard URL,
+> API token via profile → API Tokens → "Workers AI" template). Honest expectation: it's
+> draft quality — faces come out similar-but-not-identical and stylized text often needs
+> retries. Good for exploring layouts, not for finals.
+> Other alternatives in Settings: Gemini nano-banana (~$0.04/img) and Segmind (~$0.04/img,
+> $10 min top-up). A free Gemini key (<https://aistudio.google.com/apikey>) also writes
+> captions at $0 if you skip OpenAI entirely.
 
 ## Part 4 — Prepare Instagram & Facebook (10 min)
 

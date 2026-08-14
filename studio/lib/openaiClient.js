@@ -25,33 +25,44 @@ async function openaiFetch(apiKey, url, options, timeoutMs = 300000) {
  * use the edits endpoint (input_fidelity=high keeps faces); without, plain
  * generation. Returns a Buffer.
  */
-async function generateImage({ apiKey, prompt, images = [], quality = 'high', size = '1024x1536' }) {
+async function generateImage({ apiKey, model = 'gpt-image-2', prompt, images = [], quality = 'high', size = '1024x1536' }) {
   if (!apiKey) throw new Error('OpenAI API key is missing — add it in Settings.');
 
   if (images.length === 0) {
     const json = await openaiFetch(apiKey, `${API}/images/generations`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'gpt-image-1', prompt, size, quality, n: 1 }),
+      body: JSON.stringify({ model, prompt, size, quality, n: 1 }),
     });
     return Buffer.from(json.data[0].b64_json, 'base64');
   }
 
-  const form = new FormData();
-  form.append('model', 'gpt-image-1');
-  form.append('prompt', prompt);
-  form.append('size', size);
-  form.append('quality', quality);
-  form.append('input_fidelity', 'high');
-  form.append('n', '1');
-  images.slice(0, 16).forEach((img, i) => {
-    form.append('image[]', new Blob([img.buffer], { type: img.mime }), img.name || `image-${i}.png`);
-  });
-  const json = await openaiFetch(apiKey, `${API}/images/edits`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}` },
-    body: form,
-  });
+  const edit = (withFidelity) => {
+    const form = new FormData();
+    form.append('model', model);
+    form.append('prompt', prompt);
+    form.append('size', size);
+    form.append('quality', quality);
+    if (withFidelity) form.append('input_fidelity', 'high');
+    form.append('n', '1');
+    images.slice(0, 16).forEach((img, i) => {
+      form.append('image[]', new Blob([img.buffer], { type: img.mime }), img.name || `image-${i}.png`);
+    });
+    return openaiFetch(apiKey, `${API}/images/edits`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: form,
+    });
+  };
+
+  let json;
+  try {
+    json = await edit(true);
+  } catch (e) {
+    // Model variants that don't take input_fidelity: retry without it.
+    if (/input_fidelity|unknown parameter|unsupported/i.test(e.message)) json = await edit(false);
+    else throw e;
+  }
   return Buffer.from(json.data[0].b64_json, 'base64');
 }
 
