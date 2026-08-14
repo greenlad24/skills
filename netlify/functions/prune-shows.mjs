@@ -1,4 +1,4 @@
-import { getStore } from '@netlify/blobs';
+import { storage } from '../lib/blobs.mjs';
 import { venueToday } from '../lib/shows.mjs';
 
 const KEEP_DAYS = 30;
@@ -13,11 +13,11 @@ const KEEP_DAYS = 30;
  * the person editing, and deleting it the next morning would be surprising.
  */
 export default async () => {
-  const store = getStore({ name: 'vibration-menu', consistency: 'strong' });
+  const store = storage('menu');
 
   let menu;
   try {
-    menu = await store.get('menu', { type: 'json' });
+    menu = await store.getJSON('menu');
   } catch (error) {
     console.error('prune-shows: could not read menu', error);
     return new Response('read failed', { status: 500 });

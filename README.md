@@ -147,6 +147,19 @@ changing the password invalidates every existing session.
 Set `ADMIN_PASSWORD` with **all** scopes. Setting it scoped to `functions` alone
 has repeatedly failed to persist through the Netlify MCP connector.
 
+## Storage, and moving hosts
+
+Every read and write goes through `netlify/lib/blobs.mjs` — three named stores
+(menu, images, login attempts) behind four calls: `getJSON`, `setJSON`,
+`getFile`, `putFile`. Nothing above that module mentions a host, and the
+contract deals in `Uint8Array` rather than `Buffer` so it stays true on a
+runtime with no Node globals.
+
+Blobs is a service, not a setting, so no environment variable can repoint it at
+Cloudflare KV or anywhere else. Rewriting that one file can. What would still
+need doing on a move: `netlify.toml`'s headers become the new host's equivalent,
+and the daily prune's `schedule` becomes its cron trigger.
+
 ## Images
 
 The original inlined every photo as base64, so the page shipped 3.8 MB before it

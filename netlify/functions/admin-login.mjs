@@ -1,11 +1,11 @@
-import { getStore } from '@netlify/blobs';
+import { storage } from '../lib/blobs.mjs';
 import { passwordMatches, createSessionCookie, hasCsrfHeader } from '../lib/auth.mjs';
 
 const MAX_ATTEMPTS = 10;
 const WINDOW_MS = 15 * 60 * 1000;
 
 function attemptStore() {
-  return getStore({ name: 'vibration-menu-auth', consistency: 'strong' });
+  return storage('auth');
 }
 
 /**
@@ -15,7 +15,7 @@ function attemptStore() {
  */
 async function readAttempts(key) {
   try {
-    const record = await attemptStore().get(key, { type: 'json' });
+    const record = await attemptStore().getJSON(key);
     if (!record || Date.now() - record.first > WINDOW_MS) return null;
     return record;
   } catch (error) {

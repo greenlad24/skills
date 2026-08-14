@@ -1,15 +1,10 @@
-import { getStore } from '@netlify/blobs';
+import { storage } from './blobs.mjs';
 import { SEED_MENU } from './seed.mjs';
 import { sanitiseLiveShows } from './shows.mjs';
 
-const STORE_NAME = 'vibration-menu';
 const MENU_KEY = 'menu';
 
-// Strong consistency: after Save, the next read of the public menu must show the
-// new price rather than a stale cached one.
-function store() {
-  return getStore({ name: STORE_NAME, consistency: 'strong' });
-}
+const store = () => storage('menu');
 
 const str = (v) => (typeof v === 'string' ? v : '');
 
@@ -141,7 +136,7 @@ export function withVisibleOnly(menu) {
 /** Reads the live menu, falling back to the bundled seed on an empty/failed store. */
 export async function readMenu() {
   try {
-    const stored = await store().get(MENU_KEY, { type: 'json' });
+    const stored = await store().getJSON(MENU_KEY);
     if (stored && Array.isArray(stored.sections) && stored.sections.length) {
       // Menus saved before Live Shows existed have no such key.
       if (!stored.liveShows) stored.liveShows = structuredClone(SEED_MENU.liveShows);

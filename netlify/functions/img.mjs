@@ -1,4 +1,4 @@
-import { getStore } from '@netlify/blobs';
+import { storage } from '../lib/blobs.mjs';
 
 const MIME = { jpg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
 
@@ -12,12 +12,12 @@ export default async (request) => {
   }
 
   try {
-    const blob = await getStore({ name: 'vibration-images' })
-      .getWithMetadata(key, { type: 'arrayBuffer' });
+    // The key is a hash of the bytes, so a stale read cannot be wrong.
+    const blob = await storage('images', { consistency: 'eventual' }).getFile(key);
     if (!blob) return new Response('Not found', { status: 404 });
 
-    const mime = blob.metadata?.mime || MIME[key.split('.').pop()] || 'application/octet-stream';
-    return new Response(blob.data, {
+    const mime = blob.metadata.mime || MIME[key.split('.').pop()] || 'application/octet-stream';
+    return new Response(blob.bytes, {
       headers: {
         'Content-Type': mime,
         // The key is a hash of the bytes, so this URL is immutable.

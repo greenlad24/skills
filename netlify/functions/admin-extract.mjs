@@ -1,4 +1,4 @@
-import { getStore } from '@netlify/blobs';
+import { storage } from '../lib/blobs.mjs';
 import { isAuthenticated, hasCsrfHeader, unauthorized } from '../lib/auth.mjs';
 import { venueToday } from '../lib/shows.mjs';
 import { extractEvent, extractionConfigured } from '../lib/extract.mjs';
@@ -26,11 +26,10 @@ export default async (request) => {
 
   let bytes, mime;
   try {
-    const blob = await getStore({ name: 'vibration-images', consistency: 'strong' })
-      .getWithMetadata(key, { type: 'arrayBuffer' });
+    const blob = await storage('images').getFile(key);
     if (!blob) return Response.json({ error: 'Image not found' }, { status: 404 });
-    bytes = Buffer.from(blob.data);
-    mime = blob.metadata?.mime || MIME[key.split('.').pop()];
+    bytes = Buffer.from(blob.bytes);
+    mime = blob.metadata.mime || MIME[key.split('.').pop()];
   } catch (error) {
     console.error('extract: could not read image', error);
     return Response.json({ error: 'Could not read the image' }, { status: 500 });

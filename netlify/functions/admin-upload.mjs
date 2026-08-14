@@ -1,4 +1,4 @@
-import { getStore } from '@netlify/blobs';
+import { storage } from '../lib/blobs.mjs';
 import { createHash } from 'node:crypto';
 import { isAuthenticated, hasCsrfHeader, unauthorized } from '../lib/auth.mjs';
 
@@ -44,8 +44,7 @@ export default async (request) => {
   const key = createHash('sha256').update(bytes).digest('hex').slice(0, 32) + '.' + kind.ext;
 
   try {
-    await getStore({ name: 'vibration-images', consistency: 'strong' })
-      .set(key, bytes, { metadata: { mime: kind.mime } });
+    await storage('images').putFile(key, bytes, { mime: kind.mime });
   } catch (error) {
     console.error('Image upload failed:', error);
     return Response.json({ error: 'Could not store the image' }, { status: 500 });
