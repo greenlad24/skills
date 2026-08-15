@@ -21,7 +21,9 @@ store.setDriver({
     try { return JSON.parse(fs.readFileSync(path.join(DATA_DIR, key), 'utf8')); } catch { return null; }
   },
   async setJson(key, obj) {
-    fs.writeFileSync(path.join(DATA_DIR, key), JSON.stringify(obj, null, 2));
+    const p = path.join(DATA_DIR, key);
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, JSON.stringify(obj, null, 2));
   },
   async getFile(name) {
     try { return fs.readFileSync(path.join(FILES_DIR, name)); } catch { return null; }

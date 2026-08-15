@@ -37,6 +37,9 @@ async function generateImage({ apiKey, model = 'gpt-image-2', prompt, images = [
     return Buffer.from(json.data[0].b64_json, 'base64');
   }
 
+  // input_fidelity exists only on gpt-image-1/1.5; gpt-image-2 always runs
+  // high-fidelity inputs and rejects the parameter with a 400.
+  const fidelityParamSupported = /^gpt-image-1/.test(model);
   const edit = (withFidelity) => {
     const form = new FormData();
     form.append('model', model);
@@ -57,10 +60,10 @@ async function generateImage({ apiKey, model = 'gpt-image-2', prompt, images = [
 
   let json;
   try {
-    json = await edit(true);
+    json = await edit(fidelityParamSupported);
   } catch (e) {
-    // Model variants that don't take input_fidelity: retry without it.
-    if (/input_fidelity|unknown parameter|unsupported/i.test(e.message)) json = await edit(false);
+    // Safety net for parameter drift across model snapshots.
+    if (/input_fidelity|unknown parameter|unsupported/i.test(e.message)) json = await edit(!fidelityParamSupported);
     else throw e;
   }
   return Buffer.from(json.data[0].b64_json, 'base64');

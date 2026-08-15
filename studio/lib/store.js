@@ -93,6 +93,14 @@ function defaultDb() {
   };
 }
 
+// Small auxiliary JSON records (e.g. background-job status) stored beside the db.
+async function getAux(key) {
+  return driver.getJson(key);
+}
+async function setAux(key, obj) {
+  await driver.setJson(key, obj);
+}
+
 async function load() {
   if (!driver) throw new Error('storage driver not initialised');
   const db = (await driver.getJson('db.json')) || defaultDb();
@@ -163,6 +171,8 @@ module.exports = {
   ymd,
   load,
   save,
+  getAux,
+  setAux,
   getWeek,
   getDay,
   newId,

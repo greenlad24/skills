@@ -526,12 +526,45 @@ function renderGenerate(el, key) {
     if (!day.info.artistName && !day.info.special) {
       return toast('Give the day at least a headline (step 3) first.', true);
     }
-    S.busy[key] = 'Designing 3 posters… this takes 1–3 minutes. You can switch to other days meanwhile.';
+    S.busy[key] = 'Designing 3 posters… high quality takes 2–5 minutes. You can switch to other days meanwhile.';
     renderGenerate(el, key);
     try {
-      const out = await api('POST', `/api/week/${S.activeWeek}/day/${key}/generate`, { count: 3 });
-      S.week.days[key] = out.day;
-      if (out.generation.errors?.length) toast('Some variations failed: ' + out.generation.errors.join(' | '), true, 8000);
+      const jobId = `job-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+      const payload = { week: S.activeWeek, day: key, count: 3, jobId };
+      const out = await api('POST', '/api/generate', payload);
+
+      let generation;
+      if (out.background) {
+        // Hosted mode: kick the background function, then poll the job record.
+        const bg = await fetch('/.netlify/functions/generate-background', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!bg.ok && bg.status !== 202) {
+          throw new Error(`Could not start generation (HTTP ${bg.status}) — Netlify Background Functions may not be enabled on this plan.`);
+        }
+        const deadline = Date.now() + 15 * 60 * 1000;
+        let job = { status: 'running' };
+        while (Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, 5000));
+          job = (await api('GET', `/api/job/${jobId}`)).job;
+          if (job.status === 'done' || job.status === 'error') break;
+        }
+        if (job.status === 'error') throw new Error(job.error || 'generation failed');
+        if (job.status !== 'done') throw new Error('Generation timed out — check again in a minute, it may still finish.');
+        if (S.activeWeek !== payload.week) {
+          return toast(`Posters for ${DAY_LABEL[key]} (week of ${payload.week}) are ready — switch back to that week to see them.`);
+        }
+        const fresh = await api('GET', '/api/bootstrap');
+        S.week = fresh.week;
+        generation = S.week.days[key].generations.find((g) => g.id === job.generationId) || { errors: job.errors || [] };
+      } else {
+        S.week.days[key] = out.day;
+        generation = out.generation;
+      }
+
+      if (generation.errors?.length) toast('Some variations failed: ' + generation.errors.join(' | '), true, 8000);
       else toast('3 variations ready — pick your favourite');
     } catch (err) {
       toast(err.message, true, 10000);
@@ -660,8 +693,9 @@ function renderSettings() {
     <h3 style="margin:0 0 4px">Image engine</h3>
     <div class="settings-note">
       <b>OpenAI GPT Image 2 (recommended):</b> the quality tier your original posters live in — exact faces from your
-      photos and clean stylized typography, ~$0.03–0.06/image (a full week ≈ $1–3). Needs an OpenAI key with billing
-      and a verified organization. <b>Cloudflare</b> stays 100% free (10,000 neurons/day) but is draft
+      photos and clean stylized typography. With reference images: ~$0.06/poster at <i>medium</i> quality,
+      ~$0.20–0.25 at <i>high</i> (a full week ≈ $1–4). High quality takes 2–5 minutes per poster — the app runs it in
+      the background, keep the tab open. Needs an OpenAI key with billing and a verified organization. <b>Cloudflare</b> stays 100% free (10,000 neurons/day) but is draft
       quality — text and likeness come out noticeably rougher. <b>Gemini "nano banana"</b> (~$0.04/img) and
       <b>Segmind</b> (~$0.04/img, $10 min top-up) are alternatives; a free Gemini key also writes captions at $0
       when no OpenAI key is set.

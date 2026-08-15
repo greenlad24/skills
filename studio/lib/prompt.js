@@ -73,51 +73,80 @@ function line(label, value) {
 /**
  * Build the generation prompt for one variant.
  * imageManifest describes the images attached to the API call, in order.
+ *
+ * Structure follows current best practice for identity-accurate edit models:
+ * identity instruction FIRST and restated LAST ("identity lock"), numbered
+ * image roles matching upload order, quoted line-by-line copy with no-extra-
+ * text guards, and style references scoped to palette/lighting only.
  */
 function buildPosterPrompt({ day, settings, preset, variantIndex, imageManifest }) {
   const info = day.info || {};
   const dayName = day.day.charAt(0).toUpperCase() + day.day.slice(1);
   const take = VARIANT_TAKES[variantIndex % VARIANT_TAKES.length];
 
+  const performerCount = imageManifest.filter((m) => m.startsWith('PERFORMER')).length;
+  const performerRefs = performerCount === 1 ? 'Image 1' : performerCount > 1 ? `Images 1-${performerCount}` : '';
+  const hasLogo = imageManifest.some((m) => m.includes('logo') || m.includes('VENUE'));
+  const styleIdxs = imageManifest
+    .map((m, i) => (m.startsWith('STYLE') ? i + 1 : null))
+    .filter(Boolean);
+
+  const identityOpen = performerCount
+    ? `IDENTITY — MOST IMPORTANT RULE: The person in ${performerRefs} is a real performer and the hero of this poster. ` +
+      `Preserve their exact facial structure, features, hairline, and skin tone — the face must be instantly recognizable ` +
+      `as the same real person to someone who knows them. Do not beautify, restyle, age, or alter the face in any way, ` +
+      `even where the rest of the poster is heavily stylized. Re-light and re-pose subtly if the composition needs it; never change who they are.\n\n`
+    : '';
+
   const attached = imageManifest.length
-    ? 'ATTACHED IMAGES, IN ORDER:\n' +
-      imageManifest.map((m, i) => `${i + 1}. ${m}`).join('\n') +
+    ? 'ATTACHED IMAGES, IN UPLOAD ORDER:\n' +
+      imageManifest.map((m, i) => `Image ${i + 1}: ${m}`).join('\n') +
       '\n\n'
+    : '';
+
+  const styleScope = styleIdxs.length
+    ? `Use ${styleIdxs.length === 1 ? `Image ${styleIdxs[0]}` : `Images ${styleIdxs.join(' and ')}`} ONLY for color palette, lighting, texture, composition mood and typographic voice. ` +
+      `Do NOT copy any people, faces, objects, or text from the style reference image(s).\n\n`
     : '';
 
   const styleBlock = preset
     ? `ART DIRECTION — "${preset.name}":\n${preset.direction}\n\n`
-    : 'ART DIRECTION: Derive the art direction from the attached style reference image(s): match their palette, lighting, texture and typographic voice while keeping the brand system below.\n\n';
+    : 'ART DIRECTION: Derive the art direction from the attached style reference image(s) while keeping the brand system below.\n\n';
 
   const mustWords = (info.mustWords || '').trim();
+  const copyLines = [];
+  copyLines.push(`- Venue wordmark: "VIBRATION" — beneath the logo, top center.`);
+  if (dayName) copyLines.push(`- Day line: "${dayName}"`);
+  if (info.artistName?.trim()) copyLines.push(`- Headline, the dominant typographic element: "${info.artistName.trim()}"`);
+  if (info.genres?.trim()) copyLines.push(`- Genre / tagline line: "${info.genres.trim()}"`);
+  if (info.showTime?.trim()) copyLines.push(`- Time line, near the bottom: "${info.showTime.trim()}"`);
+  if (mustWords) copyLines.push(`- Must also appear, verbatim: "${mustWords}"`);
 
   return (
+    identityOpen +
     `Design a premium promotional poster for "${(settings.venueName || 'Vibration').toUpperCase()}", a live-music bar. ` +
     `This must look like the work of a top-tier poster designer: intentional composition, flawless typography, cohesive color grading.\n\n` +
     attached +
+    styleScope +
     styleBlock +
     `BRAND SYSTEM (always):\n` +
     `- Portrait poster, full-bleed artwork.\n` +
-    `- Top center: the circular "V" monogram logo of the venue${imageManifest.some((m) => m.includes('logo')) ? ' — reproduce the attached logo exactly, do not redesign it —' : ' (a perforated metal disc with a large letter V),'} with the word "VIBRATION" beneath it in the poster's display style.\n` +
+    `- Top center: the circular "V" monogram logo of the venue${hasLogo ? ' — reproduce the attached logo image exactly: same geometry, lettering, colors and metallic texture; do not redraw, restyle or reinterpret it —' : ' (a perforated metal disc with a large letter V),'} with the word "VIBRATION" beneath it in the poster's display style.\n` +
     `- Clear typographic hierarchy: (1) day of week, (2) the artist/event name as the dominant element, (3) genre or tagline, (4) time line near the bottom.\n` +
-    `- Keep every text element inside comfortable margins and inside the central 4:5 safe area (top and bottom 10% of the canvas must stay free of critical text) so the poster survives Instagram cropping.\n` +
-    `- Typography must be immaculate: real letterforms, perfect spelling, consistent kerning, no gibberish, no fake glyphs, no watermark, no borders cut off.\n\n` +
-    `POSTER COPY — render this text EXACTLY, letter-for-letter, and nothing else:\n` +
-    `- Venue wordmark: "VIBRATION"\n` +
-    line('Day line', dayName) +
-    line('Headline (dominant)', info.artistName) +
-    line('Genre / tagline line', info.genres) +
-    line('Time line', info.showTime) +
-    (mustWords ? `- Must also appear on the poster, verbatim: "${mustWords}"\n` : '') +
-    `\n` +
-    (imageManifest.some((m) => m.startsWith('PERFORMER'))
-      ? `HERO SUBJECT: Use the attached performer photo(s) as the hero of the poster. Preserve their exact facial identity, hair, skin tone and distinguishing features — a person who knows them must recognize them instantly. Integrate them into the scene with matching lighting, grade and grain; re-light and re-pose subtly if the composition needs it, never change who they are.\n\n`
-      : `HERO SUBJECT: No performer photo is attached — build the hero from the scene itself (instruments, stage, atmosphere) as described by the art direction and event details.\n\n`) +
+    `- Keep every text element inside comfortable margins and inside the central 4:5 safe area (top and bottom 10% of the canvas must stay free of critical text) so the poster survives Instagram cropping.\n\n` +
+    `POSTER COPY — render each line EXACTLY as quoted, letter-for-letter:\n` +
+    copyLines.join('\n') +
+    `\nExact text only: no extra words, no duplicate text, no other text anywhere in the image. Typography must be immaculate: real letterforms, perfect spelling, consistent kerning, no gibberish, no watermark.\n\n` +
+    (performerCount === 0
+      ? `HERO SUBJECT: No performer photo is attached — build the hero from the scene itself (instruments, stage, atmosphere) as described by the art direction and event details.\n\n`
+      : '') +
     (info.special || info.notes
       ? `EVENT CONTEXT (for mood and supporting visual details, not extra text): ${[info.special, info.notes].filter(Boolean).join(' — ')}\n\n`
       : '') +
     `${take.twist}\n\n` +
-    `Final check: exact spelling of every word above, believable premium design, no additional text anywhere.`
+    `FINAL CHECK before you render: ` +
+    (performerCount ? `the face is the same real person as ${performerRefs} — identical facial structure, instantly recognizable; ` : '') +
+    `every quoted line above is spelled exactly as written; no additional text anywhere; believable premium design.`
   );
 }
 

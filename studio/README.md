@@ -11,7 +11,7 @@ Image generation is pluggable (verified against current pricing, Aug 2026):
 
 | Engine | Cost | Notes |
 |---|---|---|
-| **OpenAI GPT Image 2** (default) | ~$0.03–0.06/image | The quality tier the original Vibration posters live in: exact faces from reference photos (high input fidelity), clean stylized typography. A full week ≈ $1–3. Needs billing + a verified organization. |
+| **OpenAI GPT Image 2** (default) | ~$0.06 (medium) / ~$0.20–0.25 (high) per poster | The quality tier the original Vibration posters live in: exact faces from reference photos (input images always processed at high fidelity), clean stylized typography. A full week ≈ $1–4. High quality takes 2–5 min/poster — hosted generation runs in a Netlify Background Function with job polling. Needs billing + a verified organization. |
 | Cloudflare Workers AI | $0 forever | 10,000 free neurons/day (renews 00:00 UTC, no card). Draft quality: FLUX.2 klein 9B ≈ 6 posters/day, dev ≈ 1/day (best text of the three), klein 4B ≈ 57/day. Faces come out "similar", text often needs retries — fine for drafts/layout exploration, not finals. |
 | Google Gemini "nano banana" | ~$0.04/image | Comparable class to GPT Image 2. Its free *image* API tier ended Dec 2025, but a free Gemini key still writes the **captions** at $0 when no OpenAI key is set. |
 | Segmind | ~$0.04/image | Aggregator; requires a $10 minimum top-up to start. |

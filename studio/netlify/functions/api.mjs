@@ -56,6 +56,7 @@ export default async (request) => {
     store.setDriver(blobDriver());
     const ctx = {
       origin: url.origin,
+      serverless: true,
       // Style presets etc. are static site assets — fetch them from our own CDN.
       async loadAsset(relPath) {
         const res = await fetch(`${url.origin}/${relPath}`);

@@ -34,8 +34,10 @@ Node.js is the engine that runs the app. No coding involved.
 ## Part 3 — Image engine key (OpenAI GPT Image 2) (10 min)
 
 GPT Image 2 is the default engine — it's the class of model the original posters were made
-with (exact faces from your photos, clean stylized typography), at ~$0.03–0.06 per image
-(a full week ≈ $1–3):
+with (exact faces from your photos, clean stylized typography). With reference images a
+poster costs ~$0.06 at *medium* quality and ~$0.20–0.25 at *high* (a full week ≈ $1–4).
+High quality takes 2–5 minutes per poster; the app runs it in the background — keep the
+tab open until the variations appear:
 
 1. Sign up / log in at <https://platform.openai.com>.
 2. **Billing:** gear icon → Billing → add a payment method and ~$5 of credit.

@@ -175,19 +175,22 @@ route('POST', /^\/api\/week\/([\d-]+)\/day\/(\w+)\/reference-from-url$/, async (
   return { day };
 });
 
-route('POST', /^\/api\/week\/([\d-]+)\/day\/(\w+)\/generate$/, async (m, body, query, ctx) => {
+/**
+ * The full (slow: 1-5 min) generation pipeline for one day. Used directly by
+ * the local server and by the Netlify Background Function.
+ */
+async function runGeneration(ctx, weekStart, dayKey, { count = 3, variantIndex = null } = {}) {
   const db = await store.load();
-  const day = store.getDay(db, m[1], m[2]);
+  const day = store.getDay(db, weekStart, dayKey);
   const presetId = day.stylePreset && day.stylePreset !== 'auto' ? day.stylePreset : null;
   const preset = presetId ? STYLE_PRESETS[presetId] : null;
   if (!preset && day.references.length === 0) {
     throw new Error('Pick a style preset or add at least one style reference first.');
   }
   const { images, manifest } = await collectInputImages(ctx, db, day, preset);
-  const count = Math.min(Math.max(body.count || 3, 1), 3);
-  const variantIndex = body.variantIndex; // when set, generate exactly this single take
+  const n = Math.min(Math.max(count, 1), 3);
 
-  const takes = variantIndex != null ? [variantIndex] : Array.from({ length: count }, (_, i) => i);
+  const takes = variantIndex != null ? [variantIndex] : Array.from({ length: n }, (_, i) => i);
   const results = await Promise.all(
     takes.map((i) => {
       const prompt = buildPosterPrompt({ day, settings: db.settings, preset, variantIndex: i, imageManifest: manifest });
@@ -208,7 +211,7 @@ route('POST', /^\/api\/week\/([\d-]+)\/day\/(\w+)\/generate$/, async (m, body, q
 
   // Re-read before mutating: generation is slow and other edits may have landed.
   const db2 = await store.load();
-  const day2 = store.getDay(db2, m[1], m[2]);
+  const day2 = store.getDay(db2, weekStart, dayKey);
   const generation = {
     id: store.newId(),
     createdAt: new Date().toISOString(),
@@ -218,6 +221,25 @@ route('POST', /^\/api\/week\/([\d-]+)\/day\/(\w+)\/generate$/, async (m, body, q
   day2.generations.push(generation);
   await store.save(db2);
   return { day: day2, generation };
+}
+
+route('POST', /^\/api\/week\/([\d-]+)\/day\/(\w+)\/generate$/, async (m, body, query, ctx) =>
+  runGeneration(ctx, m[1], m[2], body)
+);
+
+// Unified generation entry point. Locally it runs synchronously; on Netlify
+// (where a synchronous function would time out after ~26s while gpt-image-2
+// takes minutes) it tells the client to invoke the Background Function and
+// poll the job record instead.
+route('POST', /^\/api\/generate$/, async (m, body, query, ctx) => {
+  if (ctx.serverless) return { background: true };
+  const out = await runGeneration(ctx, body.week, body.day, body);
+  return { ...out, background: false };
+});
+
+route('GET', /^\/api\/job\/([\w.-]+)$/, async (m) => {
+  const job = await store.getAux(`jobs/${m[1]}`);
+  return { job: job || { status: 'unknown' } };
 });
 
 route('POST', /^\/api\/week\/([\d-]+)\/day\/(\w+)\/captions$/, async (m) => {
@@ -376,4 +398,4 @@ async function dispatch(method, pathname, body, query, ctx) {
   return null;
 }
 
-module.exports = { dispatch, localIso, redactedSettings };
+module.exports = { dispatch, localIso, redactedSettings, runGeneration };
