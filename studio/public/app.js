@@ -513,7 +513,7 @@ function renderGenerate(el, key) {
       <span id="gen-status"></span>
     </div>
     <div class="gen-bar" style="margin-top:-6px">
-      <button id="btn-copy-prompt" title="Copy the full designer prompt — paste it with the same photos into a free tool like aistudio.google.com, then import the result here">📋 Copy designer prompt ($0 manual mode)</button>
+      <button id="btn-copy-prompt" title="Copy the full designer prompt — paste it with the same photos into free ChatGPT (real GPT Image 2, ~5 images/day) or aistudio.google.com, then import the result here">📋 Copy designer prompt ($0 manual mode)</button>
       <button id="btn-manual-upload" title="Import a poster you generated elsewhere as a pickable variant">⬆ Import poster made elsewhere</button>
     </div>
     <div id="gen-gallery"></div>
@@ -583,11 +583,12 @@ function renderGenerate(el, key) {
     try {
       const out = await api('GET', `/api/week/${S.activeWeek}/day/${key}/prompts`);
       const text =
-        `PASTE THIS INTO A FREE IMAGE TOOL (e.g. aistudio.google.com — attach the same images in this order):\n` +
+        `PASTE THIS INTO A FREE IMAGE TOOL — chatgpt.com (real GPT Image 2, ~5 images/day free) or aistudio.google.com.\n` +
+        `Attach the same images in this order:\n` +
         out.attachOrder.map((a, i) => `Image ${i + 1}: ${a}`).join('\n') +
         `\n\n----- PROMPT -----\n${out.prompts[0].text}`;
       await navigator.clipboard.writeText(text);
-      toast('Designer prompt copied — paste it into aistudio.google.com with the same photos, then use "Import poster made elsewhere".', false, 9000);
+      toast('Designer prompt copied — paste it into free ChatGPT (GPT Image 2) with the same photos, then use "Import poster made elsewhere".', false, 9000);
     } catch (err) {
       toast(err.message, true);
     } finally {

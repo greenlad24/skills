@@ -108,10 +108,19 @@ generate → pick → schedule.
   a quality tier below (as user testing confirmed).
 - **Best free runway: the Google Cloud $300 trial → Vertex engine** (~3 months of top-tier
   posters at $0, no auto-charge).
-- **$0 forever, manual:** the **"📋 Copy designer prompt"** button in step 4 copies the full
-  art-direction prompt — paste it into Google AI Studio (aistudio.google.com, free image
-  generation in the browser) with the same photos, download the result, and pull it back in
-  with **"⬆ Import poster made elsewhere"**. Same brand system, zero API cost, just manual.
+- **$0 forever, manual — including the REAL GPT Image 2:** ChatGPT's free tier includes
+  GPT Image 2 ("Images 2.0", Instant mode, ~5 images/day) with reference-photo uploads, and
+  outputs are commercially usable on all plans. The **"📋 Copy designer prompt"** button in
+  step 4 copies the full art-direction prompt + attachment order — paste it into
+  chatgpt.com (or aistudio.google.com for nano-banana class) with the same photos, download
+  the result, and pull it back in with **"⬆ Import poster made elsewhere"**. Manual clicking
+  is ToS-fine; scripting the ChatGPT UI is not, so the app never automates it.
+- **~1 month of automated GPT Image 2 free:** gpt-image-2 is also GA on Microsoft
+  Foundry/Azure, and new Azure accounts get $200 of 30-day trial credit — enough to cover a
+  month of API generation many times over (setup is the most involved of all options).
+- **ChatGPT Plus ($20/mo)** gives ~40–50 GPT Image 2 generations per 3 hours manually — but
+  note the direct API at your volume is only ~$3–15/month, so Plus only wins if you want
+  unlimited manual iteration.
 - **$0 forever, automated:** only via your own GPU (Qwen-Image-Edit on a 12–16GB NVIDIA
   card) or Cloudflare's draft tier.
 
