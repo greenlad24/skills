@@ -242,6 +242,37 @@ route('GET', /^\/api\/job\/([\w.-]+)$/, async (m) => {
   return { job: job || { status: 'unknown' } };
 });
 
+// $0 manual mode: hand back the full designer prompts so the user can paste
+// them (with the same photos) into a free web UI like Google AI Studio, then
+// import the result as a variant via manual-variant below.
+route('GET', /^\/api\/week\/([\d-]+)\/day\/(\w+)\/prompts$/, async (m, body, query, ctx) => {
+  const db = await store.load();
+  const day = store.getDay(db, m[1], m[2]);
+  const presetId = day.stylePreset && day.stylePreset !== 'auto' ? day.stylePreset : null;
+  const preset = presetId ? STYLE_PRESETS[presetId] : null;
+  const { manifest } = await collectInputImages(ctx, db, day, preset);
+  const prompts = VARIANT_TAKES.map((v, i) => ({
+    label: v.label,
+    text: buildPosterPrompt({ day, settings: db.settings, preset, variantIndex: i, imageManifest: manifest }),
+  }));
+  return { prompts, attachOrder: manifest };
+});
+
+route('POST', /^\/api\/week\/([\d-]+)\/day\/(\w+)\/manual-variant$/, async (m, body) => {
+  if (!body.dataUrl) throw new Error('No image provided');
+  const db = await store.load();
+  const day = store.getDay(db, m[1], m[2]);
+  const file = await store.saveFileFromBase64(body.dataUrl);
+  day.generations.push({
+    id: store.newId(),
+    createdAt: new Date().toISOString(),
+    variants: [{ file, label: 'Manual', prompt: '(made outside the app)' }],
+    errors: [],
+  });
+  await store.save(db);
+  return { day };
+});
+
 route('POST', /^\/api\/week\/([\d-]+)\/day\/(\w+)\/captions$/, async (m) => {
   const db = await store.load();
   const day = store.getDay(db, m[1], m[2]);

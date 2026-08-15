@@ -26,30 +26,38 @@ async function call(apiKey, model, body, timeoutMs = 180000) {
   }
 }
 
-/**
- * Generate one poster. images: [{buffer, mime}]. Returns a PNG/JPEG Buffer.
- */
-async function generateImage({ apiKey, model, prompt, images = [], aspectRatio = '2:3' }) {
+/** Shared request/response shapes — the Vertex AI endpoints use the same format. */
+function buildImageRequestBody(prompt, images, aspectRatio) {
   const parts = [{ text: prompt }];
   for (const img of images.slice(0, 10)) {
     parts.push({ inline_data: { mime_type: img.mime, data: img.buffer.toString('base64') } });
   }
-  const json = await call(apiKey, model || 'gemini-2.5-flash-image', {
+  return {
     contents: [{ parts }],
     generationConfig: {
       responseModalities: ['IMAGE'],
       imageConfig: { aspectRatio },
     },
-  });
+  };
+}
+
+function parseImageResponse(json, providerName = 'Gemini') {
   const outParts = json?.candidates?.[0]?.content?.parts || [];
   const imgPart = outParts.find((p) => p.inlineData?.data || p.inline_data?.data);
   if (!imgPart) {
     const reason = json?.candidates?.[0]?.finishReason || json?.promptFeedback?.blockReason || 'no image in response';
     const textOut = outParts.find((p) => p.text)?.text;
-    throw new Error(`Gemini returned no image (${reason})${textOut ? `: ${textOut.slice(0, 200)}` : ''}`);
+    throw new Error(`${providerName} returned no image (${reason})${textOut ? `: ${textOut.slice(0, 200)}` : ''}`);
   }
-  const data = imgPart.inlineData?.data || imgPart.inline_data?.data;
-  return Buffer.from(data, 'base64');
+  return Buffer.from(imgPart.inlineData?.data || imgPart.inline_data?.data, 'base64');
+}
+
+/**
+ * Generate one poster. images: [{buffer, mime}]. Returns a PNG/JPEG Buffer.
+ */
+async function generateImage({ apiKey, model, prompt, images = [], aspectRatio = '2:3' }) {
+  const json = await call(apiKey, model || 'gemini-2.5-flash-image', buildImageRequestBody(prompt, images, aspectRatio));
+  return parseImageResponse(json);
 }
 
 /** JSON-mode text generation (used for captions/voice when there is no OpenAI key). */
@@ -67,4 +75,4 @@ async function chatJson({ apiKey, system, user, model = 'gemini-2.5-flash' }) {
   }
 }
 
-module.exports = { generateImage, chatJson };
+module.exports = { generateImage, chatJson, buildImageRequestBody, parseImageResponse };

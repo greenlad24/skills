@@ -12,6 +12,7 @@ Image generation is pluggable (verified against current pricing, Aug 2026):
 | Engine | Cost | Notes |
 |---|---|---|
 | **OpenAI GPT Image 2** (default) | ~$0.06 (medium) / ~$0.20–0.25 (high) per poster | The quality tier the original Vibration posters live in: exact faces from reference photos (input images always processed at high fidelity), clean stylized typography. A full week ≈ $1–4. High quality takes 2–5 min/poster — hosted generation runs in a Netlify Background Function with job polling. Needs billing + a verified organization. |
+| **Google Vertex — Nano Banana Pro** | **$0 for ~3 months** via the $300/90-day Google Cloud trial, then ~$0.13/poster | Same quality class as GPT Image 2 (Google's flagship image-edit model). The trial covers ~2,000 posters; card required for signup but there's no auto-charge — the account pauses when the trial ends. Note: the credits cover the *Vertex* endpoints only, not AI-Studio Gemini keys — the app's Vertex engine handles this (express key or service-account JSON). |
 | Cloudflare Workers AI | $0 forever | 10,000 free neurons/day (renews 00:00 UTC, no card). Draft quality: FLUX.2 klein 9B ≈ 6 posters/day, dev ≈ 1/day (best text of the three), klein 4B ≈ 57/day. Faces come out "similar", text often needs retries — fine for drafts/layout exploration, not finals. |
 | Google Gemini "nano banana" | ~$0.04/image | Comparable class to GPT Image 2. Its free *image* API tier ended Dec 2025, but a free Gemini key still writes the **captions** at $0 when no OpenAI key is set. |
 | Segmind | ~$0.04/image | Aggregator; requires a $10 minimum top-up to start. |
@@ -98,6 +99,21 @@ generate → pick → schedule.
   git-ignored, so keys never end up in the repository.
 - The generated posters keep their full prompt in `data/db.json`, so you can inspect what
   was asked and iterate.
+
+### The honest "$0" picture (researched + verified, Aug 2026)
+
+- **No permanently-free API exists at this accuracy tier.** Gemini's free image API ended
+  Dec 2025; Pollinations' renewing grants ended mid-2026; Together's free FLUX endpoint was
+  deprecated; aggregators only give one-time signup credits; Cloudflare's real free tier is
+  a quality tier below (as user testing confirmed).
+- **Best free runway: the Google Cloud $300 trial → Vertex engine** (~3 months of top-tier
+  posters at $0, no auto-charge).
+- **$0 forever, manual:** the **"📋 Copy designer prompt"** button in step 4 copies the full
+  art-direction prompt — paste it into Google AI Studio (aistudio.google.com, free image
+  generation in the browser) with the same photos, download the result, and pull it back in
+  with **"⬆ Import poster made elsewhere"**. Same brand system, zero API cost, just manual.
+- **$0 forever, automated:** only via your own GPU (Qwen-Image-Edit on a 12–16GB NVIDIA
+  card) or Cloudflare's draft tier.
 
 ## Deploying to Netlify
 

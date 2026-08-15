@@ -2,6 +2,7 @@
 // Engines: cloudflare (free), gemini (~$0.04/img), segmind (~$0.04/img), openai (premium).
 const cloudflare = require('./cloudflare');
 const gemini = require('./gemini');
+const vertex = require('./vertex');
 const segmind = require('./segmind');
 const openai = require('./openaiClient');
 
@@ -26,6 +27,9 @@ async function generatePoster(settings, { prompt, images }) {
       quality: settings.imageQuality,
       size: '1024x1536',
     });
+  }
+  if (engine === 'vertex') {
+    return vertex.generateImage({ settings, prompt, images, aspectRatio: '2:3' });
   }
   if (engine === 'segmind') {
     return segmind.generateImage({

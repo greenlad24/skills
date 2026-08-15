@@ -512,6 +512,10 @@ function renderGenerate(el, key) {
       <button class="primary" id="btn-generate">✨ Generate 3 variations</button>
       <span id="gen-status"></span>
     </div>
+    <div class="gen-bar" style="margin-top:-6px">
+      <button id="btn-copy-prompt" title="Copy the full designer prompt — paste it with the same photos into a free tool like aistudio.google.com, then import the result here">📋 Copy designer prompt ($0 manual mode)</button>
+      <button id="btn-manual-upload" title="Import a poster you generated elsewhere as a pickable variant">⬆ Import poster made elsewhere</button>
+    </div>
     <div id="gen-gallery"></div>
   `;
 
@@ -572,6 +576,34 @@ function renderGenerate(el, key) {
       delete S.busy[key];
       if (S.view === key) { renderGenerate($('#sec-generate'), key); renderTabs(); }
     }
+  };
+
+  $('#btn-copy-prompt', el).onclick = async (e) => {
+    e.target.disabled = true;
+    try {
+      const out = await api('GET', `/api/week/${S.activeWeek}/day/${key}/prompts`);
+      const text =
+        `PASTE THIS INTO A FREE IMAGE TOOL (e.g. aistudio.google.com — attach the same images in this order):\n` +
+        out.attachOrder.map((a, i) => `Image ${i + 1}: ${a}`).join('\n') +
+        `\n\n----- PROMPT -----\n${out.prompts[0].text}`;
+      await navigator.clipboard.writeText(text);
+      toast('Designer prompt copied — paste it into aistudio.google.com with the same photos, then use "Import poster made elsewhere".', false, 9000);
+    } catch (err) {
+      toast(err.message, true);
+    } finally {
+      e.target.disabled = false;
+    }
+  };
+  $('#btn-manual-upload', el).onclick = async () => {
+    const [f] = await pickFiles({ multiple: false });
+    if (!f) return;
+    const out = await api('POST', `/api/week/${S.activeWeek}/day/${key}/manual-variant`, {
+      dataUrl: await readFileAsDataUrl(f),
+    });
+    S.week.days[key] = out.day;
+    renderGenerate(el, key);
+    renderTabs();
+    toast('Imported — pick it to make it the winner');
   };
 
   const gallery = $('#gen-gallery', el);
@@ -703,7 +735,8 @@ function renderSettings() {
     <div class="grid2">
       <div class="field"><label>Engine</label>
         <select id="st-engine">
-          <option value="openai" ${s.imageEngine === 'openai' ? 'selected' : ''}>OpenAI GPT Image 2 — best (~$0.04/img)</option>
+          <option value="openai" ${s.imageEngine === 'openai' ? 'selected' : ''}>OpenAI GPT Image 2 — best</option>
+          <option value="vertex" ${s.imageEngine === 'vertex' ? 'selected' : ''}>Google Vertex Nano Banana Pro — $300 trial ≈ 3 months free</option>
           <option value="cloudflare" ${s.imageEngine === 'cloudflare' ? 'selected' : ''}>Cloudflare Workers AI — free, drafts</option>
           <option value="gemini" ${s.imageEngine === 'gemini' ? 'selected' : ''}>Google Gemini nano-banana — ~$0.04/img</option>
           <option value="segmind" ${s.imageEngine === 'segmind' ? 'selected' : ''}>Segmind — ~$0.04/img ($10 min top-up)</option>
@@ -718,6 +751,19 @@ function renderSettings() {
         </select></div>
       <div class="field"><label>Gemini API key (free captions + paid images)</label><input id="st-gemini" type="password" placeholder="aistudio.google.com/apikey" value="${esc(s.geminiApiKey)}"></div>
     </div>
+    <div class="settings-note" style="margin-top:2px">
+      <b>Vertex (Google's $300 trial):</b> new Google Cloud accounts get $300 valid 90 days (card required, no
+      auto-charge — the account pauses when it ends). That's ~2,000 Nano Banana Pro posters: your volume free for
+      3 months at GPT-Image-2-grade quality. Easiest: express-mode API key; for a full trial-billing project,
+      paste a service-account JSON key instead (IAM → Service accounts → Keys → JSON, role "Vertex AI User").
+    </div>
+    <div class="grid3">
+      <div class="field"><label>Vertex express API key</label><input id="st-vx-key" type="password" placeholder="express mode key" value="${esc(s.vertexApiKey)}"></div>
+      <div class="field"><label>Vertex model</label><input id="st-vx-model" value="${esc(s.vertexModel)}"></div>
+      <div class="field"><label>Vertex location</label><input id="st-vx-loc" placeholder="global" value="${esc(s.vertexLocation)}"></div>
+    </div>
+    <div class="field"><label>Vertex service-account JSON (alternative to the key — paste the whole file)</label>
+      <textarea id="st-vx-sa" style="min-height:56px" placeholder='{"type":"service_account", …}'>${esc(s.vertexServiceAccountJson)}</textarea></div>
     <div class="grid2">
       <div class="field"><label>Cloudflare account ID</label><input id="st-cf-account" placeholder="dash.cloudflare.com → right sidebar" value="${esc(s.cfAccountId)}"></div>
       <div class="field"><label>Cloudflare API token</label><input id="st-cf-token" type="password" placeholder="dash.cloudflare.com → profile → API Tokens" value="${esc(s.cfApiToken)}"></div>
@@ -886,6 +932,10 @@ function renderSettings() {
       settings: {
         imageEngine: $('#st-engine', body).value,
         openaiImageModel: $('#st-openai-model', body).value,
+        vertexApiKey: $('#st-vx-key', body).value.trim(),
+        vertexServiceAccountJson: $('#st-vx-sa', body).value.trim(),
+        vertexModel: $('#st-vx-model', body).value.trim() || 'gemini-3-pro-image',
+        vertexLocation: $('#st-vx-loc', body).value.trim() || 'global',
         cfAccountId: $('#st-cf-account', body).value.trim(),
         cfApiToken: $('#st-cf-token', body).value.trim(),
         cfModel: $('#st-cf-model', body).value,

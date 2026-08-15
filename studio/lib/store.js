@@ -11,8 +11,13 @@ const DEFAULT_SETTINGS = {
   // cloudflare = the verified 100%-free engine (10k neurons/day) — draft quality
   // gemini     = nano-banana class, ~$0.04/image (free tier for images was removed Dec 2025)
   // segmind    = aggregator, ~$0.04/image (requires a $10 top-up to start)
+  // vertex     = Google $300/90-day trial credits -> Nano Banana Pro, free for ~3 months
   imageEngine: 'openai',
   openaiImageModel: 'gpt-image-2',
+  vertexApiKey: '',
+  vertexServiceAccountJson: '',
+  vertexModel: 'gemini-3-pro-image',
+  vertexLocation: 'global',
   cfAccountId: '',
   cfApiToken: '',
   cfModel: '@cf/black-forest-labs/flux-2-klein-9b',
@@ -45,7 +50,7 @@ const DEFAULT_SETTINGS = {
   onboarded: false,
 };
 
-const SECRET_KEYS = ['openaiApiKey', 'geminiApiKey', 'segmindApiKey', 'postizApiKey', 'bufferApiKey', 'cfApiToken'];
+const SECRET_KEYS = ['openaiApiKey', 'geminiApiKey', 'segmindApiKey', 'postizApiKey', 'bufferApiKey', 'cfApiToken', 'vertexApiKey', 'vertexServiceAccountJson'];
 
 let driver = null;
 function setDriver(d) { driver = d; }
