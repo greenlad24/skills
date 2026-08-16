@@ -26,7 +26,7 @@ const DEFAULT_SETTINGS = {
   segmindApiKey: '',
   segmindModel: 'nano-banana',
   openaiApiKey: '',
-  imageQuality: 'high', // openai only: low | medium | high
+  imageQuality: 'medium', // openai only: low | medium | high (~$0.06 vs ~$0.22/poster)
   // captions
   captionModel: 'gpt-4.1', // used when OpenAI key present; otherwise Gemini writes captions
   // scheduling

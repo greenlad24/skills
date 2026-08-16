@@ -530,7 +530,7 @@ function renderGenerate(el, key) {
     if (!day.info.artistName && !day.info.special) {
       return toast('Give the day at least a headline (step 3) first.', true);
     }
-    S.busy[key] = 'Designing 3 posters… high quality takes 2–5 minutes. You can switch to other days meanwhile.';
+    S.busy[key] = 'Designing 3 posters… this takes 1–5 minutes depending on quality. You can switch to other days meanwhile.';
     renderGenerate(el, key);
     try {
       const jobId = `job-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
@@ -784,7 +784,9 @@ function renderSettings() {
     <div class="grid3">
       <div class="field"><label>OpenAI poster quality</label>
         <select id="st-quality">
-          ${['high', 'medium', 'low'].map((q) => `<option ${s.imageQuality === q ? 'selected' : ''}>${q}</option>`).join('')}
+          <option value="medium" ${s.imageQuality === 'medium' ? 'selected' : ''}>medium — ~$0.06/poster, ~1–2 min</option>
+          <option value="high" ${s.imageQuality === 'high' ? 'selected' : ''}>high — ~$0.22/poster, 2–5 min</option>
+          <option value="low" ${s.imageQuality === 'low' ? 'selected' : ''}>low — drafts only</option>
         </select></div>
       <div class="field"><label>Default post time</label><input id="st-posttime" type="time" value="${esc(s.defaultPostTime)}"></div>
       <div class="field"><label>Bar's UTC offset (hosted)</label><input id="st-tz" placeholder="e.g. +07:00 (blank = server local)" value="${esc(s.postTimezone)}"></div>
