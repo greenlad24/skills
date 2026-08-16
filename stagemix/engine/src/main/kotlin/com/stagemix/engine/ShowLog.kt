@@ -685,7 +685,12 @@ class ShowLog(
             // instrument), unlike the LVL/TONE running picture, so
             // exempting them from the hard cap honours the rule without
             // any real risk of unbounded growth in a night.
-            "PARAM", "EQ", "COMP")
+            "PARAM", "EQ", "COMP",
+            // the complete monitor picture (§ monitors: "all of the data
+            // about the monitors in the logs"). Written only while the
+            // band is playing — never in an idle room — so it does not
+            // grow without bound.
+            "MON")
         /** how often the per-channel tone picture is written */
         private const val TONE_SEC = 30.0
         /** and how often the whole stage is tabulated */

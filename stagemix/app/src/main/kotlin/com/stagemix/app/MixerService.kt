@@ -120,6 +120,8 @@ class MixerService : Service() {
     private var rtaFramesSinceSwitch = 0
     /** engine exceptions survived this session — see the tick guard */
     private var tickFailures = 0
+    /** last time the full monitor matrix was written to the log */
+    private var lastMonMatrix = -1e9
     /** the exact banner engineFailed raises, so a clean tick can retract it */
     private val ENGINE_ERROR_MSG =
         "⚠ Something went wrong inside the app — the mixer is " +
@@ -809,6 +811,13 @@ class MixerService : Service() {
                         // app is never shut down and the card used to
                         // be written only on the way out
                         lg.card(t, e, names)
+                        // the complete monitor picture on a cadence, so
+                        // the whole night's wedge state is in the log —
+                        // every send, every wedge, not just the takeover
+                        if (t - lastMonMatrix >= MON_MATRIX_SEC) {
+                            lastMonMatrix = t
+                            dumpMonitorMatrix(t)
+                        }
                     }
                 }
                 // A tick that got all the way through is the only
@@ -1605,6 +1614,47 @@ class MixerService : Service() {
      * What is in each wedge, and how far it is from what a monitor mix
      * for that position wants.
      */
+    /**
+     * THE COMPLETE MONITOR PICTURE — every wedge, every send, in dB, with
+     * its in-ears/wedge type and, when the keeper is on, where it wants
+     * each send. Written at takeover and then on a cadence, so the log
+     * holds the whole night's monitor state, not just a snapshot of the
+     * loudest few at the start. Nothing here writes a send; it only reads.
+     */
+    private fun dumpMonitorMatrix(t: Double) {
+        val e = engine ?: return
+        val lg = show ?: return
+        val names = AppState.mixerChannelNames.value
+        val roles = e.state.mapValues { it.value.role }
+        val kit = e.drumKit()
+        val floor = com.stagemix.engine.MonitorMap.MONITOR_FLOOR_DB
+        fun nm(ch: Int) = (names[ch] ?: "ch%02d".format(ch + 1)).take(8)
+        for (w in monitors.all()) {
+            val busName = (AppState.busNames.value[w.bus - 1] ?: w.name).take(12)
+            val targets = monitors.critique(w.bus, roles, kit)
+                .mapNotNull { n -> n.wantDb?.let { n.ch to it } }.toMap()
+            val live = w.sends.entries.filter { it.value > floor }
+                .sortedByDescending { it.value }
+            val off = w.sends.entries.filter { it.value <= floor }
+                .map { it.key }.sorted()
+            lg.note("MON", "bus%02d %-12s [%s · %s] — %d live, %d not sent"
+                .format(java.util.Locale.ROOT, w.bus, busName,
+                    w.kind.name.lowercase(),
+                    if (w.inEars) "in-ears" else "wedge", live.size, off.size))
+            for ((ch, db) in live) {
+                val tgt = targets[ch]?.let {
+                    " (wants %+.1f, %+.1f off)".format(
+                        java.util.Locale.ROOT, it, db - it) } ?: ""
+                lg.note("MON", "    %-8s %+6.1f dB%s".format(
+                    java.util.Locale.ROOT, nm(ch), db, tgt))
+            }
+            if (off.isNotEmpty())
+                lg.note("MON", "    not sent: " +
+                    off.joinToString(" ") { nm(it) })
+        }
+        lastMonMatrix = t
+    }
+
     private fun logMonitors() {
         val e = engine ?: return
         val names = AppState.mixerChannelNames.value
@@ -1612,6 +1662,7 @@ class MixerService : Service() {
         val lg = show ?: return
         lg.note("MON", "── the monitors, read only: this app does not " +
             "write a monitor send or a bus master ──")
+        dumpMonitorMatrix(now())
         for (w in monitors.all()) {
             lg.note("MON", monitors.describe(w.bus, names))
             for (n in monitors.critique(w.bus, roles, e.drumKit()).take(5)) {
@@ -1925,6 +1976,8 @@ class MixerService : Service() {
         const val ACTION_REVERT = "com.stagemix.REVERT"
         /** a log file covers one night; see the rotate above */
         const val LOG_ROTATE_HOURS = 10.0
+        /** how often the whole monitor matrix is written to the log */
+        const val MON_MATRIX_SEC = 60.0
         const val ACTION_DIRECTING = "com.stagemix.DIRECTING"
         const val ACTION_FREEZE_ALL = "com.stagemix.FREEZE_ALL"
         const val ACTION_FREEZE_CH = "com.stagemix.FREEZE_CH"

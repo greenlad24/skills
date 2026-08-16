@@ -343,3 +343,10 @@ starting chain and the tone doctor read the desk at takeover and:
   decoded to dB and Hz, every wedge move, every ring-out, every
   override, every mode change, and the fault stream the operator saw. A
   decision is never dropped, even when a bulk log is trimmed.
+- **All of the monitor data is in the log.** The complete picture of
+  every wedge — its in-ears/wedge type and every channel's send in dB,
+  with where the app wants each one when keeping is on — is written at
+  takeover and then on a cadence while the band plays, so the whole
+  night's monitor state can be read back, not just a snapshot of the
+  loudest few at the start. Like the other decisions, it is never
+  dropped.
