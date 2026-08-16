@@ -3362,6 +3362,39 @@ class StageEngine(
             st.appWrites++
             writes.add(FaderWrite(st.cfg.index, level))
         }
+
+        // STEREO PAIRS MOVE AS ONE. The piano is one instrument on two
+        // channels; the feature ride already lifts both together, but the
+        // ordinary balance ride and the pyramid steer each half from its
+        // own level, so the two can drift apart and pull the image to one
+        // side. Whenever they have, settle both on their shared mean offset
+        // — a hand or a lock on either half calls the whole thing off.
+        val pairedDone = HashSet<Int>()
+        for ((idx, st) in state) {
+            val mateIdx = st.cfg.pairWith ?: continue
+            if (mateIdx <= idx || idx in pairedDone) continue   // lower leads
+            val mate = state[mateIdx] ?: continue
+            if (st.frozen || mate.frozen || st.deskMuted || mate.deskMuted)
+                continue
+            if (volumeLocked(idx, st) || volumeLocked(mateIdx, mate)) continue
+            if (tSec < st.overrideUntil || tSec < mate.overrideUntil) continue
+            if (st.baselineDb == null || mate.baselineDb == null) continue
+            if (abs(st.offset - mate.offset) < 0.05f) continue  // already one
+            pairedDone.add(mateIdx)
+            val shared = (st.offset + mate.offset) / 2f
+            for (m in listOf(st, mate)) {
+                m.offset = shared
+                val lvl = (m.baselineDb!! + shared)
+                    .coerceIn(FaderLaw.MIN_DB, settings.absFaderCapDb)
+                if (m.lastWrittenDb != null &&
+                    abs(m.lastWrittenDb!! - lvl) < 0.005f) continue
+                m.lastWrittenDb?.let { m.appDbMoved += abs(lvl - it) }
+                m.lastWrittenDb = lvl
+                m.appWrites++
+                writes.removeAll { it.channel == m.cfg.index }
+                writes.add(FaderWrite(m.cfg.index, lvl))
+            }
+        }
         return writes
     }
 

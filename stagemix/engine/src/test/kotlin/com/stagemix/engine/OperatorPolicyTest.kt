@@ -200,6 +200,19 @@ class OperatorPolicyTest {
         }
     }
 
+    @Test fun `the stereo piano moves as one`() {
+        val r = Rig(POLICY)
+        // the two piano halves at different input levels — without pairing
+        // the pyramid and the ride would steer them to different places
+        val src = band().also { it[5] = -22f; it[6] = -28f }
+        r.start(src)
+        r.run(300.0) { src }
+        val d = abs(r.e.offsetDb(5) - r.e.offsetDb(6))
+        assertTrue(d < 0.3f,
+            ("the two piano halves drifted %.2f dB apart — a stereo pair " +
+                "must move as one").format(d))
+    }
+
     @Test fun `the bass is not ridden by small errors`() {
         // The bass sits where the operator put it and is not chased by the
         // ordinary drift that moves everything else. Off vs on: the wide

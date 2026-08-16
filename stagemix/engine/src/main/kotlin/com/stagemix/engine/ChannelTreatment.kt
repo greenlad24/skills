@@ -499,8 +499,8 @@ class ChannelTreatment(
             if (abs(want - preset) >= 5f) {
                 out = out.copy(hpfHz = want)
                 notes.append(
-                    ". Its low end really stops at %.0f Hz, so the " +
-                    "high-pass goes at %.0f rather than the usual %.0f"
+                    (". Its low end really stops at %.0f Hz, so the " +
+                    "high-pass goes at %.0f rather than the usual %.0f")
                         .format(java.util.Locale.ROOT, edge, want, preset))
             }
         }
@@ -516,9 +516,9 @@ class ChannelTreatment(
                 val q = shape.resonanceQ.coerceIn(1.5f, 8f)
                 out = out.copy(eq = out.eq + EqBand(band, rHz, cut, q))
                 notes.append(
-                    ". There is a %.0f dB lump at %.0f Hz that is not " +
+                    (". There is a %.0f dB lump at %.0f Hz that is not " +
                     "part of how this instrument is voiced — %.1f dB out " +
-                    "of it, narrow"
+                    "of it, narrow")
                         .format(java.util.Locale.ROOT, shape.resonanceDb,
                             rHz, cut))
             }
