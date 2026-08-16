@@ -573,15 +573,28 @@ class ChannelTreatment(
             // unknown, flat is the safe default (a stored boost we
             // cannot see is the hazard), so an unsnapshotted channel
             // still has every band written flat.
-            // Band 4 belongs to the ring-out and is never touched
-            // here — see RingOut.RING_BAND.
+            // Band 4 is RingOut's band (RING_BAND). It is mostly left for
+            // the ring-out to own — but "left alone" cannot mean leaving a
+            // stored BOOST on it in circuit: turning eq/on over a stored
+            // +8 dB at the ring frequency is a gain add on an open mic,
+            // the exact hazard this whole flatten exists to stop, and
+            // isGainAdding never sees it because we did not write it. So on
+            // band 4 we neutralise a boost, but leave a cut (a house
+            // ring-out) and a flat/unknown band untouched, so treatment
+            // never fights or wipes a live notch.
             val mine = chain.eq.map { it.band }.toSet()
             val deskEq = desk[ch]?.eqDb
-            for (b in 1..4) if (b !in mine && b != RingOut.RING_BAND) {
+            for (b in 1..4) if (b !in mine) {
                 val had = deskEq?.getOrNull(b - 1)
-                // known cut → theirs, keep it; boost/flat/unknown → flatten
-                if (had == null || had > -0.3f)
-                    put("/ch/$c/eq/$b/g", eqGainToFloat(0f))
+                if (b == RingOut.RING_BAND) {
+                    // only a clear stored boost is flattened here
+                    if (had != null && had > 0.3f)
+                        put("/ch/$c/eq/$b/g", eqGainToFloat(0f))
+                } else {
+                    // known cut → theirs, keep it; boost/flat/unknown → flatten
+                    if (had == null || had > -0.3f)
+                        put("/ch/$c/eq/$b/g", eqGainToFloat(0f))
+                }
             }
             put("/ch/$c/eq/on", 1f)
             for (b in chain.eq) {

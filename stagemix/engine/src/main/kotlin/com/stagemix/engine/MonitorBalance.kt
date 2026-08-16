@@ -97,6 +97,9 @@ class MonitorBalance(
     /** what it did and why, newest last — drained by the log */
     val notes = ArrayList<String>()
 
+    /** set at plan() entry: a howl is live, so no send may go up */
+    private var howlNow = false
+
     private fun key(bus: Int, ch: Int) = bus.toLong() * 64L + ch
     private fun send(bus: Int, ch: Int) =
         sends.getOrPut(key(bus, ch)) { Send(bus, ch) }
@@ -192,8 +195,19 @@ class MonitorBalance(
         kit: Set<Int>,
         playing: Boolean,
         push: Boolean = false,
+        /**
+         * A howl is suspected on the stage RIGHT NOW (the RTA watchdog is
+         * vetoing). Cuts are always fine — they reduce loop gain — but no
+         * send may go UP into a live howl, even the last-resort raise. The
+         * per-notch interlock (ringProne / raiseBarred) only arms once a
+         * notch has been written, which leaves the detection→notch gap (up
+         * to the 8s hunt) open; this closes it (§4: "no raising anywhere
+         * on the stage" while it is ringing).
+         */
+        feedbackActive: Boolean = false,
     ): List<ParamWrite> = synchronized(this) {
         if (!playing) return emptyList()
+        howlNow = feedbackActive
         val out = ArrayList<ParamWrite>()
         // A BUTTON PRESS IS PERMISSION TO ACT NOW, NOT TO ACT
         // DIFFERENTLY. §3 is explicit: "one small move per bus at a
@@ -298,6 +312,11 @@ class MonitorBalance(
 
         // Nothing left to cut. Only now may a send go up, and barely.
         if (!free(n.ch)) return null
+        // NEVER raise into a live howl. The whole stage is ringing; a
+        // send going up spends gain on the loudest open mic in the room,
+        // which is exactly what §4 forbids while it is howling — and the
+        // per-notch bar below has not armed yet because no notch exists.
+        if (howlNow) return null
         if (s.ringProne) {
             once("bus" + w.bus + "rp" + n.ch,
                 w.name + ": " + label(n) + " is low, but that microphone " +

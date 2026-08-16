@@ -108,6 +108,29 @@ object AppState {
     val doctorOn = MutableStateFlow(true)
     val frozenAll = MutableStateFlow(false)
     val lastError = MutableStateFlow<String?>(null)
+
+    /**
+     * THE ONE READING OF "is the app mixing, and if not, why not".
+     *
+     * The header word, the background notification, and the progress bar
+     * are three separate surfaces, and each once decided this question in
+     * its own order — so a stage that was watching AND frozen could show
+     * FROZEN on the glass and SHADOW in the notification at the same
+     * instant. §5 forbids one surface contradicting another about whether
+     * the app is mixing. They all derive from this now, so they agree by
+     * construction. Order is by how much each state overrides the rest:
+     * a lost console first (nothing can be sent), then the two panic
+     * holds, then a plain hand-back, then mixing.
+     */
+    enum class OpState { NO_MIXER, FROZEN, MUTED, WATCHING, MIXING }
+
+    fun opState(): OpState = when {
+        conn.value != Conn.CONNECTED && everConnected.value -> OpState.NO_MIXER
+        frozenAll.value -> OpState.FROZEN
+        stageMuted.value -> OpState.MUTED
+        !directing.value -> OpState.WATCHING
+        else -> OpState.MIXING
+    }
     /**
      * WHO IS CARRYING THE SONG, for the crown on the stage plot.
      */

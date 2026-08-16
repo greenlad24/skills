@@ -72,11 +72,25 @@ class MonitorMap {
         /** the level the engineer had it at when we last looked */
         val known = HashMap<Int, Float>()
         var master: Float? = null
+        /** a detached copy, so a caller can read it off-thread safely */
+        fun snapshot(): Wedge = Wedge(bus, name, kind).also {
+            it.sends.putAll(sends); it.known.putAll(known); it.master = master
+        }
     }
 
     private val wedges = LinkedHashMap<Int, Wedge>()
 
-    fun onBusName(bus: Int, name: String) {
+    // THIS MAP IS READ OFF THE RECEIVE THREAD AND MUTATED ON IT, AND
+    // read AGAIN on a separate coroutine when REBALANCE runs its plan.
+    // Every method that touches `wedges` or a Wedge's `sends` holds the
+    // monitor's own lock, and the accessors hand back detached snapshots,
+    // so an arriving send-reply can never structurally mutate a HashMap
+    // that the plan pass is mid-iteration over (a ConcurrentModification
+    // into a musician's ears is a real gig failure, not a theoretical
+    // one). MonitorBalance takes its own lock and calls in here, and the
+    // receive loop calls onSend with no other lock, so the ordering is
+    // one-way and cannot deadlock.
+    fun onBusName(bus: Int, name: String) = synchronized(this) {
         val k = kindOf(name, bus)
         val w = wedges[bus]
         if (w == null || w.name != name)
@@ -85,13 +99,15 @@ class MonitorMap {
             }
     }
 
-    fun onSend(bus: Int, ch: Int, db: Float) {
+    fun onSend(bus: Int, ch: Int, db: Float) = synchronized(this) {
         val w = wedges.getOrPut(bus) { Wedge(bus, "bus $bus", kindOf("", bus)) }
         w.sends[ch] = db
     }
 
-    fun wedge(bus: Int): Wedge? = wedges[bus]
-    fun all(): List<Wedge> = wedges.values.sortedBy { it.bus }
+    fun wedge(bus: Int): Wedge? = synchronized(this) { wedges[bus]?.snapshot() }
+    fun all(): List<Wedge> = synchronized(this) {
+        wedges.values.sortedBy { it.bus }.map { it.snapshot() }
+    }
 
     /**
      * What is this monitor FOR? Read off the name the engineer typed,
@@ -211,7 +227,10 @@ class MonitorMap {
     fun critique(bus: Int, roles: Map<Int, Role>,
                  kit: Set<Int> = emptySet(),
                  minChannels: Int = 3): List<Note> {
-        val w = wedges[bus] ?: return emptyList()
+        // snapshot under the lock, then compute off it — the receive
+        // thread can be writing sends into the live wedge at the same time
+        val w = synchronized(this) { wedges[bus]?.snapshot() }
+            ?: return emptyList()
         if (w.kind == Kind.UNKNOWN) return emptyList()
         val live = w.sends.filter { it.value > MONITOR_FLOOR_DB }
         if (live.size < minChannels) return emptyList()
@@ -275,7 +294,8 @@ class MonitorMap {
      * every log so far: the monitors were never even looked at.
      */
     fun describe(bus: Int, names: Map<Int, String>): String {
-        val w = wedges[bus] ?: return "bus $bus — nothing read"
+        val w = synchronized(this) { wedges[bus]?.snapshot() }
+            ?: return "bus $bus — nothing read"
         val live = w.sends.filter { it.value > MONITOR_FLOOR_DB }
             .entries.sortedByDescending { it.value }
         if (live.isEmpty()) return "bus %02d %-16s (%s) — empty"

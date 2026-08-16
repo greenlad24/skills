@@ -49,6 +49,32 @@ class TreatmentDeskTest {
         }
     }
 
+    @Test fun `a stored boost on the ring band is neutralised under eq-on`() {
+        val t = ChannelTreatment()
+        // band 4 is RingOut.RING_BAND; a stored +8 dB there is a gain
+        // hazard at the ring frequency that eq/on would put live on an
+        // open mic — the app must write it flat first (§0.1).
+        t.snapshotDesk(8, hpfHz = null, hpfOn = false,
+            eqDb = floatArrayOf(0f, 0f, 0f, 8f))
+        val w = t.consider(8, Role.VOCAL, verdict(0.95f), 1f, spec(), 100.0)
+        if (w.any { it.address == "/ch/09/eq/on" }) {
+            val b4 = w.firstOrNull { it.address == "/ch/09/eq/4/g" }
+            assertTrue(b4 != null && b4.value <= 0.5f + GAIN_EPS,
+                "the stored +8 dB boost on the ring band went live under eq/on")
+        }
+    }
+
+    @Test fun `a ring-out cut on the ring band is left for the ring-out`() {
+        val t = ChannelTreatment()
+        // band 4 cut 10 dB (a house ring-out): treatment must not touch it,
+        // so it neither wipes nor fights the notch
+        t.snapshotDesk(8, hpfHz = null, hpfOn = false,
+            eqDb = floatArrayOf(0f, 0f, 0f, -10f))
+        val w = t.consider(8, Role.VOCAL, verdict(0.95f), 1f, spec(), 100.0)
+        assertTrue(w.none { it.address == "/ch/09/eq/4/g" },
+            "treatment wrote the ring band, fighting the ring-out")
+    }
+
     @Test fun `with no snapshot every band is still flattened, as before`() {
         val t = ChannelTreatment()
         val w = t.consider(8, Role.VOCAL, verdict(0.95f), 1f, spec(), 100.0)

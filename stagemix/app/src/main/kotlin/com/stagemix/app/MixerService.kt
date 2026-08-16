@@ -111,6 +111,10 @@ class MixerService : Service() {
     private var loopJob: Job? = null
     /** engine exceptions survived this session — see the tick guard */
     private var tickFailures = 0
+    /** the exact banner engineFailed raises, so a clean tick can retract it */
+    private val ENGINE_ERROR_MSG =
+        "⚠ Something went wrong inside the app — the mixer is " +
+        "holding your last mix. Export the log."
     /** the worst fault last written to the log, so it is not repeated */
     private var lastAdviceKey = ""
     /**
@@ -251,7 +255,9 @@ class MixerService : Service() {
                             roles = e.state.mapValues { it.value.role },
                             kit = e.drumKit(),
                             playing = !e.betweenSongs && e.ready,
-                            push = true), now())
+                            push = true,
+                            feedbackActive = ringOut.hunting || e.watchdogVeto),
+                            now())
                     }
                 } else if (!AppState.keepMonitors.value) {
                     show?.user("(monitor keeping is off, so only the " +
@@ -684,7 +690,11 @@ class MixerService : Service() {
                         tSec = t,
                         roles = e.state.mapValues { it.value.role },
                         kit = e.drumKit(),
-                        playing = !e.betweenSongs && e.ready), t)
+                        playing = !e.betweenSongs && e.ready,
+                        // a howl is live from the moment the RTA watchdog
+                        // vetoes until the hunt has finished — no send may
+                        // go up anywhere on the stage during that window
+                        feedbackActive = ringOut.hunting || e.watchdogVeto), t)
                 }
                 // Re-read the sends now and then: it is the only way to
                 // notice the engineer's hand on a wedge, and following
@@ -761,6 +771,20 @@ class MixerService : Service() {
                 // and the "five in a row and it stops writing" guard
                 // could never fire.
                 tickFailures = 0
+                // A clean tick is also the all-clear for a RECOVERED
+                // engine blip. Without this, one transient exception left
+                // `lastError` set for the rest of the night: the header
+                // stuck on red PROBLEM (and the show clock greyed) while
+                // the advice list and the progress bar both read healthy —
+                // a surface contradiction, and the header lying "broken"
+                // over an app that is mixing correctly. Only clear OUR
+                // engine-error banner, and only while still directing, so
+                // a 5-in-a-row auto-off keeps its explanation on screen.
+                if (AppState.directing.value &&
+                    AppState.lastError.value == ENGINE_ERROR_MSG) {
+                    AppState.lastError.value = null
+                    updateNotif()
+                }
             }
             } catch (ex: Exception) {
                 engineFailed(ex)
@@ -790,9 +814,7 @@ class MixerService : Service() {
             "${ex.javaClass.simpleName} ${ex.message ?: ""} — the " +
             "mixer is holding the last mix; nothing new is being " +
             "written")
-        AppState.lastError.value =
-            "⚠ Something went wrong inside the app — the mixer is " +
-            "holding your last mix. Export the log."
+        AppState.lastError.value = ENGINE_ERROR_MSG
         if (tickFailures >= MAX_TICK_FAILURES) {
             // Repeating means it is not a blip. Stop writing rather
             // than keep throwing once a second all night.
@@ -1116,34 +1138,36 @@ class MixerService : Service() {
         // The bar. A countdown when there is one; otherwise how much of
         // the mix is sitting where it should be, which moves all night.
         val ph = AppState.phase.value
-        // BEFORE the steady-state bar: is the app actually sending to the
-        // desk at all? If it is watching, frozen, muted, or has lost the
-        // mixer, the honest bar says so in amber — it must never show the
-        // green "finding the balance" fill, which is a settled mix in
-        // progress. This was the one surface that could read as working
-        // while nothing was being sent (§5). A live feedback hunt still
-        // wins, since that IS the app acting — the phase branch runs first.
-        val notMixing: com.stagemix.engine.Work? = when {
-            ph != null -> null
-            AppState.conn.value != AppState.Conn.CONNECTED
-                && AppState.everConnected.value ->
-                com.stagemix.engine.pausedWork("no-mixer",
-                    "No mixer — nothing being sent",
-                    "lost the console; reconnecting when it is back")
-            AppState.stageMuted.value ->
-                com.stagemix.engine.pausedWork("muted",
-                    "Waiting — the stage is muted",
-                    "holding still until the main mix is live again")
-            AppState.frozenAll.value ->
-                com.stagemix.engine.pausedWork("frozen",
-                    "Frozen — every fader held where it is",
-                    "press FREEZE again to hand the mix back")
-            !AppState.directing.value ->
-                com.stagemix.engine.pausedWork("watching",
-                    "Watching only — nothing being sent",
-                    "press MIX to let the app move the faders")
-            else -> null
-        }
+        // BEFORE the phase countdown and the steady-state bar: is the app
+        // actually sending to the desk at all? If it is watching, frozen,
+        // muted, or has lost the mixer, the honest bar says so in amber —
+        // it must never show the green "finding the balance" fill NOR a
+        // blue "setting up channels" countdown, both of which read as work
+        // in progress. This takes precedence over `ph` because a phase
+        // (the 10-minute setup window, the 20s listen) can still be live
+        // in engine state after a hand-back — takeoverT is never reset —
+        // so a phase countdown over a paused app is the same §5 lie. When
+        // the app is genuinely not sending, nothing is "in progress".
+        val notMixing: com.stagemix.engine.Work? =
+            when (AppState.opState()) {
+                AppState.OpState.NO_MIXER ->
+                    com.stagemix.engine.pausedWork("no-mixer",
+                        "No mixer — nothing being sent",
+                        "lost the console; reconnecting when it is back")
+                AppState.OpState.FROZEN ->
+                    com.stagemix.engine.pausedWork("frozen",
+                        "Frozen — every fader held where it is",
+                        "press FREEZE again to hand the mix back")
+                AppState.OpState.MUTED ->
+                    com.stagemix.engine.pausedWork("muted",
+                        "Waiting — the stage is muted",
+                        "holding still until the main mix is live again")
+                AppState.OpState.WATCHING ->
+                    com.stagemix.engine.pausedWork("watching",
+                        "Watching only — nothing being sent",
+                        "press MIX to let the app move the faders")
+                AppState.OpState.MIXING -> null
+            }
         AppState.work.value = if (notMixing != null) notMixing
         else if (ph != null) {
             val nowMs = android.os.SystemClock.elapsedRealtime()
@@ -1725,21 +1749,15 @@ class MixerService : Service() {
      * nothing whatever was being sent. That is the original failure,
      * reproduced on the one surface built to prevent it.
      */
-    private fun notifText(): String = when {
-        // The lost mixer is the most urgent fact and the notification is
-        // the only surface visible from the background, so it leads —
-        // otherwise a watching+disconnected app read "SHADOW" and never
-        // said the desk was gone, the more important half of the truth.
-        AppState.conn.value != AppState.Conn.CONNECTED
-            && AppState.everConnected.value ->
-            "NO MIXER — the desk is holding your last mix"
-        !AppState.directing.value ->
-            "SHADOW — watching only, nothing sent to the mixer"
-        AppState.frozenAll.value ->
-            "FROZEN — every fader held, nothing is moving"
-        AppState.stageMuted.value ->
-            "WAITING — you have the band muted"
-        else -> "MIXING — the app has the mains"
+    // Same one reading of the state as the header word and the progress
+    // bar (AppState.opState), so the background notification can never
+    // contradict the glass about whether — or why — the app is not mixing.
+    private fun notifText(): String = when (AppState.opState()) {
+        AppState.OpState.NO_MIXER -> "NO MIXER — the desk is holding your last mix"
+        AppState.OpState.FROZEN -> "FROZEN — every fader held, nothing is moving"
+        AppState.OpState.MUTED -> "WAITING — you have the band muted"
+        AppState.OpState.WATCHING -> "SHADOW — watching only, nothing sent to the mixer"
+        AppState.OpState.MIXING -> "MIXING — the app has the mains"
     }
 
     private fun updateNotif() {

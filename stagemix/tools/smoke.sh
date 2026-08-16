@@ -86,7 +86,16 @@ tap () {         # tap <text>
   if [ -z "$b" ]; then bad "cannot find '$1' to tap"; return 1; fi
   local x1 y1 x2 y2
   read -r x1 y1 x2 y2 <<<"$(echo $b)"
-  adb shell input tap $(( (x1 + x2) / 2 )) $(( (y1 + y2) / 2 ))
+  local cx=$(( (x1 + x2) / 2 )) cy=$(( (y1 + y2) / 2 ))
+  # A HELD PRESS, NOT A FLICK-FAST TAP. The demo republishes meters ~20
+  # times a second, so the whole Compose tree — the transport bar with
+  # it — is recomposing continuously. A bare `input tap` sends DOWN then
+  # UP within a millisecond, and if a recomposition lands between them
+  # the tap gesture is cancelled and the click never fires. A zero-length
+  # swipe holds the pointer down for 140 ms — well under the long-press
+  # threshold, so it still registers as a click — which spans several
+  # frames and lands reliably.
+  adb shell input swipe "$cx" "$cy" "$cx" "$cy" 140
   sleep 3
 }
 
@@ -175,10 +184,20 @@ step "8 · the transport keys actually do something"
 # can take a moment to settle and redraw, so a single 3s read is
 # racy — poll instead of asserting once.
 tap_then () {   # tap_then <key> <expected word> <label>
-  tap "$1" || { bad "cannot tap $1"; return; }
-  for _ in 1 2 3 4 5 6; do
-    grep -qiF -- "$3" <<<"$(screen)" && { say "$2 ✓"; return; }
-    sleep 1.3
+  # The transport keys are TOGGLES, so a blind retry loop would flip the
+  # state an even number of times and land back where it started. Instead:
+  # tap ONCE, then poll ~5 s for the change. A press that actually landed
+  # flips the state in well under 100 ms (the click handler is in-process,
+  # no service round-trip), so if the word has not appeared after a full
+  # poll the press was DROPPED, not merely slow — and only then is it safe
+  # to tap again. This keeps the parity right: every completed flip is
+  # seen before the next tap is sent.
+  for attempt in 1 2 3 4 5; do
+    tap "$1" || { bad "cannot tap $1"; return; }
+    for _ in 1 2 3 4; do
+      grep -qiF -- "$3" <<<"$(screen)" && { say "$2 ✓"; return; }
+      sleep 1.0
+    done
   done
   bad "$2 — '$3' never appeared after tapping $1"
   sed 's/^/       /' <<<"$(screen)" | head -30

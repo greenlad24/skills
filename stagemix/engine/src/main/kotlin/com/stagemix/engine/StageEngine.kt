@@ -2400,7 +2400,18 @@ class StageEngine(
                         if (mate.featureStart < 0 && mate.active &&
                             mate.baselineDb != null) {
                             mate.featureStart = st.featureStart
-                            mate.featureRef = mate.fastEma ?: fast
+                            // MIRROR THE PRIMARY: anchor to the mate's OWN
+                        // pre-step slow EMA, not its fast one. The primary
+                        // freezes featureRef at its slow (20 s) average so
+                        // the end test "fast still above ref" stays true
+                        // for the whole solo. Anchoring the mate to its
+                        // fast EMA — already at plateau if it was rising
+                        // before the primary latched — makes fast-ref ≈ 0,
+                        // so the mate votes itself out in a few ticks and
+                        // eases back down while the primary stays lifted:
+                        // the one-sided image §2 forbids. Its own preEma
+                        // lags the same way the primary's does.
+                        mate.featureRef = mate.preEma ?: fast
                             mate.featureFrom = if (mate.settled)
                                 mate.settledOffset else mate.offset
                             mate.featureLift = st.featureLift
