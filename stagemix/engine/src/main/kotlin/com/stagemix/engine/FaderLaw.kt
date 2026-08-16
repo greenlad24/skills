@@ -10,6 +10,14 @@ object FaderLaw {
     const val MAX_DB = 10f
 
     fun floatToDb(f: Float): Float {
+        // NaN IS NOT SILENT-DROPPED BY coerceIn. Kotlin's coerceIn is a
+        // pair of `<`/`>` comparisons, both false for NaN, so a NaN
+        // sails through and every `when` branch below is false too —
+        // the result is NaN, which then poisons whatever engine state
+        // reads it (a NaN OSC value off the wire reached operatorOverride
+        // this way). Treat a non-finite input as fully down: silent is
+        // the safe reading of a garbage level.
+        if (!f.isFinite()) return MIN_DB
         val x = f.coerceIn(0f, 1f)
         return when {
             x >= 0.5f -> x * 40f - 30f
@@ -20,6 +28,9 @@ object FaderLaw {
     }
 
     fun dbToFloat(db: Float): Float {
+        // Same guard on the WRITE side: a NaN dB must never become a NaN
+        // fader float sent to the desk. Fully down.
+        if (!db.isFinite()) return 0f
         val d = db.coerceIn(MIN_DB, MAX_DB)
         return when {
             d >= -10f -> (d + 30f) / 40f

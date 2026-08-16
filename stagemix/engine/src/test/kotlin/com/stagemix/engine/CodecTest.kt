@@ -49,6 +49,16 @@ class OscCodecTest {
 }
 
 class FaderLawTest {
+    @Test fun `NaN and infinities never propagate`() {
+        for (bad in listOf(Float.NaN, Float.POSITIVE_INFINITY,
+                           Float.NEGATIVE_INFINITY)) {
+            val db = FaderLaw.floatToDb(bad)
+            assertTrue(db.isFinite(), "floatToDb($bad) = $db")
+            val f = FaderLaw.dbToFloat(bad)
+            assertTrue(f.isFinite() && f in 0f..1f, "dbToFloat($bad) = $f")
+        }
+    }
+
     @Test fun `known anchor points`() {
         // From the Maillot piecewise law: f=1.0 -> +10, 0.75 -> 0 dB,
         // 0.5 -> -10, 0.25 -> -30, 0.0625 -> -60, 0 -> -90
