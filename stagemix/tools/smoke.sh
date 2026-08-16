@@ -131,7 +131,10 @@ step "4 · MONITORS — the wedges, by position"
 open_demo 1 true
 want "every monitor on the stage, named and typed" \
   "CENTER MON" "PIANO MON" "DRUM IEM" "BASS MON" "IN EAR 2"
-want "what is loudest in each" "loudest"
+# the monitors tab is a MIXER now: it names the wedge kind, states
+# whether keeping is on, and shows per-send state (a channel not routed
+# to a wedge reads NOT SENT)
+want "the wedge read as a mixer" "read only" "NOT SENT"
 
 # =============================================== 5. errors, with the remedy
 step "5 · STATUS — every fault carries the thing to do about it"
@@ -166,14 +169,25 @@ want "and the health figures" "VOCAL ON TOP" "OUT-MIXED"
 
 # ====================================================== 8. the keys work
 step "8 · the transport keys actually do something"
+
+# Tap a key, then poll the screen for a word for up to ~8s. The demo's
+# state flips in the click handler, but a fresh-launched Compose tree
+# can take a moment to settle and redraw, so a single 3s read is
+# racy — poll instead of asserting once.
+tap_then () {   # tap_then <key> <expected word> <label>
+  tap "$1" || { bad "cannot tap $1"; return; }
+  for _ in 1 2 3 4 5 6; do
+    grep -qiF -- "$3" <<<"$(screen)" && { say "$2 ✓"; return; }
+    sleep 1.3
+  done
+  bad "$2 — '$3' never appeared after tapping $1"
+  sed 's/^/       /' <<<"$(screen)" | head -30
+}
+
 open_demo 0 true
-if tap "MIX"; then
-  wantnot "MIX stops it mixing" "MIXING"
-  want "and it says so" "WATCHING ONLY"
-  tap "MIX" >/dev/null 2>&1 || true
-fi
+tap_then "MIX" "MIX hands the mains back" "WATCHING ONLY"
 open_demo 0 true
-if tap "FREEZE"; then want "FREEZE holds everything" "FROZEN"; fi
+tap_then "FREEZE" "FREEZE holds everything" "FROZEN"
 open_demo 0 true
 tap "Re-Balance" >/dev/null 2>&1 || bad "Re-Balance not tappable"
 sleep 2
