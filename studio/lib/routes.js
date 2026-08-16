@@ -232,9 +232,19 @@ async function runGeneration(ctx, weekStart, dayKey, { count = 3, variantIndex =
   // Re-read before mutating: generation is slow and other edits may have landed.
   const db2 = await store.load();
   const day2 = store.getDay(db2, weekStart, dayKey);
+  const engine = db.settings.imageEngine || 'openai';
+  const engineModel = {
+    openai: db.settings.openaiImageModel,
+    cloudflare: (db.settings.cfModel || '').split('/').pop(),
+    gemini: db.settings.geminiModel,
+    vertex: db.settings.vertexModel,
+    segmind: db.settings.segmindModel,
+  }[engine] || '';
   const generation = {
     id: store.newId(),
     createdAt: new Date().toISOString(),
+    engine,
+    engineModel,
     variants,
     errors: results.filter((r) => !r.ok).map((r) => `${r.label}: ${r.error}`),
   };

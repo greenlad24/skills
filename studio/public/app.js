@@ -613,12 +613,15 @@ function renderGenerate(el, key) {
     gallery.innerHTML = `<div style="color:var(--ink-faint);font-size:13px">Nothing generated yet for this day.</div>`;
     return;
   }
+  const ENGINE_NAMES = {
+    openai: 'OpenAI GPT Image 2', cloudflare: 'Cloudflare FLUX.2 (free drafts)',
+    gemini: 'Gemini nano-banana', vertex: 'Vertex Nano Banana Pro', segmind: 'Segmind',
+  };
   gens.forEach((gen, gi) => {
     const wrap = document.createElement('div');
     wrap.style.marginBottom = '18px';
-    if (gi > 0) {
-      wrap.innerHTML = `<div class="gen-history">older generation · ${new Date(gen.createdAt).toLocaleString()}</div>`;
-    }
+    const engineTag = gen.engine ? `${ENGINE_NAMES[gen.engine] || gen.engine}${gen.engineModel ? ` · ${esc(gen.engineModel)}` : ''}` : '';
+    wrap.innerHTML = `<div class="gen-history">${gi > 0 ? 'older generation · ' : ''}${engineTag ? engineTag + ' · ' : ''}${new Date(gen.createdAt).toLocaleString()}</div>`;
     const grid = document.createElement('div');
     grid.className = 'variants';
     if (gi > 0) grid.style.opacity = '0.7';
