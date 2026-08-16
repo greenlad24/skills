@@ -55,6 +55,9 @@ const val FX_SEND_LAST = 10
 const val AUX_SEND_FIRST = 1
 const val AUX_SEND_LAST = 6
 
+/** below this an FX/reverb send is off, and the book may set one */
+const val REVERB_OFF_DB = -50f
+
 /**
  * True if this address is channel processing or an FX send.
  *
@@ -322,12 +325,14 @@ class ChannelTreatment(
      * a band the desk was BOOSTING — a cut it leaves exactly alone.
      */
     private class Desk(val hpfHz: Float?, val hpfOn: Boolean,
-                       val eqDb: FloatArray?)
+                       val eqDb: FloatArray?, val thrDb: Float?,
+                       val reverbDb: Float?)
     private val desk = HashMap<Int, Desk>()
 
     fun snapshotDesk(ch: Int, hpfHz: Float?, hpfOn: Boolean,
-                     eqDb: FloatArray?) {
-        desk[ch] = Desk(hpfHz, hpfOn, eqDb)
+                     eqDb: FloatArray?, thrDb: Float? = null,
+                     reverbDb: Float? = null) {
+        desk[ch] = Desk(hpfHz, hpfOn, eqDb, thrDb, reverbDb)
     }
 
     /** what has been done to a channel, for the screen and the log */
@@ -586,7 +591,18 @@ class ChannelTreatment(
             }
         }
         if (chain.compThrDb != null) {
-            put("/ch/$c/dyn/thr", thrToFloat(chain.compThrDb))
+            // NEVER RAISE A THRESHOLD THE ENGINEER SET LOWER. A higher
+            // threshold means less compression, which means a higher
+            // level — so writing the book's threshold over a desk that
+            // was already compressing harder would push the channel up.
+            // The book is meant to ADD compression to an uncompressed
+            // channel, so take the LOWER of the two: it can only ever
+            // deepen compression, never reduce it. (Unknown desk → the
+            // book, as before.)
+            val deskThr = desk[ch]?.thrDb
+            val thr = if (deskThr != null) minOf(chain.compThrDb, deskThr)
+                      else chain.compThrDb
+            put("/ch/$c/dyn/thr", thrToFloat(thr))
             chain.compRatio?.let { put("/ch/$c/dyn/ratio", ratioToFloat(it)) }
             chain.compAttackMs?.let {
                 put("/ch/$c/dyn/attack", (it / 120f).coerceIn(0f, 1f)) }
@@ -601,8 +617,18 @@ class ChannelTreatment(
             put("/ch/$c/dyn/on", 1f)
         }
         if (settings.reverbEnabled) chain.reverbSendDb?.let {
-            put(osc("/ch/$c/mix/%02d/level", settings.reverbSend),
-                FaderLaw.dbToFloat(it))
+            // DON'T WRITE OVER A REVERB CHOICE THE ENGINEER MADE. The
+            // book adds a modest reverb send to channels that want one —
+            // but only when the engineer has not already set that send
+            // themselves. If the desk already has reverb on this channel
+            // (send above the off floor), that is their decision and it
+            // stays. This is a §0.7 respect-the-hand rule; it also means
+            // the app never makes an already-wet channel wetter. Unknown
+            // desk (no snapshot) → apply the book, as before.
+            val deskRev = desk[ch]?.reverbDb
+            if (deskRev == null || deskRev <= REVERB_OFF_DB)
+                put(osc("/ch/$c/mix/%02d/level", settings.reverbSend),
+                    FaderLaw.dbToFloat(it))
         }
         if (out.isEmpty()) return emptyList()
         applied[ch] = Applied(role, spectrum ?: DoubleArray(0), tSec,

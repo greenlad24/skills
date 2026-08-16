@@ -184,7 +184,15 @@ class RingOut(
         // the one in the loop
         if (huntUntil > 0 && tSec >= huntUntil) {
             huntUntil = -1.0
-            val best = heard.maxByOrNull { it.value }
+            // The same guard the early exit has: do not call a culprit
+            // from a handful of channels. If Wi-Fi dropped most of the
+            // sweep, notching the loudest of the few that reported is
+            // the wrong-microphone failure the whole minHeardChannels
+            // rule exists to prevent — better to miss this ring and let
+            // the watchdog re-trigger a fresh sweep than cut an innocent
+            // channel and stop looking.
+            val best = if (heard.size >= minHeardChannels)
+                heard.maxByOrNull { it.value } else null
             if (best != null && best.value > -90f) {
                 val n = notches.getOrPut(best.key) { Notch(best.key, huntHz) }
                 // ONE RESERVED BAND MEANS ONE NOTCH PER CHANNEL, so when

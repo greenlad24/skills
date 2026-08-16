@@ -59,6 +59,7 @@ class ShowLog(
     private var lastCard = -1.0
     private var lines = 0
     private var dropped = 0
+    private var warnedHardCap = false
 
     private val clock = SimpleDateFormat("HH:mm:ss.SSS", Locale.ROOT)
     private val stamp = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.ROOT)
@@ -86,8 +87,23 @@ class ShowLog(
                                   tSec: Double? = null) {
         val out = w ?: return
         // A night is bounded: past the cap we keep counting but stop
-        // writing, so a runaway loop can never fill the tablet.
-        if (lines >= MAX_LINES) { dropped++; return }
+        // writing, so a runaway loop can never fill the tablet — EXCEPT
+        // for the record of what the app did and what the operator did.
+        // §5: "a decision is never dropped, even when a bulk log is
+        // trimmed." So the hard cap still throws away the running
+        // picture (LVL/TONE, already thinned at the soft cap) but never
+        // a DEC, FADER, MARK or USER line. Those are bounded in
+        // practice — a night has hundreds of them, not hundreds of
+        // thousands — so exempting them cannot fill a disk.
+        if (lines >= MAX_LINES && tag !in KEEP_ALWAYS) { dropped++; return }
+        if (lines >= MAX_LINES && !warnedHardCap) {
+            warnedHardCap = true
+            // one honest marker that the picture is being dropped,
+            // written on the way past the cliff rather than only in the
+            // footer nobody reaches until teardown
+            put("MARK", "log passed ${MAX_LINES} lines — the running " +
+                "picture is being dropped from here; decisions still kept")
+        }
         // AND THE LAST QUARTER OF IT BELONGS TO THE EVIDENCE.
         //
         // The per-channel picture is written every second for every
@@ -660,6 +676,8 @@ class ShowLog(
         private const val SOFT_LINES = 300_000
         /** the running picture: useful, and the first thing to go */
         private val BULK_TAGS = setOf("LVL", "TONE")
+        /** never dropped, even past the hard cap — the record of what happened */
+        private val KEEP_ALWAYS = setOf("DEC", "FADER", "MARK", "USER", "NET", "CARD", "HEAD")
         /** how often the per-channel tone picture is written */
         private const val TONE_SEC = 30.0
         /** and how often the whole stage is tabulated */

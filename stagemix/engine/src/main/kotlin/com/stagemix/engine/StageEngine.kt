@@ -625,6 +625,8 @@ class ChannelState(val cfg: ChannelConfig) {
     var featureRef = 0f              // their level when they stepped up
     var featureFrom = 0f             // where the fader stood before they did
     var featureLift = 0f             // and how far up they go, decided at the latch
+    var featureReleaseAt = -1.0      // when the feature ended, to ease the lift off
+    var featureReleaseFrom = 0f      // the lifted offset it eases down from
     var duetLatched = false          // singing WITH the lead (latched)
     var featureVotes = 0             // ticks reading as a feature (leaky)
     var nearFeatureT = -1000.0       // last "nearly a solo" note, throttled
@@ -798,6 +800,8 @@ const val LEARNED_SLACK_DB = 4f
  * would track continuously with no dwell and no deadband.
  */
 const val RIDE_MAX_SEC = 30.0
+/** how long to ease a solo lift back down once the feature ends */
+const val FEATURE_RELEASE_SEC = 6f
 
 /**
  * How often the whole-stage level jump is measured. Long enough that
@@ -2417,6 +2421,32 @@ class StageEngine(
                     st.featureStart = -1.0   // played out, or stepped back
                     st.featureVotes = 0
                     st.engaged = false
+                    // EASE THE LIFT OFF NOW, not in thirty seconds. §2:
+                    // "held up for the duration, then eased back." Left
+                    // to the generic ride the player sat at solo level
+                    // for the ~30 s dwell before it even began to move —
+                    // longer than most solos. This walks it home from
+                    // where it is over FEATURE_RELEASE_SEC.
+                    st.featureReleaseAt = tSec
+                    st.featureReleaseFrom = st.offset
+                }
+            }
+            // The active ease-down after a solo, before the ordinary
+            // logic gets a say. Soloists only — a held role never rode
+            // up, so it has nothing to come back down from.
+            if (st.featureStart < 0 && st.featureReleaseAt >= 0 &&
+                isSoloist(st)) {
+                val elapsed = (tSec - st.featureReleaseAt).toFloat()
+                if (elapsed >= FEATURE_RELEASE_SEC) {
+                    st.featureReleaseAt = -1.0
+                } else {
+                    val frac = (elapsed / FEATURE_RELEASE_SEC).coerceIn(0f, 1f)
+                    st.target = boundOffset(
+                        st.featureReleaseFrom +
+                            (st.featureFrom - st.featureReleaseFrom) * frac,
+                        base)
+                    st.riding = true
+                    continue
                 }
             }
             if (st.featureStart >= 0) {
@@ -3515,6 +3545,12 @@ class StageEngine(
     /** apply everything the operator has previously said about this rig */
     fun applyKnownInstruments(tSec: Double) {
         for ((_, st) in state) {
+            // A PROFILE-LOCKED CHANNEL IS A FACT, NOT A GUESS. The kick,
+            // the snare and the two bass DIs are locked in the rig
+            // profile; nothing — not a re-identification, not a remembered
+            // instrument keyed on a desk name that happens to collide —
+            // may take one of them out of its role. §1.
+            if (st.cfg.locked) continue
             val r = knownInstruments[st.name.trim().lowercase()] ?: continue
             if (st.role == r && st.roleLocked) continue
             val was = st.role
@@ -3568,8 +3604,11 @@ class StageEngine(
         if (n.isEmpty() || n == st.deskName) return false
         st.deskName = n
         // now that we know what the desk calls it, anything the operator
-        // has told us about a channel by that name applies
-        knownInstruments[n.lowercase()]?.let { r ->
+        // has told us about a channel by that name applies — UNLESS the
+        // channel is locked in the profile, in which case its role is a
+        // fact about the rig and a name that collides with some other
+        // strip's remembered instrument must not re-role it. §1.
+        if (!st.cfg.locked) knownInstruments[n.lowercase()]?.let { r ->
             st.role = r
             st.roleLocked = true
         }

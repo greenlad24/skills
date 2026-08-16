@@ -166,12 +166,14 @@ class MonitorBalance(
     }
 
     /** true while this bus may not be raised at all */
-    fun raiseBarred(bus: Int, tSec: Double): Boolean =
+    fun raiseBarred(bus: Int, tSec: Double): Boolean = synchronized(this) {
         tSec < (ringQuietUntil[bus] ?: -1e9)
+    }
 
     /** true while the engineer's hand is being respected on this bus */
-    fun following(bus: Int, tSec: Double): Boolean =
+    fun following(bus: Int, tSec: Double): Boolean = synchronized(this) {
         tSec < (handUntil[bus] ?: -1e9)
+    }
 
     /**
      * Decide what to change, and produce the writes.
@@ -179,9 +181,10 @@ class MonitorBalance(
      * @param playing false between songs — then this does nothing at
      *        all, which is the standing instruction for the mains too.
      * @param push true when the operator asked for a rebalance: a few
-     *        moves instead of one, and a bigger step. Still bounded by
-     *        every total, because a button press is not permission to
-     *        rearrange somebody's ears.
+     *        moves per bus this pass instead of one, and the per-bus
+     *        throttle bypassed — but the SAME small step, and no single
+     *        send more than once. A button press is permission to act
+     *        now, not to act differently.
      */
     fun plan(
         tSec: Double,
