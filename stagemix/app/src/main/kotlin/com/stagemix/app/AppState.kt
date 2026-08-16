@@ -186,8 +186,27 @@ object AppState {
      * for most of this app's life it could not write one even by
      * accident. It can now — slightly, cut-first, following the
      * engineer's hand — and this switch is how that stays a choice.
+     *
+     * DEFAULTED OFF, DELIBERATELY, FOR NOW.
+     *
+     * The keeper was asked for and is built, and the switch is one tap
+     * away in SETUP. But an independent audit still has open findings
+     * against it that are the wrong kind: it can cut a send past the
+     * floor and un-route it, a lost UDP packet reads as the engineer's
+     * hand and silently refills the night's cut budget, and one press
+     * of Re-Balance can still take 4.2 dB off a single send. Each of
+     * those is heard by a musician wearing the thing.
+     *
+     * The mains are a different matter — they are watched, they are
+     * reversible in one tap, and the whole app exists to move them. A
+     * wedge is neither. So this stays off until those findings are
+     * closed and there are tests that would have caught them, and the
+     * operator can switch it on for a night they are standing next to
+     * it. Defaulting a half-proven control ON in somebody's ears is
+     * exactly the kind of decision this project has already been
+     * burned by, in the other direction.
      */
-    val keepMonitors = MutableStateFlow(true)
+    val keepMonitors = MutableStateFlow(false)
 
     /** what the monitor keeper has changed, per bus, for the screen */
     data class WedgeMove(val bus: Int, val ch: Int, val db: Float)
@@ -367,7 +386,7 @@ object AppState {
     fun loadSwitches(ctx: Context) {
         val p = ctx.getSharedPreferences("stagemix", Context.MODE_PRIVATE)
         autoStart.value = p.getBoolean("auto_start", true)
-        keepMonitors.value = p.getBoolean("keep_monitors", true)
+        keepMonitors.value = p.getBoolean("keep_monitors", false)
     }
 
     fun save(ctx: Context) {

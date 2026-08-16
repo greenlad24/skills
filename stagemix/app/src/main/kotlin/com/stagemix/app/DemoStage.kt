@@ -177,7 +177,7 @@ object DemoStage {
                 "keeping the balance you made"))
         AppState.health.value = StageEngine.MixHealth(91, 88, 3, 1465)
         AppState.autoStart.value = true
-        AppState.keepMonitors.value = true
+        AppState.keepMonitors.value = false
         // What the wedge keeper has done tonight — small, and mostly
         // cuts, which is what it is supposed to look like.
         AppState.wedgeMoves.value = listOf(
