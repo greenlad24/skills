@@ -221,25 +221,19 @@ fun ConsoleScreen() {
 
             // ============ the top of the box: readout and transport
             Row(verticalAlignment = Alignment.CenterVertically) {
+                // Just the clock here. The mode was stated twice — a
+                // small LCD line AND the big word beside it — which on a
+                // 600 dp-tall tablet, in a fault state (the extra fault
+                // line, the hazard border), pushed the whole fixed
+                // header far enough down that the rack's fader canvas
+                // collapsed to nothing. One statement of the mode, the
+                // big legible one, plus a compact CH count on the clock.
                 Column {
                     Lcd(elapsed(startedMs, directing, tickMs), 34.sp,
                         if (live) Ok else Muted, weight = FontWeight.Black)
-                    Spacer(Modifier.height(5.dp))
-                    Lcd(
-                        when {
-                            fault != null -> "FAULT"
-                            frozenAll -> "FROZEN"
-                            stageMuted -> "BAND MUTED"
-                            !directing -> "WATCHING"
-                            balanceKept -> "KEEPING · $mixed CH"
-                            else -> "FINDING · $mixed CH"
-                        },
-                        13.sp,
-                        when {
-                            fault != null -> Bad
-                            !directing || frozenAll || stageMuted -> Warn
-                            else -> Ok
-                        })
+                    Spacer(Modifier.height(4.dp))
+                    Lcd(if (directing) "$mixed CH" else "—",
+                        12.sp, if (live) Ok else Muted)
                 }
                 Spacer(Modifier.width(16.dp))
                 // The state, said in words as well as lit, because a lamp

@@ -164,7 +164,7 @@ private fun ChannelStrip(
             color = if (lead) RoleVocal else Muted,
             fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
 
-        Spacer(Modifier.height(7.dp))
+        Spacer(Modifier.height(5.dp))
 
         // ---- meter and fader, drawn as one piece of hardware
         Canvas(Modifier.fillMaxWidth().weight(1f)) {
@@ -174,7 +174,7 @@ private fun ChannelStrip(
                 peak.getOrElse(s.channel) { -128f })
         }
 
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(4.dp))
 
         // ---- the readout: what the app has done to this fader
         Lcd(
@@ -225,8 +225,8 @@ private fun ChannelStrip(
         }
 
         // ---- and what it sounds like
-        Spacer(Modifier.height(5.dp))
-        Box(Modifier.fillMaxWidth().height(20.dp).well(5.dp)) {
+        Spacer(Modifier.height(4.dp))
+        Box(Modifier.fillMaxWidth().height(16.dp).well(5.dp)) {
             Canvas(Modifier.fillMaxWidth().fillMaxHeight()) {
                 tick
                 drawSpectrum(this, Spectra.band.getOrNull(s.channel), tint,

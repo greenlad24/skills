@@ -21,6 +21,7 @@ import com.stagemix.engine.ShowLog
 import com.stagemix.engine.StageEngine
 import com.stagemix.engine.ToneDoctor
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -145,7 +146,15 @@ class MixerService : Service() {
                 acquireLocks()
                 connect(intent.getStringExtra("ip") ?: return START_NOT_STICKY)
             }
-            ACTION_SNAPSHOT -> scope.launch { takeoverNow() }  // re-baseline
+            ACTION_SNAPSHOT -> {
+                if (engine == null) noEngine("RE-BASELINE")
+                else {
+                    show?.user("you pressed RE-BASELINE — reading the " +
+                        "desk again and making the current faders the " +
+                        "new centre of the app's authority")
+                    scope.launch { takeoverNow() }
+                }
+            }
             ACTION_REVERT -> scope.launch { revert() }
             ACTION_DIRECTING -> {
                 val on = intent.getBooleanExtra("on", false)
@@ -229,13 +238,20 @@ class MixerService : Service() {
                     // this path did not, so the panic button did not
                     // stop the one control that reaches a musician's ears.
                     scope.launch {
+                        // POLL, WAIT, THEN PLAN. The send levels may be
+                        // up to 25s stale, so a hand on a wedge in that
+                        // window would be invisible and the push would
+                        // fight it. Read the desk first, give the replies
+                        // a moment to land in handle(), then plan against
+                        // what is actually there.
+                        pollSends()
+                        delay(400)
                         applyMonitorPlan(monBal.plan(
-                            tSec = t,
+                            tSec = now(),
                             roles = e.state.mapValues { it.value.role },
                             kit = e.drumKit(),
                             playing = !e.betweenSongs && e.ready,
-                            push = true), t)
-                        pollSends()
+                            push = true), now())
                     }
                 } else if (!AppState.keepMonitors.value) {
                     show?.user("(monitor keeping is off, so only the " +
@@ -324,6 +340,13 @@ class MixerService : Service() {
     }
 
     private fun connect(ipWanted: String) {
+        // Idempotent: the two auto-connect call sites (MainActivity and
+        // the console's LaunchedEffect) can both fire on launch, and a
+        // second CONNECT while the first is in flight used to cancel the
+        // loop and rebuild the engine and show log — losing the night's
+        // baselines. If a connection is already up or coming up, ignore.
+        if (loopJob?.isActive == true &&
+            AppState.conn.value != AppState.Conn.DISCONNECTED) return
         AppState.conn.value = AppState.Conn.CONNECTING
         AppState.lastError.value = null
         loopJob?.cancel()
@@ -424,7 +447,9 @@ class MixerService : Service() {
                 // chosen — with the twenty-second listen still in front
                 // of every fader it writes, and one tap to hand them
                 // back.
-                if (AppState.autoStart.value && !AppState.directing.value) {
+                if (AppState.autoStart.value &&
+                    (!AppState.directing.value ||
+                     (engine?.takeoverT ?: -1.0) < 0.0)) {
                     AppState.directing.value = true
                     tickFailures = 0
                     AppState.mixingSinceMs.value =
@@ -505,6 +530,7 @@ class MixerService : Service() {
                     AppState.conn.value = AppState.Conn.CONNECTED
                     AppState.everConnected.value = true
                     AppState.lastError.value = null
+                    updateNotif()
                 }
                 // Inside the guard as well — see below. `handle` is
                 // what feeds the engine its meters, twenty times a
@@ -518,6 +544,7 @@ class MixerService : Service() {
                 // by meter staleness already
                 AppState.conn.value = AppState.Conn.CONNECTING
                 AppState.lastError.value = "Mixer silent — waiting for Wi-Fi…"
+                updateNotif()
                 show?.net("METERS LOST — %.0fs with no packet from the mixer; "
                     .format(java.util.Locale.ROOT, t - lastRx) +
                     "the engine is holding every fader still")
@@ -746,8 +773,6 @@ class MixerService : Service() {
      * this now counts.
      */
     private fun engineFailed(ex: Exception) {
-        // whatever this does to the mode, the status bar must follow
-        try { updateNotif() } catch (_: Exception) {}
         tickFailures++
         show?.mark("ERROR", "${ex.javaClass.simpleName}: " +
             (ex.message ?: "") + " (#$tickFailures in a row)", now())
@@ -765,6 +790,10 @@ class MixerService : Service() {
             show?.net("MIXING switched off after $tickFailures " +
                 "errors in a row — the faders are where the app left them")
         }
+        // AFTER the state has settled, not before: refreshing first
+        // left the status bar reading MIXING once the guard had turned
+        // it off.
+        try { updateNotif() } catch (_: Exception) {}
     }
 
     private fun handle(m: OscMessage, t: Double, rtaFocus: Int,
@@ -960,7 +989,10 @@ class MixerService : Service() {
         }
         AppState.snapshotTaken.value = e.ready
         AppState.balanceKept.value = e.balanceAdopted
-        AppState.stageMuted.value = e.stageMuted
+        if (AppState.stageMuted.value != e.stageMuted) {
+            AppState.stageMuted.value = e.stageMuted
+            updateNotif()
+        }
         AppState.health.value = e.health()
         AppState.leadVocal.value = e.leadVocal
         // THE VOICE, AND EVERYTHING ELSE. Both as contributions to the
@@ -1081,7 +1113,7 @@ class MixerService : Service() {
                 key = ph.key, label = ph.label, detail = ph.why,
                 frac = ((nowMs - ph.startedAtMs).toFloat() / span)
                     .coerceIn(0f, 1f),
-                secsLeft = ((ph.endsAtMs - nowMs) / 1000L)
+                secsLeft = kotlin.math.ceil((ph.endsAtMs - nowMs) / 1000.0)
                     .toInt().coerceAtLeast(0),
                 alarm = ph.alarm)
         } else {
@@ -1220,6 +1252,9 @@ class MixerService : Service() {
             // low ring.
             send(OscMessage(osc("/ch/%02d/preamp/hpon", ch + 1), emptyList()))
             send(OscMessage(osc("/ch/%02d/preamp/hpf", ch + 1), emptyList()))
+            // and the reverb (FX-7) send, so the chain does not write
+            // over a reverb choice the engineer already made
+            send(OscMessage(osc("/ch/%02d/mix/07/level", ch + 1), emptyList()))
         }
         // Paced, not fired as one 96-packet burst: a burst that big is
         // routinely clipped by the console's receive buffer or the
@@ -1345,8 +1380,12 @@ class MixerService : Service() {
                 val hpHz = pending[osc("/ch/%02d/preamp/hpf", ch.index + 1)]
                     // invert hpfToFloat: 20 * 20^v
                     ?.let { 20f * Math.pow(20.0, it.toDouble()).toFloat() }
+                val thrDb = pending[osc("/ch/%02d/dyn/thr", ch.index + 1)]
+                    ?.let { it * 60f - 60f }
+                val revDb = pending[osc("/ch/%02d/mix/07/level", ch.index + 1)]
+                    ?.let { FaderLaw.floatToDb(it) }
                 eng.treatment.snapshotDesk(ch.index, hpHz, hpOn ?: false,
-                    if (haveEq) eqDb else null)
+                    if (haveEq) eqDb else null, thrDb, revDb)
             }
         }
         // the wedges, as the engineer has them right now
@@ -1603,6 +1642,12 @@ class MixerService : Service() {
     }
 
     private fun acquireLocks() {
+        // Release any pair already held before making a new one — a
+        // repeat CONNECT (the double auto-connect, a reconnect) would
+        // otherwise overwrite these fields and leak the old locks for
+        // the life of the process.
+        runCatching { wifiLock?.takeIf { it.isHeld }?.release() }
+        runCatching { wakeLock?.takeIf { it.isHeld }?.release() }
         bindToMixerWifi()
         val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
         wifiLock = wm.createWifiLock(
@@ -1689,6 +1734,10 @@ class MixerService : Service() {
         // bare background service was created and immediately
         // reclaimed, and onDestroy put it straight back.
         loopJob?.cancel()
+        // and every other coroutine this service launched (takeover,
+        // pollSends, the rebalance pass) — they outlive the socket
+        // otherwise and go on writing AppState on a dead service.
+        scope.coroutineContext.cancelChildren()
         socket?.close(); socket = null
         releaseWifiBinding()
         wifiLock?.let { if (it.isHeld) it.release() }
