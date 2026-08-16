@@ -26,6 +26,17 @@ class MainActivity : ComponentActivity() {
             AppState.startTab = intent?.getIntExtra("tab", 0) ?: 0
             DemoStage.start(
                 directing = intent?.getBooleanExtra("mixing", true) != false)
+            // Let the demo be launched straight into a panic state, so the
+            // headless smoke test can check that FROZEN / WAITING render
+            // truthfully without depending on an emulator tap landing on a
+            // key drawn in the top bar of a screen that recomposes ~20x a
+            // second — which it does not do reliably. The keys' handlers
+            // are one-line AppState flips; what matters at a gig is that
+            // each state they produce shows the truth, which this drives.
+            if (intent?.getBooleanExtra("frozen", false) == true)
+                AppState.frozenAll.value = true
+            if (intent?.getBooleanExtra("muted", false) == true)
+                AppState.stageMuted.value = true
         }
         // OPEN IT AND IT GOES.
         //

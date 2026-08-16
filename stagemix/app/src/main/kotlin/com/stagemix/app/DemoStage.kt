@@ -255,10 +255,23 @@ object DemoStage {
                 // still bar is normal — which is the whole reason it
                 // exists. In the real app this figure comes off the
                 // engine and drifts all night; here it drifts too.
-                if (directing && (t * 20).toInt() % 20 == 0)
-                    AppState.work.value = com.stagemix.engine.holdingWork(
-                        inPlace = 13 + (sin(t * 0.11) * 2.4).toInt(),
-                        total = 16, kept = true)
+                if ((t * 20).toInt() % 20 == 0)
+                    AppState.work.value = when {
+                        AppState.frozenAll.value ->
+                            com.stagemix.engine.pausedWork("frozen",
+                                "Frozen — every fader held where it is",
+                                "press FREEZE again to hand the mix back")
+                        AppState.stageMuted.value ->
+                            com.stagemix.engine.pausedWork("muted",
+                                "Waiting — the stage is muted",
+                                "holding still until the main mix is live again")
+                        directing -> com.stagemix.engine.holdingWork(
+                            inPlace = 13 + (sin(t * 0.11) * 2.4).toInt(),
+                            total = 16, kept = true)
+                        else -> com.stagemix.engine.pausedWork("idle",
+                            "Watching only — nothing is being sent",
+                            "tap MIX to take the mains")
+                    }
                 AppState.leadDb.value = -13.5f + 2f * sin(t * 0.8).toFloat()
                 AppState.bandDb.value = -16.5f + 2f * sin(t * 0.5).toFloat()
                 t += 0.05
