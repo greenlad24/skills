@@ -461,6 +461,16 @@ class MixerService : Service() {
                         "before it writes anything", now())
                     scope.launch { takeoverNow() }
                     updateNotif()
+                } else if (AppState.directing.value &&
+                           (engine?.takeoverT ?: -1.0) < 0.0) {
+                    // Leftover directing from a previous session, but
+                    // auto-start is off, so nothing armed the takeover.
+                    // Claiming MIXING with nothing mixed is exactly the
+                    // status-lie §5 forbids — so pause instead and let
+                    // the operator tap MIX when they mean it.
+                    AppState.directing.value = false
+                    AppState.mixingSinceMs.value = 0L
+                    updateNotif()
                 }
                 runLoop()
             } catch (e: Exception) {
@@ -1247,6 +1257,7 @@ class MixerService : Service() {
                 send(OscMessage(osc("/ch/%02d/eq/%d/g", ch + 1, b),
                     emptyList()))
             send(OscMessage(osc("/ch/%02d/dyn/thr", ch + 1), emptyList()))
+            send(OscMessage(osc("/ch/%02d/dyn/on", ch + 1), emptyList()))
             // The high-pass the engineer had. Read so the chain can
             // prove it only ever steepens it, never lowers it into a
             // low ring.
@@ -1382,10 +1393,12 @@ class MixerService : Service() {
                     ?.let { 20f * Math.pow(20.0, it.toDouble()).toFloat() }
                 val thrDb = pending[osc("/ch/%02d/dyn/thr", ch.index + 1)]
                     ?.let { it * 60f - 60f }
+                val compOn = pending[osc("/ch/%02d/dyn/on", ch.index + 1)]
+                    ?.let { it > 0.5f } ?: false
                 val revDb = pending[osc("/ch/%02d/mix/07/level", ch.index + 1)]
                     ?.let { FaderLaw.floatToDb(it) }
                 eng.treatment.snapshotDesk(ch.index, hpHz, hpOn ?: false,
-                    if (haveEq) eqDb else null, thrDb, revDb)
+                    if (haveEq) eqDb else null, thrDb, compOn, revDb)
             }
         }
         // the wedges, as the engineer has them right now
@@ -1503,6 +1516,9 @@ class MixerService : Service() {
             for (ch in d.state.keys)
                 for (w in d.reset(ch)) send(OscMessage(w.address, listOf(w.value)))
         }
+        // the status bar must follow UNDO too — this was the one
+        // state-changing handler that left it reading MIXING
+        updateNotif()
     }
 
     /**

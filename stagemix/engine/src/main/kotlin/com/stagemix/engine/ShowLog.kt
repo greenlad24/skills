@@ -688,7 +688,8 @@ class ShowLog(
         const val CARD_EVERY_SEC = 900.0
         /** decisions that are landmarks rather than commentary */
         private val MARK_KINDS = setOf(
-            "gap", "music", "stage-mute", "arrive", "feature", "soloride",
+            "gap", "music", "stage-mute", "arrive", "feature",
+            "feature-end", "soloride",
             "override", "rebalance", "keep", "feedback", "held-down",
             "ident", "leave", "takeover", "lead")
     }

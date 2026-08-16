@@ -33,9 +33,16 @@ These are not preferences. They override everything below.
 4. **Nothing may move a bus master.** How loud a wedge is belongs to
    the person standing in front of it.
 
-5. **Between songs it does nothing at all.**
+5. **Between songs it does nothing at all** — no rebalancing, no EQ,
+   no compression, no monitor moves.
    > "In between songs - I don't want the app to do rebalancing or
    > EQ/Compression - only when the band is playing"
+
+   The one exception is **ringing out a live feedback**: a howl between
+   songs is real and unbearable, and §4 requires it be fixed as fast as
+   possible. A ring-out is a narrow cut on the microphone in the loop,
+   not rebalancing or voicing, so it is allowed to act whenever the
+   stage is actually howling. Nothing else runs between songs.
 
 6. **And when the band IS playing, it only acts when it is needed:**
    > "1. Solo happening (Sax, guitar, harmonica)

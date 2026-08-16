@@ -318,6 +318,9 @@ fun ConsoleScreen() {
                 }
                 Spacer(Modifier.width(8.dp))
                 TransportKey("UNDO", false, Accent, Modifier.width(88.dp)) {
+                    // Like MIX/FREEZE: hand-back pauses the app, so the
+                    // truth changes here whether or not a service is up.
+                    AppState.directing.value = false
                     MixerService.cmd(ctx, MixerService.ACTION_REVERT)
                 }
             }

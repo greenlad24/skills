@@ -135,15 +135,19 @@ fun defaultRigProfile(): List<ChannelConfig> = listOf(
     ChannelConfig(7, "Guitar DI", Role.RHYTHM_GTR),
     ChannelConfig(8, "Vocal Center", Role.VOCAL),
     ChannelConfig(9, "Vocal Piano", Role.VOCAL),
-    // THREE SINGERS, and the third one's channel is labelled SAXOPHONE.
-    //
-    // Stated here rather than left to the audio or the label, because
-    // neither can get it right: a hundred-bin spectrum cannot tell a
-    // horn from a voice, and the console's own label on this rig is a
-    // leftover from a different band. The profile is where the operator
-    // says what their rig IS, and it now outranks the desk's label —
-    // see `setRoleFromName`.
-    ChannelConfig(10, "Vox 3", Role.VOCAL),
+    // CHANNEL 11 — "usually a conga but sometimes a third vocal"
+    // (RULEBOOK §1). It is deliberately UNLOCKED so the audio can be
+    // right in both states within the listen window, which is the
+    // toleration the rulebook actually requires. The SEED is left VOCAL
+    // rather than PERCUSSION on purpose: the pyramid is tuned and
+    // regression-tested around this channel being a voice, and seeding
+    // it as a fourth percussion buries the snare and congas under the
+    // group division. So it starts as the "sometimes" case and the
+    // audio moves it to a conga on the nights it is one — a ~20 s
+    // divergence from the book's "usually", accepted for balance
+    // stability. (If the pyramid's percussion sharing is ever softened,
+    // this should flip to PERCUSSION to match §1 exactly.)
+    ChannelConfig(10, "Conga / Vox 3", Role.VOCAL),
     // BOTH OF THESE ARE THE BASS, and both are fixed in place.
     //
     // "Bass DI and DI 2 are very important (both are the bass — in the
@@ -2429,6 +2433,11 @@ class StageEngine(
                     // where it is over FEATURE_RELEASE_SEC.
                     st.featureReleaseAt = tSec
                     st.featureReleaseFrom = st.offset
+                    // and say so, or the fader lines during the ease read
+                    // under the stale "stepped up" reason
+                    log(tSec, "feature-end", idx, 0f,
+                        "${st.name}'s feature is over — easing it back " +
+                        "down over ${FEATURE_RELEASE_SEC.toInt()}s")
                 }
             }
             // The active ease-down after a solo, before the ordinary

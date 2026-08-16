@@ -326,13 +326,13 @@ class ChannelTreatment(
      */
     private class Desk(val hpfHz: Float?, val hpfOn: Boolean,
                        val eqDb: FloatArray?, val thrDb: Float?,
-                       val reverbDb: Float?)
+                       val compOn: Boolean, val reverbDb: Float?)
     private val desk = HashMap<Int, Desk>()
 
     fun snapshotDesk(ch: Int, hpfHz: Float?, hpfOn: Boolean,
                      eqDb: FloatArray?, thrDb: Float? = null,
-                     reverbDb: Float? = null) {
-        desk[ch] = Desk(hpfHz, hpfOn, eqDb, thrDb, reverbDb)
+                     compOn: Boolean = false, reverbDb: Float? = null) {
+        desk[ch] = Desk(hpfHz, hpfOn, eqDb, thrDb, compOn, reverbDb)
     }
 
     /** what has been done to a channel, for the screen and the log */
@@ -591,15 +591,16 @@ class ChannelTreatment(
             }
         }
         if (chain.compThrDb != null) {
-            // NEVER RAISE A THRESHOLD THE ENGINEER SET LOWER. A higher
-            // threshold means less compression, which means a higher
-            // level — so writing the book's threshold over a desk that
-            // was already compressing harder would push the channel up.
-            // The book is meant to ADD compression to an uncompressed
-            // channel, so take the LOWER of the two: it can only ever
-            // deepen compression, never reduce it. (Unknown desk → the
-            // book, as before.)
-            val deskThr = desk[ch]?.thrDb
+            // NEVER RAISE A THRESHOLD THE ENGINEER SET LOWER — but only
+            // when their compressor was actually ON. A deep threshold
+            // stored under an OFF compressor is not a choice to honour;
+            // taking min(book, that) would switch on far more
+            // compression than the book intends and squash a channel
+            // the engineer deliberately left open. So the desk threshold
+            // counts only when the desk comp is engaged (mirroring the
+            // high-pass, which only respects a corner when hpon is set).
+            val d = desk[ch]
+            val deskThr = if (d?.compOn == true) d.thrDb else null
             val thr = if (deskThr != null) minOf(chain.compThrDb, deskThr)
                       else chain.compThrDb
             put("/ch/$c/dyn/thr", thrToFloat(thr))
