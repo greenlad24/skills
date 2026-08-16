@@ -198,6 +198,8 @@ fun ConsoleScreen() {
     val phase by AppState.phase.collectAsState()
     val tickMs by AppState.tickMs.collectAsState()
     val mixed by AppState.channelsMixed.collectAsState()
+    val wedges by AppState.wedges.collectAsState()
+    val notches by AppState.ringNotches.collectAsState()
     var detail by remember { mutableStateOf(false) }
     var picking by remember { mutableStateOf<AppState.StripUi?>(null) }
 
@@ -235,6 +237,7 @@ fun ConsoleScreen() {
                 // the time a list of sixteen strips takes to find.
                 StagePlot(
                     strips = strips, leadVocal = lead, directing = directing,
+                    wedges = wedges, notches = notches,
                     modifier = Modifier.weight(2.1f).fillMaxHeight()
                         .background(StageFloor, RoundedCornerShape(12.dp))
                         .border(1.dp, Line, RoundedCornerShape(12.dp)),

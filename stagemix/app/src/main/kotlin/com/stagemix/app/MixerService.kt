@@ -796,6 +796,25 @@ class MixerService : Service() {
             it.value.baselineDb != null }
         AppState.tickMs.value = android.os.SystemClock.elapsedRealtime()
         AppState.phase.value = phaseOf(e, t)
+        AppState.ringNotches.value = ringOut.active().associate {
+            it.ch to "%.0f Hz -%.1f dB".format(java.util.Locale.ROOT,
+                it.hz, it.cutDb) }
+        val roles = e.state.mapValues { it.value.role }
+        val kit = e.drumKit()
+        AppState.wedges.value = monitors.all().map { w ->
+            val worst = monitors.critique(w.bus, roles, kit)
+                .firstOrNull { kotlin.math.abs(it.offDb) > 3f }
+            AppState.WedgeUi(
+                bus = w.bus,
+                name = AppState.busNames.value[w.bus - 1] ?: w.name,
+                kind = w.kind.name,
+                top = w.sends.entries
+                    .filter { it.value > com.stagemix.engine.MonitorMap
+                        .MONITOR_FLOOR_DB }
+                    .sortedByDescending { it.value }.take(3).map { it.key },
+                worstOffDb = worst?.offDb ?: 0f,
+                worstCh = worst?.ch)
+        }
     }
 
     /**

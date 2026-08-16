@@ -102,11 +102,26 @@ private fun roleColour(role: Role): Color = when (role) {
 private fun levelFrac(db: Float): Float =
     ((db + 60f) / 60f).coerceIn(0f, 1f)
 
+/**
+ * Where the monitors stand, by what they are for. A wedge points at the
+ * player it feeds; in-ears sit beside them.
+ */
+private val WEDGE_SPOTS = mapOf(
+    "CENTRE_VOCAL" to Spot(0.50f, 0.93f),
+    "GUITAR" to Spot(0.88f, 0.68f),
+    "BASS" to Spot(0.06f, 0.80f),
+    "DRUM_IEM" to Spot(0.50f, 0.03f),
+    "PLAYER_IEM" to Spot(0.71f, 0.30f),
+    "UNKNOWN" to Spot(0.32f, 0.94f),
+)
+
 @Composable
 fun StagePlot(
     strips: List<AppState.StripUi>,
     leadVocal: Int?,
     directing: Boolean,
+    wedges: List<AppState.WedgeUi> = emptyList(),
+    notches: Map<Int, String> = emptyMap(),
     modifier: Modifier = Modifier,
     onTap: (Int) -> Unit = {},
 ) {
@@ -148,7 +163,7 @@ fun StagePlot(
                 }
         ) {
             tick.intValue          // subscribe: draw-phase only
-            drawStage(this, byCh, shown, leadVocal, directing)
+            drawStage(this, byCh, shown, leadVocal, directing, wedges, notches)
         }
     }
 }
@@ -159,6 +174,8 @@ private fun drawStage(
     level: FloatArray,
     leadVocal: Int?,
     directing: Boolean,
+    wedges: List<AppState.WedgeUi>,
+    notches: Map<Int, String>,
 ) = with(ds) {
     val w = size.width
     val h = size.height
@@ -241,13 +258,53 @@ private fun drawStage(
             }
         }
 
-        // 5. FROZEN by a hand: a dashed collar, drawn as four ticks.
+        // 5. A RING-OUT NOTCH standing on this microphone: a small
+        //    scar at the corner. A standing cut is a fact, not an
+        //    event, so it does not blink.
+        if (notches.containsKey(ch)) {
+            drawCircle(Bad, unit * 0.011f, Offset(cx + r * 0.9f, cy - r * 0.9f))
+            drawCircle(Inset, unit * 0.005f, Offset(cx + r * 0.9f, cy - r * 0.9f))
+        }
+
+        // 6. FROZEN by a hand: a dashed collar, drawn as four ticks.
         if (s.frozen) for (a in 0 until 4) {
             val ang = Math.toRadians((a * 90 + 45).toDouble())
             val ox = (Math.cos(ang) * ringR * 1.18f).toFloat()
             val oy = (Math.sin(ang) * ringR * 1.18f).toFloat()
             drawCircle(Ink, unit * 0.006f, Offset(cx + ox, cy + oy))
         }
+    }
+
+    // THE MONITORS. Read only — the app has never written one and
+    // this is the first time it has even looked. A wedge is a
+    // trapezoid pointing at its player; what is loudest in it is the
+    // three stripes across it, in the colours of those channels'
+    // roles. An amber dot means this position's mix disagrees with
+    // what a monitor for that position wants.
+    for (wg in wedges) {
+        val spot = WEDGE_SPOTS[wg.kind] ?: continue
+        val cx = spot.x * w
+        val cy = spot.y * h
+        val ww = unit * 0.115f
+        val hh = unit * 0.042f
+        val p = Path()
+        p.moveTo(cx - ww / 2, cy + hh / 2)
+        p.lineTo(cx + ww / 2, cy + hh / 2)
+        p.lineTo(cx + ww / 2.6f, cy - hh / 2)
+        p.lineTo(cx - ww / 2.6f, cy - hh / 2)
+        p.close()
+        drawPath(p, Panel2)
+        drawPath(p, StageLine, style = Stroke(width = unit * 0.003f))
+        wg.top.forEachIndexed { i, tch ->
+            val role = byCh[tch]?.role ?: return@forEachIndexed
+            val y = cy - hh * 0.28f + i * hh * 0.28f
+            drawLine(roleColour(role).copy(alpha = 0.9f - i * 0.2f),
+                Offset(cx - ww * 0.34f, y), Offset(cx + ww * 0.34f, y),
+                strokeWidth = unit * 0.006f)
+        }
+        if (wg.worstCh != null)
+            drawCircle(Warn, unit * 0.007f,
+                Offset(cx + ww * 0.42f, cy - hh * 0.30f))
     }
 }
 

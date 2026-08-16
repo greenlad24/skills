@@ -122,6 +122,27 @@ object AppState {
     /** how many channels the app actually has authority over */
     val channelsMixed = MutableStateFlow(0)
 
+    /**
+     * A monitor, as the app understands it — read from the desk, never
+     * written. Drawn on the stage so the wedges are visible objects
+     * rather than something the app has never looked at.
+     */
+    data class WedgeUi(
+        val bus: Int,
+        val name: String,
+        val kind: String,
+        /** the three loudest things in it, by channel */
+        val top: List<Int> = emptyList(),
+        /** the worst disagreement with what this position wants, in dB */
+        val worstOffDb: Float = 0f,
+        val worstCh: Int? = null,
+    )
+
+    val wedges = MutableStateFlow<List<WedgeUi>>(emptyList())
+
+    /** channels with a ring-out notch on them right now */
+    val ringNotches = MutableStateFlow<Map<Int, String>>(emptyMap())
+
     /** channel names read from the console's own config */
     val mixerChannelNames = MutableStateFlow<Map<Int, String>>(emptyMap())
 
