@@ -45,6 +45,18 @@ class RingOut(
     val deeperDb: Float = 2.5f,
     /** how long to sweep the stage looking for the microphone */
     val huntSec: Double = 8.0,
+    /**
+     * How far clear of the field a channel has to be to end the sweep
+     * early, and how many channels must have been measured first.
+     *
+     * Six dB is not a close call. A microphone in the loop typically
+     * reads fifteen to twenty-five dB above the others at the ringing
+     * frequency; six is chosen to be well outside anything two mics on
+     * the same source could produce, so an early call is only ever made
+     * when the sweep would have reached the same answer anyway.
+     */
+    val decisiveDb: Float = 6f,
+    val minHeardChannels: Int = 4,
     /** silence at that frequency for this long and the cut is eased out */
     val releaseAfterSec: Double = 600.0,
     /** how much comes back at a time, so nothing snaps */
@@ -124,6 +136,27 @@ class RingOut(
      *        says what it would have done.
      */
     fun tick(tSec: Double, mayWrite: Boolean = true): List<ParamWrite> {
+        // STOP LOOKING THE MOMENT THE ANSWER IS OBVIOUS.
+        //
+        // "I want the app to fix feedbacks as fast as it can." The hunt
+        // used to run its full eight seconds every time, which is eight
+        // seconds of a stage howling while the app finishes a sweep
+        // whose answer it already has. A microphone that is actually IN
+        // the loop is not marginally louder at the ringing frequency
+        // than the others — it is enormously louder, because everything
+        // else is hearing the same howl across a room. So once enough
+        // channels have been measured to make a comparison meaningful
+        // and one of them is [decisiveDb] clear of the field, that is
+        // the microphone, and waiting longer only prolongs the noise.
+        //
+        // The full sweep still runs whenever the field is close, which
+        // is exactly the case where guessing early would cut the wrong
+        // channel.
+        if (huntUntil > 0 && heard.size >= minHeardChannels) {
+            val ranked = heard.entries.sortedByDescending { it.value }
+            val lead = ranked[0].value - ranked[1].value
+            if (lead >= decisiveDb) huntUntil = tSec
+        }
         // the hunt is over: whichever microphone heard it loudest is
         // the one in the loop
         if (huntUntil > 0 && tSec >= huntUntil) {

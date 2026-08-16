@@ -3,6 +3,7 @@ package com.stagemix.engine
 import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -153,5 +154,46 @@ class RingOutTest {
                     it.address.startsWith("/ch/10/eq/${RingOut.RING_BAND}/") },
                 "$role wrote band ${RingOut.RING_BAND}: " + w.map { it.address })
         }
+    }
+
+    /**
+     * "Fix feedbacks as fast as it can." A microphone that is actually
+     * in the loop is not marginally louder at the ringing frequency —
+     * it is enormously louder, because every other mic is hearing the
+     * same howl across a room. When that is true the sweep should stop
+     * immediately rather than burn its full eight seconds while the
+     * stage is howling.
+     */
+    @Test
+    fun `an obvious culprit ends the sweep early`() {
+        val r = RingOut()
+        r.ringing(196, 0.0)
+        val loud = FloatArray(100) { -80f }
+        loud[FrequencyMap.binOf(196f)] = -8f
+        val quiet = FloatArray(100) { -80f }
+        quiet[FrequencyMap.binOf(196f)] = -40f
+        for (ch in listOf(1, 2, 3)) r.onRta(ch, quiet, 0.5)
+        r.onRta(8, loud, 1.0)
+        // two seconds in, nowhere near the eight-second deadline
+        val w = r.tick(2.0, mayWrite = true)
+        assertFalse(r.hunting, "kept sweeping when the answer was obvious")
+        assertTrue(w.any { it.address.startsWith("/ch/09/eq/") },
+            "did not cut the microphone it had already identified: " +
+            w.map { it.address })
+    }
+
+    /** and when it is a close call, it still takes the whole sweep */
+    @Test
+    fun `a close field runs the full sweep`() {
+        val r = RingOut()
+        r.ringing(196, 0.0)
+        val a = FloatArray(100) { -80f }
+        a[FrequencyMap.binOf(196f)] = -20f
+        val b = FloatArray(100) { -80f }
+        b[FrequencyMap.binOf(196f)] = -22f
+        for (ch in listOf(1, 2, 3)) r.onRta(ch, b, 0.5)
+        r.onRta(8, a, 1.0)
+        r.tick(2.0, mayWrite = true)
+        assertTrue(r.hunting, "called it early on a two dB difference")
     }
 }
