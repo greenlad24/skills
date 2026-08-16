@@ -5,6 +5,7 @@ import com.stagemix.engine.ChannelConfig
 import com.stagemix.engine.EngineSettings
 import com.stagemix.engine.FaderLaw
 import com.stagemix.engine.Meters
+import com.stagemix.engine.RESEARCH_PYRAMID
 import com.stagemix.engine.Role
 import com.stagemix.engine.ShowLog
 import com.stagemix.engine.StageEngine
@@ -106,7 +107,7 @@ private fun runReplay(args: Array<String>) {
             src.profile[i].role.name))
 
     val engine = StageEngine(src.profile,
-        EngineSettings(mode = opts.mode, operatorPolicy = true))
+        EngineSettings(mode = opts.mode, operatorPolicy = true), RESEARCH_PYRAMID)
     val doctor = ToneDoctor(src.profile.map { it.index },
         src.profile.associate { it.index to it.role })
     val log = ShowLog(outDir, snapshotSec = opts.snapshotSec,
@@ -552,7 +553,7 @@ private fun replayCapture(file: File, opts: Opts, outDir: File, take: String) {
         onHeader = { tape ->
             profile = profileFor(tape.names, defaultRigProfile())
             names = profile.associate { it.index to it.name }
-            val e = StageEngine(profile, EngineSettings(mode = opts.mode, operatorPolicy = true))
+            val e = StageEngine(profile, EngineSettings(mode = opts.mode, operatorPolicy = true), RESEARCH_PYRAMID)
             val d = ToneDoctor(profile.map { it.index },
                 profile.associate { it.index to it.role })
             val l = ShowLog(outDir, snapshotSec = opts.snapshotSec,

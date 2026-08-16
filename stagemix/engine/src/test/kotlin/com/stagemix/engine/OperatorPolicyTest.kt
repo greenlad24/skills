@@ -2,6 +2,7 @@ package com.stagemix.engine
 
 import kotlin.math.abs
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -93,6 +94,39 @@ class OperatorPolicyTest {
             "the guitar amp must cede the low-mid body to the piano")
         assertTrue(rhythm.any { it.hz in 250f..500f && it.gainDb < 0f },
             "the guitar DI must cede the low-mid body to the piano")
+    }
+
+    // ---- the researched balance, with the operator's "leave it"s -----
+
+    @Test fun `the research balance keeps the low end and the colour as is`() {
+        // bass + kick (FOUNDATION) and sax + harmonica (COLOR) do not move
+        // from the reference pyramid; only the harmony and the vocal do.
+        assertEquals(PYRAMID[Role.FOUNDATION], RESEARCH_PYRAMID[Role.FOUNDATION],
+            "the low end must be left exactly as is")
+        assertEquals(PYRAMID[Role.COLOR], RESEARCH_PYRAMID[Role.COLOR],
+            "the sax / harmonica must be left exactly as is")
+    }
+
+    @Test fun `the research balance brings the piano and guitar forward`() {
+        val ref = PYRAMID
+        val res = RESEARCH_PYRAMID
+        assertTrue(res[Role.KEYS]!! > ref[Role.KEYS]!!,
+            "the piano must come forward toward the research balance")
+        assertTrue(res[Role.SOLO_GTR]!! > ref[Role.SOLO_GTR]!!,
+            "the guitar amp must come forward")
+        assertTrue(res[Role.RHYTHM_GTR]!! > ref[Role.RHYTHM_GTR]!!,
+            "the guitar DI must come forward")
+        // vocal on top, and more forward than the reference
+        assertTrue(res[Role.VOCAL]!! > res[Role.FOUNDATION]!!,
+            "the vocal stays on top of the low end")
+        assertTrue(res[Role.VOCAL]!! > ref[Role.VOCAL]!!,
+            "the vocal sits a touch more forward")
+        // the ordering the research asks for: vocal > low end > piano >
+        // guitar amp > guitar DI > congas
+        assertTrue(res[Role.FOUNDATION]!! > res[Role.KEYS]!!, "low end over piano")
+        assertTrue(res[Role.KEYS]!! > res[Role.SOLO_GTR]!!, "piano over guitar amp")
+        assertTrue(res[Role.SOLO_GTR]!! > res[Role.RHYTHM_GTR]!!, "amp over DI")
+        assertTrue(res[Role.RHYTHM_GTR]!! > res[Role.PERCUSSION]!!, "DI over congas")
     }
 
     // ---- the same rules, across a running mix ------------------------

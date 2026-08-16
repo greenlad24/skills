@@ -109,6 +109,25 @@ Consequences that follow from this and are not optional:
 - **The lead vocal sits on top of everything.** This is the single
   relationship the whole engine exists to defend: if LEAD is above
   BAND, the mix is working.
+
+### The balance it aims for (the researched Neo-soul / funk hierarchy)
+
+The shipping app aims for a researched Neo-soul/jazz/funk/rock balance
+(`RESEARCH_PYRAMID`), tuned around **two things the operator asked to
+leave exactly as they are**:
+
+- **Bass + kick left as is** — the low end is the anchor and does not
+  move; every other target is expressed around it.
+- **Sax + harmonica left as is** — colour stays where it was (and the
+  harmonica is volume-locked at the operator's middle regardless).
+
+What moves toward the research: **piano and guitar come forward** as the
+harmonic bed they lead the show with (piano ≈ 1 dB under the low end,
+guitar amp ≈ 3, guitar DI ≈ 4), and the **lead vocal sits a touch more
+forward** (≈ 3 dB over the low end rather than 1). Ordering: vocal › low
+end › piano › guitar amp › guitar DI › congas › sax/harmonica-until-a-
+feature. The bare engine keeps the reference pyramid so its core-balance
+tests still hold; the app, the bench and the replay use the researched one.
 - **Lead-follow between the vocal mics** — whoever is carrying the song
   is the lead, and it can change during the night.
 - **Everything else laddered underneath**, by role.

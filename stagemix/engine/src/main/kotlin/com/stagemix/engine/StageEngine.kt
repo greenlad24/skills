@@ -217,6 +217,36 @@ val PYRAMID: Map<Role, Float> = mapOf(
 )
 
 /**
+ * The balance the SHIPPING app aims for — the reference pyramid retuned to
+ * the researched Neo-soul / jazz / funk / rock hierarchy, with two of the
+ * operator's "leave it alone"s honoured exactly:
+ *
+ *  · BASS + KICK left as is — FOUNDATION stays the 0 dB anchor, so the low
+ *    end does not move a hair; every other target is expressed around it.
+ *  · SAX + HARMONICA left as is — COLOR stays where the reference had it
+ *    (and the harmonica is volume-locked at the operator's middle anyway).
+ *
+ * What DOES move toward the research: the piano and guitar come UP to be
+ * the harmonic bed they lead the show with (research: piano ≈ 4 dB under
+ * the vocal, guitar ≈ 6), and the lead vocal sits a touch more forward
+ * (3 dB over the low end rather than 1). The bare engine keeps [PYRAMID]
+ * so its core-balance tests still guard the reference; the app, the bench
+ * and the replay pass this one in.
+ */
+val RESEARCH_PYRAMID: Map<Role, Float> = mapOf(
+    Role.FOUNDATION to 0f,      // bass + kick — left exactly as is
+    Role.VOCAL to +3f,          // 3 dB over the low end (vocal-forward)
+    Role.BACKING_VOCAL to -2f,  // the 2nd vocal, ~5 under the lead
+    Role.KEYS to -1f,           // PIANO forward — the harmonic lead
+    Role.DRUMS to -1f,          // the kit, up near the low end
+    Role.PERCUSSION to -6f,     // congas, back under the kit
+    Role.RHYTHM_GTR to -4f,     // guitar DI, the bed
+    Role.SOLO_GTR to -3f,       // guitar amp, the other harmonic lead
+    Role.COLOR to -6f,          // sax / harmonica — left as is
+    Role.INSTRUMENT to -7f,
+)
+
+/**
  * What the engine is trying to do with the faders.
  *
  * LEAD is the original job: derive a balance from the built-in pyramid

@@ -46,7 +46,8 @@ class DeskClient(
 ) {
     val engine = StageEngine(emptyList<com.stagemix.engine.ChannelConfig>()
         .ifEmpty { com.stagemix.engine.defaultRigProfile() },
-        com.stagemix.engine.EngineSettings(operatorPolicy = true))
+        com.stagemix.engine.EngineSettings(operatorPolicy = true),
+        com.stagemix.engine.RESEARCH_PYRAMID)
     var doctor: ToneDoctor? = null; private set
     private val watchdog = FeedbackWatchdog()
     /**
