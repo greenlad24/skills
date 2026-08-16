@@ -124,8 +124,6 @@ class MixerService : Service() {
     private var lastMonMatrix = -1e9
     /** the feedback profile carried in from earlier nights (ch, Hz, rings) */
     private var carriedFeedback: List<Triple<Int, Float, Int>> = emptyList()
-    /** the ring-out lastAction last written, so a new ring persists once */
-    private var lastRingActionSaved = ""
     /** the exact banner engineFailed raises, so a clean tick can retract it */
     private val ENGINE_ERROR_MSG =
         "⚠ Something went wrong inside the app — the mixer is " +
