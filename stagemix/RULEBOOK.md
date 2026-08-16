@@ -287,6 +287,12 @@ starting chain and the tone doctor read the desk at takeover and:
   countdown to run, the bar carries how much of the mix is where it
   should be — a number that moves all night, so a still bar means
   stopped rather than settled.
+- **The bar tells the truth about whether the app is mixing.** When it
+  is watching, frozen, muted, or has lost the mixer, the bar says so in
+  amber and never shows the green "finding the balance" fill. A
+  reassuring bar over a stopped app is the same lie as a blank panel — it
+  was the one surface that could read as working while nothing was being
+  sent, and it must not.
 
 > "the auto mix should be on by default - when the app is opened it
 > should connect automatically (if available) to the mixer and start
