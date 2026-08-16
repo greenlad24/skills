@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.stagemix.engine.Advice
@@ -57,9 +58,16 @@ fun FaultLine(a: Advice?, modifier: Modifier = Modifier) {
         Box(Modifier.size(11.dp).background(tone(a.level), CircleShape))
         Spacer(Modifier.width(11.dp))
         Column {
+            // Ellipsis, not clip. The second line is the REMEDY — the
+            // half that tells you what to press — and clipping it
+            // removes the useful part of the message with nothing on
+            // screen to say anything was removed. At a large system
+            // font scale that is most of the remedies in the app.
             Text(a.what, color = tone(a.level), fontSize = 17.sp,
-                fontWeight = FontWeight.Bold, maxLines = 1)
-            Text(a.doThis, color = Ink2, fontSize = 13.sp, maxLines = 2)
+                fontWeight = FontWeight.Bold, maxLines = 1,
+                overflow = TextOverflow.Ellipsis)
+            Text(a.doThis, color = Ink2, fontSize = 13.sp, maxLines = 2,
+                overflow = TextOverflow.Ellipsis)
         }
     }
 }

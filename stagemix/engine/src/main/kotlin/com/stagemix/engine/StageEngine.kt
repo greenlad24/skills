@@ -2376,6 +2376,33 @@ class StageEngine(
                     log(tSec, "feature", idx, rose,
                         "${st.name} stepped up — leaving the feature " +
                         "with the player")
+                    // A STEREO PAIR SOLOS AS ONE INSTRUMENT.
+                    //
+                    // "the piano can also do solos" — and the piano is
+                    // two channels. The feature branch below returns
+                    // early, before the stereo-pair logic that normally
+                    // keeps the two halves together, so lifting only the
+                    // half that happened to cross the threshold would
+                    // pull the image hard to one side for the length of
+                    // the solo: piano left up four dB, piano right where
+                    // it was. Latch the mate with the SAME lift, from
+                    // its own resting position, so the pair rises
+                    // together and the image holds.
+                    st.cfg.pairWith?.let { state[it] }?.let { mate ->
+                        if (mate.featureStart < 0 && mate.active &&
+                            mate.baselineDb != null) {
+                            mate.featureStart = st.featureStart
+                            mate.featureRef = mate.fastEma ?: fast
+                            mate.featureFrom = if (mate.settled)
+                                mate.settledOffset else mate.offset
+                            mate.featureLift = st.featureLift
+                            mate.featureVotes = 0
+                            mate.engaged = false
+                            log(tSec, "feature", mate.cfg.index, rose,
+                                "${mate.name} goes up with it — the " +
+                                "piano is one instrument on two channels")
+                        }
+                    }
                 }
             } else {
                 // Ending the hold takes as much confirmation as starting

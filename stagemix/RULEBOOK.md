@@ -105,8 +105,16 @@ Consequences that follow from this and are not optional:
 - **Lead-follow between the vocal mics** — whoever is carrying the song
   is the lead, and it can change during the night.
 - **Everything else laddered underneath**, by role.
-- **A solo is featured** — sax, guitar, harmonica step up and are held
-  up for the duration, then eased back.
+- **A solo is featured** — sax, guitar, harmonica **and the piano**
+  step up and are held up for the duration, then eased back.
+
+  > "the piano can also do solos."
+
+  The piano is **two channels** (Piano L and Piano R, a stereo pair),
+  so a piano solo has to lift **both halves by the same amount**.
+  Lifting only the one that crossed the threshold pulls the image hard
+  to one side for the length of the solo, which is worse than not
+  lifting it at all. The same applies to anything else paired.
 - **A new instrument arriving** is listened to before being placed.
 - **Held roles stay where the operator put them:** VOCAL,
   BACKING_VOCAL, FOUNDATION, PERCUSSION. The app's authority is the

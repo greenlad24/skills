@@ -98,7 +98,16 @@ fun adviseOn(s: Situation): List<Advice> {
         "own Wi-Fi. If this does not clear in about ten seconds, the " +
         "tablet is on the wrong network."))
 
-    if (s.connected && s.metersAgeSec > 2f) out.add(Advice(
+    // NOT GATED ON `connected`. A ten-second gap in meter packets drops
+    // the connection state to CONNECTING — which happens during shows on
+    // a venue's own 2.4 GHz AP, and is in both real logs. Gating the two
+    // faults below on `connected` meant that the WORSE the dropout got,
+    // the CALMER the screen became: past ten seconds the meters fault
+    // and the not-mixing fault both vanished, the list went all-NOTE,
+    // and the panel announced "Everything is working" while the app was
+    // neither connected nor mixing. That is the three-lost-shows failure
+    // reproduced exactly, so both now fire on `everConnected` instead.
+    if (s.everConnected && s.metersAgeSec > 2f) out.add(Advice(
         "meters", Level.FAULT,
         "Meters have stopped — every fader is held where it is",
         "Usually the venue's 2.4 GHz Wi-Fi rather than a fault. It " +
@@ -106,7 +115,7 @@ fun adviseOn(s: Situation): List<Advice> {
         "tablet closer to the desk if it keeps happening."))
 
     // ---- THE ONE THAT COST THREE NIGHTS
-    if (s.connected && !s.directing) out.add(Advice(
+    if (s.everConnected && !s.directing) out.add(Advice(
         "notmixing", Level.FAULT,
         "NOT MIXING — the app is only watching",
         if (s.autoStart)
@@ -181,11 +190,29 @@ fun adviseOn(s: Situation): List<Advice> {
         "the high-pass and the compressor an engineer would at " +
         "soundcheck."))
 
-    if (out.none { it.level != Level.NOTE }) out.add(0, Advice(
+    // "Everything is working" is a claim, and it may only be made when
+    // it is true. It used to be emitted whenever nothing else had
+    // spoken up, which is not the same thing at all.
+    if (out.none { it.level != Level.NOTE } &&
+        s.connected && s.directing && s.metersAgeSec <= 2f) out.add(0, Advice(
         "ok", Level.NOTE, "Everything is working",
         "Mixing, meters arriving, monitors read. Nothing needs doing."))
+    if (out.isEmpty()) out.add(Advice(
+        "quiet", Level.NOTE, "Waiting",
+        "Nothing is wrong and nothing is being sent yet."))
 
-    return out.sortedByDescending { it.level.ordinal }
+    // NOT MIXING SORTS FIRST AMONG FAULTS, ALWAYS.
+    //
+    // A stable sort on severity alone left it behind whichever fault
+    // happened to be added earlier — and the meters fault is added
+    // earlier — so three seconds of dropped packets in watching mode
+    // pushed the one message that matters off the top line of every
+    // tab. Severity, then an explicit rank.
+    val rank = mapOf("notmixing" to 0, "conn" to 1, "meters" to 2,
+        "partial" to 3, "ring" to 4)
+    return out.sortedWith(
+        compareByDescending<Advice> { it.level.ordinal }
+            .thenBy { rank[it.key] ?: 9 })
 }
 
 /**
