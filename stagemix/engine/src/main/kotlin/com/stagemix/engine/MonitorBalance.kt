@@ -102,8 +102,10 @@ class MonitorBalance(
         sends.getOrPut(key(bus, ch)) { Send(bus, ch) }
 
     /** every send this class has moved, for the screen */
-    fun moved(): List<Send> = sends.values.filter { abs(it.appDb) > 0.05f }
-        .sortedWith(compareBy({ it.bus }, { it.ch }))
+    fun moved(): List<Send> = synchronized(this) {
+        sends.values.filter { abs(it.appDb) > 0.05f }
+            .sortedWith(compareBy({ it.bus }, { it.ch }))
+    }
 
     /**
      * A send level, read off the console.
@@ -113,7 +115,7 @@ class MonitorBalance(
      * whatever we had done to that send, and leave the whole bus alone
      * for five minutes.
      */
-    fun onSend(bus: Int, ch: Int, db: Float, tSec: Double) {
+    fun onSend(bus: Int, ch: Int, db: Float, tSec: Double) = synchronized(this) {
         val s = send(bus, ch)
         val w = s.writtenDb
         if (w == null) {
@@ -123,6 +125,18 @@ class MonitorBalance(
             s.writtenDb = db
             return
         }
+        // A REPLY THAT ARRIVES JUST AFTER WE WROTE IS NOT A HAND.
+        //
+        // The console does not echo our own writes, but send levels are
+        // polled, and on a venue's Wi-Fi a write's packet gets dropped
+        // or a poll reply generated before our write lands after it. The
+        // stale value then differs from what we wrote and read as the
+        // engineer's hand: it re-anchored, refilled the night's cut
+        // budget, froze the bus for five minutes and logged an
+        // accusation of a move that never happened. So for a short guard
+        // window after we touch a send, a mismatch is treated as a
+        // stale reply — re-assert what we wrote and wait — not a hand.
+        if (tSec - s.lastMoveT < HAND_GUARD_SEC) return
         if (abs(db - w) > handDb) {
             s.anchorDb = db
             s.appDb = 0f
@@ -139,7 +153,7 @@ class MonitorBalance(
      * Something rang. Every wedge carrying that microphone stops being
      * raised — that one for good, the rest for a few minutes.
      */
-    fun onRing(ch: Int, tSec: Double) {
+    fun onRing(ch: Int, tSec: Double) = synchronized(this) {
         for (bus in map.buses) {
             ringQuietUntil[bus] = tSec + ringQuietSec
             // getOrPut, not a raw lookup. Send replies get dropped on a
@@ -175,11 +189,21 @@ class MonitorBalance(
         kit: Set<Int>,
         playing: Boolean,
         push: Boolean = false,
-    ): List<ParamWrite> {
+    ): List<ParamWrite> = synchronized(this) {
         if (!playing) return emptyList()
         val out = ArrayList<ParamWrite>()
-        val step = if (push) stepDb * 2f else stepDb
+        // A BUTTON PRESS IS PERMISSION TO ACT NOW, NOT TO ACT
+        // DIFFERENTLY. §3 is explicit: "one small move per bus at a
+        // time." So push keeps the normal 0.7 dB step; all it changes
+        // is that it may make a few moves this pass instead of one, and
+        // that it bypasses the 20-second per-bus throttle. And every
+        // send may move at most ONCE per pass — recomputing the
+        // critique is not enough on its own, because the same channel
+        // stays the largest offender, so a push used to drop one send
+        // 4.2 dB in a single batch.
+        val step = stepDb
         val movesPerBus = if (push) 3 else 1
+        val movedThisCall = HashSet<Long>()
         for (w in map.all()) {
             if (w.kind == MonitorMap.Kind.UNKNOWN) continue
             if (following(w.bus, tSec)) continue
@@ -202,7 +226,7 @@ class MonitorBalance(
                 if (ns.isEmpty()) break
                 var did: ParamWrite? = null
                 for (n in ns) {
-                    did = moveFor(w, n, ns, step, tSec)
+                    did = moveFor(w, n, ns, step, tSec, movedThisCall)
                     if (did != null) break
                 }
                 if (did == null) break
@@ -222,14 +246,17 @@ class MonitorBalance(
     private fun moveFor(
         w: MonitorMap.Wedge, n: MonitorMap.Note,
         all: List<MonitorMap.Note>, step: Float, tSec: Double,
+        moved: MutableSet<Long>,
     ): ParamWrite? {
         val s = send(w.bus, n.ch)
+        fun free(ch: Int) = key(w.bus, ch) !in moved
 
         // A channel that should not be in this wedge at all — the kit in
         // a floor monitor. Always a cut, always safe, always right.
         if (n.wantDb == null) {
+            if (!free(n.ch)) return null
             if (n.nowDb <= MonitorMap.MONITOR_FLOOR_DB) return null
-            return cut(s, step, tSec,
+            return cut(s, step, tSec, moved,
                 w.name + ": the kit is three feet away — taking it out " +
                 "of the wedge, it only costs gain before feedback")
         }
@@ -237,22 +264,29 @@ class MonitorBalance(
         if (abs(n.offDb) <= tolDb) return null
 
         // Too loud: turn it down. Simple, and always available.
-        if (n.offDb > 0) return cut(s, min(step, n.offDb / 2f), tSec,
-            w.name + ": " + label(n) + " is " + db(n.offDb) +
-            " dB above where this position wants it")
+        if (n.offDb > 0) {
+            if (!free(n.ch)) return null
+            return cut(s, min(step, n.offDb / 2f), tSec, moved,
+                w.name + ": " + label(n) + " is " + db(n.offDb) +
+                " dB above where this position wants it")
+        }
 
         // TOO QUIET — AND THIS IS THE INTERESTING ONE.
         //
         // The ratio is what is wrong, and there are two ends to a ratio.
         // Look for something in this same wedge that is above ITS target
         // and take that down instead: the balance moves the same way and
-        // the loop gain moves the right way.
+        // the loop gain moves the right way. Skip a donor that has no cut
+        // left in it, or the whole bus stalls: the loudest could be at
+        // its night cap while the vocal is still low, and picking it
+        // every time meant nothing moved at all.
         val loudest = all.firstOrNull {
-            it.wantDb != null && it.offDb > tolDb / 2f && it.ch != n.ch
+            it.wantDb != null && it.offDb > tolDb / 2f && it.ch != n.ch &&
+                free(it.ch) && canCut(w.bus, it.ch)
         }
         if (loudest != null) {
             val ls = send(w.bus, loudest.ch)
-            return cut(ls, min(step, loudest.offDb), tSec,
+            return cut(ls, min(step, loudest.offDb), tSec, moved,
                 w.name + ": " + label(n) + " is " + db(-n.offDb) +
                 " dB low — bringing " + label(loudest) + " down instead " +
                 "of raising it, so the balance moves without spending " +
@@ -260,6 +294,7 @@ class MonitorBalance(
         }
 
         // Nothing left to cut. Only now may a send go up, and barely.
+        if (!free(n.ch)) return null
         if (s.ringProne) {
             once("bus" + w.bus + "rp" + n.ch,
                 w.name + ": " + label(n) + " is low, but that microphone " +
@@ -270,23 +305,36 @@ class MonitorBalance(
         if (s.appDb >= maxRaiseDb - 0.05f) return null
         val by = min(min(step, -n.offDb), maxRaiseDb - s.appDb)
         if (by < 0.1f) return null
-        return write(s, by, tSec,
+        return write(s, by, tSec, moved,
             w.name + ": " + label(n) + " is " + db(-n.offDb) + " dB low " +
             "and there is nothing left to bring down — up " + db(by) +
             " dB, " + db(s.appDb + by) + " of the " + db(maxRaiseDb) +
             " dB of headroom allowed all night")
     }
 
-    private fun cut(s: Send, by: Float, tSec: Double, why: String):
-        ParamWrite? {
-        val room = maxCutDb + s.appDb          // appDb is negative here
-        val d = min(by, room)
-        if (d < 0.1f) return null
-        return write(s, -d, tSec, why)
+    /** true while this send still has cut budget AND floor headroom */
+    private fun canCut(bus: Int, ch: Int): Boolean {
+        val s = send(bus, ch)
+        return s.appDb > -maxCutDb + 0.1f &&
+            s.nowDb > MonitorMap.MONITOR_FLOOR_DB + FLOOR_MARGIN_DB + 0.1f
     }
 
-    private fun write(s: Send, deltaDb: Float, tSec: Double, why: String):
-        ParamWrite? {
+    private fun cut(s: Send, by: Float, tSec: Double,
+                    moved: MutableSet<Long>, why: String): ParamWrite? {
+        // TWO CEILINGS ON A CUT. The night cap, and — the one that was
+        // missing — the floor: a send cut past it stops being quiet and
+        // becomes UNROUTED, and the app has no business un-routing a
+        // send the engineer chose to make. So a cut may not take a send
+        // within FLOOR_MARGIN of the floor.
+        val budgetRoom = maxCutDb + s.appDb    // appDb is negative here
+        val floorRoom = s.nowDb - (MonitorMap.MONITOR_FLOOR_DB + FLOOR_MARGIN_DB)
+        val d = min(by, min(budgetRoom, floorRoom))
+        if (d < 0.1f) return null
+        return write(s, -d, tSec, moved, why)
+    }
+
+    private fun write(s: Send, deltaDb: Float, tSec: Double,
+                      moved: MutableSet<Long>, why: String): ParamWrite? {
         // BUILD AND CHECK THE ADDRESS BEFORE CHANGING ANY STATE.
         //
         // plan() used to filter the list at the end, after write() had
@@ -308,6 +356,7 @@ class MonitorBalance(
         // effect and repeats the same correction until it runs out of
         // authority.
         map.onSend(s.bus, s.ch, target)
+        moved.add(key(s.bus, s.ch))
         notes.add(why + " · " + db(deltaDb) + " dB (net " +
             db(s.appDb) + ")")
         return ParamWrite(addr, FaderLaw.dbToFloat(target))
@@ -345,9 +394,16 @@ class MonitorBalance(
         }
     }
 
-    fun drainNotes(): List<String> {
+    fun drainNotes(): List<String> = synchronized(this) {
         val out = ArrayList(notes)
         notes.clear()
         return out
+    }
+
+    companion object {
+        /** a cut may not take a send this close to the routing floor */
+        const val FLOOR_MARGIN_DB = 3f
+        /** after touching a send, ignore hand-detection this long */
+        const val HAND_GUARD_SEC = 6.0
     }
 }

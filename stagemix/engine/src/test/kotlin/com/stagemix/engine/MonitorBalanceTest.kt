@@ -217,4 +217,44 @@ class MonitorBalanceTest {
         assertEquals(emptyList(), b.plan(100.0, roles, setOf(0, 1),
             playing = true, push = true))
     }
+
+    @Test
+    fun `a cut never un-routes a send below the floor`() {
+        val (m, b) = rig()
+        // a wedge sitting low, one channel a touch too loud
+        load(m, b, 1, mapOf(3 to -55f, 8 to -52f, 9 to -55f, 11 to -50f))
+        var t = 100.0
+        repeat(100) {
+            b.plan(t, roles, kit = emptySet(), playing = true, push = true)
+            t += 30.0
+        }
+        for (s in b.moved())
+            assertTrue(s.nowDb > com.stagemix.engine.MonitorMap.MONITOR_FLOOR_DB + 2f,
+                "b${s.bus} ch${s.ch} was cut to ${s.nowDb} dB — near the " +
+                "floor, effectively un-routed")
+    }
+
+    @Test
+    fun `a push moves several channels but no single send twice in one press`() {
+        val (m, b) = rig()
+        load(m, b, 1, mapOf(3 to -14f, 8 to -18f, 9 to -18f, 11 to -2f))
+        val w = b.plan(100.0, roles, kit = emptySet(), playing = true, push = true)
+        val perSend = w.groupingBy { it.address }.eachCount()
+        assertTrue(perSend.values.all { it == 1 },
+            "a single send was moved more than once in one press: $perSend")
+    }
+
+    @Test
+    fun `a stale reply just after a write is not read as a hand`() {
+        val (m, b) = rig()
+        load(m, b, 1, mapOf(3 to -14f, 8 to -18f, 9 to -18f, 11 to -2f))
+        val w = b.plan(100.0, roles, kit = emptySet(), playing = true)
+        assertTrue(w.isNotEmpty())
+        val movedCh = Regex("/ch/(\\d\\d)/").find(w[0].address)!!
+            .groupValues[1].toInt() - 1
+        // the desk replies a moment later with the OLD level (packet lost)
+        b.onSend(1, movedCh, -2f, 101.0)
+        assertTrue(!b.following(1, 101.0),
+            "a stale reply within the guard window tripped hand-detection")
+    }
 }
