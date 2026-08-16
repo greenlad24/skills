@@ -54,8 +54,9 @@ print(*struct.unpack('>II', d[16:24]))")
 
 shot mixer      0 true
 shot monitors   1 true
-shot log        2 true
-shot setup      3 true
+shot status     2 true
+shot log        3 true
+shot setup      4 true
 shot watching   0 false
 echo "screenshots in $OUT:"
 ls -la "$OUT"

@@ -64,6 +64,69 @@ fun NowLine(headline: String, detail: String, tickMs: Long, shadow: Boolean) {
 }
 
 /**
+ * The bar that is always there.
+ *
+ * "The progress the app is doing should be shown at all times
+ *  (including a progress bar)."
+ *
+ * A countdown when the app is waiting for something — twenty seconds of
+ * listening, eight of hunting a howl, ten minutes of setting channels
+ * up. And for the other three hours, when the right behaviour is to do
+ * almost nothing, how much of the mix is sitting where it should be:
+ * a number that moves all night, so a still bar means stopped rather
+ * than settled.
+ */
+@Composable
+fun WorkBar(w: com.stagemix.engine.Work) {
+    val frac = remember(w.key) { mutableIntStateOf(0) }
+    val secs = remember(w.key) { mutableIntStateOf(0) }
+    // The countdown is redrawn from the clock rather than from the tick
+    // so it stays smooth between engine beats; the steady-state figure
+    // comes straight off the engine and needs no animation at all.
+    LaunchedEffect(w.key, w.frac, w.secsLeft) {
+        val target = (w.frac * 1000).toInt().coerceIn(0, 1000)
+        if (w.secsLeft == null) { frac.intValue = target; return@LaunchedEffect }
+        val start = SystemClock.elapsedRealtime()
+        val from = frac.intValue
+        val endsIn = w.secsLeft * 1000L
+        while (true) {
+            kotlinx.coroutines.delay(100)
+            val dt = SystemClock.elapsedRealtime() - start
+            val span = (endsIn + dt).coerceAtLeast(1L)
+            frac.intValue = (from + ((1000 - from) * dt / span))
+                .toInt().coerceIn(0, 1000)
+            secs.intValue = ((endsIn - dt) / 1000L).toInt().coerceAtLeast(0)
+        }
+    }
+    val tone = when {
+        w.alarm -> Bad
+        w.secsLeft != null -> Accent
+        else -> Ok
+    }
+    Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(w.label, color = tone, fontSize = 16.sp,
+                fontWeight = FontWeight.Bold, maxLines = 1)
+            Spacer(Modifier.weight(1f))
+            Text(
+                if (w.secsLeft != null) "${secs.intValue}s"
+                else "${(w.frac * 100).toInt()}%",
+                color = tone, fontSize = 19.sp,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold)
+        }
+        Spacer(Modifier.height(4.dp))
+        Canvas(Modifier.fillMaxWidth().height(8.dp)) {
+            drawRect(Inset)
+            drawRect(tone, size = androidx.compose.ui.geometry.Size(
+                size.width * (frac.intValue / 1000f), size.height))
+        }
+        if (w.detail.isNotBlank())
+            Text(w.detail, color = Muted, fontSize = 13.sp, maxLines = 1)
+    }
+}
+
+/**
  * Something with a deadline, drawn as a deadline.
  *
  * Every long wait in this engine has a known end — twenty seconds of

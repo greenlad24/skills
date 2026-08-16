@@ -134,6 +134,26 @@ object DemoStage {
                 "autopilot took the mains — listening for 20s, then " +
                 "keeping the balance you made"))
         AppState.health.value = StageEngine.MixHealth(91, 88, 3, 1465)
+        AppState.autoStart.value = true
+        AppState.keepMonitors.value = true
+        // What the wedge keeper has done tonight — small, and mostly
+        // cuts, which is what it is supposed to look like.
+        AppState.wedgeMoves.value = listOf(
+            AppState.WedgeMove(1, 11, -1.4f),
+            AppState.WedgeMove(1, 0, -2.1f),
+            AppState.WedgeMove(2, 8, +0.7f),
+            AppState.WedgeMove(6, 5, -0.7f))
+        AppState.advice.value = com.stagemix.engine.adviseOn(
+            com.stagemix.engine.Situation(
+                connected = true, everConnected = true, autoStart = true,
+                directing = directing, balanceKept = directing,
+                channelsTotal = 16, channelsMixed = 16,
+                wedgesRead = 5, wedgesOut = 1, mixingSec = 1465.0))
+        AppState.work.value = if (directing)
+            com.stagemix.engine.holdingWork(13, 16, true)
+        else com.stagemix.engine.Work(
+            key = "idle", label = "Watching only — nothing is being sent",
+            detail = "tap MIX to take the mains", frac = 0f)
 
         job = scope.launch {
             var t = 0.0
@@ -185,6 +205,14 @@ object DemoStage {
 
                 AppState.tickMs.value =
                     android.os.SystemClock.elapsedRealtime()
+                // The bar has to move, or it teaches the eye that a
+                // still bar is normal — which is the whole reason it
+                // exists. In the real app this figure comes off the
+                // engine and drifts all night; here it drifts too.
+                if (directing && (t * 20).toInt() % 20 == 0)
+                    AppState.work.value = com.stagemix.engine.holdingWork(
+                        inPlace = 13 + (sin(t * 0.11) * 2.4).toInt(),
+                        total = 16, kept = true)
                 AppState.leadDb.value = -13.5f + 2f * sin(t * 0.8).toFloat()
                 AppState.bandDb.value = -16.5f + 2f * sin(t * 0.5).toFloat()
                 t += 0.05

@@ -151,6 +151,51 @@ object AppState {
     val wedges = MutableStateFlow<List<WedgeUi>>(emptyList())
 
     /**
+     * OPEN THE APP AND IT MIXES.
+     *
+     * "the auto mix should be on by default — when the app is opened it
+     *  should connect automatically (if available) and start mixing."
+     *
+     * This reverses the app's original default, and the reversal is
+     * earned: the old default was WATCHING, chosen so that nothing
+     * could ever be moved by surprise, and the result was three whole
+     * shows in which nothing was moved at all. A tool that has to be
+     * armed correctly before every gig, in the dark, will eventually
+     * not be — and the failure is silent. Still one tap to stop, still
+     * a twenty-second listen before it writes a single fader, and still
+     * a switch here for anyone who wants the old behaviour.
+     */
+    val autoStart = MutableStateFlow(true)
+
+    /**
+     * Whether the app may correct the wedges at all.
+     *
+     * Separate from [directing] because it is a separate promise. The
+     * mains are the app's job; the monitors are the band's ears, and
+     * for most of this app's life it could not write one even by
+     * accident. It can now — slightly, cut-first, following the
+     * engineer's hand — and this switch is how that stays a choice.
+     */
+    val keepMonitors = MutableStateFlow(true)
+
+    /** what the monitor keeper has changed, per bus, for the screen */
+    data class WedgeMove(val bus: Int, val ch: Int, val db: Float)
+    val wedgeMoves = MutableStateFlow<List<WedgeMove>>(emptyList())
+
+    /**
+     * Everything wrong, worst first, each with the thing to do about
+     * it. Never empty — see [com.stagemix.engine.adviseOn].
+     */
+    val advice = MutableStateFlow<List<com.stagemix.engine.Advice>>(emptyList())
+
+    /**
+     * What it is doing right now, with a bar that fills. Always set:
+     * when there is no countdown to run, this carries how much of the
+     * mix is sitting where it should be.
+     */
+    val work = MutableStateFlow<com.stagemix.engine.Work?>(null)
+
+    /**
      * The two numbers the master meter shows: the voice carrying the
      * song, and everything else. Their RELATIONSHIP is what this whole
      * engine exists to hold — if LEAD sits above BAND, the mix works.
@@ -298,6 +343,20 @@ object AppState {
         val p = ctx.getSharedPreferences("stagemix", Context.MODE_PRIVATE)
         nightsCount.value = p.getInt("nights", 0)
         lastNightSummary.value = p.getString("last_night", "") ?: ""
+    }
+
+    /** the two switches that change what the app does on its own */
+    fun saveSwitches(ctx: Context) {
+        ctx.getSharedPreferences("stagemix", Context.MODE_PRIVATE).edit()
+            .putBoolean("auto_start", autoStart.value)
+            .putBoolean("keep_monitors", keepMonitors.value)
+            .apply()
+    }
+
+    fun loadSwitches(ctx: Context) {
+        val p = ctx.getSharedPreferences("stagemix", Context.MODE_PRIVATE)
+        autoStart.value = p.getBoolean("auto_start", true)
+        keepMonitors.value = p.getBoolean("keep_monitors", true)
     }
 
     fun save(ctx: Context) {

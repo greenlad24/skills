@@ -203,6 +203,8 @@ fun ConsoleScreen() {
     val leadDb by AppState.leadDb.collectAsState()
     val bandDb by AppState.bandDb.collectAsState()
     val startedMs by AppState.mixingSinceMs.collectAsState()
+    val advice by AppState.advice.collectAsState()
+    val work by AppState.work.collectAsState()
     var tab by remember { mutableStateOf(AppState.startTab) }
     var picking by remember { mutableStateOf<AppState.StripUi?>(null) }
 
@@ -289,6 +291,18 @@ fun ConsoleScreen() {
                     MixerService.cmd(ctx, MixerService.ACTION_KEEP_BALANCE)
                 }
                 Spacer(Modifier.width(8.dp))
+                // REBALANCE: do it now, on both mixes.
+                //
+                // The mains get re-laddered against the balance being
+                // defended; the wedges get one deliberate pass instead
+                // of the slow drip. Bounded by exactly the same totals
+                // as the automatic work — pressing a button is
+                // permission to act now, not permission to act
+                // differently.
+                TransportKey("REBAL", false, Accent, Modifier.width(88.dp)) {
+                    MixerService.cmd(ctx, MixerService.ACTION_REBALANCE)
+                }
+                Spacer(Modifier.width(8.dp))
                 TransportKey("UNDO", false, Accent, Modifier.width(88.dp)) {
                     MixerService.cmd(ctx, MixerService.ACTION_REVERT)
                 }
@@ -298,9 +312,9 @@ fun ConsoleScreen() {
 
             // ============ tabs, and the master meters beside them
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Segmented(listOf("MIXER", "MONITORS", "LOG", "SETUP"), tab) {
-                    tab = it
-                }
+                Segmented(
+                    listOf("MIXER", "MONITORS", "STATUS", "LOG", "SETUP"),
+                    tab) { tab = it }
                 Spacer(Modifier.width(14.dp))
                 MasterMeters(leadDb, bandDb, Modifier.weight(1f))
             }
@@ -314,7 +328,18 @@ fun ConsoleScreen() {
                 detail = decisions.firstOrNull()?.reason ?: "",
                 tickMs = tickMs,
                 shadow = !directing && decisions.isNotEmpty())
-            phase?.let { PhaseBar(it) }
+
+            // THE WORST THING WRONG, ON EVERY TAB.
+            //
+            // Including "the app is not mixing", which is a fault and is
+            // coloured like one. Three shows went by with that being
+            // true and nothing on the screen saying it.
+            FaultLine(advice.firstOrNull())
+
+            // AND WHAT IT IS DOING, ALWAYS — see WorkBar. This is never
+            // absent: with no countdown to run it shows how much of the
+            // mix is where it belongs, which moves all night.
+            work?.let { WorkBar(it) }
 
             Spacer(Modifier.height(10.dp))
 
@@ -327,7 +352,8 @@ fun ConsoleScreen() {
                         modifier = Modifier.fillMaxSize(),
                         onTap = { picking = it })
                     1 -> MonitorPanel(Modifier.fillMaxSize())
-                    2 -> LastFive(decisions, Modifier.fillMaxSize())
+                    2 -> FaultPanel(advice, Modifier.fillMaxSize())
+                    3 -> LastFive(decisions, Modifier.fillMaxSize())
                     else -> SetupPanel(Modifier.fillMaxSize())
                 }
             }
@@ -485,7 +511,38 @@ private fun SetupPanel(modifier: Modifier) {
     val nights by AppState.nightsCount.collectAsState()
     val taste by AppState.tasteSummary.collectAsState()
     val lastNight by AppState.lastNightSummary.collectAsState()
+    val autoStart by AppState.autoStart.collectAsState()
+    val keepMon by AppState.keepMonitors.collectAsState()
     Column(modifier.well(10.dp).padding(16.dp)) {
+        // The two switches that decide what the app does without being
+        // asked. Both default ON; both are one tap from off.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("AUTO-START", color = if (autoStart) Ok else Muted,
+                fontWeight = FontWeight.Bold, fontSize = 15.sp,
+                letterSpacing = 1.sp)
+            Spacer(Modifier.width(8.dp))
+            Switch(checked = autoStart, onCheckedChange = {
+                MixerService.cmd(ctx, MixerService.ACTION_AUTO_START,
+                    "on" to it)
+            })
+            Spacer(Modifier.width(20.dp))
+            Text("KEEP MONITORS", color = if (keepMon) Ok else Muted,
+                fontWeight = FontWeight.Bold, fontSize = 15.sp,
+                letterSpacing = 1.sp)
+            Spacer(Modifier.width(8.dp))
+            Switch(checked = keepMon, onCheckedChange = {
+                MixerService.cmd(ctx, MixerService.ACTION_KEEP_MONITORS,
+                    "on" to it)
+            })
+        }
+        Text(
+            (if (autoStart) "connects and takes the mains by itself"
+             else "waits for you to tap MIX") + "  ·  " +
+            (if (keepMon) "wedges corrected slightly, cut-first, never " +
+                "against your hand"
+             else "wedges untouched"),
+            color = Muted, fontSize = 12.5.sp)
+        Spacer(Modifier.height(12.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("EQ + COMP", color = if (doctorOn) Ok else Muted,
                 fontWeight = FontWeight.Bold, fontSize = 15.sp,

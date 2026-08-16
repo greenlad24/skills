@@ -76,8 +76,12 @@ class MixerService : Service() {
     private val watchdog = com.stagemix.engine.FeedbackWatchdog()
     /** ringing the stage out: a narrow cut on the mic that is howling */
     private val ringOut = com.stagemix.engine.RingOut()
-    /** what is in each wedge — read and understood, never written */
+    /** what is in each wedge — read and understood */
     private val monitors = com.stagemix.engine.MonitorMap()
+    /** and the half that corrects one, slightly, cut-first */
+    private val monBal = com.stagemix.engine.MonitorBalance(monitors)
+    /** when the wedge sends were last re-read, to notice a hand on one */
+    private var sendsReadT = -1e9
     private var lastVeto = false
     private var wifiLock: WifiManager.WifiLock? = null
 
@@ -106,6 +110,14 @@ class MixerService : Service() {
     private var loopJob: Job? = null
     /** engine exceptions survived this session — see the tick guard */
     private var tickFailures = 0
+    /**
+     * When a meter frame last arrived, as a field rather than a local.
+     *
+     * The adviser needs it — "meters have stopped" is one of the faults
+     * it reports — and it runs from publishStrips, outside the loop
+     * where the local lives.
+     */
+    @Volatile private var lastRxT = 0.0
     /** the last thing the ring-out said, so it is logged once */
     private var lastRingAction = ""
 
@@ -185,9 +197,49 @@ class MixerService : Service() {
                     "learned from ${e.learned.kept} balances so far"
                     else "you pressed KEEP THIS BALANCE, but nothing is playing")
             }
+            // REBALANCE: one deliberate pass over both mixes.
+            //
+            // The mains get re-laddered against the balance being
+            // defended. The wedges get a push pass — a few moves per
+            // bus at double the usual step instead of one — still
+            // inside every night-long total, still cut-first, still
+            // silent between songs and still refusing any bus the
+            // engineer has a hand on. A button press is permission to
+            // act now; it is not permission to act differently.
             ACTION_REBALANCE -> engine?.let { e ->
-                e.rebalance(now())
-                show?.user("you asked for a new balance")
+                val t = now()
+                e.rebalance(t)
+                show?.user("you pressed REBALANCE — re-laddering the " +
+                    "mains and taking one pass at the wedges")
+                if (AppState.keepMonitors.value && AppState.directing.value) {
+                    applyMonitorPlan(monBal.plan(
+                        tSec = t,
+                        roles = e.state.mapValues { it.value.role },
+                        kit = e.drumKit(),
+                        playing = !e.betweenSongs,
+                        push = true), t)
+                    scope.launch { pollSends() }
+                } else if (!AppState.keepMonitors.value) {
+                    show?.user("(monitor keeping is off, so only the " +
+                        "mains were rebalanced)")
+                }
+            }
+            ACTION_KEEP_MONITORS -> {
+                val on = intent.getBooleanExtra("on", true)
+                AppState.keepMonitors.value = on
+                AppState.saveSwitches(this)
+                show?.user("you turned monitor keeping " +
+                    (if (on) "ON — wedges may be corrected slightly, " +
+                        "cut-first, never against your hand"
+                     else "OFF — the wedges are untouched"))
+            }
+            ACTION_AUTO_START -> {
+                val on = intent.getBooleanExtra("on", true)
+                AppState.autoStart.value = on
+                AppState.saveSwitches(this)
+                show?.user("you turned auto-start " +
+                    (if (on) "ON — it connects and mixes on its own"
+                     else "OFF — it will wait for you to tap MIX"))
             }
             ACTION_FREEZE_CH -> {
                 val ch = intent.getIntExtra("ch", -1)
@@ -345,6 +397,28 @@ class MixerService : Service() {
                 }
                 show?.net("connected to $ip:$PORT — meters and RTA " +
                     "subscribed, offline on the mixer's own Wi-Fi")
+                // AND START MIXING, WITHOUT BEING ASKED.
+                //
+                // The app used to come up watching and wait to be
+                // armed. It was never armed, for three shows, and
+                // nothing said so. Taking the mains is now the default
+                // and NOT taking them is the thing that has to be
+                // chosen — with the twenty-second listen still in front
+                // of every fader it writes, and one tap to hand them
+                // back.
+                if (AppState.autoStart.value && !AppState.directing.value) {
+                    AppState.directing.value = true
+                    tickFailures = 0
+                    AppState.mixingSinceMs.value =
+                        android.os.SystemClock.elapsedRealtime()
+                    show?.mark("MIXING ON",
+                        "auto-start: the app took the mains as soon as it " +
+                        "found the desk — it listens for " +
+                        "${engine?.settings?.learnSec?.toInt() ?: 20}s " +
+                        "before it writes anything", now())
+                    scope.launch { takeoverNow() }
+                    updateNotif()
+                }
                 runLoop()
             } catch (e: Exception) {
                 Log.w(TAG, "connect failed", e)
@@ -364,7 +438,7 @@ class MixerService : Service() {
     private suspend fun runLoop() {
         var lastKeepalive = 0.0
         var lastTick = 0.0
-        var lastRx = now()
+        var lastRx = now(); lastRxT = lastRx
         var rtaFocus = -1
         var rtaFocusT = 0.0
         var lastResync = 0.0
@@ -408,7 +482,7 @@ class MixerService : Service() {
             }
             val m = receiveOnce()
             if (m != null) {
-                lastRx = t
+                lastRx = t; lastRxT = t
                 if (AppState.conn.value == AppState.Conn.CONNECTING) {
                     AppState.conn.value = AppState.Conn.CONNECTED
                     AppState.everConnected.value = true
@@ -531,6 +605,38 @@ class MixerService : Service() {
                 if (ringOut.lastAction != lastRingAction) {
                     lastRingAction = ringOut.lastAction
                     show?.mark("RING-OUT", ringOut.lastAction, t)
+                }
+                // ANY MICROPHONE THAT HAS RUNG STOPS BEING RAISED.
+                //
+                // The keeper is the only thing in this app that can add
+                // gain to a stage, and the one place that must never
+                // happen is a channel already proven to be in a loop.
+                // Telling it about every notch closes that door for the
+                // night, and quiets raising anywhere on the stage for a
+                // few minutes after a howl.
+                for (n in ringOut.active()) monBal.onRing(n.ch, t)
+
+                // THE WEDGES, SLIGHTLY.
+                //
+                // Cut-first, one move per bus per twenty seconds, never
+                // between songs, never against a hand, never a bus
+                // master. Behind its own switch and behind MIXING, so
+                // an app that is only watching still cannot reach a
+                // musician's ears.
+                if (directing && AppState.keepMonitors.value &&
+                    !e.frozenAll) {
+                    applyMonitorPlan(monBal.plan(
+                        tSec = t,
+                        roles = e.state.mapValues { it.value.role },
+                        kit = e.drumKit(),
+                        playing = !e.betweenSongs && e.ready), t)
+                }
+                // Re-read the sends now and then: it is the only way to
+                // notice the engineer's hand on a wedge, and following
+                // that hand is the whole agreement.
+                if (t - sendsReadT > 25.0) {
+                    sendsReadT = t
+                    scope.launch { pollSends() }
                 }
                 doctor?.let { d ->
                     if (directing && AppState.doctorOn.value) {
@@ -828,6 +934,7 @@ class MixerService : Service() {
         for (ch in 0 until AppState.MIXER_CHANNELS)
             e.spectrum.shape(ch)?.let { com.stagemix.app.ui.Spectra.publish(ch, it) }
         AppState.phase.value = phaseOf(e, t)
+        publishAdviceAndWork(e, t)
         AppState.ringNotches.value = ringOut.active().associate {
             it.ch to "%.0f Hz -%.1f dB".format(java.util.Locale.ROOT,
                 it.hz, it.cutDb) }
@@ -846,6 +953,68 @@ class MixerService : Service() {
                     .sortedByDescending { it.value }.take(3).map { it.key },
                 worstOffDb = worst?.offDb ?: 0f,
                 worstCh = worst?.ch)
+        }
+    }
+
+    /**
+     * Everything that is wrong with the remedy for each, and what the
+     * app is doing right now with a bar that fills.
+     *
+     * Both are published on every tick and neither is ever empty. A
+     * panel that goes blank when things are fine trains you to read
+     * "blank" as "fine", and then a blank panel because the app has
+     * stopped looks exactly the same — which is the whole history of
+     * this project in one sentence.
+     */
+    private fun publishAdviceAndWork(e: StageEngine, t: Double) {
+        val total = AppState.config.value.channels.size
+        val mixed = e.state.count { it.value.baselineDb != null }
+        val wedgesOut = AppState.wedges.value.count {
+            kotlin.math.abs(it.worstOffDb) > 3f }
+        AppState.advice.value = com.stagemix.engine.adviseOn(
+            com.stagemix.engine.Situation(
+                connected = AppState.conn.value == AppState.Conn.CONNECTED,
+                connecting = AppState.conn.value == AppState.Conn.CONNECTING,
+                everConnected = AppState.everConnected.value,
+                autoStart = AppState.autoStart.value,
+                directing = AppState.directing.value,
+                frozenAll = AppState.frozenAll.value,
+                stageMuted = AppState.stageMuted.value,
+                balanceKept = AppState.balanceKept.value,
+                doctorOn = AppState.doctorOn.value,
+                channelsTotal = total,
+                channelsMixed = mixed,
+                metersAgeSec = (t - lastRxT).toFloat().coerceAtLeast(0f),
+                engineError = AppState.lastError.value,
+                consecutiveErrors = tickFailures,
+                hunting = ringOut.hunting,
+                ringNotches = ringOut.active().size,
+                wedgesRead = monitors.all().size,
+                wedgesOut = wedgesOut,
+                monitorsEnabled = AppState.keepMonitors.value,
+                mixingSec = if (e.takeoverT >= 0) t - e.takeoverT else -1.0))
+
+        // The bar. A countdown when there is one; otherwise how much of
+        // the mix is sitting where it should be, which moves all night.
+        val ph = AppState.phase.value
+        AppState.work.value = if (ph != null) {
+            val nowMs = android.os.SystemClock.elapsedRealtime()
+            val span = (ph.endsAtMs - ph.startedAtMs).coerceAtLeast(1L)
+            com.stagemix.engine.Work(
+                key = ph.key, label = ph.label, detail = ph.why,
+                frac = ((nowMs - ph.startedAtMs).toFloat() / span)
+                    .coerceIn(0f, 1f),
+                secsLeft = ((ph.endsAtMs - nowMs) / 1000L)
+                    .toInt().coerceAtLeast(0),
+                alarm = ph.alarm)
+        } else {
+            com.stagemix.engine.holdingWork(
+                inPlace = e.state.count { (_, st) ->
+                    st.baselineDb != null &&
+                    kotlin.math.abs(st.planFaderDb -
+                        (st.baselineDb ?: 0f)) <= e.settings.deadbandDb },
+                total = mixed.coerceAtLeast(1),
+                kept = AppState.balanceKept.value)
         }
     }
 
@@ -1069,8 +1238,14 @@ class MixerService : Service() {
             for (b in com.stagemix.engine.AUX_SEND_FIRST..
                      com.stagemix.engine.AUX_SEND_LAST) {
                 pending[osc("/ch/%02d/mix/%02d/level", ch.index + 1, b)]
-                    ?.let { monitors.onSend(b, ch.index,
-                        FaderLaw.floatToDb(it)) }
+                    ?.let {
+                        val db = FaderLaw.floatToDb(it)
+                        monitors.onSend(b, ch.index, db)
+                        // and the keeper, which compares this against
+                        // what it last wrote — that difference is how a
+                        // hand on a wedge send is detected at all
+                        monBal.onSend(b, ch.index, db, now())
+                    }
             }
         }
         for ((b, nm) in AppState.busNames.value) monitors.onBusName(b + 1, nm)
@@ -1079,11 +1254,52 @@ class MixerService : Service() {
     }
 
     /**
+     * Send the keeper's writes, and say what they were.
+     *
+     * Every one of these is an aux send. They are filtered twice — once
+     * inside [com.stagemix.engine.MonitorBalance.plan] and again here —
+     * because this is the only route in the app that reaches a
+     * musician's ears, and a filter you can see at the point of use is
+     * worth more than one you have to go and look up.
+     */
+    private fun applyMonitorPlan(
+        writes: List<com.stagemix.engine.ParamWrite>, t: Double,
+    ) {
+        for (w in writes) {
+            if (!com.stagemix.engine.isMonitorSend(w.address)) continue
+            lastParam[w.address] = w.value
+            send(OscMessage(w.address, listOf(w.value)))
+            show?.param(w.address, w.value, "", "— wedge", t)
+        }
+        val notes = monBal.drainNotes()
+        for (n in notes) show?.mark("MONITOR", n, t)
+        if (writes.isNotEmpty() || notes.isNotEmpty())
+            AppState.wedgeMoves.value = monBal.moved().map {
+                AppState.WedgeMove(it.bus, it.ch, it.appDb) }
+    }
+
+    /**
+     * Ask the desk what the wedge sends are now.
+     *
+     * The keeper can only follow a hand it can see, and the console
+     * does not volunteer send levels — so they have to be asked for,
+     * paced like every other read on a venue's Wi-Fi.
+     */
+    private suspend fun pollSends() {
+        val chans = AppState.config.value.channels
+        for (ch in chans) {
+            for (b in com.stagemix.engine.AUX_SEND_FIRST..
+                     com.stagemix.engine.AUX_SEND_LAST) {
+                send(OscMessage(osc("/ch/%02d/mix/%02d/level",
+                    ch.index + 1, b), emptyList()))
+                delay(4)
+            }
+        }
+    }
+
+    /**
      * What is in each wedge, and how far it is from what a monitor mix
-     * for that position wants — written to the log and to nothing else.
-     * The app does not touch monitor sends; this is so that a night
-     * that rang can be read afterwards, and so the operator can see
-     * that it understood the stage.
+     * for that position wants.
      */
     private fun logMonitors() {
         val e = engine ?: return
@@ -1356,6 +1572,8 @@ class MixerService : Service() {
         const val ACTION_SET_ROLE = "com.stagemix.SET_ROLE"
         const val ACTION_KEEP_BALANCE = "com.stagemix.KEEP_BALANCE"
         const val ACTION_REBALANCE = "com.stagemix.REBALANCE"
+        const val ACTION_KEEP_MONITORS = "com.stagemix.KEEP_MONITORS"
+        const val ACTION_AUTO_START = "com.stagemix.AUTO_START"
         const val ACTION_DOCTOR = "com.stagemix.DOCTOR"
         const val ACTION_FEEDBACK = "com.stagemix.FEEDBACK"
 

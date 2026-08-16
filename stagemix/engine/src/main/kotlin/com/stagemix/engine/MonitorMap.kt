@@ -204,10 +204,35 @@ class MonitorMap {
         val live = w.sends.filter { it.value > MONITOR_FLOOR_DB }
         if (live.size < minChannels) return emptyList()
         val mean = live.values.average().toFloat()
+
+        // CENTRE THE LADDER ON WHAT IS ACTUALLY IN THIS WEDGE.
+        //
+        // The ladder in `wants` is a shape — vocal above guitar above
+        // bass — and only the gaps between its rungs mean anything. Its
+        // absolute height does not, and cannot: it depends on which
+        // instruments happen to be in this particular wedge tonight.
+        //
+        // Comparing raw `mean + want` against the sends silently smuggles
+        // that height in as a target. On the centre wedge the rungs
+        // average +3, so a mix already in perfect shape reads as every
+        // single channel being 3 dB too quiet — and a keeper acting on
+        // that would cut the whole wedge to its caps and still be
+        // "wrong", in a musician's ears, all night, for nothing.
+        //
+        // Subtracting the mean of the rungs that are actually present
+        // leaves the gaps untouched and makes a correctly-shaped wedge
+        // read as correct. What survives is the only thing this app has
+        // any business having an opinion about: the balance. How loud
+        // the wedge is stays with the person standing in front of it.
+        val present = w.sends.keys.mapNotNull { ch ->
+            roles[ch]?.let { wants(w.kind, it, ch in kit) } }
+        if (present.isEmpty()) return emptyList()
+        val ladderMean = present.average().toFloat()
+
         val out = ArrayList<Note>()
         for ((ch, db) in w.sends.entries.sortedBy { it.key }) {
             val role = roles[ch] ?: continue
-            val want = wants(w.kind, role, ch in kit)
+            val want = wants(w.kind, role, ch in kit)?.minus(ladderMean)
             if (want == null) {
                 // should not be here at all: only worth saying if it IS
                 if (db > MONITOR_FLOOR_DB)

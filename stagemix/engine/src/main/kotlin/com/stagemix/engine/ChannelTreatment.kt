@@ -132,6 +132,27 @@ fun isSafeAddress(address: String): Boolean {
         .matches(address)
 }
 
+/**
+ * True if this address is a WEDGE SEND — an aux send 1-6 — and nothing
+ * else in the world.
+ *
+ * A second gate rather than a hole in the first one. [isSafeAddress]
+ * still refuses every aux send, so the tone doctor, the ring-out and
+ * every future thing that writes channel processing remain physically
+ * unable to reach a musician's ears; only [MonitorBalance] is allowed
+ * to ask this question, and it is the only class that does.
+ *
+ * Note what matches NEITHER gate: `/bus/NN/mix/fader`. How loud a wedge
+ * is remains the decision of the person standing in front of it, and
+ * there is no address in this app that can change it.
+ */
+fun isMonitorSend(address: String): Boolean {
+    val m = Regex("^/ch/(\\d\\d)/mix/(\\d\\d)/level$").find(address)
+        ?: return false
+    val send = m.groupValues[2].toIntOrNull() ?: return false
+    return send in AUX_SEND_FIRST..AUX_SEND_LAST
+}
+
 /** one EQ band, in the units an engineer thinks in */
 data class EqBand(val band: Int, val hz: Float, val gainDb: Float,
                   val q: Float)
