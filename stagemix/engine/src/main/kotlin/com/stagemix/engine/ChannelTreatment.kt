@@ -238,17 +238,23 @@ val STARTING_CHAINS: Map<Role, Chain> = mapOf(
         why = "backing vocal: further back, wetter, out of the lead's way"),
     Role.KEYS to Chain(
         hpfHz = 60f,
-        // Piano and guitar must not cancel each other. The piano keeps the
-        // low-mid BODY (200-400 Hz) — the guitar cedes it below — and in
-        // return cedes the PRESENCE band (~2.5 kHz) to the guitar's pick
-        // attack, so the two interlock instead of piling up in the same
-        // frequencies. Band 2 also clears the vocal's low-mids as before.
-        eq = listOf(EqBand(2, 300f, -2f, 1.2f), EqBand(3, 2500f, -1.5f, 1.4f)),
+        // SOFT AT ALL TIMES. A broad cut through the hardness/attack band
+        // (~4.5 kHz) keeps the piano mellow, so it sits as the warm
+        // harmonic bed and never turns bright or clangy. Then piano and
+        // guitar must not cancel: the piano keeps the low-mid BODY
+        // (200-400 Hz) — the guitar cedes it below — and in return cedes
+        // the PRESENCE band (~2.5 kHz) to the guitar's pick, so the two
+        // interlock. Band 2 also clears the vocal's low-mids as before.
+        eq = listOf(
+            EqBand(2, 300f, -2f, 1.2f),
+            EqBand(3, 2500f, -1.5f, 1.4f),
+            EqBand(1, 4500f, -3f, 0.8f)),
         compThrDb = -22f, compRatio = 2f,
         compAttackMs = 30f, compReleaseMs = 200f, compMakeupDb = null,
         reverbSendDb = -16f,
-        why = "keys: a wide bed, out of the vocal's low-mids, presence ceded " +
-            "to the guitar so the two never cancel"),
+        why = "keys: a soft, wide bed — the brightness rolled off so it " +
+            "stays mellow, out of the vocal's low-mids, presence ceded to " +
+            "the guitar so the two never cancel"),
     Role.COLOR to Chain(
         hpfHz = 120f,
         eq = listOf(EqBand(3, 2500f, -2f, 1.5f)),

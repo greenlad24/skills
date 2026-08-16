@@ -204,6 +204,12 @@ tests keep guarding the untouched behaviour).
   > "an unusual uptick in the volume of the piano … keep it around the
   > same area."
 
+  The piano's **tone** is kept soft at all times: the starting chain rolls
+  the brightness/attack off (a broad cut around 4.5 kHz) so it stays a
+  warm, mellow bed and never turns bright or clangy.
+
+  > "I also want to keep the sound of the piano soft at all times."
+
 - **Piano and guitar are EQed to never cancel each other.** Cut-only and
   complementary: the piano keeps the low-mid **body** (~300 Hz) and cedes
   the **presence** band (~2.5 kHz) to the guitar's pick; the guitar cedes
