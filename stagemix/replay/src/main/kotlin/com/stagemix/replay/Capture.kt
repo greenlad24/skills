@@ -114,7 +114,19 @@ object Capture {
                 return sb.toString()
             }
             require(line() == MAGIC) { "$file is not a StageMix capture" }
-            val (sr, hz, n) = line().trim().split(" ").map { it.toInt() }
+            // A truncated or hand-edited header must fail with a sentence,
+            // not an IndexOutOfBounds off the destructuring or a
+            // NumberFormatException off a non-numeric field.
+            val hdr = line().trim().split(" ")
+            require(hdr.size >= 3) { "$file has a corrupt capture header" }
+            val (sr, hz, n) = try {
+                Triple(hdr[0].toInt(), hdr[1].toInt(), hdr[2].toInt())
+            } catch (e: NumberFormatException) {
+                throw IllegalArgumentException("$file has a corrupt capture header")
+            }
+            require(sr in 1..768_000 && hz in 1..1_000 && n in 0..64) {
+                "$file has an out-of-range capture header ($sr Hz, $hz fps, $n ch)"
+            }
             val names = (0 until n).map { line() }
             onHeader(Tape(sr, hz, names))
 

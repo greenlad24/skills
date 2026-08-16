@@ -142,7 +142,10 @@ class MixStats {
     }
 
     fun rmsDb(): Float =
-        if (n == 0L) -128f else (10.0 * log10(sum / n)).toFloat()
+        // sum==0 is pure digital silence; log10(0) is -Infinity, which
+        // then poisons every average and diff it feeds. Floor it like
+        // peakDb does, so silence reads as the floor, not -oo.
+        if (n == 0L || sum <= 0.0) -128f else (10.0 * log10(sum / n)).toFloat()
 
     fun peakDb(): Float =
         if (peak <= 0f) -128f else (20.0 * log10(peak.toDouble())).toFloat()

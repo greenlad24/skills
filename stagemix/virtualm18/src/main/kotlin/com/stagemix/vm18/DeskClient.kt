@@ -60,6 +60,8 @@ class DeskClient(
     private val lastParam = ConcurrentHashMap<String, Float>()
     @Volatile private var collecting = false
     @Volatile private var running = false
+    /** the loop thread, so stop() can wait for it before tearing down */
+    private var worker: Thread? = null
 
     var directing = false
         set(v) {
@@ -102,11 +104,20 @@ class DeskClient(
                 d.channel?.let { "ch%02d".format(Locale.ROOT, it + 1) } ?: "  --",
                 d.reason))
         }
-        Thread({ loop() }, "desk-client").apply { isDaemon = true }.start()
+        worker = Thread({ loop() }, "desk-client").apply {
+            isDaemon = true; start() }
     }
 
     fun stop() {
+        // Wait for the loop thread to actually leave its body before
+        // closing the socket and the log out from under it. Without the
+        // join, stop() raced the worker: it could close `show` while the
+        // loop was still writing a snapshot to it, or close `sock` mid
+        // send/receive. soTimeout is 200ms, so one tick is the longest
+        // the join can block; the 1s cap is just a backstop.
         running = false
+        worker?.join(1000)
+        worker = null
         show?.let { s -> s.footer(engine, names); s.close() }
         sock.close()
     }

@@ -54,6 +54,34 @@ private const val METER_HZ = 20
 private const val TICK_SEC = 1.0
 
 fun main(args: Array<String>) {
+    // A bad recording must fail with one readable line, not a stack
+    // trace. The offline tool is fed whatever a DAW or the capture
+    // format exported — a non-WAV file, a truncated header, an
+    // unsupported bit depth, a corrupt .smcap — and every one of those
+    // used to come out of javax.sound as a raw exception dump. Turn the
+    // known failures into a sentence and exit non-zero.
+    try {
+        runReplay(args)
+    } catch (e: javax.sound.sampled.UnsupportedAudioFileException) {
+        System.err.println("not a WAV this tool can read " +
+            "(export 16/24/32-bit PCM or 32-bit float): ${e.message ?: ""}")
+        kotlin.system.exitProcess(2)
+    } catch (e: IllegalArgumentException) {
+        // WavReader's bit-depth guard, and bad CLI arguments
+        System.err.println(e.message ?: "bad input")
+        kotlin.system.exitProcess(2)
+    } catch (e: IllegalStateException) {
+        // a corrupt .smcap discovered mid-stream
+        System.err.println(e.message ?: "corrupt recording")
+        kotlin.system.exitProcess(2)
+    } catch (e: java.io.IOException) {
+        // a non-gzip .smcap surfaces here as a ZipException
+        System.err.println("could not read the recording: ${e.message ?: ""}")
+        kotlin.system.exitProcess(2)
+    }
+}
+
+private fun runReplay(args: Array<String>) {
     if (args.isEmpty()) { usage(); return }
     val opts = Opts.parse(args)
     val input = File(opts.path)
@@ -177,16 +205,29 @@ private class Opts(
             var snap = 5.0; var shadow = false; var cap: String? = null
             var mode = BalanceMode.LEAD
             var i = 0
+            // A flag with no value used to walk off the end of the array
+            // and throw an ArrayIndexOutOfBounds; a non-number after
+            // --fader threw a raw NumberFormatException. Both now fail
+            // with a sentence naming the flag.
+            fun value(flag: String): String {
+                if (i + 1 >= a.size)
+                    throw IllegalArgumentException("$flag needs a value")
+                return a[++i]
+            }
+            fun num(flag: String): Double = value(flag).let {
+                it.toDoubleOrNull()
+                    ?: throw IllegalArgumentException("$flag needs a number, got '$it'")
+            }
             while (i < a.size) {
                 when (a[i]) {
                     "--render" -> render = true
                     "--shadow" -> shadow = true
-                    "--out" -> out = a[++i]
-                    "--fader" -> fader = a[++i].toFloat()
-                    "--start" -> start = a[++i].toDouble()
-                    "--length" -> len = a[++i].toDouble()
-                    "--snapshot" -> snap = a[++i].toDouble()
-                    "--capture" -> cap = a[++i]
+                    "--out" -> out = value("--out")
+                    "--fader" -> fader = num("--fader").toFloat()
+                    "--start" -> start = num("--start")
+                    "--length" -> len = num("--length")
+                    "--snapshot" -> snap = num("--snapshot")
+                    "--capture" -> cap = value("--capture")
                     "--keep" -> mode = BalanceMode.KEEP
                     "--lead" -> mode = BalanceMode.LEAD
                     else -> if (path.isEmpty()) path = a[i]
