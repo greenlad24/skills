@@ -139,6 +139,10 @@ fun ConnectScreen() {
             Spacer(Modifier.height(14.dp))
             Text(it, color = Bad, fontSize = 13.sp)
         }
+        Spacer(Modifier.height(18.dp))
+        OutlinedButton(onClick = {
+            com.stagemix.app.DemoStage.start()
+        }) { Text("See it without a mixer (demo band)") }
         Spacer(Modifier.height(30.dp))
         Checklist()
     }
@@ -199,7 +203,7 @@ fun ConsoleScreen() {
     val leadDb by AppState.leadDb.collectAsState()
     val bandDb by AppState.bandDb.collectAsState()
     val startedMs by AppState.mixingSinceMs.collectAsState()
-    var tab by remember { mutableStateOf(0) }
+    var tab by remember { mutableStateOf(AppState.startTab) }
     var picking by remember { mutableStateOf<AppState.StripUi?>(null) }
 
     val fault = when {

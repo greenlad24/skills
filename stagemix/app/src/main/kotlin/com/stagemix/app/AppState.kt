@@ -158,6 +158,9 @@ object AppState {
     val leadDb = MutableStateFlow(-128f)
     val bandDb = MutableStateFlow(-128f)
 
+    /** which tab the console opens on — only ever set by the demo */
+    @Volatile var startTab = 0
+
     /** when MIXING was switched on, for the show clock */
     val mixingSinceMs = MutableStateFlow(0L)
 

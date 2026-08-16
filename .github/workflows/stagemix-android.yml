@@ -177,3 +177,68 @@ jobs:
           files: stagemix/VirtualM18-AppleSilicon.dmg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ------------------------------------------------------------------
+  # PICTURES OF THE ACTUAL APP.
+  #
+  # Every UI change until now shipped unseen: the console screen needs
+  # sixteen channels of live meter off a mixer that is only ever in one
+  # room. The app can now drive itself from a synthetic band (DemoStage,
+  # which cannot open a socket), so a tablet emulator can boot it and
+  # take the photograph.
+  # ------------------------------------------------------------------
+  screenshots:
+    runs-on: ubuntu-latest
+    needs: build
+    defaults:
+      run:
+        working-directory: stagemix
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get the APK that was just built
+        uses: actions/download-artifact@v4
+        with:
+          name: StageMix-apk
+          path: stagemix/apk
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Boot a tablet and photograph the app
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: default
+          arch: x86_64
+          profile: pixel_c
+          working-directory: stagemix
+          disable-animations: false
+          emulator-options: >-
+            -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+            -camera-back none -memory 3072
+          script: ./tools/shots.sh apk/StageMix.apk shots
+
+      - name: Upload the screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: StageMix-screenshots
+          path: stagemix/shots/*.png
+
+      - name: Attach them to the rolling release
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref_name, 'claude/')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: stagemix-latest
+          name: StageMix AI — latest build
+          prerelease: true
+          files: stagemix/shots/*.png
