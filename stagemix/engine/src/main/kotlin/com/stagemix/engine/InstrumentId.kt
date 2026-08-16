@@ -564,7 +564,14 @@ class InstrumentId(val settings: IdSettings = IdSettings()) {
         val fits = named.filter { familyOf(it) == v.family }
 
         // 1. the name is ambiguous and the audio picks one of its readings
-        if (named.size > 1 && fits.size == 1 && v.confidence >= settings.actConfidence)
+        // `fits[0] != current` for the same reason the other two
+        // branches check it: this function answers "what should this
+        // channel become", and "what it already is" is not an answer.
+        // It started mattering when the name vocabulary learned that a
+        // console truncates to eight characters — "Kick Drum" now reads
+        // as both a drum and a kick, which is correct and ambiguous.
+        if (named.size > 1 && fits.size == 1 && fits[0] != current &&
+            v.confidence >= settings.actConfidence)
             return Resolution(fits[0], v,
                 "\"$name\" could be ${named.joinToString(" or ") { pretty(it) }} " +
                 "— it sounds like ${pretty(fits[0])} (${v.why})")
@@ -606,10 +613,20 @@ class InstrumentId(val settings: IdSettings = IdSettings()) {
         if (has("bgv", "bvox", "backing", "back ", "choir", "harmony",
                 "harm ")) out.add(Role.BACKING_VOCAL)
         if (has("vox", "vocal", "sing", "voice", "lead v")) out.add(Role.VOCAL)
+        // A CONSOLE TRUNCATES NAMES TO EIGHT CHARACTERS, so the words
+        // an engineer types are not the words that arrive. This rig's
+        // desk says "DRUM OVRH", "DRUM SNAR", "DRUM KICK" — and
+        // "overhead" never matched "OVRH", so the overheads counted as
+        // a channel whose name says nothing, the family classifier
+        // called their 400 Hz-5 kHz content a lead vocal, and over
+        // three nights they were re-roled between percussion and VOCAL
+        // eight times. A vocal role is one the engine promises not to
+        // move, so a drum microphone kept being handed that promise.
         if (has("conga", "congo", "bongo", "perc", "cajon", "shaker",
-                "timbale", "tamb", "snare", "overhead", "oh ", "tom",
-                "hat", "kit", "ride", "crash")) out.add(Role.PERCUSSION)
-        if (has("kick", "bass", "sub", "808", "di 2", "di2"))
+                "timbale", "tamb", "snare", "snar", "snr", "overhead",
+                "ovrh", "ovhd", "ovh", "oh ", "tom", "hat", "hh", "kit",
+                "ride", "crash", "cym", "drum", "drm")) out.add(Role.PERCUSSION)
+        if (has("kick", "kik", "bd ", "bass", "sub", "808", "di 2", "di2"))
             out.add(Role.FOUNDATION)
         if (has("piano", "keys", "keyb", "rhodes", "organ", "synth",
                 "pad")) out.add(Role.KEYS)

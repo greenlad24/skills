@@ -55,6 +55,8 @@ class ShowLog(
     private var lastTone = -1.0
     private var lastSum = -1.0
     private var lastDgst = -1.0
+    private var lastBeat = -1.0
+    private var lastCard = -1.0
     private var lines = 0
     private var dropped = 0
 
@@ -101,9 +103,17 @@ class ShowLog(
         // A log that thins out is worth more than one that stops.
         if (lines >= SOFT_LINES && tag in BULK_TAGS) { dropped++; return }
         try {
-            out.write("%s %8.1f %-5s %s\n".format(Locale.ROOT,
+            // TWO CLOCKS IN ONE COLUMN IS WORSE THAN ONE.
+            //
+            // Lines that knew the engine's time printed it; the rest
+            // printed wall-time since the file opened, in the same
+            // column, with nothing to tell them apart. Reading back a
+            // three-night file that way produced a phantom fourth
+            // evening — the same hours, counted twice on two different
+            // scales. The show clock is the engine's or it is blank.
+            out.write("%s %9s %-5s %s\n".format(Locale.ROOT,
                 clock.format(Date()),
-                tSec ?: ((System.currentTimeMillis() - t0) / 1000.0),
+                tSec?.let { "%.1f".format(Locale.ROOT, it) } ?: "-",
                 tag, body))
             lines++
             if (lines % 40 == 0) out.flush()
@@ -112,6 +122,24 @@ class ShowLog(
 
     /** put(), with the engine's clock: see the note on [put] */
     private fun putT(t: Double, tag: String, body: String) = put(tag, body, t)
+
+    /** how long this file has been open, in hours */
+    fun ageHours(): Double = (System.currentTimeMillis() - t0) / 3_600_000.0
+
+    /**
+     * NOTHING IS HAPPENING, SAID ONCE EVERY FIVE MINUTES.
+     *
+     * The tablet gets left switched on. Over one weekend this wrote
+     * three days of five-second snapshots of an empty bar — 55 MB, a
+     * quarter of a million lines of sixteen silent channels — and the
+     * running picture of the actual gigs went over the line cap because
+     * of it. An empty room is one line every five minutes.
+     */
+    @Synchronized fun heartbeat(tSec: Double, text: String) {
+        if (lastBeat >= 0 && tSec - lastBeat < IDLE_BEAT_SEC) return
+        lastBeat = tSec
+        put("IDLE", text, tSec)
+    }
 
     @Synchronized fun flush() { runCatching { w?.flush() } }
 
@@ -528,6 +556,33 @@ class ShowLog(
     /** every decision kind seen tonight, counted — see footer */
     private val kinds = HashMap<String, Int>()
 
+    /**
+     * The report card, mid-night.
+     *
+     * It used to be written only by [footer], on the way out — and the
+     * app on the tablet is never shut down, so on a real night it was
+     * never written at all. The one block worth reading first was the
+     * one block the file did not have.
+     */
+    fun card(tSec: Double, e: StageEngine, names: Map<Int, String>) {
+        if (lastCard >= 0 && tSec - lastCard < CARD_EVERY_SEC) return
+        lastCard = tSec
+        put("CARD", "── the night so far, one line per channel ──", tSec)
+        put("CARD", rowHeader(), tSec)
+        for (ch in e.state.keys.sorted()) put("CARD", row(ch, e, names), tSec)
+        put("CARD", travelLine(e), tSec)
+    }
+
+    private fun travelLine(e: StageEngine): String {
+        var app = 0f; var you = 0f
+        for (st in e.state.values) { app += st.appDbMoved; you += st.humanDbMoved }
+        return ("TOTAL fader travel: this app %.0f dB, you %.0f dB by hand. %s")
+            .format(Locale.ROOT, app, you,
+                if (you > app) "You out-moved it — read the DEC lines " +
+                    "either side of your moves."
+                else "It did most of the moving.")
+    }
+
     fun footer(e: StageEngine, names: Map<Int, String> = emptyMap()) {
         val h = e.health()
         put("SUM", "END OF NIGHT — vocal on top ${pct(h.vocalOnTopPct)}, " +
@@ -544,14 +599,7 @@ class ShowLog(
         put("CARD", "── the whole night, one line per channel ──")
         put("CARD", rowHeader())
         for (ch in e.state.keys.sorted()) put("CARD", row(ch, e, names))
-        var app = 0f; var you = 0f
-        for (st in e.state.values) { app += st.appDbMoved; you += st.humanDbMoved }
-        put("CARD", ("TOTAL fader travel: this app %.0f dB over the night, " +
-            "you %.0f dB by hand. %s")
-            .format(Locale.ROOT, app, you,
-                if (you > app) "You out-moved it — read the DEC lines " +
-                    "either side of your moves."
-                else "It did most of the moving."))
+        put("CARD", travelLine(e))
         for ((ch, st) in e.state.toSortedMap()) {
             val bits = buildString {
                 if (st.arrivals > 0) append("arrived ${st.arrivals}x ")
@@ -595,6 +643,10 @@ class ShowLog(
         private const val TONE_SEC = 30.0
         /** and how often the whole stage is tabulated */
         private const val DIGEST_SEC = 120.0
+        /** how often an empty room says so */
+        const val IDLE_BEAT_SEC = 300.0
+        /** and how often the report card is written mid-night */
+        const val CARD_EVERY_SEC = 900.0
         /** decisions that are landmarks rather than commentary */
         private val MARK_KINDS = setOf(
             "gap", "music", "stage-mute", "arrive", "feature", "soloride",

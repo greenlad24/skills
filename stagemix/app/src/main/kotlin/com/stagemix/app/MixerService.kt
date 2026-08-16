@@ -141,6 +141,7 @@ class MixerService : Service() {
                 // single exception trips a limit that was reached an
                 // hour ago and switches them straight off again.
                 if (on) { tickFailures = 0; scope.launch { takeoverNow() } }
+                updateNotif()
             }
             ACTION_FREEZE_ALL -> {
                 val on = intent.getBooleanExtra("on", true)
@@ -506,9 +507,40 @@ class MixerService : Service() {
                 publishStrips(t)
                 AppState.decisions.value = e.decisions.toList()
                 show?.let { lg ->
-                    lg.snapshot(t, e, doctor, AppState.mixerChannelNames.value,
-                        directing)
-                    lg.summary(t, e, AppState.mixerChannelNames.value)
+                    // AN EMPTY ROOM IS NOT A SHOW.
+                    //
+                    // The tablet gets left switched on. Left alone over
+                    // a weekend this wrote three days of five-second
+                    // snapshots of an empty bar — 55 MB, a quarter of a
+                    // million lines of sixteen silent channels — and
+                    // the running picture of the three actual gigs went
+                    // over the file's line cap because of it.
+                    val names = AppState.mixerChannelNames.value
+                    if (e.stageQuiet(t)) {
+                        lg.heartbeat(t, "nothing on any channel — the app " +
+                            "is awake and waiting for the band")
+                        // A new night deserves a new file. Rotated only
+                        // while it is quiet, so a gig is never split.
+                        if (lg.ageHours() > LOG_ROTATE_HOURS) {
+                            lg.footer(e, names)
+                            lg.close()
+                            show = ShowLog(getExternalFilesDir(null) ?: filesDir)
+                            AppState.logPath.value = show?.file?.absolutePath ?: ""
+                            show?.head("(same session, new night)", e, names,
+                                AppState.nightsCount.value,
+                                AppState.tasteSummary.value,
+                                build = "${BuildConfig.GIT_SHA} " +
+                                    "(built ${BuildConfig.BUILT_AT}, " +
+                                    "v${BuildConfig.VERSION_NAME})")
+                        }
+                    } else {
+                        lg.snapshot(t, e, doctor, names, directing)
+                        lg.summary(t, e, names)
+                        // and the report card mid-night, because this
+                        // app is never shut down and the card used to
+                        // be written only on the way out
+                        lg.card(t, e, names)
+                    }
                 }
             }
                 // A tick that got all the way through is the only
@@ -1030,6 +1062,27 @@ class MixerService : Service() {
         }
     }
 
+    /**
+     * The line on the tablet's status bar, which is the only thing
+     * visible while the app is in the background — so it says which of
+     * the two states the app is actually in rather than "running".
+     * Three nights were spent in shadow without anybody noticing.
+     */
+    private fun notifText(): String =
+        if (AppState.directing.value) "MIXING — the app has the mains"
+        else "SHADOW — watching only, nothing sent to the mixer"
+
+    private fun updateNotif() {
+        val nm = getSystemService(NotificationManager::class.java) ?: return
+        val notif = Notification.Builder(this, CHANNEL)
+            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setContentTitle(getString(R.string.app_name))
+            .setContentText(notifText())
+            .setOngoing(true)
+            .build()
+        runCatching { nm.notify(1, notif) }
+    }
+
     private fun startForegroundNotif() {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(
@@ -1038,7 +1091,7 @@ class MixerService : Service() {
         val notif = Notification.Builder(this, CHANNEL)
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentTitle(getString(R.string.app_name))
-            .setContentText(getString(R.string.svc_running))
+            .setContentText(notifText())
             .setOngoing(true)
             .build()
         if (Build.VERSION.SDK_INT >= 29) {
@@ -1096,6 +1149,8 @@ class MixerService : Service() {
         const val ACTION_DISCONNECT = "com.stagemix.DISCONNECT"
         const val ACTION_SNAPSHOT = "com.stagemix.SNAPSHOT"
         const val ACTION_REVERT = "com.stagemix.REVERT"
+        /** a log file covers one night; see the rotate above */
+        const val LOG_ROTATE_HOURS = 10.0
         const val ACTION_DIRECTING = "com.stagemix.DIRECTING"
         const val ACTION_FREEZE_ALL = "com.stagemix.FREEZE_ALL"
         const val ACTION_FREEZE_CH = "com.stagemix.FREEZE_CH"

@@ -308,6 +308,14 @@ data class EngineSettings(
     val clipFreezeDb: Float = -3f,
     val clipHoldSec: Float = 2f,
     val meterTimeoutSec: Float = 1f,
+    /**
+     * How long a channel has to be quiet before it counts as having
+     * stopped playing. The release time on the activity gate: longer
+     * than the gap between two notes, shorter than the gap between two
+     * songs. Without it the gate chatters on every percussive channel
+     * and takes the whole engine with it.
+     */
+    val gateHoldSec: Float = 2.5f,
     val broadbandJumpDb: Float = 6f,
     val broadbandHoldSec: Float = 5f,
     val idleRampAfterSec: Float = 60f,
@@ -650,6 +658,10 @@ class ChannelState(val cfg: ChannelConfig) {
     var deskMuted = false
     /** just came back from a desk mute: this is a resume, not an arrival */
     var resumingFromMute = false
+    /** the last moment this channel was above the gate — see gateHoldSec */
+    var lastAboveT = -1.0
+    /** quiet right now, whatever the gate hold says */
+    var belowGate = false
     /** when the operator unmuted it, so the line above can go stale */
     var unmutedAt = -1.0
     /** deadband hysteresis: once engaged we converge fully */
@@ -770,6 +782,32 @@ const val LEARNED_SLACK_DB = 4f
  * would track continuously with no dwell and no deadband.
  */
 const val RIDE_MAX_SEC = 30.0
+
+/**
+ * How often the whole-stage level jump is measured. Long enough that
+ * music does not look like a gain change, short enough that a gain
+ * change is caught before the engine acts on it.
+ */
+const val BROADBAND_EVERY_SEC = 0.5
+
+/** and the window each of those samples is compared against */
+const val BROADBAND_WINDOW_SEC = 2.0
+
+/**
+ * How long "the band has stopped" (or started) has to be true before
+ * the engine acts on it. A gap between songs is tens of seconds; a bar
+ * of silence inside one is not a gap.
+ */
+const val GAP_DWELL_SEC = 4.0
+
+/**
+ * How far over the boost budget the mix has to be before the engine
+ * starts taking boosts back. Without a little slack the unwind is a
+ * switch rather than a control: it fights the pyramid across the
+ * boundary, and where a channel ends up then depends on which side of
+ * the cycle you happen to look at.
+ */
+const val BUDGET_SLACK_DB = 0.5f
 
 class StageEngine(
     channels: List<ChannelConfig>,
@@ -1077,6 +1115,11 @@ class StageEngine(
     private var lastTickT = -1.0
     private var clipHoldUntil = 0.0
     private var broadbandHoldUntil = 0.0
+    private var lastBroadbandT = -1.0
+    private var lastBroadbandRef = -1.0
+    /** the gap test's answer, and since when — see GAP_DWELL_SEC */
+    private var gapPending = false
+    private var gapSince = -1.0
     private var lastMixMean: Float? = null
     private var lastMixCount = 0
     private val prevLevel = HashMap<Int, Float>()
@@ -1124,8 +1167,39 @@ class StageEngine(
             st.lastLevelDb = db
             if (st.role != Role.TALK && !st.deskMuted && db > loudestLive)
                 loudestLive = db
-            if (!st.gateOpen && db > enterGate) st.gateOpen = true
-            else if (st.gateOpen && db < exitGate) st.gateOpen = false
+            // A PLAYER IS STILL PLAYING BETWEEN THE NOTES.
+            //
+            // This gate had level hysteresis and no time at all, and
+            // the level of a struck instrument between hits is the room
+            // — a kick at 120 bpm is over the gate for a tenth of a
+            // second and thirty dB under it for the other four tenths.
+            // So the gate opened and shut on every beat, and everything
+            // built on "is this channel playing" shook itself apart:
+            // on three nights of a real band it produced 613 flips
+            // between "the band is playing" and "the band has stopped"
+            // (median gap: ONE SECOND), 321 instruments "arriving", 96
+            // channels declared silent and pulled 12 dB down, and an
+            // anchor that moved seven dB every five seconds as members
+            // fell in and out of it. One gap message said "1 of about 5
+            // channels playing" with the whole band on stage.
+            //
+            // Every envelope follower ever built has a release time.
+            // The gate opens on the first thing loud enough and stays
+            // open until the channel has been quiet CONTINUOUSLY for
+            // longer than a bar. Silence between notes is not silence.
+            if (db > exitGate) st.lastAboveT = tSec
+            // Present, but not making a sound this second. The gate
+            // hold keeps a channel in the mix through the gaps in a
+            // part; it must not also make a rest look like a player who
+            // has got quieter and needs lifting.
+            st.belowGate = db < exitGate
+            if (!st.gateOpen && db > enterGate) {
+                st.gateOpen = true
+                st.lastAboveT = tSec
+            } else if (st.gateOpen && db < exitGate &&
+                       tSec - st.lastAboveT > settings.gateHoldSec) {
+                st.gateOpen = false
+            }
             // Static-source detection: music moves, a ground loop and an
             // empty open mic do not. A source whose level has barely
             // moved for a long while is not an instrument — and it is
@@ -1312,8 +1386,20 @@ class StageEngine(
         // two you cannot tell "the band stopped" from "one of the two
         // stopped", and on a small rig the conservative answer is to
         // treat a silent channel as silent.
-        val gapNow = stagePeak >= settings.stageQuietChannels + 1 &&
+        val gapRaw = stagePeak >= settings.stageQuietChannels + 1 &&
             playingNow * 3 <= stagePeak && stageIsQuiet
+        // AND IT HAS TO MEAN IT.
+        //
+        // A flag that silences the whole engine must not be decided by
+        // one frame. Even with a proper release time on the activity
+        // gate, the count test sits near its boundary in a thin
+        // arrangement, and a flag that flips on a single frame gave
+        // 613 changes of mind over three nights — median one second
+        // each. A gap between songs is tens of seconds; nothing is
+        // lost by making both directions wait four.
+        if (gapRaw != gapPending) { gapPending = gapRaw; gapSince = tSec }
+        val gapNow = if (tSec - gapSince >= GAP_DWELL_SEC) gapPending
+                     else betweenSongs
         // SAY WHEN IT THINKS THE BAND HAS STOPPED.
         //
         // This one flag silences the whole engine — no ride, no
@@ -1342,24 +1428,69 @@ class StageEngine(
             activeBuf[i] = state[i]?.let { it.active && !it.isStatic } ?: false
         ensemble.onFrame(levels, activeBuf, dtFrame)
         // Broadband guard over the INTERSECTION of channels active in
-        // both frames. Bailing out whenever the active set changed made
+        // both samples. Bailing out whenever the active set changed made
         // the guard disarm itself exactly when it was needed — at a song
         // end, when applause opens every mic at once and the engine
         // starts re-balancing the audience.
-        var interSum = 0f; var interN = 0
-        for ((idx, st) in state) {
-            val prev = prevLevel[idx] ?: continue
-            // active in BOTH frames — a channel that just woke up is a
-            // new source, not a level change on an existing one
-            if (!st.active || idx !in prevActive) continue
-            interSum += st.lastLevelDb - prev; interN++
+        //
+        // ON A SMOOTHED LEVEL, AND NOT EVERY FRAME.
+        //
+        // What this is for is somebody changing a master, a preamp or a
+        // patch: the whole stage moves together and nothing the engine
+        // believes about levels is true any more. Measured between
+        // consecutive 50 ms frames of RAW meter it instead measured
+        // MUSIC — a kick decays thirty dB inside a fifth of a second,
+        // so any stage with drums on it was permanently "waiting for a
+        // big level change". Over three nights of a real band that was
+        // 37 % of every metered second, and in the tests it stopped the
+        // engine dead. A gain change is still a gain change on a three
+        // second average half a second later; a snare hit is not.
+        if (tSec - lastBroadbandT >= BROADBAND_EVERY_SEC) {
+            lastBroadbandT = tSec
+            val moves = ArrayList<Float>()
+            for ((idx, st) in state) {
+                val prev = prevLevel[idx] ?: continue
+                val now = st.fastEma ?: continue
+                // active in BOTH samples — a channel that just woke up
+                // is a new source, not a level change on an existing one
+                if (!st.active || idx !in prevActive) continue
+                moves.add(now - prev)
+            }
+            // THE MIDDLE CHANNEL, NOT THE AVERAGE OF THEM, AND ON A
+            // SMOOTHED LEVEL OVER A WINDOW.
+            //
+            // A mean is moved by one channel doing something extreme,
+            // and on a stage that is a drum: measured between raw 50 ms
+            // frames, a kick decaying thirty dB dragged the average
+            // past six and held the whole engine still — 37 % of every
+            // metered second across three real nights. The median asks
+            // the right question instead: did MOST of the stage move
+            // together? And it is asked of the three-second average
+            // over a two-second window, so the answer does not depend
+            // on which two frames happen to be compared — the same
+            // recording replayed at a different meter rate used to
+            // reach a different mix because of exactly that.
+            //
+            // A step of N dB shows up as about 0.6N on a three-second
+            // average two seconds later, which is where the factor
+            // below comes from.
+            if (moves.size >= 2) {
+                moves.sort()
+                val mid = if (moves.size % 2 == 1) moves[moves.size / 2]
+                          else (moves[moves.size / 2 - 1] +
+                                moves[moves.size / 2]) / 2f
+                if (abs(mid) > settings.broadbandJumpDb * 0.6f)
+                    broadbandHoldUntil = tSec + settings.broadbandHoldSec
+            }
         }
-        if (interN >= 2 && abs(interSum / interN) > settings.broadbandJumpDb)
-            broadbandHoldUntil = tSec + settings.broadbandHoldSec
-        prevActive.clear()
-        for ((idx, st) in state) {
-            prevLevel[idx] = st.lastLevelDb
-            if (st.active) prevActive.add(idx)
+        // the window this is measured over, refreshed on its own beat
+        if (tSec - lastBroadbandRef >= BROADBAND_WINDOW_SEC) {
+            lastBroadbandRef = tSec
+            prevActive.clear()
+            for ((idx, st) in state) {
+                prevLevel[idx] = st.fastEma ?: st.lastLevelDb
+                if (st.active) prevActive.add(idx)
+            }
         }
         if (n > 0) { lastMixMean = mean / n; lastMixCount = n }
     }
@@ -1761,9 +1892,25 @@ class StageEngine(
         // being re-steered every tick — but a channel that settled with
         // a boost it could afford, in a mix that later lost half its
         // sources, sat there breaching it for the rest of the night.
-        if (boostLoudnessDb() > settings.mixBoostBudgetDb) {
+        // OVER BUDGET IS SOMETHING TO UNDO, NOT SOMETHING TO NOTE.
+        //
+        // This used to un-settle the boosted channels and wait for the
+        // pyramid to ask for less. That works while the mix is stable
+        // and fails exactly when it matters: the budget is a ratio
+        // against the rest of the mix, so it is BREACHED at the moment
+        // a loud channel drops out — a guitar cable flickering, a
+        // player stopping — and at that moment the pyramid is being
+        // told to hold still by the very same event. So the mix sat
+        // over its boost budget for as long as the disturbance lasted.
+        //
+        // Giving it back is always safe: nothing here can make anything
+        // louder, and the moment the ratio is back inside the budget
+        // this stops asking. Bounded at zero, so it unwinds our own
+        // boosts and never pulls a channel under the level you set.
+        val overBudget = boostLoudnessDb() - settings.mixBoostBudgetDb
+        if (overBudget > 0f) {
             for (st in state.values)
-                if (st.settled && st.offset > 0f) {
+                if (st.offset > 0f) {
                     st.settled = false
                     st.atPlaceSince = -1.0
                 }
@@ -2805,8 +2952,15 @@ class StageEngine(
             if (st.role == Role.TALK && abs(st.offset) <= 0.01f) continue
             if (tSec < st.overrideUntil) continue
             val base = st.baselineDb ?: continue
-            val tgt = boundOffset(st.target + st.duckDb, base)
+            var tgt = boundOffset(st.target + st.duckDb, base)
             val cur = st.offset
+            // GIVING IT BACK IS ALWAYS ALLOWED. Applied here rather
+            // than to `target`, because everything between recomputes
+            // the target from the pyramid and would simply overwrite
+            // it — which is why the mix could sit over its boost budget
+            // for a whole minute while this said it was correcting.
+            if (overBudget > BUDGET_SLACK_DB && tgt > 0f)
+                tgt = max(0f, min(tgt, cur - (overBudget - BUDGET_SLACK_DB)))
             if (abs(tgt - cur) < 0.05f) continue
             // KEEP rides at an engineer's pace, not a limiter's, and the
             // same pace in both directions: a fader that comes down at
@@ -2815,7 +2969,12 @@ class StageEngine(
             val riding = settings.mode == BalanceMode.KEEP &&
                 st.planContrib != null && st.featureStart < 0
             val step: Float = if (tgt > cur) {
-                if (!up) 0f
+                // NOT WHILE THE PART HAS A REST IN IT. The activity gate
+                // holds a channel in the mix through the gaps between
+                // notes, which is what keeps the engine steady; pushing
+                // its fader UP during one of those gaps would turn every
+                // rest into a lift and every re-entry into a jump.
+                if (!up || st.belowGate) 0f
                 else {
                     val fast = tSec < st.fastUntil && cur < 0f
                     val rate = if (riding) settings.ridePerSecDb
@@ -3855,6 +4014,15 @@ class StageEngine(
      */
     fun isStaticSource(ch: Int): Boolean = state[ch]?.isStatic == true
     fun boostsAllowed(tSec: Double): Boolean = upwardAllowed(tSec)
+
+    /**
+     * Nothing is playing at all: no meters, or nothing anywhere on the
+     * stage above the absolute floor. Not the same question as
+     * [betweenSongs], which is about a band that is present and has
+     * stopped for a moment; this is an empty room.
+     */
+    fun stageQuiet(tSec: Double): Boolean =
+        !meterFresh(tSec) || stageNowDb < settings.absoluteFloorDb
 
     fun meterFresh(tSec: Double): Boolean =
         lastMeterT >= 0 && tSec - lastMeterT <= settings.meterTimeoutSec

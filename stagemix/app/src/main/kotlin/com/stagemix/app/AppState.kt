@@ -261,8 +261,26 @@ object AppState {
                 // silently drops, leaving the channel dead all night.
                 val idx = c.getInt("i")
                 if (idx !in 0 until MIXER_CHANNELS || !seen.add(idx)) continue
+                // THE RIG'S STRUCTURE IS NOT THE OPERATOR'S TO LOSE.
+                //
+                // Saved preferences carry the name and the role — the
+                // two things a person edits. `locked` and `pairWith`
+                // are facts about the rig that live in the profile:
+                // microphones taped to a drum kit, two DIs that are one
+                // bass, two channels that are one piano. Rebuilding a
+                // ChannelConfig from prefs alone quietly dropped both,
+                // so the first time this app saved anything, the kick,
+                // the snare and BOTH bass DIs stopped being locked —
+                // and on the next real night the listener duly re-roled
+                // "BASS DI" and "DI 2" to congas, which is exactly what
+                // the lock exists to prevent. Structure comes from the
+                // profile, by index, every time.
+                val shape = com.stagemix.engine.defaultRigProfile()
+                    .getOrNull(idx)
                 chs.add(ChannelConfig(idx, c.getString("n"),
-                    Role.valueOf(c.getString("r"))))
+                    Role.valueOf(c.getString("r")),
+                    locked = shape?.locked ?: false,
+                    pairWith = shape?.pairWith))
             }
             config.value = Config(o.optString("ip"),
                 if (chs.isEmpty()) Config().channels else chs)

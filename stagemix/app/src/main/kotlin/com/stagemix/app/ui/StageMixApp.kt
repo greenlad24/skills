@@ -274,17 +274,41 @@ fun ConsoleScreen() {
         }
         Spacer(Modifier.height(10.dp))
 
-        // ---- transport row
+        // ---- THE ONE BUTTON THAT MATTERS
+        //
+        // It said "Take over the mains" and took over nothing. The
+        // button sent ACTION_SNAPSHOT — a re-baseline — while the thing
+        // that actually starts mixing was an unlabelled switch up in
+        // the header beside a line of small text. On three consecutive
+        // nights the operator opened the app, pressed the big obvious
+        // button twenty seconds after connecting, and the app then
+        // watched the entire gig without writing one fader. Three
+        // nights of a real band, and the log is 55 MB of an autopilot
+        // taking notes.
+        //
+        // So the big button IS the switch now, it says which state it
+        // will put you in, and re-baselining — which only means
+        // anything once it is mixing — sits beside it.
+        if (!directing) Text(
+            "SHADOW — nothing is being sent to the mixer. Press START " +
+            "MIXING when you want the app to take the mains.",
+            color = Warn, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(6.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Button(
-                onClick = { MixerService.cmd(ctx, MixerService.ACTION_SNAPSHOT) },
+                onClick = { MixerService.cmd(ctx, MixerService.ACTION_DIRECTING,
+                    "on" to !directing) },
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = if (snap) Panel2 else Accent),
-            ) { Text(if (snap) "Re-baseline (bounds = now)" else "Take over the mains",
-                     color = if (snap) Ink else Bg) }
+                    containerColor = if (directing) Bad else Ok),
+            ) { Text(if (directing) "■ STOP — hand the mains back"
+                     else "▶ START MIXING (take the mains)",
+                     color = Bg, fontWeight = FontWeight.Bold) }
+            OutlinedButton(
+                onClick = { MixerService.cmd(ctx, MixerService.ACTION_SNAPSHOT) },
+            ) { Text("Re-baseline (bounds = now)") }
             OutlinedButton(onClick = {
                 MixerService.cmd(ctx, MixerService.ACTION_REVERT)
-            }) { Text("Hand back the mains") }
+            }) { Text("Undo my moves") }
             Button(
                 onClick = {
                     MixerService.cmd(ctx, MixerService.ACTION_FREEZE_ALL,
