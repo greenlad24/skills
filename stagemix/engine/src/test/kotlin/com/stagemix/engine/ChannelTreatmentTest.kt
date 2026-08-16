@@ -343,10 +343,15 @@ class ChannelTreatmentTest {
             if (w.isEmpty()) continue
             val addrs = w.map { it.address }
             if (addrs.any { it == "/ch/09/eq/on" }) {
-                for (b in 1..4)
+                for (b in 1..3)
                     assertTrue(addrs.contains("/ch/09/eq/$b/g"),
                         "$role switches the EQ on without saying what " +
                         "band $b is: $addrs")
+                // band 4 is the ring-out's, and a notch that the chain
+                // flattens is not a notch
+                assertTrue(addrs.none {
+                        it.startsWith("/ch/09/eq/${RingOut.RING_BAND}/") },
+                    "$role wrote the band kept for ring-outs: $addrs")
                 for (p in w.filter { Regex("eq/[1-4]/g$").containsMatchIn(it.address) })
                     assertTrue(p.value <= 0.5f + GAIN_EPS,
                         "$role leaves ${p.address} above flat: ${p.value}")
@@ -368,7 +373,7 @@ class ChannelTreatmentTest {
         val w = t.consider(8, Role.VOCAL, verdict(0.95f), 1f, spec(), 100.0)
         val addrs = w.map { it.address }
         val eqOn = addrs.indexOf("/ch/09/eq/on")
-        if (eqOn >= 0) for (b in 1..4)
+        if (eqOn >= 0) for (b in 1..3)
             assertTrue(addrs.indexOf("/ch/09/eq/$b/g") in 0 until eqOn ||
                        addrs.lastIndexOf("/ch/09/eq/$b/g") > eqOn,
                 "band $b is never set: $addrs")

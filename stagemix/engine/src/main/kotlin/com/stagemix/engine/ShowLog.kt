@@ -245,8 +245,15 @@ class ShowLog(
         put("MARK", "%-12s %s".format(Locale.ROOT, kind, text), tSec)
 
     fun takeover(faders: Map<Int, Float>, names: Map<Int, String>) {
-        put("TAKE", "MIXING on — these fader positions are now the " +
-            "authority bounds' centre (${faders.size} channels)")
+        // NOT "MIXING on". This is a snapshot of the faders, and it
+        // happens on the re-baseline button as well as on the mixing
+        // switch — so for three nights the log said MIXING on while the
+        // app wrote nothing at all, which is how a log stops being
+        // evidence and starts being another thing to disbelieve.
+        put("TAKE", "took a snapshot of your faders — these positions " +
+            "are now the centre of what the app may do " +
+            "(${faders.size} channels). Whether it is ALLOWED to write " +
+            "is a separate thing: look for MIXING ON.")
         for ((ch, db) in faders.toSortedMap())
             put("TAKE", "ch%02d %-18s %+6.2f dB".format(Locale.ROOT,
                 ch + 1, names[ch] ?: "", db))

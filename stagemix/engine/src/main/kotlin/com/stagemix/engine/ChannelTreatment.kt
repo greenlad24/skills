@@ -439,7 +439,8 @@ class ChannelTreatment(
         val rHz = shape.resonanceHz
         if (rHz != null && shape.resonanceDb >= RESONANCE_MIN_DB) {
             val used = out.eq.map { it.band }.toSet()
-            val band = (2..3).firstOrNull { it !in used }
+            val band = (2..3).firstOrNull {
+                it !in used && it != RingOut.RING_BAND }
             if (band != null) {
                 val cut = -(shape.resonanceDb - 2f)
                     .coerceAtMost(RESONANCE_MAX_CUT_DB)
@@ -502,8 +503,11 @@ class ChannelTreatment(
             // So every band this chain does not set is written flat
             // first. What comes out of the EQ is then exactly what this
             // book asked for and nothing else.
+            // Band 4 belongs to the ring-out and is never touched
+            // here — see RingOut.RING_BAND. A notch that the next
+            // re-treat flattens is not a notch.
             val mine = chain.eq.map { it.band }.toSet()
-            for (b in 1..4) if (b !in mine)
+            for (b in 1..4) if (b !in mine && b != RingOut.RING_BAND)
                 put("/ch/$c/eq/$b/g", eqGainToFloat(0f))
             put("/ch/$c/eq/on", 1f)
             for (b in chain.eq) {

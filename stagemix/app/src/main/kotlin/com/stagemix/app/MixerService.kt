@@ -74,6 +74,10 @@ class MixerService : Service() {
     private var engine: StageEngine? = null
     private var doctor: ToneDoctor? = null
     private val watchdog = com.stagemix.engine.FeedbackWatchdog()
+    /** ringing the stage out: a narrow cut on the mic that is howling */
+    private val ringOut = com.stagemix.engine.RingOut()
+    /** what is in each wedge — read and understood, never written */
+    private val monitors = com.stagemix.engine.MonitorMap()
     private var lastVeto = false
     private var wifiLock: WifiManager.WifiLock? = null
 
@@ -102,6 +106,8 @@ class MixerService : Service() {
     private var loopJob: Job? = null
     /** engine exceptions survived this session — see the tick guard */
     private var tickFailures = 0
+    /** the last thing the ring-out said, so it is logged once */
+    private var lastRingAction = ""
 
     /** parameter enquiry replies parked here by address */
     private val pending = ConcurrentHashMap<String, Float>()
@@ -422,8 +428,17 @@ class MixerService : Service() {
             val e = engine ?: continue
             // RTA round-robin: park the console's RTA on each active
             // channel for ~3 s so the doctor hears everyone regularly.
-            if (t - rtaFocusT > 3.0) {
-                val active = e.activeChannels().sorted()
+            //
+            // WHILE A RING IS BEING HUNTED, sweep fast and sweep
+            // EVERYTHING. A howl is a loop through one microphone and
+            // the point of the sweep is to find which one — including
+            // channels the engine currently thinks are silent, because
+            // a mic pointed into a wedge that is ringing may be doing
+            // nothing else at all.
+            val hunting = ringOut.hunting
+            if (t - rtaFocusT > (if (hunting) 0.5 else 3.0)) {
+                val active = if (hunting) (0 until AppState.MIXER_CHANNELS).toList()
+                             else e.activeChannels().sorted()
                 if (active.isNotEmpty()) {
                     val next = active[(active.indexOf(rtaFocus) + 1)
                         .mod(active.size)]
@@ -494,6 +509,24 @@ class MixerService : Service() {
                         show?.param(w.address, w.value,
                             ch?.let { chName(it) } ?: "", tSec = t)
                     }
+                // RINGING OUT IS SAFETY, NOT TONE, so it is not behind
+                // the EQ switch — but it still needs the mains, because
+                // an app that is only watching must write nothing at
+                // all. In shadow the hunt still runs and the log says
+                // which microphone it would have cut.
+                for (w in ringOut.tick(t, mayWrite = directing)) {
+                    lastParam[w.address] = w.value
+                    send(OscMessage(w.address, listOf(w.value)))
+                    val rch = Regex("^/ch/(\\d\\d)/").find(w.address)
+                        ?.groupValues?.get(1)?.toIntOrNull()?.minus(1)
+                    show?.param(w.address, w.value,
+                        rch?.let { chName(it) } ?: "",
+                        "— ringing out", t)
+                }
+                if (ringOut.lastAction != lastRingAction) {
+                    lastRingAction = ringOut.lastAction
+                    show?.mark("RING-OUT", ringOut.lastAction, t)
+                }
                 doctor?.let { d ->
                     if (directing && AppState.doctorOn.value) {
                         for (w in d.tick(e.activeChannels(),
@@ -606,6 +639,11 @@ class MixerService : Service() {
                         show?.mark(if (watchdog.vetoActive) "FEEDBACK"
                                    else "FEEDBACK CLEAR",
                             "~${watchdog.lastFreqHz} Hz", t)
+                        // and do something about it: find the
+                        // microphone the ring is living in and notch it
+                        if (watchdog.vetoActive)
+                            ringOut.ringing(watchdog.lastFreqHz, t)
+                        else ringOut.cleared(t)
                         show?.note("HOWL", if (watchdog.vetoActive)
                             "feedback suspected at ~${watchdog.lastFreqHz} Hz " +
                             "— every boost frozen until it clears"
@@ -615,6 +653,7 @@ class MixerService : Service() {
                             "— boosts frozen; notch it on the GEQ"
                         else null
                     }
+                    ringOut.onRta(rtaFocus, bins, t)
                     // channel attribution for the doctor needs the
                     // analyzer settled on its focus source
                     if (rtaFocus >= 0 && t - rtaFocusT > 0.5) {
@@ -826,6 +865,21 @@ class MixerService : Service() {
         // tablet's Wi-Fi, and every dropped reply is a channel the
         // autopilot then leaves unmanaged all night.
         for (ch in chans) { enquire(ch.index); delay(3) }
+        // AND WHAT IS IN THE WEDGES.
+        //
+        // Read only. Six sends per channel is ninety-six small packets,
+        // paced like everything else, and it is the first time this app
+        // has looked at the monitors at all — which is why it has never
+        // been able to say anything useful about a stage that was
+        // ringing. Nothing here is ever written back: see MonitorMap.
+        for (ch in chans) {
+            for (b in com.stagemix.engine.AUX_SEND_FIRST..
+                     com.stagemix.engine.AUX_SEND_LAST) {
+                send(OscMessage(osc("/ch/%02d/mix/%02d/level",
+                    ch.index + 1, b), emptyList()))
+                delay(2)
+            }
+        }
         withTimeoutOrNull(3000) {
             while (chans.any {
                     !pending.containsKey(
@@ -911,7 +965,53 @@ class MixerService : Service() {
                     if (haveEq) gains else null, thr)
             }
         }
+        // the wedges, as the engineer has them right now
+        for (ch in chans) {
+            for (b in com.stagemix.engine.AUX_SEND_FIRST..
+                     com.stagemix.engine.AUX_SEND_LAST) {
+                pending[osc("/ch/%02d/mix/%02d/level", ch.index + 1, b)]
+                    ?.let { monitors.onSend(b, ch.index,
+                        FaderLaw.floatToDb(it)) }
+            }
+        }
+        for ((b, nm) in AppState.busNames.value) monitors.onBusName(b + 1, nm)
+        logMonitors()
         publishStrips(now())
+    }
+
+    /**
+     * What is in each wedge, and how far it is from what a monitor mix
+     * for that position wants — written to the log and to nothing else.
+     * The app does not touch monitor sends; this is so that a night
+     * that rang can be read afterwards, and so the operator can see
+     * that it understood the stage.
+     */
+    private fun logMonitors() {
+        val e = engine ?: return
+        val names = AppState.mixerChannelNames.value
+        val roles = e.state.mapValues { it.value.role }
+        val lg = show ?: return
+        lg.note("MON", "── the monitors, read only: this app does not " +
+            "write a monitor send or a bus master ──")
+        for (w in monitors.all()) {
+            lg.note("MON", monitors.describe(w.bus, names))
+            for (n in monitors.critique(w.bus, roles, e.drumKit()).take(5)) {
+                val what = if (n.wantDb == null)
+                    ("%s is in this wedge at %+.1f dB and a %s monitor " +
+                     "does not want it there")
+                        .format(java.util.Locale.ROOT,
+                            names[n.ch] ?: "ch%02d".format(n.ch + 1),
+                            n.nowDb, w.kind.name.lowercase())
+                else if (kotlin.math.abs(n.offDb) < 3f) continue
+                else ("%s is %+.1f dB from where a %s monitor would put " +
+                      "it (%s is %+.1f, the mix wants %+.1f)")
+                        .format(java.util.Locale.ROOT,
+                            names[n.ch] ?: "ch%02d".format(n.ch + 1),
+                            -n.offDb, w.kind.name.lowercase(),
+                            n.role.name.lowercase(), n.nowDb, n.wantDb)
+                lg.note("MON", "  " + what)
+            }
+        }
     }
 
     private fun revert() {

@@ -4021,6 +4021,33 @@ class StageEngine(
      * [betweenSongs], which is about a band that is present and has
      * stopped for a moment; this is an empty room.
      */
+    /**
+     * The drum kit: the channels a wedge does not want, because the kit
+     * is three feet from the player and arrives over the top of the
+     * stage whatever the monitor send says.
+     *
+     * The congas are deliberately NOT in here. They are across the
+     * stage from everybody, they are "the rest" in most wedges, and the
+     * bass player asked for them by name.
+     */
+    fun drumKit(): Set<Int> {
+        val out = HashSet<Int>()
+        for ((ch, st) in state) {
+            val n = st.name.lowercase()
+            val namedKit = listOf("kick", "kik", "snare", "snar", "snr",
+                "overhead", "ovrh", "ovhd", "ovh", "hat", "hh", "tom",
+                "cym", "ride", "crash").any { it in n }
+            val namedConga = listOf("conga", "congo", "bongo", "cajon",
+                "timbale", "perc").any { it in n }
+            val heard = recognised[ch]?.instrument
+            val heardKit = heard == Instrument.KICK ||
+                heard == Instrument.SNARE || heard == Instrument.CYMBALS
+            if (namedConga) continue
+            if (namedKit || heardKit) out.add(ch)
+        }
+        return out
+    }
+
     fun stageQuiet(tSec: Double): Boolean =
         !meterFresh(tSec) || stageNowDb < settings.absoluteFloorDb
 
