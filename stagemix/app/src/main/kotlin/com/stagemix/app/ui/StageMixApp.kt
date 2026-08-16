@@ -265,8 +265,8 @@ fun ConsoleScreen() {
                             fault != null -> fault
                             frozenAll -> "every fader is held exactly where " +
                                 "it is — tap FREEZE to resume"
-                            stageMuted -> "you have the band muted — there " +
-                                "is no mix to make"
+                            stageMuted -> "you have the band muted on the " +
+                                "desk — unmute to let it pick up again"
                             !directing -> "nothing is being sent to the " +
                                 "mixer — tap MIX to start"
                             balanceKept -> "holding the balance you kept · " +
@@ -276,15 +276,34 @@ fun ConsoleScreen() {
                         color = Ink2, fontSize = 14.sp, maxLines = 2)
                 }
                 Spacer(Modifier.width(12.dp))
+                // THE PANIC CONTROLS CHANGE THE TRUTH HERE, NOT IN A
+                // SERVICE.
+                //
+                // Every key used to be a pure remote control: fire an
+                // Intent at MixerService and hope. All the state they
+                // appear to change is owned by that service and written
+                // only inside onStartCommand — so when the service is
+                // not up, the key does nothing, says nothing, and looks
+                // exactly like a key that worked. A UI smoke test on a
+                // tablet caught MIX and FREEZE doing precisely that.
+                //
+                // At a gig the service is a live foreground service and
+                // the round trip completes, but that guarantee lapses
+                // the moment it dies or is disconnected — and FREEZE is
+                // the panic button. It has to work with no service, no
+                // engine and no console. So the flag flips here, and
+                // the service is told afterwards.
                 TransportKey("MIX", live, Live, Modifier.width(88.dp)) {
+                    AppState.directing.value = !directing
                     MixerService.cmd(ctx, MixerService.ACTION_DIRECTING,
-                        "on" to !directing)
+                        "on" to AppState.directing.value)
                 }
                 Spacer(Modifier.width(8.dp))
                 TransportKey("FREEZE", frozenAll, Bad, Modifier.width(88.dp),
                     square = true) {
+                    AppState.frozenAll.value = !frozenAll
                     MixerService.cmd(ctx, MixerService.ACTION_FREEZE_ALL,
-                        "on" to !frozenAll)
+                        "on" to AppState.frozenAll.value)
                 }
                 Spacer(Modifier.width(8.dp))
                 TransportKey("KEEP", balanceKept, Ok, Modifier.width(88.dp)) {

@@ -170,6 +170,7 @@ class MixerService : Service() {
                 val on = intent.getBooleanExtra("on", true)
                 engine?.frozenAll = on
                 AppState.frozenAll.value = on
+                updateNotif()
                 show?.user(if (on) "you pressed FREEZE ALL"
                            else "you released FREEZE ALL")
             }
@@ -734,6 +735,8 @@ class MixerService : Service() {
      * this now counts.
      */
     private fun engineFailed(ex: Exception) {
+        // whatever this does to the mode, the status bar must follow
+        try { updateNotif() } catch (_: Exception) {}
         tickFailures++
         show?.mark("ERROR", "${ex.javaClass.simpleName}: " +
             (ex.message ?: "") + " (#$tickFailures in a row)", now())
@@ -1538,9 +1541,28 @@ class MixerService : Service() {
      * the two states the app is actually in rather than "running".
      * Three nights were spent in shadow without anybody noticing.
      */
-    private fun notifText(): String =
-        if (AppState.directing.value) "MIXING — the app has the mains"
-        else "SHADOW — watching only, nothing sent to the mixer"
+    /**
+     * The line in the status bar — the only thing visible while the app
+     * is in the background, and the reason it exists is three shows in
+     * watching mode with nothing saying so.
+     *
+     * It had two states and was refreshed from one place, so after
+     * FREEZE, after UNDO, and after the engine gave up following five
+     * errors, it went on reading "MIXING — the app has the mains" while
+     * nothing whatever was being sent. That is the original failure,
+     * reproduced on the one surface built to prevent it.
+     */
+    private fun notifText(): String = when {
+        !AppState.directing.value ->
+            "SHADOW — watching only, nothing sent to the mixer"
+        AppState.frozenAll.value ->
+            "FROZEN — every fader held, nothing is moving"
+        AppState.stageMuted.value ->
+            "WAITING — you have the band muted"
+        AppState.conn.value != AppState.Conn.CONNECTED ->
+            "NO MIXER — the desk is holding your last mix"
+        else -> "MIXING — the app has the mains"
+    }
 
     private fun updateNotif() {
         val nm = getSystemService(NotificationManager::class.java) ?: return
@@ -1582,7 +1604,11 @@ class MixerService : Service() {
         }
         show?.close()
         AppState.conn.value = AppState.Conn.DISCONNECTED
-        AppState.directing.value = false
+        // NOT `directing`. A service teardown rewriting the operator's
+        // own switch is how a state change gets undone behind their
+        // back — and it is what made MIX look dead: the key set it, a
+        // bare background service was created and immediately
+        // reclaimed, and onDestroy put it straight back.
         loopJob?.cancel()
         socket?.close(); socket = null
         releaseWifiBinding()
