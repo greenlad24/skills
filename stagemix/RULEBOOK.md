@@ -194,6 +194,16 @@ tests keep guarding the untouched behaviour).
   > level" · "the piano or guitar amp usually lead the show (they are the
   > base of the harmony) and the drums and bass or DI2 lead the rhythm."
 
+  The piano is the harmonic **bed**, not a solo voice, so the app never
+  lifts it out on its own — "keep it around the same area." It still
+  solos when the player steps out, but that is the **operator's** call:
+  they lift it and the app keeps their lift. Same for the bass. The
+  common soloists — guitar, sax/horn, the guest channel — are lifted
+  automatically as before.
+
+  > "an unusual uptick in the volume of the piano … keep it around the
+  > same area."
+
 - **Piano and guitar are EQed to never cancel each other.** Cut-only and
   complementary: the piano keeps the low-mid **body** (~300 Hz) and cedes
   the **presence** band (~2.5 kHz) to the guitar's pick; the guitar cedes

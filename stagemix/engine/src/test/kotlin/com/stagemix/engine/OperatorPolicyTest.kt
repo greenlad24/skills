@@ -200,6 +200,27 @@ class OperatorPolicyTest {
         }
     }
 
+    @Test fun `the piano is not auto-featured, but the sax still is`() {
+        val dec = ArrayList<Decision>()
+        val r = Rig(POLICY)
+        r.e.onDecision = { dec.add(it) }
+        r.start(band())
+        r.run(30.0) { band() }                   // settle on the steady band
+        // the piano (5,6) AND the sax (14, COLOR) both step well up over
+        // the band — a clear solo rise for each
+        val stepped = band().also {
+            it[5] = -12f; it[6] = -12f; it[14] = -12f }
+        r.run(60.0) { stepped }
+        val pianoFeat = dec.count {
+            it.kind == "feature" && (it.channel == 5 || it.channel == 6) }
+        val saxFeat = dec.count { it.kind == "feature" && it.channel == 14 }
+        assertTrue(pianoFeat == 0,
+            "the piano was auto-featured $pianoFeat times — it must hold " +
+                "its place as the harmonic bed")
+        assertTrue(saxFeat > 0,
+            "the sax was never featured — the piano fix over-reached")
+    }
+
     @Test fun `the stereo piano moves as one`() {
         val r = Rig(POLICY)
         // the two piano halves at different input levels — without pairing

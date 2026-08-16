@@ -1232,6 +1232,21 @@ class StageEngine(
     private fun isBassChannel(st: ChannelState): Boolean =
         st.role == Role.FOUNDATION && isBassName(st.name)
 
+    /**
+     * May the app lift this channel out for a solo on its OWN, without the
+     * operator's hand? Under the policy the piano and the bass never do:
+     * "the piano should be in a good spot in the middle most of the time"
+     * and it "rarely" solos — it is the harmonic bed, not a solo voice, and
+     * an app that features it every time it swings up pulls it out of its
+     * place. When the piano or the bass really does take a solo, it is the
+     * operator's call — they lift it and the app keeps their lift. The
+     * common soloists (guitar, sax/horn, the guest channel) are untouched.
+     */
+    private fun mayAutoFeature(st: ChannelState): Boolean {
+        if (!settings.operatorPolicy) return true
+        return st.role != Role.KEYS && !isBassChannel(st)
+    }
+
     /** the harmonica, by name — held at the operator's middle, never ridden */
     private fun isHarmonica(st: ChannelState): Boolean {
         val n = st.name.trim().lowercase()
@@ -2511,7 +2526,8 @@ class StageEngine(
                 // straight back into the loop. Bar a new feature on it for
                 // several minutes after it rang.
                 val canFeature = (settings.mode != BalanceMode.KEEP ||
-                    isSoloist(st)) && tSec - st.rangAt >= RING_QUIET_SEC
+                    isSoloist(st)) && tSec - st.rangAt >= RING_QUIET_SEC &&
+                    mayAutoFeature(st)
                 val need = if (st.settled && settings.holdAfterBalance)
                     settings.holdSoloRiseDb else settings.featureRiseDb
                 if (canFeature && hadWindow && rose - ensembleRise > need)
