@@ -52,11 +52,26 @@ print(*struct.unpack('>II', d[16:24]))")
   echo "  $1.png  ${w}x${h}  $(stat -c%s "$OUT/$1.png") bytes"
 }
 
+# the two panic states, driven straight in through the demo intent so
+# the amber "not mixing" bar and the FROZEN / WAITING header are on the
+# glass for the picture (the keys that produce them cannot be tapped
+# reliably headless — see smoke.sh step 8)
+shot_state () {   # shot_state <name> <mixing> <frozen> <muted>
+  adb shell am start -S -n com.stagemix.app/.MainActivity \
+    --ez demo true --ez mixing "$2" --ez frozen "$3" --ez muted "$4" \
+    --ei tab 0 >/dev/null
+  sleep 7
+  adb exec-out screencap -p > "$OUT/$1.png"
+  echo "  $1.png  $(stat -c%s "$OUT/$1.png") bytes"
+}
+
 shot mixer      0 true
 shot monitors   1 true
 shot status     2 true
 shot log        3 true
 shot setup      4 true
 shot watching   0 false
+shot_state frozen  true true  false
+shot_state waiting true false true
 echo "screenshots in $OUT:"
 ls -la "$OUT"
