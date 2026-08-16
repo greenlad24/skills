@@ -45,6 +45,8 @@ class Console(
     /** every parameter the app has written or asked about */
     val params = ConcurrentHashMap<String, Float>()
     val names = ConcurrentHashMap<Int, String>()
+    /** monitor bus names (1..6), so the app can tell what each wedge is for */
+    val busNames = ConcurrentHashMap<Int, String>()
 
     /** the RTA source the app has selected (channel index, 0-based) */
     @Volatile var rtaSource = 0; private set
@@ -146,7 +148,13 @@ class Console(
             m.address.endsWith("/config/name") -> {
                 val ch = Regex("/ch/(\\d\\d)/config/name").find(m.address)
                     ?.groupValues?.get(1)?.toIntOrNull()
-                val n = if (ch != null) names[ch - 1] ?: "" else ""
+                val bus = Regex("/bus/(\\d)/config/name").find(m.address)
+                    ?.groupValues?.get(1)?.toIntOrNull()
+                val n = when {
+                    ch != null -> names[ch - 1] ?: ""
+                    bus != null -> busNames[bus] ?: ""
+                    else -> ""
+                }
                 send(from, OscMessage(m.address, listOf(n)))
             }
             else -> {

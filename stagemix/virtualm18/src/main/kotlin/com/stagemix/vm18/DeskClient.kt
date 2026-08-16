@@ -59,6 +59,21 @@ class DeskClient(
     private var carriedFeedback = emptyList<Triple<Int, Float, Int>>()
     /** pre-ring the known feedback at takeover — ON by default on the bench */
     var preRing = true
+    /**
+     * The monitors, on the bench too — the same MonitorMap/MonitorBalance
+     * the tablet runs, so the Mac can test the wedge balancing, the
+     * in-ears/wedge choice and the drummer's floor mix, not just the mains.
+     */
+    private val monitors = com.stagemix.engine.MonitorMap()
+    private val monBal = com.stagemix.engine.MonitorBalance(monitors)
+    /** keep the wedges balanced — ON by default on the bench so it is visible */
+    var keepMonitors = true
+    /** the operator's per-bus in-ears/wedge choice */
+    private val monitorInEars = HashMap<Int, Boolean>()
+    /** bus names read from the console, 0-indexed like `names` */
+    private val busNames = HashMap<Int, String>()
+    private var sendsReadT = -1e9
+    private var lastMonMatrix = -1e9
     private var show: ShowLog? = null
     /** the last level written per channel, so the log can say from -> to */
     private val lastFader = HashMap<Int, Float>()
@@ -257,12 +272,100 @@ class DeskClient(
                     saveFeedbackProfile()
                 }
                 // a microphone that actually howled is not lifted again for
-                // a few minutes (a guard is not a live ring, so it is skipped)
-                for (n in ringOut.active()) if (!n.guard) engine.onRing(n.ch, t)
+                // a few minutes — on the mains AND on the wedges (a guard is
+                // not a live ring, so it is skipped)
+                for (n in ringOut.active()) if (!n.guard) {
+                    monBal.onRing(n.ch, t); engine.onRing(n.ch, t)
+                }
+                // THE WEDGES, SLIGHTLY: cut-first, one small move per bus,
+                // never against a hand, never into a live howl, only when
+                // keeping is on — the same keeper the tablet runs.
+                if (directing && keepMonitors && !engine.frozenAll)
+                    applyMonitorPlan(monBal.plan(
+                        tSec = t,
+                        roles = engine.state.mapValues { it.value.role },
+                        kit = engine.drumKit(),
+                        playing = !engine.betweenSongs && engine.ready,
+                        feedbackActive = ringOut.hunting || engine.watchdogVeto), t)
+                // re-read the sends now and then, to notice a hand on a wedge
+                if (directing && keepMonitors && t - sendsReadT > 25.0) {
+                    sendsReadT = t
+                    pollSends()
+                }
                 show?.snapshot(t, engine, doctor, names, directing)
                 show?.summary(t, engine, names)
+                // the whole monitor picture on a cadence, into the log
+                if (t - lastMonMatrix >= 60.0) { lastMonMatrix = t; dumpMonitorMatrix(t) }
             }
         }
+    }
+
+    /** write the keeper's cuts (monitor sends only) and log its notes */
+    private fun applyMonitorPlan(
+        writes: List<com.stagemix.engine.ParamWrite>, t: Double) {
+        for (w in writes) {
+            if (!com.stagemix.engine.isMonitorSend(w.address)) continue
+            lastParam[w.address] = w.value          // our own write, echo-safe
+            send(OscMessage(w.address, listOf(w.value)))
+            log?.invoke("wedge %s = %.3f".format(
+                java.util.Locale.ROOT, w.address, w.value))
+        }
+        for (n in monBal.drainNotes()) show?.mark("MONITOR", n, t)
+    }
+
+    /** ask the console for every monitor send, paced like the tablet */
+    private fun pollSends() {
+        for (ch in 0 until 16)
+            for (b in com.stagemix.engine.AUX_SEND_FIRST..
+                     com.stagemix.engine.AUX_SEND_LAST) {
+                send(OscMessage(osc("/ch/%02d/mix/%02d/level", ch + 1, b),
+                    emptyList()))
+                Thread.sleep(2)
+            }
+    }
+
+    /** the complete monitor picture — every wedge, every send — for the log */
+    private fun dumpMonitorMatrix(t: Double) {
+        val lg = show ?: return
+        val roles = engine.state.mapValues { it.value.role }
+        val kit = engine.drumKit()
+        val floor = com.stagemix.engine.MonitorMap.MONITOR_FLOOR_DB
+        fun nm(ch: Int) = (names[ch] ?: "ch%02d".format(ch + 1)).take(8)
+        for (w in monitors.all()) {
+            val targets = monitors.critique(w.bus, roles, kit)
+                .mapNotNull { n -> n.wantDb?.let { n.ch to it } }.toMap()
+            val live = w.sends.entries.filter { it.value > floor }
+                .sortedByDescending { it.value }
+            val off = w.sends.entries.filter { it.value <= floor }
+                .map { it.key }.sorted()
+            lg.note("MON", "bus%02d %-12s [%s · %s] — %d live, %d not sent"
+                .format(java.util.Locale.ROOT, w.bus,
+                    (busNames[w.bus - 1] ?: w.name).take(12),
+                    w.kind.name.lowercase(),
+                    if (w.inEars) "in-ears" else "wedge", live.size, off.size))
+            for ((ch, db) in live) {
+                val tgt = targets[ch]?.let {
+                    " (wants %+.1f, %+.1f off)".format(
+                        java.util.Locale.ROOT, it, db - it) } ?: ""
+                lg.note("MON", "    %-8s %+6.1f dB%s".format(
+                    java.util.Locale.ROOT, nm(ch), db, tgt))
+            }
+            if (off.isNotEmpty())
+                lg.note("MON", "    not sent: " + off.joinToString(" ") { nm(it) })
+        }
+    }
+
+    // ---- read accessors + controls for the bench UI ---------------------
+    fun wedges(): List<com.stagemix.engine.MonitorMap.Wedge> = monitors.all()
+    fun wedgeNotes(bus: Int) = monitors.critique(bus,
+        engine.state.mapValues { it.value.role }, engine.drumKit())
+    fun monitorMoves() = monBal.moved()
+    fun busName(bus: Int) = busNames[bus - 1] ?: "MON $bus"
+    fun inEarsFor(bus: Int) = monitors.inEarsFor(bus)
+    fun setMonitorInEars(bus: Int, inEars: Boolean) {
+        if (bus < 1) return
+        monitorInEars[bus] = inEars
+        monitors.setInEars(bus, inEars)
     }
 
     private fun handle(m: OscMessage, t: Double) {
@@ -317,6 +420,11 @@ class DeskClient(
                                 engine.setRoleFromName(ch - 1, inferRole(s))
                             }
                         }
+                    // a monitor bus name, so the app knows what the wedge is for
+                    Regex("/bus/(\\d)/config/name").find(m.address)
+                        ?.groupValues?.get(1)?.toIntOrNull()?.let { b ->
+                            if (s.isNotBlank()) busNames[b - 1] = s
+                        }
                     return
                 }
                 // the mute keys — the only honest report of what is
@@ -337,6 +445,18 @@ class DeskClient(
                 }
                 val v = m.args.firstOrNull() as? Float ?: return
                 pending[m.address] = v
+                // a monitor send came back — keep the map current so the
+                // keeper can see the engineer's hand on a wedge (skip while
+                // collecting, so takeover's own reads are not read as a hand)
+                if (com.stagemix.engine.isMonitorSend(m.address) && !collecting)
+                    Regex("^/ch/(\\d\\d)/mix/(\\d\\d)/level$").find(m.address)
+                        ?.let { mm ->
+                            val ch = mm.groupValues[1].toInt() - 1
+                            val bus = mm.groupValues[2].toInt()
+                            val db = FaderLaw.floatToDb(v)
+                            monitors.onSend(bus, ch, db)
+                            monBal.onSend(bus, ch, db, now())
+                        }
                 if (!collecting && directing && engine.ready) {
                     Regex("^/ch/(\\d\\d)/mix/fader$").find(m.address)
                         ?.let { mt ->
@@ -366,6 +486,9 @@ class DeskClient(
     private fun fetchNames() {
         for (ch in 0 until 16)
             send(OscMessage(osc("/ch/%02d/config/name", ch + 1), emptyList()))
+        // and the six monitor buses, so the app can tell what each wedge is
+        for (b in 0 until 6)
+            send(OscMessage(osc("/bus/%d/config/name", b + 1), emptyList()))
         val stop = now() + 2.0
         while (now() < stop) receiveOnce()?.let { handle(it, now()) }
         doctor = ToneDoctor((0 until 16).toList(),
@@ -384,6 +507,11 @@ class DeskClient(
             for (b in 1..4)
                 send(OscMessage(osc("/ch/%02d/eq/%d/g", ch + 1, b), emptyList()))
             send(OscMessage(osc("/ch/%02d/dyn/thr", ch + 1), emptyList()))
+            // and every monitor send, so the keeper has a balance to read
+            for (b in com.stagemix.engine.AUX_SEND_FIRST..
+                     com.stagemix.engine.AUX_SEND_LAST)
+                send(OscMessage(osc("/ch/%02d/mix/%02d/level", ch + 1, b),
+                    emptyList()))
             Thread.sleep(3)
         }
         val stop = now() + 2.5
@@ -409,6 +537,24 @@ class DeskClient(
                 d.snapshotChannel(ch, g, thr)
             }
         }
+        // THE WEDGES: read every monitor send the console answered, seed
+        // all six buses (named or "MON n"), re-apply the in-ears choices,
+        // and write the opening picture to the log
+        for (ch in 0 until 16)
+            for (b in com.stagemix.engine.AUX_SEND_FIRST..
+                     com.stagemix.engine.AUX_SEND_LAST)
+                pending[osc("/ch/%02d/mix/%02d/level", ch + 1, b)]?.let {
+                    val db = FaderLaw.floatToDb(it)
+                    monitors.onSend(b, ch, db)
+                    monBal.onSend(b, ch, db, now())
+                }
+        for (b in com.stagemix.engine.AUX_SEND_FIRST..
+                 com.stagemix.engine.AUX_SEND_LAST)
+            monitors.onBusName(b,
+                busNames[b - 1]?.takeIf { it.isNotBlank() } ?: "MON $b")
+        for ((bus, ie) in monitorInEars) monitors.setInEars(bus, ie)
+        dumpMonitorMatrix(now())
+
         log?.invoke("took over ${faders.size} faders — listening, then leading")
         preRingSetup()
     }

@@ -57,7 +57,11 @@ class TabletWindow(private val client: DeskClient) {
     private val mode = JLabel("PAUSED")
     private val health = JLabel(" ")
     private val hold = JLabel(" ")
-    private val decisions = JTextArea(10, 90)
+    private val decisions = JTextArea(10, 62)
+    /** the live per-wedge readout — the monitors, as a mixer, in text */
+    private val monitorsArea = JTextArea(10, 30)
+    /** which wedge the readout is showing (bus 1..6) */
+    private var selectedBus = 1
 
     fun show() {
         frame.defaultCloseOperation = JFrame.DISPOSE_ON_CLOSE
@@ -76,9 +80,24 @@ class TabletWindow(private val client: DeskClient) {
         decisions.font = Font(Font.MONOSPACED, Font.PLAIN, 11)
         decisions.isEditable = false
         val sp = JScrollPane(decisions)
-        sp.border = BorderFactory.createEmptyBorder(0, 10, 10, 10)
-        sp.preferredSize = Dimension(100, 170)
-        frame.add(sp, BorderLayout.SOUTH)
+        sp.border = BorderFactory.createEmptyBorder(0, 0, 0, 0)
+
+        // the monitors, as a mixer, in text — one wedge at a time so the
+        // whole picture fits without a 16-strip Swing rebuild
+        monitorsArea.background = PANEL
+        monitorsArea.foreground = INK2
+        monitorsArea.font = Font(Font.MONOSPACED, Font.PLAIN, 11)
+        monitorsArea.isEditable = false
+        val mp = JScrollPane(monitorsArea)
+        mp.border = BorderFactory.createEmptyBorder(0, 0, 0, 0)
+        mp.preferredSize = Dimension(360, 170)
+
+        val south = JPanel(BorderLayout(8, 0))
+        south.background = BG
+        south.border = BorderFactory.createEmptyBorder(0, 10, 10, 10)
+        south.add(sp, BorderLayout.CENTER)
+        south.add(mp, BorderLayout.EAST)
+        frame.add(south, BorderLayout.SOUTH)
 
         frame.setSize(1240, 780)
         frame.setLocation(40, 40)
@@ -154,6 +173,48 @@ class TabletWindow(private val client: DeskClient) {
         })
         r2.add(Box.createHorizontalGlue())
         col.add(r2)
+
+        // The monitors, driven from the same screen — keeping on/off, which
+        // wedge the readout is showing, and whether that wedge is in-ears or
+        // a floor mix. These are the whole reason the bench can now test the
+        // wedges and not just the mains.
+        val r2b = row()
+        val keep = btn("MONITOR KEEPING: on") { }
+        keep.addActionListener {
+            client.keepMonitors = !client.keepMonitors
+            keep.text = "MONITOR KEEPING: " +
+                if (client.keepMonitors) "on" else "off"
+            note("monitor keeping " + if (client.keepMonitors) "ON — the app " +
+                "will balance the wedges, cut-first" else "OFF — the wedges " +
+                "are left exactly as they are")
+        }
+        r2b.add(keep)
+        val pick = btn("MONITOR ▸ bus 1") { }
+        val ears = btn("IN-EARS / WEDGE") { }
+        fun refreshEars() {
+            ears.text = if (client.inEarsFor(selectedBus)) "▸ IN-EARS (tap for wedge)"
+                        else "▸ WEDGE (tap for in-ears)"
+        }
+        pick.addActionListener {
+            selectedBus = if (selectedBus >= 6) 1 else selectedBus + 1
+            pick.text = "MONITOR ▸ bus $selectedBus  ${client.busName(selectedBus)}"
+            refreshEars()
+            paintMonitors()
+        }
+        ears.addActionListener {
+            val ie = !client.inEarsFor(selectedBus)
+            client.setMonitorInEars(selectedBus, ie)
+            refreshEars()
+            note("bus $selectedBus (${client.busName(selectedBus)}) set to " +
+                if (ie) "IN-EARS — the app will add the kit to this mix, low"
+                else "WEDGE — the app will balance a floor mix for this player")
+            paintMonitors()
+        }
+        r2b.add(pick)
+        r2b.add(ears)
+        refreshEars()
+        r2b.add(Box.createHorizontalGlue())
+        col.add(r2b)
 
         val r3 = row()
         val chips = listOf(
@@ -298,6 +359,57 @@ class TabletWindow(private val client: DeskClient) {
                 h.inPlacePct, h.overrides)
         hold.text = e.holdReason(nowSec()) ?: " "
         for (s in strips) s.repaint()
+        paintMonitors()
+    }
+
+    /**
+     * The selected wedge, written out like a small mixer: every channel
+     * that is in it, at what level, and — when the app has an opinion —
+     * what it wants that channel at and how far off it is. Plus the moves
+     * the keeper has actually made, so the readout is honest about what it
+     * changed and not just what it would like.
+     */
+    private fun paintMonitors() = SwingUtilities.invokeLater {
+        val bus = selectedBus
+        val wedge = client.wedges().firstOrNull { it.bus == bus }
+        val sb = StringBuilder()
+        val ears = if (client.inEarsFor(bus)) "in-ears" else "wedge"
+        sb.appendLine("BUS $bus  ${client.busName(bus)}  [$ears]")
+        sb.appendLine("keeping ${if (client.keepMonitors) "ON" else "off"}")
+        sb.appendLine("─".repeat(40))
+        if (wedge == null) {
+            sb.appendLine("(no sends read yet — take over the mains)")
+        } else {
+            val wants = client.wedgeNotes(bus).associateBy { it.ch }
+            val floor = com.stagemix.engine.MonitorMap.MONITOR_FLOOR_DB
+            val live = wedge.sends.entries
+                .filter { it.value > floor }
+                .sortedByDescending { it.value }
+            if (live.isEmpty()) sb.appendLine("(nothing sent to this wedge)")
+            for ((ch, db) in live) {
+                val nm = (client.names[ch] ?: "ch%02d".format(Locale.ROOT, ch + 1))
+                    .take(8)
+                val w = wants[ch]?.wantDb
+                val tail = if (w != null)
+                    " want %+5.1f  off %+5.1f".format(Locale.ROOT, w, db - w)
+                    else ""
+                sb.appendLine("ch%02d %-8s %+6.1f%s"
+                    .format(Locale.ROOT, ch + 1, nm, db, tail))
+            }
+        }
+        val moves = client.monitorMoves().filter { it.bus == bus }
+        if (moves.isNotEmpty()) {
+            sb.appendLine("─".repeat(40))
+            sb.appendLine("moves this app has made:")
+            for (m in moves) {
+                val nm = (client.names[m.ch] ?: "ch%02d".format(Locale.ROOT, m.ch + 1))
+                    .take(8)
+                sb.appendLine("  ch%02d %-8s %+5.1f dB"
+                    .format(Locale.ROOT, m.ch + 1, nm, m.appDb))
+            }
+        }
+        monitorsArea.text = sb.toString()
+        monitorsArea.caretPosition = 0
     }
 
     /** one channel strip, the same information the tablet shows */

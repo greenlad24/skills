@@ -348,9 +348,15 @@ class Player(
             // The room, before anything is metered: if the mains are
             // ringing, the open mics hear it exactly as they would on
             // stage — so the meters, the RTA and the speakers all get it.
+            // each open mic hears the LOUDER of its mains fader and its
+            // hottest wedge send (a wedge sits ~6 dB closer/hotter than the
+            // boxes), minus any ring-band notch on the channel
             val openMics = (0 until channels)
                 .filter { isMic(it) }
-                .map { console.faderDb(it) + ringBandCutDb(it) }
+                .map {
+                    maxOf(console.faderDb(it), hottestSendDb(it) + 6f) +
+                        ringBandCutDb(it)
+                }
             if (room.advance(openMics, n, howl))
                 for (c in 0 until channels)
                     if (isMic(c)) for (i in 0 until n) bufs[c][i] += howl[i]
@@ -621,5 +627,25 @@ class Player(
         val ratio = fHz / room.freqHz.toFloat()
         // only if the notch is tuned near the resonance (~a tone either way)
         return if (ratio in 0.85f..1.18f) gDb else 0f
+    }
+
+    /**
+     * The hottest monitor send feeding this open mic, in dB, or a floor if
+     * none. A wedge in front of a mic is a feedback loop of its own — "the
+     * loudest single cause of feedback on any stage" — so the modelled room
+     * takes the LOUDER of the mains fader and the hottest wedge send (see
+     * processBlock). Cutting that send, which the monitor keeper does,
+     * really lowers the loop gain here — so the keeper can be seen and
+     * heard curing a wedge howl on the Mac.
+     */
+    private fun hottestSendDb(ch: Int): Float {
+        var hot = -128f
+        for (b in 1..6) {
+            val g = console.params["/ch/%02d/mix/%02d/level"
+                .format(java.util.Locale.ROOT, ch + 1, b)] ?: continue
+            val db = com.stagemix.engine.FaderLaw.floatToDb(g)
+            if (db > hot) hot = db
+        }
+        return hot
     }
 }

@@ -104,6 +104,33 @@ fun main(args: Array<String>) {
     val console = Console(port = port, echoOwnWrites = echo,
         quantize = quantize)
     for (c in 0 until 16) console.names[c] = names[c]
+
+    // Seed realistic monitor mixes + bus names, so the app has six named
+    // wedges to read and balance on the bench — the same rig the tablet's
+    // demo uses. Sends absent from a wedge's map are left unset (the app
+    // draws them OFF, as on the real desk).
+    console.busNames.putAll(mapOf(
+        1 to "CENTER MON", 2 to "PIANO MON", 3 to "DRUM IEM",
+        4 to "BASS MON", 5 to "MON 5", 6 to "IN EAR 2"))
+    val wedgeSends = mapOf(
+        1 to mapOf(3 to -8f, 4 to -20f, 5 to -22f, 6 to -22f, 8 to -6f,
+                   9 to -11f, 11 to -18f, 13 to -18f, 14 to -24f, 15 to -26f),
+        2 to mapOf(4 to -6f, 3 to -16f, 5 to -14f, 6 to -14f, 8 to -12f,
+                   9 to -18f, 11 to -18f, 13 to -18f),
+        3 to mapOf(0 to -5f, 1 to -6f, 2 to -12f, 11 to -8f, 13 to -9f,
+                   8 to -12f, 12 to -14f, 5 to -18f),
+        4 to mapOf(11 to -5f, 13 to -6f, 12 to -11f, 8 to -16f, 3 to -19f,
+                   4 to -19f, 5 to -21f),
+        5 to mapOf(8 to -8f, 9 to -12f, 4 to -14f, 3 to -16f, 11 to -16f,
+                   13 to -17f, 14 to -20f, 15 to -22f),
+        6 to mapOf(5 to -6f, 6 to -7f, 13 to -8f, 11 to -10f, 0 to -12f,
+                   1 to -12f, 8 to -13f, 4 to -19f))
+    for ((bus, sends) in wedgeSends)
+        for ((ch, db) in sends)
+            console.params["/ch/%02d/mix/%02d/level"
+                .format(Locale.ROOT, ch + 1, bus)] =
+                com.stagemix.engine.FaderLaw.dbToFloat(db)
+
     val player = Player(files, console, sampleRate = rate)
 
     val bench = if (headless) null else Bench(console, player, names, files)
