@@ -38,6 +38,7 @@ class OperatorPolicyTest {
     private val GUITAR = listOf(4, 7)
     private val BASS = listOf(3, 11, 13)
     private val GUEST = 10
+    private val HARMONICA = 15
 
     // ---- the predicates, directly -----------------------------------
 
@@ -48,6 +49,15 @@ class OperatorPolicyTest {
                 "ch${i + 1} must be volume-locked under the policy")
         assertFalse(e.volumeLocked(GUEST, e.state[GUEST]!!),
             "ch11 (the guest soloist) must never be locked, even named a vocal")
+    }
+
+    @Test fun `the harmonica is held at the operator's middle`() {
+        val e = StageEngine(rig, POLICY)
+        assertTrue(e.volumeLocked(HARMONICA, e.state[HARMONICA]!!),
+            "the harmonica must be held where the operator set it (the middle)")
+        val off = StageEngine(rig, EngineSettings(mode = BalanceMode.LEAD))
+        assertFalse(off.volumeLocked(HARMONICA, off.state[HARMONICA]!!),
+            "with the policy off the harmonica is not held")
     }
 
     @Test fun `nothing is locked with the policy off`() {
@@ -137,7 +147,7 @@ class OperatorPolicyTest {
         val src = band()
         r.start(src)
         r.run(300.0) { src }
-        for (i in KIT + VOX)
+        for (i in KIT + VOX + HARMONICA)
             assertTrue(r.writes.none { it.channel == i },
                 "ch${i + 1} is locked but the app wrote its fader " +
                     "${r.writes.count { it.channel == i }} times")

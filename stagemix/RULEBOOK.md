@@ -183,6 +183,13 @@ tests keep guarding the untouched behaviour).
 
   > "piano and guitar should be … EQed to never cancel each other."
 
+- **The harmonica stays in the middle, or wherever the operator set it.**
+  Never ridden down as colour, never featured up — held where it is, which
+  is the operator's choice by definition. The middle is ≈ −30 dB.
+
+  > "harmonica needs to stay at the middle or the user's choice; middle is
+  > −30 dB."
+
 - **Soloists** are the vocals, the saxophone, the guitar amp or guitar DI,
   and — rarely — the bass, the piano, or another instrument. **Channel 11
   is the guest-soloist channel** (last night a trombone): whatever is

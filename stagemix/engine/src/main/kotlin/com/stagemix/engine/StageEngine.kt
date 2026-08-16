@@ -391,6 +391,13 @@ data class EngineSettings(
     val lockedChannels: Set<Int> = setOf(0, 1, 2),   // ch1/2/3, the kit
     val lockVocalVolume: Boolean = true,
     /**
+     * HARMONICA stays in the middle, or wherever the operator set it —
+     * never ridden down as colour, never featured up. "Harmonica needs to
+     * stay at the middle or the user's choice; middle is −30 dB." Held
+     * where it is, which is the operator's choice by definition.
+     */
+    val lockHarmonica: Boolean = true,
+    /**
      * BASS holds still until it is clearly wrong. "Bass channels should go
      * down only if they are overwhelming and go up if they are
      * underwhelming." So it moves only when it is this far off its place —
@@ -1174,12 +1181,19 @@ class StageEngine(
         if (idx in settings.soloistChannels) return false
         return idx in settings.lockedChannels ||
             (settings.lockVocalVolume &&
-                (st.role == Role.VOCAL || st.role == Role.BACKING_VOCAL))
+                (st.role == Role.VOCAL || st.role == Role.BACKING_VOCAL)) ||
+            (settings.lockHarmonica && isHarmonica(st))
     }
 
     /** a bass channel — foundation whose name says bass (Bass DI, DI2…) */
     private fun isBassChannel(st: ChannelState): Boolean =
         st.role == Role.FOUNDATION && isBassName(st.name)
+
+    /** the harmonica, by name — held at the operator's middle, never ridden */
+    private fun isHarmonica(st: ChannelState): Boolean {
+        val n = st.name.trim().lowercase()
+        return "harmonica" in n || "harp" in n
+    }
 
     /** how long a fader must be still before the hand counts as off it */
     private val gestureQuietSec = 1.5
