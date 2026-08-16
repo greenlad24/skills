@@ -162,6 +162,44 @@ class Player(
             .let { if (it > 0) it else sampleRate.toDouble() }
     }
 
+    /**
+     * Jump the take forward, without playing what is skipped.
+     *
+     * Reads and throws away [seconds] of every channel as fast as it can,
+     * so the bench can get to a later part of a recorded night — the
+     * second set, a solo, the end of the show — without sitting through it
+     * in real time. If a take runs out mid-jump it just stops at the end.
+     *
+     * The transport is paused for the jump so it is not reading the same
+     * streams from the other thread, then put back the way it was found.
+     */
+    @Synchronized fun skipForward(seconds: Double) {
+        if (seconds <= 0.0) return
+        val was = playing
+        playing = false
+        Thread.sleep(30)                    // let an in-flight block finish
+        val target = (seconds * sampleRate).toLong()
+        var done = 0L
+        var blocks = 0
+        while (done < target && running) {
+            val n = readAll()
+            if (n <= 0) {                    // ran off the end of the night
+                finished = true
+                log?.invoke("JUMP hit the end of the take at %.1fs"
+                    .format(java.util.Locale.ROOT, positionSec))
+                return
+            }
+            done += n.toLong()
+            blocks++
+        }
+        val advanced = done.toDouble() / sampleRate
+        positionSec += advanced
+        blocksPlayed += blocks
+        playing = was
+        log?.invoke("JUMP +%.0fs — now at %.1fs"
+            .format(java.util.Locale.ROOT, advanced, positionSec))
+    }
+
     /** back to the top, without reopening the output line */
     @Synchronized fun rewind() {
         log?.invoke("REWIND — ${state()}")

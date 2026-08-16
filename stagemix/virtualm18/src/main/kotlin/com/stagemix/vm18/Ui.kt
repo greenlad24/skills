@@ -167,6 +167,17 @@ class Bench(
         }
         val rewind = JButton("⏮  START")
         rewind.addActionListener { player.rewind() }
+        val jump = JButton("⏩ +5 MIN")
+        jump.toolTipText = "skip the take forward five minutes — get to a " +
+            "later part of the night without sitting through it"
+        jump.addActionListener {
+            jump.isEnabled = false
+            note("jumping five minutes forward…")
+            Thread {
+                player.skipForward(300.0)
+                javax.swing.SwingUtilities.invokeLater { jump.isEnabled = true }
+            }.apply { isDaemon = true }.start()
+        }
         val folder = JButton("Choose folder…")
         folder.addActionListener { chooseFolder() }
         val forget = JButton("Forget these")
@@ -174,6 +185,7 @@ class Bench(
             "the next launch; this clears that"
         forget.addActionListener { onForgetSession?.invoke() }
         p.add(play); p.add(Box.createHorizontalStrut(8)); p.add(rewind)
+        p.add(Box.createHorizontalStrut(8)); p.add(jump)
         p.add(Box.createHorizontalStrut(8)); p.add(mute)
         p.add(Box.createHorizontalStrut(16)); p.add(folder)
         p.add(Box.createHorizontalStrut(4)); p.add(forget)
