@@ -223,7 +223,14 @@ object AppState {
      * when there is no countdown to run, this carries how much of the
      * mix is sitting where it should be.
      */
-    val work = MutableStateFlow<com.stagemix.engine.Work?>(null)
+    // Never null: the bar is shown at all times (§5), so from cold
+    // start until the first engine tick it carries a plain "starting
+    // up" rather than vanishing — a blank where the bar should be reads
+    // as "nothing is happening", which is the one thing it exists to
+    // rule out.
+    val work = MutableStateFlow<com.stagemix.engine.Work?>(
+        com.stagemix.engine.Work("boot", "Starting up",
+            "connecting to the mixer", 0f))
 
     /**
      * The two numbers the master meter shows: the voice carrying the

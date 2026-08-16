@@ -205,8 +205,12 @@ class ShowLog(
             "eq=our correction per band | thr=comp threshold move | " +
             "harsh=2-6 kHz over the channel's own body | gr=gain reduction " +
             "| reg=detected singer register")
-        put("HEAD", "MONITORS ARE NEVER TOUCHED — no bus send appears in " +
-            "this log because the engine cannot emit one")
+        put("HEAD", "NO BUS MASTER IS EVER MOVED. When monitor keeping " +
+            "is on, the app may correct wedge SENDS slightly — cut-first, " +
+            "bounded, following your hand — and those appear here as " +
+            "'wedge' PARAM lines with MONITOR marks; how loud each wedge " +
+            "is stays yours. When it is off (the default) no send is " +
+            "written at all.")
         // THE SWITCHES THAT DECIDE WHETHER ANYTHING HAPPENS AT ALL.
         //
         // Every one of these has, at some point, been the reason the

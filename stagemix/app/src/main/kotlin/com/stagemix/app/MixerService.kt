@@ -110,6 +110,8 @@ class MixerService : Service() {
     private var loopJob: Job? = null
     /** engine exceptions survived this session — see the tick guard */
     private var tickFailures = 0
+    /** the worst fault last written to the log, so it is not repeated */
+    private var lastAdviceKey = ""
     /**
      * When a meter frame last arrived, as a field rather than a local.
      *
@@ -1055,6 +1057,19 @@ class MixerService : Service() {
                 wedgesOut = wedgesOut,
                 monitorsEnabled = AppState.keepMonitors.value,
                 mixingSec = if (e.takeoverT >= 0) t - e.takeoverT else -1.0))
+
+        // THE FAULT THE OPERATOR SAW GOES IN THE LOG TOO. It was only
+        // ever pixels — so the morning-after question "what was it
+        // telling me at 22:40?" had no answer. Only the worst
+        // non-note item, and only when it changes, so the file is not
+        // flooded with the same line every second.
+        AppState.advice.value.firstOrNull {
+            it.level != com.stagemix.engine.Level.NOTE }?.let { top ->
+            if (top.key != lastAdviceKey) {
+                lastAdviceKey = top.key
+                show?.mark("STATUS", top.what + " — " + top.doThis, t)
+            }
+        } ?: run { lastAdviceKey = "" }
 
         // The bar. A countdown when there is one; otherwise how much of
         // the mix is sitting where it should be, which moves all night.

@@ -271,5 +271,7 @@ object DemoStage {
         AppState.directing.value = false
         AppState.strips.value = emptyList()
         AppState.decisions.value = emptyList()
+        AppState.advice.value = emptyList()
+        AppState.wedges.value = emptyList()
     }
 }
