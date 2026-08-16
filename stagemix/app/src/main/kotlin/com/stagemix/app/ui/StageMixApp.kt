@@ -339,7 +339,12 @@ fun ConsoleScreen() {
 
 /** the show clock, in the units a recorder uses */
 private fun elapsed(startedMs: Long, directing: Boolean, tickMs: Long): String {
-    if (!directing || startedMs <= 0L) return "--:--:--"
+    // 0 means "never started", and that is the only value that means it.
+    // The old guard rejected anything <= 0, which quietly stopped the
+    // clock whenever the anchor sat before the device booted — the demo
+    // asks for a show already 24 minutes old, and on a machine that has
+    // been up for two, that anchor is negative and perfectly valid.
+    if (!directing || startedMs == 0L) return "--:--:--"
     val s = ((android.os.SystemClock.elapsedRealtime() - startedMs) / 1000L)
         .coerceAtLeast(0L)
     return "%02d:%02d:%02d".format(s / 3600, (s % 3600) / 60, s % 60)

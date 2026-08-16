@@ -10,6 +10,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -107,7 +110,17 @@ fun Faceplate(warning: Boolean, content: @Composable () -> Unit) {
                 drawCircle(Color(0xFF1A2029), 5f, p)
             }
         }
-        Box(Modifier.fillMaxSize().padding(if (warning) 14.dp else 10.dp)) {
+        // The faceplate is painted edge to edge — the gradient, the
+        // hazard stripes and the screws all want the whole glass. What
+        // goes ON it must not: a tablet puts a status bar along one
+        // edge and a navigation bar along the other, and the bottom row
+        // of the rack was being drawn underneath the nav bar, which cut
+        // every channel's spectrum in half.
+        Box(
+            Modifier.fillMaxSize()
+                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .padding(if (warning) 14.dp else 10.dp)
+        ) {
             content()
         }
     }
