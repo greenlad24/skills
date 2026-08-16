@@ -85,10 +85,13 @@ fun WorkBar(w: com.stagemix.engine.Work) {
     // comes straight off the engine and needs no animation at all.
     LaunchedEffect(w.key, w.frac, w.secsLeft) {
         val target = (w.frac * 1000).toInt().coerceIn(0, 1000)
-        if (w.secsLeft == null) { frac.intValue = target; return@LaunchedEffect }
+        // Bound to a local: Work lives in the engine module, so Kotlin
+        // will not smart-cast its nullable property across the boundary.
+        val left = w.secsLeft
+        if (left == null) { frac.intValue = target; return@LaunchedEffect }
         val start = SystemClock.elapsedRealtime()
         val from = frac.intValue
-        val endsIn = w.secsLeft * 1000L
+        val endsIn = left * 1000L
         while (true) {
             kotlinx.coroutines.delay(100)
             val dt = SystemClock.elapsedRealtime() - start
