@@ -195,9 +195,11 @@ fun ConsoleScreen() {
     val phase by AppState.phase.collectAsState()
     val tickMs by AppState.tickMs.collectAsState()
     val mixed by AppState.channelsMixed.collectAsState()
-    val wedges by AppState.wedges.collectAsState()
     val notches by AppState.ringNotches.collectAsState()
-    var detail by remember { mutableStateOf(false) }
+    val leadDb by AppState.leadDb.collectAsState()
+    val bandDb by AppState.bandDb.collectAsState()
+    val startedMs by AppState.mixingSinceMs.collectAsState()
+    var tab by remember { mutableStateOf(0) }
     var picking by remember { mutableStateOf<AppState.StripUi?>(null) }
 
     val fault = when {
@@ -206,52 +208,137 @@ fun ConsoleScreen() {
             "no answer from the mixer — nothing is moving"
         else -> null
     }
+    val live = directing && fault == null && !frozenAll && !stageMuted
 
-    Column(Modifier.fillMaxSize()) {
-        // Everything the operator must know without reading: what state
-        // the app is in, and that tapping here changes it.
-        ModeBand(
-            directing = directing, keeping = balanceKept,
-            stageMuted = stageMuted, frozen = frozenAll, fault = fault,
-            channelsMixed = mixed, channelsTotal = strips.size,
-            onToggle = {
-                MixerService.cmd(ctx, MixerService.ACTION_DIRECTING,
-                    "on" to !directing)
-            })
+    Faceplate(warning = !live) {
+        Column(Modifier.fillMaxSize()) {
 
-        Column(Modifier.weight(1f).padding(12.dp)) {
-            val newest = decisions.firstOrNull()
-            NowLine(
-                headline = headlineFor(newest, hold, directing, strips),
-                detail = newest?.reason ?: "",
-                tickMs = tickMs, shadow = !directing && newest != null)
-            phase?.let { PhaseBar(it) }
+            // ============ the top of the box: readout and transport
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column {
+                    Lcd(elapsed(startedMs, directing, tickMs), 34.sp,
+                        if (live) Ok else Muted, weight = FontWeight.Black)
+                    Spacer(Modifier.height(5.dp))
+                    Lcd(
+                        when {
+                            fault != null -> "FAULT"
+                            frozenAll -> "FROZEN"
+                            stageMuted -> "BAND MUTED"
+                            !directing -> "WATCHING"
+                            balanceKept -> "KEEPING · $mixed CH"
+                            else -> "FINDING · $mixed CH"
+                        },
+                        13.sp,
+                        when {
+                            fault != null -> Bad
+                            !directing || frozenAll || stageMuted -> Warn
+                            else -> Ok
+                        })
+                }
+                Spacer(Modifier.width(16.dp))
+                // The state, said in words as well as lit, because a lamp
+                // alone is not an explanation.
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        when {
+                            fault != null -> "PROBLEM"
+                            frozenAll -> "FROZEN"
+                            stageMuted -> "WAITING"
+                            !directing -> "WATCHING ONLY"
+                            else -> "MIXING"
+                        },
+                        color = when {
+                            fault != null -> Bad
+                            !directing || frozenAll || stageMuted -> Warn
+                            else -> Ok
+                        },
+                        fontSize = 30.sp, fontWeight = FontWeight.Black,
+                        letterSpacing = 2.sp)
+                    Text(
+                        when {
+                            fault != null -> fault
+                            frozenAll -> "every fader is held exactly where " +
+                                "it is — tap FREEZE to resume"
+                            stageMuted -> "you have the band muted — there " +
+                                "is no mix to make"
+                            !directing -> "nothing is being sent to the " +
+                                "mixer — tap MIX to start"
+                            balanceKept -> "holding the balance you kept · " +
+                                "monitors untouched"
+                            else -> "finding the balance · monitors untouched"
+                        },
+                        color = Ink2, fontSize = 14.sp, maxLines = 2)
+                }
+                Spacer(Modifier.width(12.dp))
+                TransportKey("MIX", live, Live, Modifier.width(88.dp)) {
+                    MixerService.cmd(ctx, MixerService.ACTION_DIRECTING,
+                        "on" to !directing)
+                }
+                Spacer(Modifier.width(8.dp))
+                TransportKey("FREEZE", frozenAll, Bad, Modifier.width(88.dp),
+                    square = true) {
+                    MixerService.cmd(ctx, MixerService.ACTION_FREEZE_ALL,
+                        "on" to !frozenAll)
+                }
+                Spacer(Modifier.width(8.dp))
+                TransportKey("KEEP", balanceKept, Ok, Modifier.width(88.dp)) {
+                    MixerService.cmd(ctx, MixerService.ACTION_KEEP_BALANCE)
+                }
+                Spacer(Modifier.width(8.dp))
+                TransportKey("UNDO", false, Accent, Modifier.width(88.dp)) {
+                    MixerService.cmd(ctx, MixerService.ACTION_REVERT)
+                }
+            }
+
             Spacer(Modifier.height(10.dp))
-            // THE CONSOLE. Sixteen strips, each one the object an
-            // engineer already knows how to read — a meter, a fader in
-            // a lane with a scale, the number, and what that channel
-            // sounds like. Everything on it is a real measurement off
-            // the desk.
-            MixerRack(
-                strips = strips, leadVocal = lead, directing = directing,
-                notches = notches,
-                modifier = Modifier.weight(1f).fillMaxWidth(),
-                onTap = { picking = it })
-        }
 
-        ActionPads(
-            frozen = frozenAll,
-            onFreeze = {
-                MixerService.cmd(ctx, MixerService.ACTION_FREEZE_ALL,
-                    "on" to !frozenAll)
-            },
-            onKeep = { MixerService.cmd(ctx, MixerService.ACTION_KEEP_BALANCE) },
-            onUndo = { MixerService.cmd(ctx, MixerService.ACTION_REVERT) },
-            onDetail = { detail = true })
+            // ============ tabs, and the master meters beside them
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Segmented(listOf("MIXER", "MONITORS", "LOG", "SETUP"), tab) {
+                    tab = it
+                }
+                Spacer(Modifier.width(14.dp))
+                MasterMeters(leadDb, bandDb, Modifier.weight(1f))
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            // ============ one line of plain English, always
+            NowLine(
+                headline = headlineFor(decisions.firstOrNull(), hold,
+                    directing, strips),
+                detail = decisions.firstOrNull()?.reason ?: "",
+                tickMs = tickMs,
+                shadow = !directing && decisions.isNotEmpty())
+            phase?.let { PhaseBar(it) }
+
+            Spacer(Modifier.height(10.dp))
+
+            // ============ the rack, or whatever else the tab asks for
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                when (tab) {
+                    0 -> MixerRack(
+                        strips = strips, leadVocal = lead,
+                        directing = directing, notches = notches,
+                        modifier = Modifier.fillMaxSize(),
+                        onTap = { picking = it })
+                    1 -> MonitorPanel(Modifier.fillMaxSize())
+                    2 -> LastFive(decisions, Modifier.fillMaxSize())
+                    else -> SetupPanel(Modifier.fillMaxSize())
+                }
+            }
+        }
     }
 
     picking?.let { s -> InstrumentPicker(s) { picking = null } }
-    if (detail) DetailSheet { detail = false }
+}
+
+/** the show clock, in the units a recorder uses */
+private fun elapsed(startedMs: Long, directing: Boolean, tickMs: Long): String {
+    if (!directing || startedMs <= 0L) return "--:--:--"
+    val s = ((android.os.SystemClock.elapsedRealtime() - startedMs) / 1000L)
+        .coerceAtLeast(0L)
+    return "%02d:%02d:%02d".format(s / 3600, (s % 3600) / 60, s % 60)
 }
 
 /**
@@ -311,16 +398,11 @@ private val LANDMARKS = setOf("arrive", "feature", "soloride", "override",
 @Composable
 private fun LastFive(decisions: List<com.stagemix.engine.Decision>,
                      modifier: Modifier) {
-    Column(
-        modifier
-            .background(Panel, RoundedCornerShape(12.dp))
-            .border(1.dp, Line, RoundedCornerShape(12.dp))
-            .padding(12.dp)
-    ) {
+    Column(modifier.well(10.dp).padding(16.dp)) {
         Text("WHAT IT HAS DONE", color = Muted, fontSize = 12.sp,
             letterSpacing = 2.sp)
         Spacer(Modifier.height(8.dp))
-        val marks = decisions.filter { it.kind in LANDMARKS }.take(5)
+        val marks = decisions.filter { it.kind in LANDMARKS }.take(12)
         if (marks.isEmpty())
             Text("Nothing worth reporting yet.", color = Ink2, fontSize = 15.sp)
         for (d in marks) {
@@ -355,12 +437,7 @@ private fun LastFive(decisions: List<com.stagemix.engine.Decision>,
 private fun MonitorPanel(modifier: Modifier) {
     val wedges by AppState.wedges.collectAsState()
     val names by AppState.mixerChannelNames.collectAsState()
-    Column(
-        modifier
-            .background(Panel, RoundedCornerShape(12.dp))
-            .border(1.dp, Line, RoundedCornerShape(12.dp))
-            .padding(14.dp)
-    ) {
+    Column(modifier.well(10.dp).padding(16.dp)) {
         Text("MONITORS — READ ONLY", color = Muted, fontSize = 12.sp,
             letterSpacing = 2.sp)
         Spacer(Modifier.height(8.dp))
@@ -390,89 +467,83 @@ private fun MonitorPanel(modifier: Modifier) {
     }
 }
 
-/** everything that is not a mid-song decision */
+/** everything that is not a mid-song decision, on its own tab */
 @Composable
-private fun DetailSheet(onClose: () -> Unit) {
+private fun SetupPanel(modifier: Modifier) {
     val ctx = LocalContext.current
     val doctorOn by AppState.doctorOn.collectAsState()
     val health by AppState.health.collectAsState()
     val nights by AppState.nightsCount.collectAsState()
     val taste by AppState.tasteSummary.collectAsState()
     val lastNight by AppState.lastNightSummary.collectAsState()
-    val strips by AppState.strips.collectAsState()
-    Surface(color = Bg, modifier = Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize().padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("DETAIL", color = Ink, fontSize = 22.sp,
-                    fontWeight = FontWeight.Black, letterSpacing = 2.sp)
-                Spacer(Modifier.weight(1f))
-                Button(onClick = onClose) { Text("Back to the show") }
+    Column(modifier.well(10.dp).padding(16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("EQ + COMP", color = if (doctorOn) Ok else Muted,
+                fontWeight = FontWeight.Bold, fontSize = 15.sp,
+                letterSpacing = 1.sp)
+            Spacer(Modifier.width(8.dp))
+            Switch(checked = doctorOn, onCheckedChange = {
+                MixerService.cmd(ctx, MixerService.ACTION_DOCTOR, "on" to it)
+            })
+            Spacer(Modifier.width(20.dp))
+            Box(Modifier.raised(8.dp).clickable {
+                MixerService.cmd(ctx, MixerService.ACTION_SNAPSHOT)
+            }.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                Text("RE-BASELINE", color = Ink2, fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
             }
-            Spacer(Modifier.height(12.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("EQ + COMP", color = if (doctorOn) Ok else Muted,
-                    fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                Spacer(Modifier.width(8.dp))
-                Switch(checked = doctorOn, onCheckedChange = {
-                    MixerService.cmd(ctx, MixerService.ACTION_DOCTOR, "on" to it)
-                })
-                Spacer(Modifier.width(20.dp))
-                OutlinedButton(onClick = {
-                    MixerService.cmd(ctx, MixerService.ACTION_SNAPSHOT)
-                }) { Text("Re-baseline (bounds = now)") }
-                Spacer(Modifier.width(10.dp))
-                OutlinedButton(onClick = {
-                    MixerService.cmd(ctx, MixerService.ACTION_REBALANCE)
-                }) { Text("Find a new balance") }
+            Spacer(Modifier.width(10.dp))
+            Box(Modifier.raised(8.dp).clickable {
+                MixerService.cmd(ctx, MixerService.ACTION_REBALANCE)
+            }.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                Text("NEW BALANCE", color = Ink2, fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
             }
-            Spacer(Modifier.height(12.dp))
-            health?.let { h ->
-                Text(
-                    (if (h.vocalOnTopPct < 0) "vocal on top — listening"
-                     else "vocal on top ${h.vocalOnTopPct}%") +
-                    "   ·   channels in place ${h.inPlacePct}%" +
-                    "   ·   you out-mixed it ${h.overrides} times",
-                    color = Ink2, fontSize = 15.sp,
-                    fontFamily = FontFamily.Monospace)
-            }
-            if (nights > 0 || taste.isNotBlank())
-                Text(buildString {
-                    if (nights > 0) append("NIGHT ${nights + 1}")
-                    if (taste.isNotBlank()) append("  ·  learned: $taste")
-                }, color = Accent, fontSize = 14.sp)
-            if (lastNight.isNotBlank())
-                Text(lastNight, color = Muted, fontSize = 13.sp)
-            Spacer(Modifier.height(12.dp))
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(listOf(
-                    "good" to "👍 Sounds great",
-                    "vocal_up" to "Vocal louder",
-                    "vocal_down" to "Vocal softer",
-                    "gtr_down" to "Less guitar",
-                    "gtr_up" to "More guitar",
-                    "keys_up" to "More piano",
-                    "keys_down" to "Less piano",
-                    "low_up" to "More low end",
-                    "perc_down" to "Less percussion",
-                    "color_down" to "Softer sax/harp",
-                ), key = { it.first }) { (kind, label) ->
-                    OutlinedButton(onClick = {
-                        MixerService.cmd(ctx, MixerService.ACTION_FEEDBACK,
-                            "kind" to kind)
-                    }) { Text(label, fontSize = 14.sp,
-                              color = if (kind == "good") Ok else Ink2) }
+        }
+        Spacer(Modifier.height(14.dp))
+        health?.let { h ->
+            Lcd((if (h.vocalOnTopPct < 0) "VOCAL ON TOP  --"
+                 else "VOCAL ON TOP %3d%%".format(h.vocalOnTopPct)) +
+                "   IN PLACE %3d%%   YOU OUT-MIXED IT %d".format(
+                    h.inPlacePct, h.overrides),
+                13.sp, Ink2)
+        }
+        Spacer(Modifier.height(8.dp))
+        if (nights > 0 || taste.isNotBlank())
+            Text(buildString {
+                if (nights > 0) append("NIGHT ${nights + 1}")
+                if (taste.isNotBlank()) append("  ·  learned: $taste")
+            }, color = Accent, fontSize = 14.sp)
+        if (lastNight.isNotBlank())
+            Text(lastNight, color = Muted, fontSize = 13.sp)
+        Spacer(Modifier.height(14.dp))
+        Text("TELL IT WHAT YOU WANT", color = Muted, fontSize = 11.sp,
+            letterSpacing = 2.sp)
+        Spacer(Modifier.height(8.dp))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(listOf(
+                "good" to "Sounds great",
+                "vocal_up" to "Vocal louder",
+                "vocal_down" to "Vocal softer",
+                "gtr_down" to "Less guitar",
+                "gtr_up" to "More guitar",
+                "keys_up" to "More piano",
+                "keys_down" to "Less piano",
+                "low_up" to "More low end",
+                "perc_down" to "Less percussion",
+                "color_down" to "Softer sax/harp",
+            ), key = { it.first }) { (kind, label) ->
+                Box(Modifier.raised(8.dp).clickable {
+                    MixerService.cmd(ctx, MixerService.ACTION_FEEDBACK,
+                        "kind" to kind)
+                }.padding(horizontal = 13.dp, vertical = 9.dp)) {
+                    Text(label, fontSize = 13.sp,
+                        color = if (kind == "good") Ok else Ink2)
                 }
             }
-            Spacer(Modifier.height(14.dp))
-            Row(Modifier.weight(1f)) {
-                MonitorPanel(Modifier.weight(1f).fillMaxHeight())
-                Spacer(Modifier.width(12.dp))
-                LastFive(AppState.decisions.value,
-                    Modifier.weight(1f).fillMaxHeight())
-            }
-            Spacer(Modifier.height(10.dp))
-            ExportLogButtons()
         }
+        Spacer(Modifier.weight(1f))
+        ExportLogButtons()
     }
 }
 

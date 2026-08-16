@@ -150,6 +150,17 @@ object AppState {
 
     val wedges = MutableStateFlow<List<WedgeUi>>(emptyList())
 
+    /**
+     * The two numbers the master meter shows: the voice carrying the
+     * song, and everything else. Their RELATIONSHIP is what this whole
+     * engine exists to hold — if LEAD sits above BAND, the mix works.
+     */
+    val leadDb = MutableStateFlow(-128f)
+    val bandDb = MutableStateFlow(-128f)
+
+    /** when MIXING was switched on, for the show clock */
+    val mixingSinceMs = MutableStateFlow(0L)
+
     /** channels with a ring-out notch on them right now */
     val ringNotches = MutableStateFlow<Map<Int, String>>(emptyMap())
 

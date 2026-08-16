@@ -146,7 +146,12 @@ class MixerService : Service() {
                 // again": start the error count from zero, or the next
                 // single exception trips a limit that was reached an
                 // hour ago and switches them straight off again.
-                if (on) { tickFailures = 0; scope.launch { takeoverNow() } }
+                if (on) {
+                    tickFailures = 0
+                    AppState.mixingSinceMs.value =
+                        android.os.SystemClock.elapsedRealtime()
+                    scope.launch { takeoverNow() }
+                }
                 updateNotif()
             }
             ACTION_FREEZE_ALL -> {
@@ -795,6 +800,23 @@ class MixerService : Service() {
         AppState.stageMuted.value = e.stageMuted
         AppState.health.value = e.health()
         AppState.leadVocal.value = e.leadVocal
+        // THE VOICE, AND EVERYTHING ELSE. Both as contributions to the
+        // mains — what the room is actually getting — so the master
+        // meter shows the one relationship the whole engine defends.
+        var bandPow = 0.0
+        var leadPow = 0.0
+        for ((ch, st) in e.state) {
+            if (!st.active) continue
+            val base = st.baselineDb ?: continue
+            val c = ((st.preEma ?: st.lastLevelDb) + base + st.offset)
+                .toDouble()
+            val p = Math.pow(10.0, c / 10.0)
+            if (ch == e.leadVocal) leadPow += p else bandPow += p
+        }
+        AppState.leadDb.value = if (leadPow > 0)
+            (10.0 * Math.log10(leadPow)).toFloat() else -128f
+        AppState.bandDb.value = if (bandPow > 0)
+            (10.0 * Math.log10(bandPow)).toFloat() else -128f
         AppState.channelsMixed.value = e.state.count {
             it.value.baselineDb != null }
         AppState.tickMs.value = android.os.SystemClock.elapsedRealtime()
