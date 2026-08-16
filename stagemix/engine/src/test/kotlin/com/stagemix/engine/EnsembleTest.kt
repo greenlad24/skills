@@ -335,7 +335,7 @@ class EnsembleTest {
                 "${i.name} must land somewhere in the ladder")
         assertEquals(Role.FOUNDATION, Instrument.KICK.role)
         assertEquals(Role.FOUNDATION, Instrument.BASS.role)
-        assertEquals(Role.PERCUSSION, Instrument.CYMBALS.role)
+        assertEquals(Role.DRUMS, Instrument.CYMBALS.role)
         assertEquals(Role.VOCAL, Instrument.VOICE.role)
         assertEquals(Role.COLOR, Instrument.HORN.role)
         assertEquals(Role.INSTRUMENT, Instrument.UNKNOWN.role)

@@ -117,8 +117,8 @@ class LearnedBalanceTest {
     @Test fun `pressing KEEP teaches the engine the balance`() {
         val rig = listOf(
             ChannelConfig(0, "KICK", Role.FOUNDATION),
-            ChannelConfig(1, "SNARE", Role.PERCUSSION),
-            ChannelConfig(2, "OH", Role.PERCUSSION),
+            ChannelConfig(1, "SNARE", Role.DRUMS),
+            ChannelConfig(2, "OH", Role.DRUMS),
             ChannelConfig(3, "BASS", Role.FOUNDATION),
             ChannelConfig(4, "VOX", Role.VOCAL))
         val e = StageEngine(rig)

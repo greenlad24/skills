@@ -279,9 +279,10 @@ class ToneDoctor(
                     // harshness guard (cut-only, high-mid band): shrill
                     // guitar amps, piercing harmonica, edgy vocal mics —
                     // softened up to the rail, released when it passes.
-                    // Foundation & percussion excluded (kick click and
-                    // cymbals are bright by nature).
+                    // Foundation, the kit & percussion excluded (kick
+                    // click and cymbals are bright by nature).
                     if (b == 2 && st.role != Role.FOUNDATION &&
+                        st.role != Role.DRUMS &&
                         st.role != Role.PERCUSSION) {
                         // The tone at takeover is the tone the engineer
                         // approved: a deliberately edgy guitar or a

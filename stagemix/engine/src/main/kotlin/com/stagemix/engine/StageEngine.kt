@@ -69,7 +69,7 @@ data class ChannelConfig(
  * TALK = speech mics (never automated).
  */
 enum class Role {
-    FOUNDATION, KEYS, PERCUSSION, RHYTHM_GTR, SOLO_GTR, COLOR,
+    FOUNDATION, KEYS, DRUMS, PERCUSSION, RHYTHM_GTR, SOLO_GTR, COLOR,
     BACKING_VOCAL, VOCAL, INSTRUMENT, TALK;
 
     fun inLadder(): Boolean = this != INSTRUMENT && this != TALK
@@ -87,12 +87,17 @@ fun inferRole(name: String): Role {
         has("bgv", "bvox", "backing", "back ", "choir", "harmony",
             "harm ") -> Role.BACKING_VOCAL
         has("vox", "vocal", "sing", "voice", "lead v") -> Role.VOCAL
+        // AUXILIARY percussion (congas, bongos, shakers…) — NOT the kit.
         has("conga", "congo", "bongo", "perc", "cajon", "shaker",
-            "timbale", "tamb", "snare", "overhead", "oh ", "tom",
-            "hat") -> Role.PERCUSSION
-        // bass family before keys so "synth bass" never lands in keys;
-        // "DI 2"/"DI2" is this rig's synth-bass channel
+            "timbale", "tamb") -> Role.PERCUSSION
+        // bass family before keys AND before the kit so "synth bass" never
+        // lands in keys and "Kick Drum" stays FOUNDATION (the kick anchors
+        // the low end, it is not the kit); "DI 2"/"DI2" is the synth bass
         has("kick", "bass", "sub", "808", "di 2", "di2") -> Role.FOUNDATION
+        // the DRUM KIT — snare, overheads, toms, hi-hats. After the kick
+        // rule above so a kick is never pulled out of the foundation.
+        has("snare", "overhead", "oh ", "tom", "hat", "hihat", "hi-hat",
+            "kit", "drum") -> Role.DRUMS
         has("piano", "keys", "keyb", "rhodes", "organ", "synth",
             "pad") -> Role.KEYS
         has("solo", "lead g", "amp") -> Role.SOLO_GTR
@@ -126,8 +131,8 @@ fun defaultRigProfile(): List<ChannelConfig> = listOf(
     // congas and moved out of FOUNDATION, and the foundation is what
     // every other channel's height is measured against.
     ChannelConfig(0, "Kick Drum", Role.FOUNDATION, locked = true),
-    ChannelConfig(1, "Snare", Role.PERCUSSION, locked = true),
-    ChannelConfig(2, "Overheads", Role.PERCUSSION),
+    ChannelConfig(1, "Snare", Role.DRUMS, locked = true),
+    ChannelConfig(2, "Overheads", Role.DRUMS),
     ChannelConfig(3, "Bass Mic", Role.FOUNDATION),
     ChannelConfig(4, "Guitar Amp", Role.SOLO_GTR),
     ChannelConfig(5, "Piano L", Role.KEYS, pairWith = 6),
@@ -202,6 +207,7 @@ val PYRAMID: Map<Role, Float> = mapOf(
     Role.VOCAL to +1f,          // the lead, on top of the whole low end
     Role.BACKING_VOCAL to -8f,  // in the mix, under the lead
     Role.KEYS to -7f,           // rich low-mid bed behind the singer
+    Role.DRUMS to -6f,          // the kit — same rung the percussion had
     Role.PERCUSSION to -6f,
     Role.RHYTHM_GTR to -8f,
     Role.SOLO_GTR to -6f,
@@ -273,7 +279,8 @@ data class EngineSettings(
      * off before it is worth tuning.
      */
     val holdRoles: Set<Role> = setOf(
-        Role.VOCAL, Role.BACKING_VOCAL, Role.FOUNDATION, Role.PERCUSSION),
+        Role.VOCAL, Role.BACKING_VOCAL, Role.FOUNDATION, Role.DRUMS,
+        Role.PERCUSSION),
     /** the loudness average the ride answers to — deliberately slow */
     val rideTauSec: Float = 45f,
     /**
@@ -1009,13 +1016,19 @@ class StageEngine(
             "low_up" -> {
                 // low end weak = foundation more dominant: every layer
                 // steps down half a dB relative to it
-                for (r in listOf(Role.KEYS, Role.PERCUSSION, Role.RHYTHM_GTR,
-                    Role.SOLO_GTR, Role.COLOR, Role.BACKING_VOCAL,
-                    Role.VOCAL, Role.INSTRUMENT)) nudge(r, -0.5f)
+                for (r in listOf(Role.KEYS, Role.DRUMS, Role.PERCUSSION,
+                    Role.RHYTHM_GTR, Role.SOLO_GTR, Role.COLOR,
+                    Role.BACKING_VOCAL, Role.VOCAL, Role.INSTRUMENT))
+                    nudge(r, -0.5f)
                 "foundation more dominant (everything else −0.5 dB)"
             }
-            "perc_down" -> "percussion now %+.0f dB vs stock"
-                .format(nudge(Role.PERCUSSION, -1f))
+            "perc_down" -> {
+                // the kit AND the aux percussion both step down, so "less
+                // drums" moves everything that hits like a drum
+                nudge(Role.DRUMS, -1f)
+                "percussion now %+.0f dB vs stock"
+                    .format(nudge(Role.PERCUSSION, -1f))
+            }
             "color_down" -> "sax/harmonica now %+.0f dB vs stock"
                 .format(nudge(Role.COLOR, -1f))
             else -> return "unknown feedback"
@@ -2127,6 +2140,7 @@ class StageEngine(
                         it.active && it.heardSec >= settings.minHeardSec }
             val drumsNow = state.values.any {
                 ((it.role == Role.FOUNDATION && !isBassName(it.name))
+                        || it.role == Role.DRUMS
                         || it.role == Role.PERCUSSION) &&
                         it.active && it.heardSec >= settings.minHeardSec }
             if (bassNow != hasBass || drumsNow != hasDrums) {
@@ -3410,6 +3424,13 @@ class StageEngine(
         Role.VOCAL, Role.BACKING_VOCAL ->
             if (st.cfg.index == leadVocal || isDuetPartner(st)) Role.VOCAL
             else Role.BACKING_VOCAL
+        // The kit and the auxiliary percussion share ONE group target and
+        // one per-channel split, exactly as they did when the kit was
+        // itself PERCUSSION. Splitting them into two groups here would
+        // re-divide the −6 dB target and move the kit and the congas to
+        // new levels — so DRUMS folds into PERCUSSION for the height math
+        // while staying its own role everywhere the label matters.
+        Role.DRUMS -> Role.PERCUSSION
         else -> st.role
     }
 
@@ -3667,7 +3688,8 @@ class StageEngine(
     private fun anchorContribution(): Anchor {
         contributionMean(setOf(Role.FOUNDATION))?.let { return it }
         contributionMean(setOf(Role.KEYS, Role.RHYTHM_GTR, Role.SOLO_GTR,
-            Role.PERCUSSION, Role.COLOR, Role.INSTRUMENT))?.let { return it }
+            Role.DRUMS, Role.PERCUSSION, Role.COLOR,
+            Role.INSTRUMENT))?.let { return it }
         val lead = leadVocal?.let { state[it] }
         if (lead != null && lead.active &&
             lead.heardSec >= settings.minHeardSec) {

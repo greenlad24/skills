@@ -622,10 +622,14 @@ class InstrumentId(val settings: IdSettings = IdSettings()) {
         // three nights they were re-roled between percussion and VOCAL
         // eight times. A vocal role is one the engine promises not to
         // move, so a drum microphone kept being handed that promise.
+        // the DRUM KIT — snare, overheads, toms, hats, cymbals, and the
+        // truncated "DRUM …" labels this desk emits
+        if (has("snare", "snar", "snr", "overhead", "ovrh", "ovhd", "ovh",
+                "oh ", "tom", "hat", "hh", "kit", "ride", "crash", "cym",
+                "drum", "drm")) out.add(Role.DRUMS)
+        // AUXILIARY percussion — congas, bongos, shakers, and the rest
         if (has("conga", "congo", "bongo", "perc", "cajon", "shaker",
-                "timbale", "tamb", "snare", "snar", "snr", "overhead",
-                "ovrh", "ovhd", "ovh", "oh ", "tom", "hat", "hh", "kit",
-                "ride", "crash", "cym", "drum", "drm")) out.add(Role.PERCUSSION)
+                "timbale", "tamb")) out.add(Role.PERCUSSION)
         if (has("kick", "kik", "bd ", "bass", "sub", "808", "di 2", "di2"))
             out.add(Role.FOUNDATION)
         if (has("piano", "keys", "keyb", "rhodes", "organ", "synth",
@@ -639,6 +643,7 @@ class InstrumentId(val settings: IdSettings = IdSettings()) {
     /** which family a role belongs to, for agreement testing */
     fun familyOf(role: Role): Family = when (role) {
         Role.FOUNDATION -> Family.LOW_END
+        Role.DRUMS -> Family.HITS
         Role.PERCUSSION -> Family.HITS
         Role.VOCAL, Role.BACKING_VOCAL, Role.COLOR,
         Role.SOLO_GTR, Role.RHYTHM_GTR -> Family.VOICELIKE
@@ -654,7 +659,9 @@ class InstrumentId(val settings: IdSettings = IdSettings()) {
      */
     private fun defaultRole(f: Family): Role = when (f) {
         Family.LOW_END -> Role.FOUNDATION
-        Family.HITS -> Role.PERCUSSION
+        // the kit is the default drum sound; congas are the exception the
+        // name has to spell out
+        Family.HITS -> Role.DRUMS
         Family.VOICELIKE -> Role.VOCAL
         Family.BED -> Role.KEYS
         Family.UNKNOWN -> Role.INSTRUMENT
@@ -662,6 +669,7 @@ class InstrumentId(val settings: IdSettings = IdSettings()) {
 
     fun pretty(r: Role): String = when (r) {
         Role.FOUNDATION -> "low end"
+        Role.DRUMS -> "drums"
         Role.PERCUSSION -> "percussion"
         Role.VOCAL -> "a lead vocal"
         Role.BACKING_VOCAL -> "a backing vocal"

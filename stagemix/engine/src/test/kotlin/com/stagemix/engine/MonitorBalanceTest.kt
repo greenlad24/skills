@@ -22,7 +22,7 @@ class MonitorBalanceTest {
 
     private val roles = mapOf(
         0 to Role.FOUNDATION,      // kick
-        1 to Role.PERCUSSION,      // snare
+        1 to Role.DRUMS,           // snare
         3 to Role.RHYTHM_GTR,      // DI 1, the acoustic
         4 to Role.SOLO_GTR,
         8 to Role.VOCAL,

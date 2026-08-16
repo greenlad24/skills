@@ -193,6 +193,8 @@ class MusicalityTest {
         fun group(i: Int): Role = when (ROLE[i]) {
             Role.VOCAL, Role.BACKING_VOCAL ->
                 if (i == 8) Role.VOCAL else Role.BACKING_VOCAL
+            // the kit shares the percussion group, as StageEngine.heightRole does
+            Role.DRUMS -> Role.PERCUSSION
             else -> ROLE[i]
         }
         val n = HashMap<Role, Int>()

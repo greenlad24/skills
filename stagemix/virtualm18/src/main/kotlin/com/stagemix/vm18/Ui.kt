@@ -385,7 +385,8 @@ class Bench(
             com.stagemix.engine.Role.SOLO_GTR to "a lead guitar",
             com.stagemix.engine.Role.RHYTHM_GTR to "a rhythm guitar",
             com.stagemix.engine.Role.KEYS to "keys or piano",
-            com.stagemix.engine.Role.PERCUSSION to "drums or percussion",
+            com.stagemix.engine.Role.DRUMS to "the drum kit",
+            com.stagemix.engine.Role.PERCUSSION to "congas or percussion",
             com.stagemix.engine.Role.FOUNDATION to "kick or bass",
             com.stagemix.engine.Role.TALK to "a talkback mic (never mixed)")
         for ((role, text) in choices) {

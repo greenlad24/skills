@@ -21,8 +21,8 @@ class MonitorMapTest {
 
     private val roles = mapOf(
         0 to Role.FOUNDATION,      // kick
-        1 to Role.PERCUSSION,      // snare
-        2 to Role.PERCUSSION,      // overheads
+        1 to Role.DRUMS,           // snare
+        2 to Role.DRUMS,           // overheads
         3 to Role.RHYTHM_GTR,      // DI 1 — the acoustic guitar
         4 to Role.SOLO_GTR,        // guitar amp
         5 to Role.KEYS, 6 to Role.KEYS,
@@ -140,9 +140,9 @@ class MonitorMapTest {
     @Test
     fun `in the drummers ears the kit is on top, not under the snare`() {
         val m = MonitorMap()
-        // kick is FOUNDATION, snare/overheads PERCUSSION, all kit
+        // kick is FOUNDATION, snare/overheads DRUMS, all kit
         val kick = m.wants(MonitorMap.Kind.DRUM_IEM, Role.FOUNDATION, isKit = true)!!
-        val snare = m.wants(MonitorMap.Kind.DRUM_IEM, Role.PERCUSSION, isKit = true)!!
+        val snare = m.wants(MonitorMap.Kind.DRUM_IEM, Role.DRUMS, isKit = true)!!
         val bass = m.wants(MonitorMap.Kind.DRUM_IEM, Role.FOUNDATION, isKit = false)!!
         // §3: "the kick included, ABOVE the snare, not a rung under it"
         assertTrue(kick > snare,
@@ -184,7 +184,7 @@ class MonitorMapTest {
             "the horns sit low in the drummer's floor wedge")
         // and the kit is PRESENT (not dropped as it would be on a
         // non-drummer's floor wedge)
-        assertTrue(m.wants(K, Role.PERCUSSION, isKit = true, inEars = false) != null,
+        assertTrue(m.wants(K, Role.DRUMS, isKit = true, inEars = false) != null,
             "the drummer's own floor wedge must keep the kit")
     }
 

@@ -205,6 +205,15 @@ val STARTING_CHAINS: Map<Role, Chain> = mapOf(
         compAttackMs = 10f, compReleaseMs = 120f, compMakeupDb = null,
         reverbSendDb = null,
         why = "low end: keep the bottom, take out the box, hold it steady"),
+    Role.DRUMS to Chain(
+        hpfHz = 80f,
+        eq = listOf(EqBand(2, 400f, -3f, 1.5f)),
+        compThrDb = -16f, compRatio = 3f,
+        compAttackMs = 15f, compReleaseMs = 100f, compMakeupDb = null,
+        reverbSendDb = -14f,
+        why = "kit: high-passed, a little air, a touch of room"),
+    // the aux percussion (congas etc) gets the same treatment the kit
+    // used to carry when it shared this role
     Role.PERCUSSION to Chain(
         hpfHz = 80f,
         eq = listOf(EqBand(2, 400f, -3f, 1.5f)),

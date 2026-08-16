@@ -59,7 +59,7 @@ class HarshnessTest {
     }
 
     @Test fun `cymbals and kick click are exempt`() {
-        for (role in listOf(Role.PERCUSSION, Role.FOUNDATION)) {
+        for (role in listOf(Role.DRUMS, Role.PERCUSSION, Role.FOUNDATION)) {
             val d = doctor(role)
             var t = settle(d, body = -35f, harsh = -18f, from = 0.0)
             d.snapshotChannel(0, floatArrayOf(0f, 0f, 0f, 0f), thrDb = null)

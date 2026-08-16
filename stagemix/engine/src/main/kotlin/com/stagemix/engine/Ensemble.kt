@@ -359,9 +359,9 @@ class Ensemble(private val channels: Int = 16) {
 enum class Instrument(val role: Role, val label: String) {
     KICK(Role.FOUNDATION, "kick"),
     BASS(Role.FOUNDATION, "bass"),
-    SNARE(Role.PERCUSSION, "snare"),
+    SNARE(Role.DRUMS, "snare"),
     HAND_DRUM(Role.PERCUSSION, "congas / toms"),
-    CYMBALS(Role.PERCUSSION, "overheads"),
+    CYMBALS(Role.DRUMS, "overheads"),
     KEYS(Role.KEYS, "piano / keys"),
     GUITAR(Role.RHYTHM_GTR, "guitar"),
     LEAD_GUITAR(Role.SOLO_GTR, "lead guitar"),

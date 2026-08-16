@@ -228,8 +228,8 @@ class FohEngineTest {
 class RolesTest {
     @Test fun `role inference matches the user's console names`() {
         assertEquals(Role.FOUNDATION, inferRole("Kick Drum"))
-        assertEquals(Role.PERCUSSION, inferRole("Snare"))
-        assertEquals(Role.PERCUSSION, inferRole("Overheads"))
+        assertEquals(Role.DRUMS, inferRole("Snare"))
+        assertEquals(Role.DRUMS, inferRole("Overheads"))
         assertEquals(Role.FOUNDATION, inferRole("Bass Mic"))
         assertEquals(Role.SOLO_GTR, inferRole("Guitar AMP"))
         assertEquals(Role.RHYTHM_GTR, inferRole("Guitar DI"))

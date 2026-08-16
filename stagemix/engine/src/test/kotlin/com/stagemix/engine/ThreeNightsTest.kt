@@ -227,8 +227,8 @@ class ThreeNightsTest {
         // times over three nights. A vocal role is one the engine
         // promises not to move.
         val id = InstrumentId()
-        assertEquals(listOf(Role.PERCUSSION), id.namedRoles("DRUM OVRH_11"))
-        assertEquals(listOf(Role.PERCUSSION), id.namedRoles("DRUM SNAR_4"))
+        assertEquals(listOf(Role.DRUMS), id.namedRoles("DRUM OVRH_11"))
+        assertEquals(listOf(Role.DRUMS), id.namedRoles("DRUM SNAR_4"))
         assertTrue(Role.FOUNDATION in id.namedRoles("DRUM KICK_2"),
             "a kick is still the low end: " + id.namedRoles("DRUM KICK_2"))
         assertTrue(Role.VOCAL !in id.namedRoles("DRUM OVRH_11"),

@@ -643,7 +643,8 @@ private fun InstrumentPicker(s: AppState.StripUi, onDone: () -> Unit) {
         Role.SOLO_GTR to "Lead guitar",
         Role.RHYTHM_GTR to "Rhythm guitar",
         Role.KEYS to "Keys / piano",
-        Role.PERCUSSION to "Drums / percussion",
+        Role.DRUMS to "Drums / kit",
+        Role.PERCUSSION to "Percussion (congas)",
         Role.FOUNDATION to "Kick / bass",
         Role.TALK to "Talkback (never mixed)")
     androidx.compose.material3.AlertDialog(

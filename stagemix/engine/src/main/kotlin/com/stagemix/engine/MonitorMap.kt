@@ -207,6 +207,7 @@ class MonitorMap {
             role == Role.KEYS -> 0f              // piano
             role == Role.RHYTHM_GTR -> 0f        // DI1, the acoustic guitar
             role == Role.SOLO_GTR -> 0f          // the guitar amp
+            role == Role.DRUMS -> 0f             // a kit channel not tagged
             role == Role.PERCUSSION -> 0f        // congas, the rest
             role == Role.COLOR -> -3f            // harmonica low, sax lower
             role == Role.TALK -> null
@@ -234,7 +235,9 @@ class MonitorMap {
         }
         Kind.BASS -> when (role) {
             Role.FOUNDATION -> 6f
-            // "bass and congas a little bit on top"
+            // "bass and congas a little bit on top" — the kit rides here
+            // too, on the same rung it did as percussion
+            Role.DRUMS -> 2f
             Role.PERCUSSION -> 2f
             Role.VOCAL -> 0f
             Role.TALK -> null
@@ -252,6 +255,7 @@ class MonitorMap {
             // under it"). The kick's role is FOUNDATION, but in the kit.
             isKit && role == Role.FOUNDATION -> 8f
             isKit -> 7f
+            role == Role.DRUMS -> 6f
             role == Role.PERCUSSION -> 6f
             role == Role.FOUNDATION -> 2f
             role == Role.VOCAL -> 2f

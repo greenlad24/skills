@@ -51,6 +51,7 @@ private fun roleTint(role: Role): Color = when (role) {
     Role.VOCAL -> RoleVocal
     Role.BACKING_VOCAL -> RoleBacking
     Role.FOUNDATION -> RoleFoundation
+    Role.DRUMS -> RolePercussion
     Role.PERCUSSION -> RolePercussion
     Role.KEYS -> RoleKeys
     Role.RHYTHM_GTR -> RoleRhythm
@@ -63,6 +64,7 @@ private fun roleTint(role: Role): Color = when (role) {
 private fun roleGlyph(role: Role): String = when (role) {
     Role.VOCAL, Role.BACKING_VOCAL -> "◍"
     Role.FOUNDATION -> "◒"
+    Role.DRUMS -> "◎"
     Role.PERCUSSION -> "◎"
     Role.KEYS -> "▤"
     Role.RHYTHM_GTR, Role.SOLO_GTR -> "◫"

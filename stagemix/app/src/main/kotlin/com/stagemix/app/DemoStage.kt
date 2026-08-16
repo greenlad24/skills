@@ -43,7 +43,7 @@ object DemoStage {
         "VOX 3", "BASS DI", "CONGO 2", "DI 2", "UTILITY 3", "HARMONICA")
 
     private val ROLES = listOf(
-        Role.FOUNDATION, Role.PERCUSSION, Role.PERCUSSION, Role.RHYTHM_GTR,
+        Role.FOUNDATION, Role.DRUMS, Role.DRUMS, Role.RHYTHM_GTR,
         Role.SOLO_GTR, Role.KEYS, Role.KEYS, Role.RHYTHM_GTR,
         Role.VOCAL, Role.VOCAL, Role.VOCAL, Role.FOUNDATION,
         Role.PERCUSSION, Role.FOUNDATION, Role.COLOR, Role.COLOR)
@@ -243,6 +243,7 @@ object DemoStage {
                 if ((t * 20).toInt() % 20 == 0) for (c in 0 until 16) {
                     val peakBand = when (ROLES[c]) {
                         Role.FOUNDATION -> 3
+                        Role.DRUMS -> if (c == 2) 18 else 9
                         Role.PERCUSSION -> if (c == 2) 18 else 9
                         Role.KEYS -> 10
                         Role.VOCAL, Role.BACKING_VOCAL -> 11

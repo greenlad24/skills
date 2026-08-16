@@ -448,6 +448,7 @@ class TabletWindow(private val client: DeskClient) {
             g2.font = Font(Font.SANS_SERIF, Font.PLAIN, 9)
             g2.drawString((id?.label ?: when (role) {
                 Role.FOUNDATION -> "low end"; Role.KEYS -> "keys"
+                Role.DRUMS -> "drums"
                 Role.PERCUSSION -> "percussion"; Role.RHYTHM_GTR -> "rhythm gtr"
                 Role.SOLO_GTR -> "lead gtr"; Role.COLOR -> "horn or harp"
                 Role.BACKING_VOCAL -> "backing vocal"; Role.VOCAL -> "vocal"

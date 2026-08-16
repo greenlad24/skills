@@ -748,7 +748,7 @@ class TabletNightTest {
         // height is measured against.
         val e = StageEngine(rig, EngineSettings(mode = BalanceMode.KEEP))
         assertEquals(Role.FOUNDATION, e.state[0]!!.role)
-        assertEquals(Role.PERCUSSION, e.state[1]!!.role)
+        assertEquals(Role.DRUMS, e.state[1]!!.role)
         assertTrue(e.state[0]!!.roleLocked && e.state[1]!!.roleLocked,
             "both are locked before a single meter frame arrives")
 
@@ -768,7 +768,7 @@ class TabletNightTest {
             "the kick is a kick: " + e.decisions
                 .filter { it.kind == "ident" && it.channel == 0 }
                 .map { it.reason })
-        assertEquals(Role.PERCUSSION, e.state[1]!!.role, "and the snare a snare")
+        assertEquals(Role.DRUMS, e.state[1]!!.role, "and the snare a snare")
 
         // The desk's own label does not get a vote either — on this rig
         // the console's names are a previous band's.

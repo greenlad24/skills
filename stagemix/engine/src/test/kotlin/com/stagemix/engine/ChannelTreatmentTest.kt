@@ -128,8 +128,8 @@ class ChannelTreatmentTest {
     @Test fun `reverb goes only where it belongs`() {
         // "only for the ones that need reverb". Reverb on the low end is
         // how a room turns to mud; on a talkback mic it is just strange.
-        val wet = listOf(Role.VOCAL, Role.BACKING_VOCAL, Role.PERCUSSION,
-            Role.KEYS, Role.COLOR, Role.SOLO_GTR)
+        val wet = listOf(Role.VOCAL, Role.BACKING_VOCAL, Role.DRUMS,
+            Role.PERCUSSION, Role.KEYS, Role.COLOR, Role.SOLO_GTR)
         val dry = listOf(Role.FOUNDATION, Role.RHYTHM_GTR)
         for (r in wet) assertTrue(STARTING_CHAINS[r]?.reverbSendDb != null,
             "${r.name} should sit in some room")
@@ -417,7 +417,7 @@ class ChannelTreatmentTest {
 
     @Test fun `a ringing shell gets a narrow cut, a voicing does not`() {
         val t = ChannelTreatment()
-        val w = t.consider(2, Role.PERCUSSION, verdict(0.95f), 1f, spec(),
+        val w = t.consider(2, Role.DRUMS, verdict(0.95f), 1f, spec(),
             100.0, ChannelTreatment.Shape(
                 lowEdgeHz = 90f, resonanceHz = 250f,
                 resonanceDb = 9f, resonanceQ = 4f))
@@ -435,7 +435,7 @@ class ChannelTreatmentTest {
             "cut, and not more than four dB: ${ring.third}")
 
         // a channel with no lump gets the book and nothing else
-        val plain = ChannelTreatment().consider(2, Role.PERCUSSION,
+        val plain = ChannelTreatment().consider(2, Role.DRUMS,
             verdict(0.95f), 1f, spec(), 100.0,
             ChannelTreatment.Shape(lowEdgeHz = 90f))
         assertTrue(plain.none { it.address == "/ch/03/eq/3/f" },
