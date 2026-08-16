@@ -179,15 +179,18 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # ------------------------------------------------------------------
-  # PICTURES OF THE ACTUAL APP.
+  # DOES THE APK ACTUALLY WORK, AND WHAT DOES IT LOOK LIKE.
   #
-  # Every UI change until now shipped unseen: the console screen needs
-  # sixteen channels of live meter off a mixer that is only ever in one
-  # room. The app can now drive itself from a synthetic band (DemoStage,
-  # which cannot open a socket), so a tablet emulator can boot it and
-  # take the photograph.
+  # Three hundred engine tests cannot tell you that the app launches,
+  # that a tab draws, that a key is reachable, or that it survives being
+  # opened on a tablet with no mixer in the room — which is precisely
+  # the gap this project has lost whole shows in. So a tablet emulator
+  # boots the real release APK, tools/smoke.sh drives every feature
+  # through the UI and reads back the accessibility tree to check the
+  # app's claims are on the glass, and only then are the pictures taken.
+  # Any FATAL EXCEPTION or ANR anywhere in the run fails the build.
   # ------------------------------------------------------------------
-  screenshots:
+  smoke-and-shots:
     runs-on: ubuntu-latest
     needs: build
     defaults:
@@ -214,7 +217,7 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Boot a tablet and photograph the app
+      - name: Boot a tablet, exercise every feature, photograph it
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 30
@@ -226,7 +229,7 @@ jobs:
           emulator-options: >-
             -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
             -camera-back none -memory 3072
-          script: ./tools/shots.sh apk/StageMix.apk shots
+          script: ./tools/smoke.sh apk/StageMix.apk && ./tools/shots.sh apk/StageMix.apk shots
 
       - name: Upload the screenshots
         uses: actions/upload-artifact@v4
