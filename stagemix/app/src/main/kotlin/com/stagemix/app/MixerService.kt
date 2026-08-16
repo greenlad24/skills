@@ -109,6 +109,15 @@ class MixerService : Service() {
     private var netCallback: android.net.ConnectivityManager.NetworkCallback? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var loopJob: Job? = null
+    // RTA frames in since the last source switch. It is reset in runLoop
+    // (on a source change) but read/incremented in handle(), which is a
+    // class method and cannot see runLoop's locals — so it lives here.
+    // The first frame after a switch can still be the PREVIOUS channel's
+    // spectrum (the console has not swapped yet), and RingOut keeps a
+    // per-channel max at the ring frequency, so one stale loud frame
+    // would permanently inflate an innocent channel's reading and could
+    // point the notch at the wrong mic. Drop that first frame.
+    private var rtaFramesSinceSwitch = 0
     /** engine exceptions survived this session — see the tick guard */
     private var tickFailures = 0
     /** the exact banner engineFailed raises, so a clean tick can retract it */
@@ -507,13 +516,6 @@ class MixerService : Service() {
         var lastRx = now(); lastRxT = lastRx
         var rtaFocus = -1
         var rtaFocusT = 0.0
-        // RTA frames in since the last source switch. The first frame
-        // after a switch can still be the PREVIOUS channel's spectrum
-        // (the console has not swapped yet), and RingOut keeps a per-
-        // channel max at the ring frequency, so one stale loud frame
-        // would permanently inflate an innocent channel's reading and
-        // could point the notch at the wrong mic. Drop that first frame.
-        var rtaFramesSinceSwitch = 0
         var lastResync = 0.0
         while (scope.isActive && AppState.conn.value != AppState.Conn.DISCONNECTED) {
             val t = now()

@@ -985,6 +985,20 @@ class StageEngine(
      */
     fun onRing(ch: Int, tSec: Double) {
         val st = state[ch] ?: return
+        endFeatureForRing(st, ch, tSec)
+        // A stereo pair solos as one instrument: if one half rings while
+        // the pair is featured, ending only that half would leave the
+        // mate lifted and pull the image hard to one side — the very
+        // thing the pair logic exists to prevent (§2). End both halves
+        // together, and mark both quiet, so the instrument is not
+        // re-featured one-sided during the window either.
+        val mateIdx = st.cfg.pairWith
+        if (mateIdx != null) state[mateIdx]?.let { mate ->
+            endFeatureForRing(mate, mateIdx, tSec)
+        }
+    }
+
+    private fun endFeatureForRing(st: ChannelState, ch: Int, tSec: Double) {
         st.rangAt = tSec
         if (st.featureStart >= 0) {
             st.featureStart = -1.0
@@ -2689,9 +2703,19 @@ class StageEngine(
                 val mine = if (raw >= 0f)
                     maxOf(0f, raw - abs(commonRideShift))
                 else -maxOf(0f, -raw - abs(commonRideShift))
-                val want = boundOffset((planOff + mine).coerceIn(
+                val wantRaw = boundOffset((planOff + mine).coerceIn(
                     planOff - settings.rideBandDb,
                     planOff + settings.rideBandDb), base)
+                // §4: a microphone that has been in a ring is never
+                // RAISED, not by the feature path (barred at canFeature)
+                // and not by the ride either. The ride may still bring it
+                // DOWN — that reduces loop gain — but it must not push the
+                // fader up on a mic that rang in the last few minutes.
+                // Clamping the aim to the current offset makes an upward
+                // correction a no-op (err≈0, never engages) while leaving
+                // every downward one free.
+                val want = if (tSec - st.rangAt < RING_QUIET_SEC)
+                    minOf(wantRaw, st.offset) else wantRaw
                 // Hysteresis, or it hunts. The loudness average this is
                 // computed from wanders a little all the time, so
                 // "correct whenever the error exceeds a dB" re-triggers
