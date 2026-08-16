@@ -1,0 +1,219 @@
+# The rulebook
+
+Everything the operator has specified about how this band's mix should
+sound — out front and in each monitor — collected in one place, in
+their own words wherever possible. **This file is the source of truth.**
+Where the code and this file disagree, the code is wrong.
+
+It exists because the rules arrived across many conversations, and an
+autopilot that has drifted from them is worse than no autopilot: it is
+confidently wrong in a room full of people.
+
+---
+
+## 0 · The absolute constraints
+
+These are not preferences. They override everything below.
+
+1. **Never add gain, by any route.**
+   > "messing with gain WILL cause feedback problems on the stage that
+   > the app will find hard to resolve — I want this app to be precise
+   > and never cause problems"
+
+   Not the preamp, not EQ boosts, not compressor makeup. And note that
+   on an X-Air the aux sends tap the channel **after** EQ and dynamics,
+   so any processing boost lands in all six wedges at full value. The
+   processing path is cut-only, enforced in code rather than trusted.
+
+2. **The same argument applies to EQ.** EQ is permitted — *"I'm ok
+   about the app doing EQ"* — but only as cuts.
+
+3. **The app has the mixer's IP and nothing else.** No internet, ever.
+
+4. **Nothing may move a bus master.** How loud a wedge is belongs to
+   the person standing in front of it.
+
+5. **Between songs it does nothing at all.**
+   > "In between songs - I don't want the app to do rebalancing or
+   > EQ/Compression - only when the band is playing"
+
+6. **And when the band IS playing, it only acts when it is needed:**
+   > "1. Solo happening (Sax, guitar, harmonica)
+   >  2. A new instrument has entered that was not there before"
+
+7. **A hand always wins.** If the engineer moves something, adopt their
+   level as the new truth, hold off that channel, and learn from the
+   direction they moved it. Never fight a hand.
+
+---
+
+## 1 · The rig — facts, not guesses
+
+| Channel | What it is | Rule |
+|---|---|---|
+| 1 | **Kick** | always. never re-identified |
+| 2 | **Snare** | always. never re-identified |
+| DI 1 | **acoustic guitar** | the singer plays it |
+| Bass DI | **bass** | in the pyramid |
+| DI 2 | **bass** | *also* the bass — both are the bass |
+| 11 | usually **conga**, sometimes a **third vocal** | must tolerate both |
+
+> "The first and second channels will always be Kick and Snare mics."
+> "Bass DI and DI 2 are very important (both are the bass - in the
+> pyramid) ... both of these channels will also stay always in their
+> current positions."
+> "channel 11 - usually a conga but sometimes a third vocal"
+
+---
+
+## 2 · Out front — how the mix should sound
+
+- **Foundation:** kick + bass (Bass DI *and* DI 2) hold the bottom.
+- **The lead vocal sits on top of everything.** This is the single
+  relationship the whole engine exists to defend: if LEAD is above
+  BAND, the mix is working.
+- **Lead-follow between the vocal mics** — whoever is carrying the song
+  is the lead, and it can change during the night.
+- **Everything else laddered underneath**, by role.
+- **A solo is featured** — sax, guitar, harmonica step up and are held
+  up for the duration, then eased back.
+- **A new instrument arriving** is listened to before being placed.
+- **Held roles stay where the operator put them:** VOCAL,
+  BACKING_VOCAL, FOUNDATION, PERCUSSION. The app's authority is the
+  window −12 dB to +6 dB around the fader position at takeover, with a
+  hard ceiling of +2 dB above it in absolute terms.
+- **KEEP means keep.** Once a balance is adopted, only the source
+  genuinely moving, a solo, or an instrument arriving changes anything.
+
+---
+
+## 3 · The monitors — how each position should sound
+
+Five positions: three floor wedges and two in-ears.
+
+The generalisation the code encodes: **an in-ear wants that player's
+own instrument on top of a complete mix; a wedge wants that player's
+own instrument on top of a partial one, with the drum kit left out**,
+because the kit is three feet away and arrives over the top of the
+stage anyway. Putting it in the wedge as well only spends gain before
+feedback. In-ears seal the ears off from the room, so they need
+everything, kit included.
+
+**"No drums" means the KIT, not all percussion.** The congas are across
+the stage, they are part of "the rest" in most wedges, and the bass
+player explicitly wants them.
+
+### Bus 1 — CENTRE, the singer's wedge
+> "it's the singer monitor, it needs vocals at high volume (but not
+> feedbacking volume), no drums, DI1 (It's what we use for acoustic
+> guitar) at good volume, all of the rest balanced at lower volumes."
+
+- vocals **high** — but never at feedbacking volume
+- **no kit**
+- **DI 1** (acoustic guitar) at good volume
+- everything else balanced, lower
+
+### Bus 2 — the guitarist's wedge, labelled "PIANO MON"
+> "Guitar monitor (which is called piano monitor - bus 2) should have
+> guitar at higher volume, vocals, no drums, and all the rest balanced
+> at lower volumes."
+
+- guitar **higher**
+- vocals present
+- **no kit**
+- everything else balanced, lower
+
+*(The name is a trap: this wedge is called "piano monitor" and is the
+guitarist's. No amount of listening would work that out — it has to be
+read off the name the engineer typed.)*
+
+### The bass player's wedge
+> "Bass monitor - bass and congas a little bit on top, all the rest
+> balanced (without drums) at lower volumes."
+
+- bass on top, **congas a little on top too**
+- **no kit**
+- everything else balanced, lower
+
+### Bus 3 — the drummer's in-ears
+> "in-ears need a balanced mix with the current playing instruments
+> above - for drums in-ear is the drums"
+
+- the **kit** on top
+- a balanced mix of whatever is currently playing underneath
+
+### Bus 6 — the second in-ears (piano + bass)
+> "for bus 6 (piano + bass) it's the piano and DI2"
+
+- **piano** and **DI 2** on top
+- a balanced mix underneath
+
+### How the app is allowed to act on any of them
+> "the app can do rebalancing to the monitors but in a different way it
+> does on the outside. It needs to understand the current balance of
+> each monitor separately and then adjust it slightly based on the
+> position of it (and what is happening - for example if the sound
+> engineer is changing that balance) understand what's happening and go
+> with it rather then fight it."
+
+and later, plainly:
+
+> "monitors will rebalance slightly not much"
+
+Which means, concretely:
+
+- **The ladder is a SHAPE.** Only the gaps between its rungs are the
+  app's business. Its absolute height — how loud the wedge is — is the
+  musician's, always.
+- **To make something louder, turn something else down.** A monitor mix
+  is a ratio, and raising a send spends gain before feedback on the
+  loudest open microphone in the room. Cutting its neighbours produces
+  the identical ratio and spends none. Balancing the monitors and never
+  causing feedback are only compatible in that order.
+- **A send that is OFF is a routing decision, not a balance error.**
+- Slightly: one small move per bus at a time, bounded hard over a whole
+  night, nothing between songs, and nothing at all on a wedge that is
+  already close enough.
+
+---
+
+## 4 · Feedback
+
+> "I want the app to avoid creating feedbacks and fix feedbacks as fast
+> as it can."
+
+**Avoid:** cut-preferred everywhere; never raise a microphone that has
+been in a ring; no raising anywhere on the stage for several minutes
+after a howl; no gain, ever, by any route.
+
+**Fix:** find *which* microphone the loop is in — every open mic hears
+a howl, but the one in the loop hears it far louder — and put a narrow
+cut on that channel, so one move fixes the wedge, the side-fill and the
+mains at once. Fast, but never faster than it can actually know: a
+wrong cut damages an innocent channel *and* stops the app finding the
+real one.
+
+The four frequencies this rig has actually produced: **196, 160, 226
+and 3377 Hz.**
+
+---
+
+## 5 · What the app must always tell the operator
+
+> "In any case there's an error - it should be shown as well. All types
+> of errors (not mixing is also an error) - it should tell what should
+> be done to fix it"
+
+- **Not mixing is a fault**, in fault colours, first in the list. Three
+  entire shows went by in watching mode with nothing on screen saying
+  so. That must never be possible again.
+- Every message carries the thing to press. A fault without a remedy is
+  just bad news.
+- **Progress is shown at all times**, including a bar. When there is no
+  countdown to run, the bar carries how much of the mix is where it
+  should be — a number that moves all night, so a still bar means
+  stopped rather than settled.
+
+> "the auto mix should be on by default - when the app is opened it
+> should connect automatically (if available) to the mixer and start
+> mixing"
