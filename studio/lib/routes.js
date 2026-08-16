@@ -54,6 +54,10 @@ async function collectInputImages(ctx, db, day, preset) {
       asset: small
         ? `assets/style-presets/thumbs/${preset.file.replace(/\.jpg$/, '.png')}`
         : `assets/style-presets/${preset.file}`,
+      // If the preferred variant is missing from the deployment, use the other one.
+      assetFallback: small
+        ? `assets/style-presets/${preset.file}`
+        : `assets/style-presets/thumbs/${preset.file.replace(/\.jpg$/, '.png')}`,
       manifest: `STYLE reference — a past "${preset.name}" Vibration poster; match its brand feel`,
     });
   }
@@ -72,10 +76,26 @@ async function collectInputImages(ctx, db, day, preset) {
   for (const e of picked) {
     if (e.file) {
       images.push(await store.readFile(e.file));
-    } else {
-      const buf = await ctx.loadAsset(e.asset);
-      images.push({ buffer: buf, mime: e.asset.endsWith('.png') ? 'image/png' : 'image/jpeg', name: e.asset.split('/').pop() });
+      manifest.push(e.manifest);
+      continue;
     }
+    // Bundled style assets: try the preferred variant, fall back to the other,
+    // and if both are unreachable skip the asset rather than failing the
+    // whole generation — the prompt still carries the art direction in text.
+    let buf = null;
+    let name = e.asset;
+    try {
+      buf = await ctx.loadAsset(e.asset);
+    } catch {
+      if (e.assetFallback) {
+        try {
+          buf = await ctx.loadAsset(e.assetFallback);
+          name = e.assetFallback;
+        } catch { /* both missing — skip */ }
+      }
+    }
+    if (!buf) continue;
+    images.push({ buffer: buf, mime: name.endsWith('.png') ? 'image/png' : 'image/jpeg', name: name.split('/').pop() });
     manifest.push(e.manifest);
   }
   return { images, manifest };

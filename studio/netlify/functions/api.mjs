@@ -60,7 +60,7 @@ export default async (request) => {
       // Style presets etc. are static site assets — fetch them from our own CDN.
       async loadAsset(relPath) {
         const res = await fetch(`${url.origin}/${relPath}`);
-        if (!res.ok) throw new Error(`Asset not found: ${relPath}`);
+        if (!res.ok) throw new Error(`Asset fetch failed (HTTP ${res.status}): ${url.origin}/${relPath}`);
         return Buffer.from(await res.arrayBuffer());
       },
     };

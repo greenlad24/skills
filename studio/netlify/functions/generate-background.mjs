@@ -48,7 +48,7 @@ export default async (request) => {
     serverless: true,
     async loadAsset(relPath) {
       const res = await fetch(`${url.origin}/${relPath}`);
-      if (!res.ok) throw new Error(`Asset not found: ${relPath}`);
+      if (!res.ok) throw new Error(`Asset fetch failed (HTTP ${res.status}): ${url.origin}/${relPath}`);
       return Buffer.from(await res.arrayBuffer());
     },
   };
