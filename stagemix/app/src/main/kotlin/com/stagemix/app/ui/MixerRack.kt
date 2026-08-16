@@ -211,9 +211,16 @@ private fun ChannelStrip(
         // readout, its state word and its spectrum out of line with the
         // fifteen beside it, and a rack that does not line up looks
         // broken rather than busy.
-        Box(Modifier.height(12.dp), contentAlignment = Alignment.Center) {
+        // 14 dp, not 12: a 9 sp line box is taller than 12 dp once the
+        // reader's font scale is anything but the smallest, and the
+        // first version of this row sliced the frequency in half — the
+        // one number on the strip that says WHY a channel has been cut.
+        // The line height is pinned too, so the row cannot be resized
+        // out from under the text by a system font setting.
+        Box(Modifier.height(14.dp), contentAlignment = Alignment.Center) {
             if (notch != null)
                 Text(notch, color = Bad, fontSize = 9.sp, maxLines = 1,
+                    lineHeight = 10.sp,
                     fontFamily = FontFamily.Monospace)
         }
 
