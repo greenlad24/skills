@@ -185,255 +185,249 @@ fun Checklist() {
 @Composable
 fun ConsoleScreen() {
     val ctx = LocalContext.current
-    val mixer by AppState.mixer.collectAsState()
     val strips by AppState.strips.collectAsState()
     val decisions by AppState.decisions.collectAsState()
     val hold by AppState.holdReason.collectAsState()
-    val snap by AppState.snapshotTaken.collectAsState()
     val directing by AppState.directing.collectAsState()
-    val doctorOn by AppState.doctorOn.collectAsState()
     val frozenAll by AppState.frozenAll.collectAsState()
     val balanceKept by AppState.balanceKept.collectAsState()
     val stageMuted by AppState.stageMuted.collectAsState()
+    val err by AppState.lastError.collectAsState()
+    val conn by AppState.conn.collectAsState()
+    val lead by AppState.leadVocal.collectAsState()
+    val phase by AppState.phase.collectAsState()
+    val tickMs by AppState.tickMs.collectAsState()
+    val mixed by AppState.channelsMixed.collectAsState()
+    var detail by remember { mutableStateOf(false) }
+    var picking by remember { mutableStateOf<AppState.StripUi?>(null) }
+
+    val fault = when {
+        err != null -> err
+        conn != AppState.Conn.CONNECTED ->
+            "no answer from the mixer — nothing is moving"
+        else -> null
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        // Everything the operator must know without reading: what state
+        // the app is in, and that tapping here changes it.
+        ModeBand(
+            directing = directing, keeping = balanceKept,
+            stageMuted = stageMuted, frozen = frozenAll, fault = fault,
+            channelsMixed = mixed, channelsTotal = strips.size,
+            onToggle = {
+                MixerService.cmd(ctx, MixerService.ACTION_DIRECTING,
+                    "on" to !directing)
+            })
+
+        Column(Modifier.weight(1f).padding(12.dp)) {
+            val newest = decisions.firstOrNull()
+            NowLine(
+                headline = headlineFor(newest, hold, directing, strips),
+                detail = newest?.reason ?: "",
+                tickMs = tickMs, shadow = !directing && newest != null)
+            phase?.let { PhaseBar(it) }
+            Spacer(Modifier.height(10.dp))
+            Row(Modifier.weight(1f)) {
+                // THE STAGE. The picture is the point: a musician
+                // glancing at this between songs is asking what the app
+                // is doing to the band, and a picture answers that in
+                // the time a list of sixteen strips takes to find.
+                StagePlot(
+                    strips = strips, leadVocal = lead, directing = directing,
+                    modifier = Modifier.weight(2.1f).fillMaxHeight()
+                        .background(StageFloor, RoundedCornerShape(12.dp))
+                        .border(1.dp, Line, RoundedCornerShape(12.dp)),
+                    onTap = { ch -> picking = strips.firstOrNull { it.channel == ch } })
+                Spacer(Modifier.width(12.dp))
+                LastFive(decisions, Modifier.weight(1f).fillMaxHeight())
+            }
+        }
+
+        ActionPads(
+            frozen = frozenAll,
+            onFreeze = {
+                MixerService.cmd(ctx, MixerService.ACTION_FREEZE_ALL,
+                    "on" to !frozenAll)
+            },
+            onKeep = { MixerService.cmd(ctx, MixerService.ACTION_KEEP_BALANCE) },
+            onUndo = { MixerService.cmd(ctx, MixerService.ACTION_REVERT) },
+            onDetail = { detail = true })
+    }
+
+    picking?.let { s -> InstrumentPicker(s) { picking = null } }
+    if (detail) DetailSheet { detail = false }
+}
+
+/**
+ * The newest decision, in the operator's language rather than the
+ * engine's — and, when there is nothing to report, a sentence saying
+ * exactly that. Silence on this line is the one thing it must never do:
+ * "nothing needed doing" and "this app has stopped" look identical
+ * otherwise, which is how three nights went by.
+ */
+private fun headlineFor(d: com.stagemix.engine.Decision?, hold: String?,
+                        directing: Boolean,
+                        strips: List<AppState.StripUi>): String {
+    hold?.let { return it.replaceFirstChar { c -> c.uppercase() } }
+    if (d == null) return if (!directing)
+        "Watching the band — nothing has been sent to your mixer"
+        else "Listening to the room"
+    val name = d.channel?.let { ch ->
+        strips.firstOrNull { it.channel == ch }?.name
+            ?: "ch%02d".format(ch + 1) } ?: ""
+    val db = if (d.deltaDb != 0f) " · %+.1f dB".format(d.deltaDb) else ""
+    return when (d.kind) {
+        "ride" -> "Easing $name back to its place$db"
+        "placed" -> "Found a place for $name$db"
+        "leave" -> "Left $name where you had it"
+        "arrive" -> "$name came in — listening before placing it"
+        "feature" -> "$name stepped up — leaving the feature with the player"
+        "duck" -> "Clearing room for the vocal$db"
+        "held-down" -> "$name held down — nothing on it"
+        "ident" -> "Worked out what $name is"
+        "lead" -> "$name is carrying the song now"
+        "gap" -> "Between songs — holding everything still"
+        "music" -> "The band is back"
+        "stage-mute" -> "You have the band muted"
+        "override" -> "You moved $name$db — that is the new level"
+        "soloride" -> "Keeping your lift on $name for the solo"
+        "rebalance" -> "Finding the balance again"
+        "keep" -> "Keeping this balance"
+        "treat" -> "Setting up $name"
+        "ensemble" -> "The line-up changed"
+        "takeover" -> "Took the mains"
+        else -> d.kind.replaceFirstChar { c -> c.uppercase() } +
+            (if (name.isNotBlank()) " · $name" else "") + db
+    }
+}
+
+/**
+ * The five things worth knowing, newest first — landmarks only.
+ *
+ * The running commentary (every ride, every trim) belongs in the log
+ * and not on a stage. What belongs here is what changed: somebody
+ * arrived, somebody soloed, you overruled it, the band stopped.
+ */
+private val LANDMARKS = setOf("arrive", "feature", "soloride", "override",
+    "rebalance", "keep", "held-down", "ident", "leave", "lead", "gap",
+    "music", "stage-mute", "takeover", "treat", "feedback")
+
+@Composable
+private fun LastFive(decisions: List<com.stagemix.engine.Decision>,
+                     modifier: Modifier) {
+    Column(
+        modifier
+            .background(Panel, RoundedCornerShape(12.dp))
+            .border(1.dp, Line, RoundedCornerShape(12.dp))
+            .padding(12.dp)
+    ) {
+        Text("WHAT IT HAS DONE", color = Muted, fontSize = 12.sp,
+            letterSpacing = 2.sp)
+        Spacer(Modifier.height(8.dp))
+        val marks = decisions.filter { it.kind in LANDMARKS }.take(5)
+        if (marks.isEmpty())
+            Text("Nothing worth reporting yet.", color = Ink2, fontSize = 15.sp)
+        for (d in marks) {
+            Column(Modifier.padding(bottom = 10.dp)) {
+                Text(d.kind.uppercase() +
+                    (if (d.deltaDb != 0f) "  %+.1f dB".format(d.deltaDb) else ""),
+                    color = when (d.kind) {
+                        "override", "soloride" -> Warn
+                        "held-down", "leave" -> Bad
+                        else -> Ok
+                    },
+                    fontSize = 13.sp, fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold)
+                Text(d.reason, color = Ink2, fontSize = 14.sp)
+            }
+        }
+        Spacer(Modifier.weight(1f))
+        Text("${decisions.size} decisions tonight — all of them in the log",
+            color = Muted, fontSize = 12.sp)
+    }
+}
+
+/** everything that is not a mid-song decision */
+@Composable
+private fun DetailSheet(onClose: () -> Unit) {
+    val ctx = LocalContext.current
+    val doctorOn by AppState.doctorOn.collectAsState()
     val health by AppState.health.collectAsState()
     val nights by AppState.nightsCount.collectAsState()
     val taste by AppState.tasteSummary.collectAsState()
     val lastNight by AppState.lastNightSummary.collectAsState()
-    val err by AppState.lastError.collectAsState()
-    val conn by AppState.conn.collectAsState()
-
-    Column(Modifier.fillMaxSize().padding(14.dp)) {
-        // ---- the things the operator has to be told, and could not be
-        //
-        // `lastError` was collected only on the SETUP screen, so two
-        // messages the service writes into it were never displayed once
-        // mixing had started: "only 9 of 16 faders answered — ch03,
-        // ch07 are NOT being mixed", and the howl warning. Finding out
-        // from the log the next morning that five channels went unmixed
-        // all night is the definition of being let down by a tool.
-        if (err != null || conn != AppState.Conn.CONNECTED) {
-            val feedback = err?.contains("FEEDBACK") == true
-            Row(
-                Modifier.fillMaxWidth()
-                    .background(if (feedback) Bad else Warn,
-                        RoundedCornerShape(8.dp))
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    err ?: "NO ANSWER FROM THE MIXER — nothing is moving",
-                    color = Color.Black, fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold)
+    val strips by AppState.strips.collectAsState()
+    Surface(color = Bg, modifier = Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("DETAIL", color = Ink, fontSize = 22.sp,
+                    fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+                Spacer(Modifier.weight(1f))
+                Button(onClick = onClose) { Text("Back to the show") }
             }
-            Spacer(Modifier.height(8.dp))
-        }
-        // ---- header bar
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("STAGEMIX", color = Ink, fontWeight = FontWeight.Black,
-                fontSize = 18.sp, letterSpacing = 2.sp)
-            Spacer(Modifier.width(10.dp))
-            Text("${mixer.model} ${mixer.firmware} @ ${mixer.ip}",
-                color = Muted, fontSize = 12.sp)
-            Spacer(Modifier.weight(1f))
-            hold?.let {
-                Text(it.uppercase(), color = Warn, fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold)
-                Spacer(Modifier.width(14.dp))
-            }
-            // Named for what it DOES, not for what it is called
-            // internally: this switch is the difference between an app
-            // that only moves faders and one that also sets EQ,
-            // compressors and high-pass filters on your channels.
-            // "DOCTOR" told nobody that.
-            Text("EQ + COMP", color = if (doctorOn) Ok else Muted,
-                fontWeight = FontWeight.Bold, fontSize = 12.sp)
-            Spacer(Modifier.width(4.dp))
-            Switch(checked = doctorOn, onCheckedChange = {
-                MixerService.cmd(ctx, MixerService.ACTION_DOCTOR, "on" to it)
-            })
-            Spacer(Modifier.width(14.dp))
-            Text(
-                when {
-                    // Said out loud, because otherwise a muted stage
-                    // and a broken app look identical from the front:
-                    // nothing moving and no explanation.
-                    directing && stageMuted -> "WAITING — you have the band muted"
-                    directing && balanceKept -> "KEEPING YOUR BALANCE"
-                    directing -> "MIXING — finding the balance"
-                    snap -> "SHADOW — watching only"
-                    else -> "PAUSED"
-                },
-                color = if (directing && stageMuted) Warn
-                        else if (directing) Live
-                        else if (snap) Warn else Muted,
-                fontWeight = FontWeight.Bold, fontSize = 13.sp)
-            Spacer(Modifier.width(8.dp))
-            Switch(checked = directing, onCheckedChange = {
-                MixerService.cmd(ctx, MixerService.ACTION_DIRECTING, "on" to it)
-            })
-        }
-        Spacer(Modifier.height(10.dp))
-
-        // ---- THE ONE BUTTON THAT MATTERS
-        //
-        // It said "Take over the mains" and took over nothing. The
-        // button sent ACTION_SNAPSHOT — a re-baseline — while the thing
-        // that actually starts mixing was an unlabelled switch up in
-        // the header beside a line of small text. On three consecutive
-        // nights the operator opened the app, pressed the big obvious
-        // button twenty seconds after connecting, and the app then
-        // watched the entire gig without writing one fader. Three
-        // nights of a real band, and the log is 55 MB of an autopilot
-        // taking notes.
-        //
-        // So the big button IS the switch now, it says which state it
-        // will put you in, and re-baselining — which only means
-        // anything once it is mixing — sits beside it.
-        if (!directing) Text(
-            "SHADOW — nothing is being sent to the mixer. Press START " +
-            "MIXING when you want the app to take the mains.",
-            color = Warn, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(6.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Button(
-                onClick = { MixerService.cmd(ctx, MixerService.ACTION_DIRECTING,
-                    "on" to !directing) },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (directing) Bad else Ok),
-            ) { Text(if (directing) "■ STOP — hand the mains back"
-                     else "▶ START MIXING (take the mains)",
-                     color = Bg, fontWeight = FontWeight.Bold) }
-            OutlinedButton(
-                onClick = { MixerService.cmd(ctx, MixerService.ACTION_SNAPSHOT) },
-            ) { Text("Re-baseline (bounds = now)") }
-            OutlinedButton(onClick = {
-                MixerService.cmd(ctx, MixerService.ACTION_REVERT)
-            }) { Text("Undo my moves") }
-            Button(
-                onClick = {
-                    MixerService.cmd(ctx, MixerService.ACTION_FREEZE_ALL,
-                        "on" to !frozenAll)
-                },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (frozenAll) Ok else Bad),
-            ) { Text(if (frozenAll) "▶ Resume" else "⏸ FREEZE ALL", color = Bg) }
-            Spacer(Modifier.width(6.dp))
-            // The two halves of what the app is for: this mix is the one
-            // to defend, or this mix is wrong and I want a new one.
-            OutlinedButton(onClick = {
-                MixerService.cmd(ctx, MixerService.ACTION_KEEP_BALANCE)
-            }) { Text("✓ Keep this balance") }
-            OutlinedButton(onClick = {
-                MixerService.cmd(ctx, MixerService.ACTION_REBALANCE)
-            }) { Text("↻ Find a new balance") }
-            Spacer(Modifier.width(6.dp))
-            ExportLogButtons()
-        }
-        Spacer(Modifier.height(8.dp))
-
-        // ---- mix health + cross-night learning line
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            health?.let { h ->
-                Text("MIX HEALTH", color = Muted, fontSize = 10.sp,
-                    letterSpacing = 2.sp)
+            Spacer(Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("EQ + COMP", color = if (doctorOn) Ok else Muted,
+                    fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 Spacer(Modifier.width(8.dp))
-                // -1 means "not enough samples yet", not "1% below
-                // zero". Printed raw it read "vocal on top -1%" in
-                // amber for the first minutes of every show, which
-                // looks exactly like a fault.
-                Text(if (h.vocalOnTopPct < 0) "vocal on top — listening"
-                     else "vocal on top ${h.vocalOnTopPct}%",
-                    color = if (h.vocalOnTopPct < 0) Muted
-                            else if (h.vocalOnTopPct >= 85) Ok else Warn,
-                    fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                Switch(checked = doctorOn, onCheckedChange = {
+                    MixerService.cmd(ctx, MixerService.ACTION_DOCTOR, "on" to it)
+                })
+                Spacer(Modifier.width(20.dp))
+                OutlinedButton(onClick = {
+                    MixerService.cmd(ctx, MixerService.ACTION_SNAPSHOT)
+                }) { Text("Re-baseline (bounds = now)") }
                 Spacer(Modifier.width(10.dp))
-                Text("in place ${h.inPlacePct}%",
-                    color = if (h.inPlacePct >= 85) Ok else Warn,
-                    fontSize = 12.sp, fontFamily = FontFamily.Monospace)
-                Spacer(Modifier.width(10.dp))
-                Text("${h.overrides} overrides", color = Ink2, fontSize = 12.sp,
+                OutlinedButton(onClick = {
+                    MixerService.cmd(ctx, MixerService.ACTION_REBALANCE)
+                }) { Text("Find a new balance") }
+            }
+            Spacer(Modifier.height(12.dp))
+            health?.let { h ->
+                Text(
+                    (if (h.vocalOnTopPct < 0) "vocal on top — listening"
+                     else "vocal on top ${h.vocalOnTopPct}%") +
+                    "   ·   channels in place ${h.inPlacePct}%" +
+                    "   ·   you out-mixed it ${h.overrides} times",
+                    color = Ink2, fontSize = 15.sp,
                     fontFamily = FontFamily.Monospace)
             }
-            Spacer(Modifier.weight(1f))
-            if (nights > 0 || taste.isNotBlank()) {
+            if (nights > 0 || taste.isNotBlank())
                 Text(buildString {
                     if (nights > 0) append("NIGHT ${nights + 1}")
                     if (taste.isNotBlank()) append("  ·  learned: $taste")
-                }, color = Accent, fontSize = 11.sp)
-            }
-        }
-        if (lastNight.isNotBlank()) {
-            Text(lastNight, color = Muted, fontSize = 10.sp)
-        }
-        Spacer(Modifier.height(8.dp))
-
-        // ---- feedback bar: teach it your taste, one tap at a time
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(listOf(
-                "good" to "👍 Sounds great",
-                "vocal_up" to "Vocal louder",
-                "vocal_down" to "Vocal softer",
-                "gtr_down" to "Less guitar",
-                "gtr_up" to "More guitar",
-                "keys_up" to "More piano",
-                "keys_down" to "Less piano",
-                "low_up" to "More low end",
-                "perc_down" to "Less percussion",
-                "color_down" to "Softer sax/harp",
-            ), key = { it.first }) { (kind, label) ->
-                OutlinedButton(
-                    onClick = {
+                }, color = Accent, fontSize = 14.sp)
+            if (lastNight.isNotBlank())
+                Text(lastNight, color = Muted, fontSize = 13.sp)
+            Spacer(Modifier.height(12.dp))
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(listOf(
+                    "good" to "👍 Sounds great",
+                    "vocal_up" to "Vocal louder",
+                    "vocal_down" to "Vocal softer",
+                    "gtr_down" to "Less guitar",
+                    "gtr_up" to "More guitar",
+                    "keys_up" to "More piano",
+                    "keys_down" to "Less piano",
+                    "low_up" to "More low end",
+                    "perc_down" to "Less percussion",
+                    "color_down" to "Softer sax/harp",
+                ), key = { it.first }) { (kind, label) ->
+                    OutlinedButton(onClick = {
                         MixerService.cmd(ctx, MixerService.ACTION_FEEDBACK,
                             "kind" to kind)
-                    },
-                    contentPadding = androidx.compose.foundation.layout
-                        .PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-                ) { Text(label, fontSize = 11.sp,
-                         color = if (kind == "good") Ok else Ink2) }
-            }
-        }
-        Spacer(Modifier.height(10.dp))
-
-        Row(Modifier.weight(1f)) {
-            // ---- strips
-            LazyRow(
-                Modifier.weight(2.2f).fillMaxHeight(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                items(strips, key = { it.channel }) { s -> Strip(s) }
-            }
-            Spacer(Modifier.width(12.dp))
-            // ---- decision feed
-            Column(
-                Modifier.weight(1f).fillMaxHeight()
-                    .background(Panel, RoundedCornerShape(12.dp))
-                    .border(1.dp, Line, RoundedCornerShape(12.dp))
-                    .padding(12.dp)
-            ) {
-                Text("ENGINE LOG", color = Muted, fontSize = 11.sp,
-                    letterSpacing = 2.sp)
-                Spacer(Modifier.height(6.dp))
-                if (decisions.isEmpty())
-                    Text("Waiting. Take the soundcheck snapshot, then flip " +
-                        "MIXING on — every move lands here with its reason.",
-                        color = Ink2, fontSize = 13.sp)
-                LazyColumn {
-                    items(decisions) { d ->
-                        Column(Modifier.padding(vertical = 4.dp)) {
-                            Text(
-                                "${d.kind.uppercase()}  " +
-                                (if (d.deltaDb != 0f)
-                                    "%+.1f dB".format(d.deltaDb) else ""),
-                                color = when (d.kind) {
-                                    "duck" -> Warn; "freeze" -> Bad
-                                    "revert" -> Accent; else -> Ok
-                                },
-                                fontSize = 12.sp, fontFamily = FontFamily.Monospace)
-                            Text(d.reason, color = Ink2, fontSize = 12.sp)
-                        }
-                    }
+                    }) { Text(label, fontSize = 14.sp,
+                              color = if (kind == "good") Ok else Ink2) }
                 }
             }
+            Spacer(Modifier.height(12.dp))
+            LazyRow(Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(strips, key = { it.channel }) { s -> Strip(s) }
+            }
+            Spacer(Modifier.height(10.dp))
+            ExportLogButtons()
         }
     }
 }

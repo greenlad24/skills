@@ -98,6 +98,30 @@ object AppState {
     val doctorOn = MutableStateFlow(true)
     val frozenAll = MutableStateFlow(false)
     val lastError = MutableStateFlow<String?>(null)
+    /**
+     * WHO IS CARRYING THE SONG, for the crown on the stage plot.
+     */
+    val leadVocal = MutableStateFlow<Int?>(null)
+
+    /**
+     * Something the app is doing that has a known end — see [Phase].
+     * Never more than one at a time on screen: the most important.
+     */
+    val phase = MutableStateFlow<com.stagemix.app.ui.Phase?>(null)
+
+    /**
+     * The monotonic time of the last engine tick.
+     *
+     * The screen shows this as a dot that flashes once a second, which
+     * is the only honest answer to "is this thing alive?" — and the
+     * question three nights of shadow-mode running should have raised
+     * on the first evening.
+     */
+    val tickMs = MutableStateFlow(0L)
+
+    /** how many channels the app actually has authority over */
+    val channelsMixed = MutableStateFlow(0)
+
     /** channel names read from the console's own config */
     val mixerChannelNames = MutableStateFlow<Map<Int, String>>(emptyMap())
 

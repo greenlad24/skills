@@ -626,6 +626,12 @@ class MixerService : Service() {
             "/meters/${Meters.BANK_INPUTS}" -> {
                 m.blobArg(0)?.let { Meters.decode(it) }?.let { levels ->
                     e.onMeters(levels, t)
+                    // and straight to the screen's own draw clock, at
+                    // the rate they arrive. Deliberately not Compose
+                    // state: sixteen meters at twenty frames a second
+                    // through the strip model recomposed a hundred text
+                    // nodes every time the drummer hit something.
+                    com.stagemix.app.ui.Levels.publish(levels)
                 }
             }
             "/meters/${Meters.BANK_RTA}" -> {
@@ -785,6 +791,48 @@ class MixerService : Service() {
         AppState.balanceKept.value = e.balanceAdopted
         AppState.stageMuted.value = e.stageMuted
         AppState.health.value = e.health()
+        AppState.leadVocal.value = e.leadVocal
+        AppState.channelsMixed.value = e.state.count {
+            it.value.baselineDb != null }
+        AppState.tickMs.value = android.os.SystemClock.elapsedRealtime()
+        AppState.phase.value = phaseOf(e, t)
+    }
+
+    /**
+     * The one thing the app is waiting for, if it is waiting for
+     * anything — with the deadline, so the screen can draw a bar that
+     * fills toward a number of seconds instead of a spinner that says
+     * nothing.
+     */
+    private fun phaseOf(e: StageEngine, t: Double): com.stagemix.app.ui.Phase? {
+        val nowMs = android.os.SystemClock.elapsedRealtime()
+        fun phase(key: String, label: String, why: String, left: Double,
+                  span: Double, alarm: Boolean = false) =
+            com.stagemix.app.ui.Phase(
+                key = key, label = label, why = why,
+                startedAtMs = nowMs - ((span - left) * 1000).toLong(),
+                endsAtMs = nowMs + (left * 1000).toLong(), alarm = alarm)
+
+        if (ringOut.hunting) return phase("hunt",
+            "Feedback — finding which microphone", 
+            "sweeping the stage at the ringing frequency", 4.0, 8.0,
+            alarm = true)
+        val take = e.takeoverT
+        if (take >= 0 && !e.ready) {
+            val left = (e.settings.learnSec - (t - take)).coerceAtLeast(0.0)
+            return phase("listen", "Listening before it leads",
+                "learning where this band sits before touching anything",
+                left, e.settings.learnSec.toDouble())
+        }
+        if (take >= 0 && AppState.doctorOn.value) {
+            val left = (com.stagemix.engine.SETUP_WINDOW_SEC - (t - take))
+            if (left > 0) return phase("setup",
+                "Setting up channels",
+                "the high-pass and the compressor an engineer would set " +
+                "at soundcheck — once each, then it leaves them alone",
+                left, com.stagemix.engine.SETUP_WINDOW_SEC.toDouble())
+        }
+        return null
     }
 
     // ------------------------------------------------------------------
