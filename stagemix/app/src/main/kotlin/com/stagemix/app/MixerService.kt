@@ -656,7 +656,16 @@ class MixerService : Service() {
                     scope.launch { pollSends() }
                 }
                 doctor?.let { d ->
-                    if (directing && AppState.doctorOn.value) {
+                    // NOT BETWEEN SONGS, AND NOT WHILE THE STAGE IS
+                    // MUTED. The doctor was the one write path with no
+                    // gap gate: applause is broadband and HF-heavy and
+                    // keeps the vocal mics above their gate, so between
+                    // numbers it would quietly EQ four open mics against
+                    // the sound of a room clapping — audible tone change
+                    // at the one moment the audience is listening to the
+                    // PA, and a poisoned reference for the next song.
+                    if (directing && AppState.doctorOn.value &&
+                        !e.betweenSongs && !e.stageMuted) {
                         for (w in d.tick(e.activeChannels(),
                                 upAllowed = e.boostsAllowed(t),
                                 frozenAll = e.frozenAll)) {

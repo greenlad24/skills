@@ -2486,8 +2486,29 @@ class StageEngine(
             // the first tick, freezing a mix nobody had made yet. Then
             // the pyramid does its ordinary job and the balance it
             // reaches is adopted whole.
+            // A HELD ROLE THAT LOST ITS PLAN IS RESTORED, NOT RE-PLACED.
+            //
+            // The placement below re-derives a channel's level from the
+            // pyramid whenever it has no plan — and a held channel loses
+            // its plan by two ordinary events: sitting out the number
+            // that was playing when the balance was adopted, or falling
+            // silent for the arrival window (a singer who does not sing
+            // through an instrumental, a bass DI that sits out a song).
+            // So the kick, the snare, both bass DIs and the lead vocal —
+            // the channels §1 and §2 say "stay always in their current
+            // positions" — were being moved up to 3 dB off where the
+            // operator set them the moment they came back in. A held
+            // role's place is where the operator put it; if it has lost
+            // the record of that, restore the record, do not invent a
+            // new one from the pyramid.
             if (settings.mode == BalanceMode.KEEP && balanceAdopted &&
-                st.planContrib == null &&
+                st.planContrib == null && st.role in settings.holdRoles) {
+                st.planContrib = (st.slowEma ?: pre) + base + st.offset
+                st.planFaderDb = base + st.offset
+                st.riding = false
+            }
+            if (settings.mode == BalanceMode.KEEP && balanceAdopted &&
+                st.planContrib == null && st.role !in settings.holdRoles &&
                 anchor != null && !st.isStatic && st.arrivedT > 0 &&
                 tSec - st.arrivedT >= settings.placeSec) {
                 val h = effHeight(st)

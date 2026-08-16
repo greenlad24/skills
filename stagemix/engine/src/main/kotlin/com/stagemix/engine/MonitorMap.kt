@@ -164,18 +164,30 @@ class MonitorMap {
             Role.TALK -> null
             else -> -3f
         }
-        Kind.DRUM_IEM -> when (role) {
-            Role.PERCUSSION -> 6f
-            Role.FOUNDATION -> 4f
-            Role.VOCAL -> 2f
-            Role.TALK -> null
+        // "for drums the in-ear is the drums" — the KIT on top, not
+        // merely the PERCUSSION role. The kick is FOUNDATION, so a
+        // role-only ladder put it a rung UNDER the snare in the
+        // drummer's own ears; isKit fixes that by promoting the whole
+        // kit above everything, with the congas just under and the
+        // bass guitar present but below the kit.
+        Kind.DRUM_IEM -> when {
+            isKit -> 7f
+            role == Role.PERCUSSION -> 6f
+            role == Role.FOUNDATION -> 2f
+            role == Role.VOCAL -> 2f
+            role == Role.TALK -> null
             else -> -1f
         }
-        Kind.PLAYER_IEM -> when (role) {
-            Role.KEYS -> 6f
-            Role.FOUNDATION -> 4f
-            Role.VOCAL -> 2f
-            Role.TALK -> null
+        // "piano + bass ... the piano and DI2" on top. Here the kit is
+        // NOT the point — it is part of the balanced mix underneath, so
+        // it must not be promoted the way FOUNDATION alone would drag
+        // the kick up next to the bass DI.
+        Kind.PLAYER_IEM -> when {
+            isKit -> -1f
+            role == Role.KEYS -> 6f
+            role == Role.FOUNDATION -> 4f
+            role == Role.VOCAL -> 2f
+            role == Role.TALK -> null
             else -> -1f
         }
         Kind.UNKNOWN -> null

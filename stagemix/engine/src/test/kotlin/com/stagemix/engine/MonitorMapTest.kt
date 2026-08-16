@@ -136,4 +136,27 @@ class MonitorMapTest {
         assertTrue("PIANO MON" in line && "GUITAR" in line,
             "the line has to name the wedge and what is loudest: $line")
     }
+
+    @Test
+    fun `in the drummers ears the kit is on top, not under the snare`() {
+        val m = MonitorMap()
+        // kick is FOUNDATION, snare/overheads PERCUSSION, all kit
+        val kick = m.wants(MonitorMap.Kind.DRUM_IEM, Role.FOUNDATION, isKit = true)!!
+        val snare = m.wants(MonitorMap.Kind.DRUM_IEM, Role.PERCUSSION, isKit = true)!!
+        val bass = m.wants(MonitorMap.Kind.DRUM_IEM, Role.FOUNDATION, isKit = false)!!
+        assertTrue(kick >= snare,
+            "the kick sits under the snare in the drummers own ears: kick $kick, snare $snare")
+        assertTrue(kick > bass,
+            "the kit is not above the bass guitar in the drum in-ear")
+    }
+
+    @Test
+    fun `in the piano players ears the kit is not promoted`() {
+        val m = MonitorMap()
+        val piano = m.wants(MonitorMap.Kind.PLAYER_IEM, Role.KEYS)!!
+        val di2 = m.wants(MonitorMap.Kind.PLAYER_IEM, Role.FOUNDATION, isKit = false)!!
+        val kick = m.wants(MonitorMap.Kind.PLAYER_IEM, Role.FOUNDATION, isKit = true)!!
+        assertTrue(piano > kick && di2 > kick,
+            "the kit is competing with the piano and DI2 in bus 6: piano $piano, di2 $di2, kick $kick")
+    }
 }
