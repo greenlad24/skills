@@ -197,9 +197,9 @@ object DemoStage {
                 wedgesRead = 5, wedgesOut = 1, mixingSec = 1465.0))
         AppState.work.value = if (directing)
             com.stagemix.engine.holdingWork(13, 16, true)
-        else com.stagemix.engine.Work(
-            key = "idle", label = "Watching only — nothing is being sent",
-            detail = "tap MIX to take the mains", frac = 0f)
+        else com.stagemix.engine.pausedWork("idle",
+            "Watching only — nothing is being sent",
+            "tap MIX to take the mains")
 
         job = scope.launch {
             var t = 0.0

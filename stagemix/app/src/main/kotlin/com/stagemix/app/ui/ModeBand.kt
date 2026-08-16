@@ -111,6 +111,7 @@ fun WorkBar(w: com.stagemix.engine.Work) {
     }
     val tone = when {
         w.alarm -> Bad
+        w.paused -> Warn          // watching / frozen / muted / no mixer
         w.secsLeft != null -> Accent
         else -> Ok
     }

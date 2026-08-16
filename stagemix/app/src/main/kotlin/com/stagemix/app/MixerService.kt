@@ -1116,7 +1116,36 @@ class MixerService : Service() {
         // The bar. A countdown when there is one; otherwise how much of
         // the mix is sitting where it should be, which moves all night.
         val ph = AppState.phase.value
-        AppState.work.value = if (ph != null) {
+        // BEFORE the steady-state bar: is the app actually sending to the
+        // desk at all? If it is watching, frozen, muted, or has lost the
+        // mixer, the honest bar says so in amber — it must never show the
+        // green "finding the balance" fill, which is a settled mix in
+        // progress. This was the one surface that could read as working
+        // while nothing was being sent (§5). A live feedback hunt still
+        // wins, since that IS the app acting — the phase branch runs first.
+        val notMixing: com.stagemix.engine.Work? = when {
+            ph != null -> null
+            AppState.conn.value != AppState.Conn.CONNECTED
+                && AppState.everConnected.value ->
+                com.stagemix.engine.pausedWork("no-mixer",
+                    "No mixer — nothing being sent",
+                    "lost the console; reconnecting when it is back")
+            AppState.stageMuted.value ->
+                com.stagemix.engine.pausedWork("muted",
+                    "Waiting — the stage is muted",
+                    "holding still until the main mix is live again")
+            AppState.frozenAll.value ->
+                com.stagemix.engine.pausedWork("frozen",
+                    "Frozen — every fader held where it is",
+                    "press FREEZE again to hand the mix back")
+            !AppState.directing.value ->
+                com.stagemix.engine.pausedWork("watching",
+                    "Watching only — nothing being sent",
+                    "press MIX to let the app move the faders")
+            else -> null
+        }
+        AppState.work.value = if (notMixing != null) notMixing
+        else if (ph != null) {
             val nowMs = android.os.SystemClock.elapsedRealtime()
             val span = (ph.endsAtMs - ph.startedAtMs).coerceAtLeast(1L)
             com.stagemix.engine.Work(
@@ -1610,6 +1639,10 @@ class MixerService : Service() {
             "$what needs the app to be mixing — tap MIX first"
         show?.user("$what pressed, but there is nothing to act on yet " +
             "(not mixing)")
+        // refresh the status surface here too: the no-engine UNDO path
+        // returns before revert()'s own updateNotif(), so without this
+        // the one background surface could stay reading MIXING.
+        updateNotif()
     }
 
     // ------------------------------------------------------------------
@@ -1693,14 +1726,19 @@ class MixerService : Service() {
      * reproduced on the one surface built to prevent it.
      */
     private fun notifText(): String = when {
+        // The lost mixer is the most urgent fact and the notification is
+        // the only surface visible from the background, so it leads —
+        // otherwise a watching+disconnected app read "SHADOW" and never
+        // said the desk was gone, the more important half of the truth.
+        AppState.conn.value != AppState.Conn.CONNECTED
+            && AppState.everConnected.value ->
+            "NO MIXER — the desk is holding your last mix"
         !AppState.directing.value ->
             "SHADOW — watching only, nothing sent to the mixer"
         AppState.frozenAll.value ->
             "FROZEN — every fader held, nothing is moving"
         AppState.stageMuted.value ->
             "WAITING — you have the band muted"
-        AppState.conn.value != AppState.Conn.CONNECTED ->
-            "NO MIXER — the desk is holding your last mix"
         else -> "MIXING — the app has the mains"
     }
 

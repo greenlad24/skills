@@ -239,7 +239,25 @@ data class Work(
     /** a countdown, when there is one */
     val secsLeft: Int? = null,
     val alarm: Boolean = false,
+    /**
+     * The app is NOT sending to the desk right now — watching, frozen,
+     * muted, or with no mixer. A paused bar must never look like the
+     * green "finding the balance" one, because a reassuring bar over a
+     * stopped app is the exact lie §5 exists to stop: it is the one
+     * surface that could tell an operator work is happening when nothing
+     * is being sent.
+     */
+    val paused: Boolean = false,
 )
+
+/**
+ * The bar when the app is NOT mixing — watching, frozen, muted, or with
+ * no console. It says so in words, fills full (the state is settled, not
+ * in progress), and carries `paused` so the screen paints it amber, not
+ * the green of a mix being found.
+ */
+fun pausedWork(key: String, label: String, detail: String): Work =
+    Work(key = key, label = label, detail = detail, frac = 1f, paused = true)
 
 /** the steady state: how much of the mix is sitting where it belongs */
 fun holdingWork(inPlace: Int, total: Int, kept: Boolean): Work {
