@@ -362,10 +362,20 @@ class ShowLog(
             address.endsWith("/dyn/release") -> "release %.0f ms"
                 .format(Locale.ROOT,
                     5f * Math.pow(800.0, value.toDouble()).toFloat())
-            Regex("/mix/\\d\\d/level$").containsMatchIn(address) ->
-                "FX send %s at %+.1f dB".format(Locale.ROOT,
-                    address.substringAfter("/mix/").take(2),
+            Regex("/mix/\\d\\d/level$").containsMatchIn(address) -> {
+                // Sends 1-6 are the WEDGES (a musician's ears); 7-10 are
+                // the FX engines. They were all logged as "FX send",
+                // which on the one write path that reaches the wedges is
+                // exactly the wrong noun, and hid the monitor keeper's
+                // work from anyone reading the file.
+                val send = address.substringAfter("/mix/").take(2)
+                    .toIntOrNull() ?: 0
+                val kind = if (send in AUX_SEND_FIRST..AUX_SEND_LAST)
+                    "wedge send bus %d".format(Locale.ROOT, send)
+                    else "FX send %d".format(Locale.ROOT, send)
+                "%s at %+.1f dB".format(Locale.ROOT, kind,
                     FaderLaw.floatToDb(value))
+            }
             else -> "%.3f".format(Locale.ROOT, value)
         }
         put("PARAM", "ch%s %-18s %-34s %s"

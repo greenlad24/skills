@@ -1385,7 +1385,12 @@ class MixerService : Service() {
             if (!com.stagemix.engine.isMonitorSend(w.address)) continue
             lastParam[w.address] = w.value
             send(OscMessage(w.address, listOf(w.value)))
-            show?.param(w.address, w.value, "", "— wedge", t)
+            // the channel name, so the wedge line reads legibly rather
+            // than "ch07" with no idea what it is
+            val wch = Regex("^/ch/(\\d\\d)/").find(w.address)
+                ?.groupValues?.get(1)?.toIntOrNull()?.minus(1)
+            show?.param(w.address, w.value,
+                wch?.let { chName(it) } ?: "", "— wedge", t)
         }
         val notes = monBal.drainNotes()
         for (n in notes) show?.mark("MONITOR", n, t)
