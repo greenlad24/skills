@@ -222,7 +222,7 @@ jobs:
           arch: x86_64
           profile: pixel_c
           working-directory: stagemix
-          disable-animations: false
+          disable-animations: true
           emulator-options: >-
             -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
             -camera-back none -memory 3072
