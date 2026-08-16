@@ -95,6 +95,11 @@ class RingOut(
     /** true while the analyzer should be sweeping rather than dawdling */
     val hunting: Boolean get() = huntUntil > 0
 
+    /** seconds of hunt still to run, so the screen can draw a real bar */
+    fun huntLeft(tSec: Double): Double =
+        if (huntUntil > 0) (huntUntil - tSec).coerceAtLeast(0.0) else 0.0
+    val huntSpan: Double get() = huntSec
+
     /** what was done, for the log */
     var lastAction: String = ""; private set
 

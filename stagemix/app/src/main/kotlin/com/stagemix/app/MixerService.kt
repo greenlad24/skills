@@ -180,7 +180,7 @@ class MixerService : Service() {
                 val role = runCatching {
                     com.stagemix.engine.Role.valueOf(name) }.getOrNull()
                     ?: return START_NOT_STICKY
-                engine?.let { e ->
+                (engine ?: run { noEngine("Instrument change"); null })?.let { e ->
                     e.setRole(ch, role)
                     doctor?.setRole(ch, role)
                     AppState.saveKnownInstruments(this, e.knownInstruments)
@@ -190,7 +190,7 @@ class MixerService : Service() {
                             e.state[ch]?.name ?: "", role.name.lowercase()))
                 }
             }
-            ACTION_KEEP_BALANCE -> engine?.let { e ->
+            ACTION_KEEP_BALANCE -> (engine ?: run { noEngine("KEEP"); null })?.let { e ->
                 val n = e.adoptBalance(now())
                 AppState.saveLearnedBalance(this, e.learned.snapshot())
                 show?.user(if (n > 0)
@@ -207,7 +207,7 @@ class MixerService : Service() {
             // silent between songs and still refusing any bus the
             // engineer has a hand on. A button press is permission to
             // act now; it is not permission to act differently.
-            ACTION_REBALANCE -> engine?.let { e ->
+            ACTION_REBALANCE -> (engine ?: run { noEngine("RE-BALANCE"); null })?.let { e ->
                 val t = now()
                 e.rebalance(t)
                 show?.user("you pressed REBALANCE — re-laddering the " +
@@ -274,7 +274,7 @@ class MixerService : Service() {
             }
             ACTION_FEEDBACK -> {
                 val kind = intent.getStringExtra("kind") ?: return START_NOT_STICKY
-                engine?.let { e ->
+                (engine ?: run { noEngine("Taste"); null })?.let { e ->
                     e.applyFeedback(kind, now())
                     AppState.saveBias(this, e.pyramidBias)
                     show?.user("you tapped '$kind' — taste is now " +
@@ -1100,10 +1100,16 @@ class MixerService : Service() {
                 startedAtMs = nowMs - ((span - left) * 1000).toLong(),
                 endsAtMs = nowMs + (left * 1000).toLong(), alarm = alarm)
 
+        // A REAL DEADLINE, not a constant. This used to return a fixed
+        // 4-of-8 every tick, so the published Work never changed, the
+        // bar's effect never restarted, and during the app's most
+        // time-critical operation the operator saw a red bar frozen at
+        // half with the countdown pinned at "0s". The hunt has an
+        // actual clock — RingOut knows how much of it is left.
         if (ringOut.hunting) return phase("hunt",
-            "Feedback — finding which microphone", 
-            "sweeping the stage at the ringing frequency", 4.0, 8.0,
-            alarm = true)
+            "Feedback — finding which microphone",
+            "sweeping the stage at the ringing frequency",
+            ringOut.huntLeft(t), ringOut.huntSpan, alarm = true)
         val take = e.takeoverT
         if (take >= 0 && !e.ready) {
             val left = (e.settings.learnSec - (t - take)).coerceAtLeast(0.0)
@@ -1425,10 +1431,12 @@ class MixerService : Service() {
     }
 
     private fun revert() {
-        val e = engine ?: return
-        // handing back means handing back: pause the autopilot too, or
-        // the next tick would immediately mix away from these faders
+        // UNDO pauses the autopilot whether or not there is an engine
+        // to restore faders from — the flag flips first, so the key is
+        // never silently dead. (It is also flipped at the click site
+        // now, like MIX and FREEZE; this is the backstop.)
         AppState.directing.value = false
+        val e = engine ?: run { noEngine("UNDO"); return }
         show?.user("you handed the mains back — restoring the takeover " +
             "faders and pausing for ${REVERT_HOLD_SEC.toInt()}s")
         for (w in e.revertToBaseline(now())) sendFader(w.channel, w.levelDb)
@@ -1514,6 +1522,20 @@ class MixerService : Service() {
     }
 
     private fun now(): Double = (System.nanoTime() - t0) / 1e9
+
+    /**
+     * A control was pressed before the app had an engine to act on —
+     * connected but pre-takeover, or not connected at all. §5: a key
+     * that does nothing and says nothing is the purest form of the
+     * failure this whole project is built around not repeating. So it
+     * says so, on screen and in the log.
+     */
+    private fun noEngine(what: String) {
+        AppState.lastError.value =
+            "$what needs the app to be mixing — tap MIX first"
+        show?.user("$what pressed, but there is nothing to act on yet " +
+            "(not mixing)")
+    }
 
     // ------------------------------------------------------------------
     /**

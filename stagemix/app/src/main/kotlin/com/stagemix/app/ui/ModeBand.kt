@@ -89,16 +89,24 @@ fun WorkBar(w: com.stagemix.engine.Work) {
         // will not smart-cast its nullable property across the boundary.
         val left = w.secsLeft
         if (left == null) { frac.intValue = target; return@LaunchedEffect }
+        // The published Work is recomputed every tick from a REAL
+        // deadline now (see phaseOf), so this animates between beats
+        // toward the true fraction. The span is the phase's own total,
+        // not endsIn+dt — the old form asymptoted and never reached
+        // 100% — and the seconds are ceil'd, because a countdown that
+        // reads 0s while the phase is still running is a lie (the rule
+        // Motion.kt states and PhaseBar already followed).
         val start = SystemClock.elapsedRealtime()
-        val from = frac.intValue
-        val endsIn = left * 1000L
+        val fromFrac = w.frac
+        val endsIn = (left * 1000L).coerceAtLeast(1L)
         while (true) {
             kotlinx.coroutines.delay(100)
             val dt = SystemClock.elapsedRealtime() - start
-            val span = (endsIn + dt).coerceAtLeast(1L)
-            frac.intValue = (from + ((1000 - from) * dt / span))
-                .toInt().coerceIn(0, 1000)
-            secs.intValue = ((endsIn - dt) / 1000L).toInt().coerceAtLeast(0)
+            val f = fromFrac + (1f - fromFrac) *
+                (dt.toFloat() / endsIn).coerceIn(0f, 1f)
+            frac.intValue = (f * 1000).toInt().coerceIn(0, 1000)
+            secs.intValue = ceil((endsIn - dt) / 1000.0)
+                .toInt().coerceAtLeast(0)
         }
     }
     val tone = when {
