@@ -205,9 +205,17 @@ private fun ChannelStrip(
             },
             fontSize = 9.sp, fontWeight = FontWeight.Bold,
             letterSpacing = 1.sp, maxLines = 1)
-        if (notch != null)
-            Text(notch, color = Bad, fontSize = 9.sp, maxLines = 1,
-                fontFamily = FontFamily.Monospace)
+        // The notch line is reserved on every strip whether or not there
+        // is a notch to show. A rack reads as one instrument because its
+        // rows line up; letting one strip grow a row taller pushes its
+        // readout, its state word and its spectrum out of line with the
+        // fifteen beside it, and a rack that does not line up looks
+        // broken rather than busy.
+        Box(Modifier.height(12.dp), contentAlignment = Alignment.Center) {
+            if (notch != null)
+                Text(notch, color = Bad, fontSize = 9.sp, maxLines = 1,
+                    fontFamily = FontFamily.Monospace)
+        }
 
         // ---- and what it sounds like
         Spacer(Modifier.height(5.dp))
