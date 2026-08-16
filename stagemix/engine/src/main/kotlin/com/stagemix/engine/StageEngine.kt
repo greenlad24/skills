@@ -2858,7 +2858,7 @@ class StageEngine(
             // auditioning" — so a paired channel whose partner went
             // active during that window threw NullPointerException out
             // of tick(), which is the one call the whole show runs on.
-            val boundedPair = if (anchor != null && mate != null &&
+            val boundedPairRaw = if (anchor != null && mate != null &&
                 mate.baselineDb != null &&
                 mate.active && !st.isStatic) {
                 val mPre = mate.preEma
@@ -2870,6 +2870,13 @@ class StageEngine(
                     boundOffset(st.offset - pairErr, base)
                 } else bounded
             } else bounded
+            // §4 on this path too: the pyramid/anchor balancer steers an
+            // UNSETTLED channel (before it has a plan), and that steer can
+            // be upward. A mic that just rang may still be pulled down
+            // here but must never be pushed up, so clamp the target to the
+            // current offset while the ring is fresh.
+            val boundedPair = if (tSec - st.rangAt < RING_QUIET_SEC)
+                minOf(boundedPairRaw, st.offset) else boundedPairRaw
             val err = abs(boundedPair - st.offset)
 
             // ONE BALANCE, THEN HOLD.

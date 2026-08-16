@@ -68,4 +68,48 @@ class RingMemoryTest {
             "a mic that rang ${t - sax.rangAt}s ago was featured and " +
             "lifted straight back into the loop")
     }
+
+    @Test
+    fun `the ride does not raise a mic that just rang`() {
+        val e = engine()
+        var t = 0.0
+        // settle a balance with the sax present
+        repeat(300) { e.onMeters(band(-20f), t); e.tick(t); t += 0.25 }
+        e.adoptBalance(t)
+        repeat(120) { e.onMeters(band(-20f), t); e.tick(t); t += 0.25 }
+        val sax = e.state[14]!!
+        val offAtRing = sax.offset
+
+        // it rings, then the player drops well below plan — the exact
+        // condition under which the ride would otherwise raise the fader
+        e.onRing(14, t)
+        val ringT = t
+        repeat(760) { e.onMeters(band(-33f), t); e.tick(t); t += 0.25 }
+
+        assertTrue(t - ringT < RING_QUIET_SEC,
+            "test drove past the quiet window; tighten it")
+        assertTrue(sax.offset <= offAtRing + 0.2f,
+            "the ride pushed a mic that rang UP by " +
+            "${sax.offset - offAtRing} dB, inside the quiet window")
+    }
+
+    @Test
+    fun `ringing one half of a stereo pair ends both features`() {
+        val e = engine()
+        // piano is a stereo pair (idx 5 and 6 in the default rig)
+        val l = e.state[5]!!
+        val r = e.state[6]!!
+        // stand both halves up by hand, as the pair-latch would
+        l.featureStart = 10.0; l.offset = 4f
+        r.featureStart = 10.0; r.offset = 4f
+        r.cfg.pairWith?.let { assertTrue(it == 5, "rig pairing changed") }
+
+        // only the LEFT half rings
+        e.onRing(5, 12.0)
+        assertTrue(l.featureStart < 0 && r.featureStart < 0,
+            "a ring on one half left the other half featured and lifted " +
+            "— the image would collapse to one side")
+        assertTrue(l.rangAt == 12.0 && r.rangAt == 12.0,
+            "both halves must be marked quiet so neither is re-lifted alone")
+    }
 }
