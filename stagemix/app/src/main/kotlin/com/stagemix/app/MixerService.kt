@@ -290,6 +290,20 @@ class MixerService : Service() {
                     (if (on) "ON — it connects and mixes on its own"
                      else "OFF — it will wait for you to tap MIX"))
             }
+            ACTION_MONITOR_INEARS -> {
+                val bus = intent.getIntExtra("bus", -1)
+                val inEars = intent.getBooleanExtra("inEars", true)
+                if (bus >= 1) {
+                    AppState.monitorInEars.value =
+                        AppState.monitorInEars.value + (bus to inEars)
+                    AppState.saveSwitches(this)
+                    monitors.setInEars(bus, inEars)
+                    show?.user("you set the ${monitors.wedge(bus)?.name ?: "bus $bus"} " +
+                        "monitor to ${if (inEars) "IN-EARS — it wants the whole " +
+                        "mix, kit included" else "a FLOOR WEDGE — the band in " +
+                        "front of it, vocals on top, kit not on top"}")
+                }
+            }
             ACTION_FREEZE_CH -> {
                 val ch = intent.getIntExtra("ch", -1)
                 val on = intent.getBooleanExtra("on", true)
@@ -1111,6 +1125,7 @@ class MixerService : Service() {
                 bus = w.bus,
                 name = AppState.busNames.value[w.bus - 1] ?: w.name,
                 kind = w.kind.name,
+                inEars = w.inEars,
                 top = w.sends.entries
                     .filter { it.value > com.stagemix.engine.MonitorMap
                         .MONITOR_FLOOR_DB }
@@ -1519,6 +1534,10 @@ class MixerService : Service() {
             }
         }
         for ((b, nm) in AppState.busNames.value) monitors.onBusName(b + 1, nm)
+        // re-apply the operator's saved in-ears/wedge choices: a name read
+        // can rebuild a wedge, and the drummer's floor-wedge choice must
+        // survive that
+        for ((bus, ie) in AppState.monitorInEars.value) monitors.setInEars(bus, ie)
         logMonitors()
         publishStrips(now())
     }
@@ -1903,6 +1922,7 @@ class MixerService : Service() {
         const val ACTION_KEEP_BALANCE = "com.stagemix.KEEP_BALANCE"
         const val ACTION_REBALANCE = "com.stagemix.REBALANCE"
         const val ACTION_KEEP_MONITORS = "com.stagemix.KEEP_MONITORS"
+        const val ACTION_MONITOR_INEARS = "com.stagemix.MONITOR_INEARS"
         const val ACTION_AUTO_START = "com.stagemix.AUTO_START"
         const val ACTION_DOCTOR = "com.stagemix.DOCTOR"
         const val ACTION_FEEDBACK = "com.stagemix.FEEDBACK"

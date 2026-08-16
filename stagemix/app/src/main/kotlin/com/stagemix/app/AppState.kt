@@ -164,6 +164,8 @@ object AppState {
         val bus: Int,
         val name: String,
         val kind: String,
+        /** in-ears (sealed, wants everything) or a floor wedge? */
+        val inEars: Boolean = false,
         /** the three loudest things in it, by channel */
         val top: List<Int> = emptyList(),
         /** the worst disagreement with what this position wants, in dB */
@@ -230,6 +232,14 @@ object AppState {
      * burned by, in the other direction.
      */
     val keepMonitors = MutableStateFlow(false)
+
+    /**
+     * The operator's per-bus in-ears / floor-wedge choice, where it
+     * differs from what the monitor's name implies. The drummer swaps
+     * between the two and the mix each wants is very different, so this
+     * is remembered across sessions. Empty means "trust every name."
+     */
+    val monitorInEars = MutableStateFlow<Map<Int, Boolean>>(emptyMap())
 
     /** what the monitor keeper has changed, per bus, for the screen */
     data class WedgeMove(val bus: Int, val ch: Int, val db: Float)
@@ -410,6 +420,9 @@ object AppState {
         ctx.getSharedPreferences("stagemix", Context.MODE_PRIVATE).edit()
             .putBoolean("auto_start", autoStart.value)
             .putBoolean("keep_monitors", keepMonitors.value)
+            // "3:0,6:1" — bus:in-ears(0/1), only the overridden buses
+            .putString("monitor_inears", monitorInEars.value.entries
+                .joinToString(",") { "${it.key}:${if (it.value) 1 else 0}" })
             .apply()
     }
 
@@ -417,6 +430,12 @@ object AppState {
         val p = ctx.getSharedPreferences("stagemix", Context.MODE_PRIVATE)
         autoStart.value = p.getBoolean("auto_start", true)
         keepMonitors.value = p.getBoolean("keep_monitors", false)
+        monitorInEars.value = (p.getString("monitor_inears", "") ?: "")
+            .split(",").filter { it.contains(":") }
+            .mapNotNull {
+                val (b, v) = it.split(":")
+                (b.toIntOrNull() ?: return@mapNotNull null) to (v == "1")
+            }.toMap()
     }
 
     fun save(ctx: Context) {

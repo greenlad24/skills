@@ -141,7 +141,9 @@ Consequences that follow from this and are not optional:
 
 ## 3 · The monitors — how each position should sound
 
-Five positions: three floor wedges and two in-ears.
+Five positions. Whether each is a floor wedge or in-ears starts from its
+name but is the operator's to set per monitor (see the toggle below) —
+the drummer in particular swaps between the two.
 
 The generalisation the code encodes: **an in-ear wants that player's
 own instrument on top of a complete mix; a wedge wants that player's
@@ -187,14 +189,42 @@ read off the name the engineer typed.)*
 - **no kit**
 - everything else balanced, lower
 
-### Bus 3 — the drummer's in-ears
+### Bus 3 — the drummer's monitor (in-ears **or** a floor wedge)
 > "in-ears need a balanced mix with the current playing instruments
 > above - for drums in-ear is the drums"
 
+**When it is in-ears:**
 - the **whole kit** on top — the kick included, above the snare, not
   a rung under it (the kick's *role* is FOUNDATION, but in the
   drummer's ears it is part of the kit, and the kit is the point)
 - a balanced mix of whatever is currently playing underneath
+
+**When the drummer has no in-ears — a floor wedge instead:**
+> "sometimes the drums monitor is not in-ears - in that case where the
+> drummer doesn't have in-ears there should be a balance of the
+> instruments (piano, DI1, Bass DI a little more, DI2 a little more,
+> Guitar Amp, drums, Vocals on top, low harmonica, Saxophone lower)"
+
+- the band **in front of** the kit, **vocals on top** — not the
+  kit-first mix an in-ear wants
+- the two bass DIs (Bass DI, DI2) a **little more** than the rest
+- piano, DI1, the guitar amp and the drums balanced in the middle (the
+  kit is present here, unlike every other floor wedge, because it is the
+  drummer's own and they asked for it)
+- the horns **low** — harmonica low, saxophone lower
+
+### The in-ears / wedge toggle
+> "there should be a toggle switch for each monitor (in-ears or not)"
+
+- **Every monitor has a per-bus toggle: IN-EARS or WEDGE**, on the
+  MONITORS tab. It starts from what the monitor's name implies (an "IEM"
+  is in-ears) and the operator has the final word — the drummer swaps
+  between the two between gigs, and the mix each wants is very different.
+- The choice is **remembered across nights** and survives a console
+  rename. Flipping it changes the balance the app aims that monitor at
+  (kit-on-top for in-ears, band-with-vocals-on-top for a floor wedge);
+  it still only *balances* the wedge, cut-first, and only when monitor
+  keeping is on.
 
 ### Bus 6 — the second in-ears (piano + bass)
 > "for bus 6 (piano + bass) it's the piano and DI2"

@@ -3,6 +3,14 @@ package com.stagemix.engine
 import kotlin.math.abs
 
 /**
+ * What a monitor is by default: an in-ear seals the ears from the room,
+ * a floor wedge does not. Read off the name until the operator says
+ * otherwise per bus (a drummer swaps between the two).
+ */
+fun defaultInEars(kind: MonitorMap.Kind): Boolean =
+    kind == MonitorMap.Kind.DRUM_IEM || kind == MonitorMap.Kind.PLAYER_IEM
+
+/**
  * What is in each wedge, and what ought to be.
  *
  * "The app can do rebalancing to the monitors but in a different way to
@@ -72,13 +80,39 @@ class MonitorMap {
         /** the level the engineer had it at when we last looked */
         val known = HashMap<Int, Float>()
         var master: Float? = null
+        /**
+         * In-ears, or a floor wedge? It starts from what the name says
+         * (an "IEM" is in-ears, a plain wedge is not), but the operator
+         * has the final word per monitor — the drummer sometimes plays to
+         * a floor wedge and sometimes to in-ears, and the two want a very
+         * different mix (see [wants]).
+         */
+        var inEars: Boolean = defaultInEars(kind)
         /** a detached copy, so a caller can read it off-thread safely */
         fun snapshot(): Wedge = Wedge(bus, name, kind).also {
-            it.sends.putAll(sends); it.known.putAll(known); it.master = master
+            it.sends.putAll(sends); it.known.putAll(known)
+            it.master = master; it.inEars = inEars
         }
     }
 
     private val wedges = LinkedHashMap<Int, Wedge>()
+    /** the operator's per-bus in-ears/wedge choice, surviving a rename */
+    private val inEarsOverride = HashMap<Int, Boolean>()
+
+    /**
+     * The operator says whether a monitor is in-ears or a floor wedge.
+     * Kept across a console rename, and applied to the live wedge now.
+     */
+    fun setInEars(bus: Int, inEars: Boolean) = synchronized(this) {
+        inEarsOverride[bus] = inEars
+        wedges[bus]?.inEars = inEars
+    }
+
+    /** the current in-ears/wedge reading for a bus (override, else name) */
+    fun inEarsFor(bus: Int): Boolean = synchronized(this) {
+        inEarsOverride[bus] ?: wedges[bus]?.let { defaultInEars(it.kind) }
+            ?: defaultInEars(kindOf("", bus))
+    }
 
     // THIS MAP IS READ OFF THE RECEIVE THREAD AND MUTATED ON IT, AND
     // read AGAIN on a separate coroutine when REBALANCE runs its plan.
@@ -96,11 +130,16 @@ class MonitorMap {
         if (w == null || w.name != name)
             wedges[bus] = Wedge(bus, name, k).also { nw ->
                 w?.sends?.forEach { (c, v) -> nw.sends[c] = v }
+                inEarsOverride[bus]?.let { nw.inEars = it }
             }
     }
 
     fun onSend(bus: Int, ch: Int, db: Float) = synchronized(this) {
-        val w = wedges.getOrPut(bus) { Wedge(bus, "bus $bus", kindOf("", bus)) }
+        val w = wedges.getOrPut(bus) {
+            Wedge(bus, "bus $bus", kindOf("", bus)).also { nw ->
+                inEarsOverride[bus]?.let { nw.inEars = it }
+            }
+        }
         w.sends[ch] = db
     }
 
@@ -139,19 +178,40 @@ class MonitorMap {
      * wedge is the drum kit: it is three feet away and arrives over the
      * top of everything.
      */
-    fun wants(kind: Kind, role: Role, isKit: Boolean = false): Float? {
+    fun wants(kind: Kind, role: Role, isKit: Boolean = false,
+              inEars: Boolean = defaultInEars(kind)): Float? {
         // "NO DRUMS" MEANS THE KIT, NOT ALL PERCUSSION.
         //
-        // A wedge on this stage is three feet from a drum kit and gets
-        // it acoustically whether anybody sends it or not; putting it
-        // in the wedge as well only costs gain before feedback. The
-        // congas are a different matter — they are across the stage,
-        // they are "the rest" in most wedges, and the bass player
-        // explicitly wants them. In-ears seal the ears off from the
-        // room, so they need everything, kit included.
-        val wedge = kind == Kind.CENTRE_VOCAL || kind == Kind.GUITAR ||
-                    kind == Kind.BASS
-        if (isKit && wedge) return null
+        // A floor wedge is feet from a drum kit and gets it acoustically
+        // whether anybody sends it or not; putting it in the wedge as
+        // well only costs gain before feedback. The congas are a
+        // different matter — across the stage, "the rest" in most wedges,
+        // and the bass player explicitly wants them. In-ears seal the
+        // ears off from the room, so they need everything, kit included.
+        // Whether a monitor is in-ears is the operator's per-bus choice.
+        val floor = !inEars
+        // THE ONE FLOOR WEDGE THAT KEEPS THE KIT: a drummer with no
+        // in-ears. "in that case where the drummer doesn't have in-ears
+        // there should be a balance of the instruments — piano, DI1,
+        // Bass DI a little more, DI2 a little more, Guitar Amp, drums,
+        // Vocals on top, low harmonica, Saxophone lower." It is the band
+        // in front of the kit, vocals on top, not the kit-first mix an
+        // in-ear wants.
+        val drumFloor = kind == Kind.DRUM_IEM && floor
+        if (isKit && floor && !drumFloor) return null
+        if (drumFloor) return when {
+            role == Role.VOCAL -> 6f            // vocals on top
+            role == Role.BACKING_VOCAL -> 2f
+            isKit -> 0f                          // the kit, present, not on top
+            role == Role.FOUNDATION -> 2f        // Bass DI + DI2 a little more
+            role == Role.KEYS -> 0f              // piano
+            role == Role.RHYTHM_GTR -> 0f        // DI1, the acoustic guitar
+            role == Role.SOLO_GTR -> 0f          // the guitar amp
+            role == Role.PERCUSSION -> 0f        // congas, the rest
+            role == Role.COLOR -> -3f            // harmonica low, sax lower
+            role == Role.TALK -> null
+            else -> -1f
+        }
         return when (kind) {
         Kind.CENTRE_VOCAL -> when (role) {
             Role.VOCAL -> 8f
@@ -270,7 +330,7 @@ class MonitorMap {
         for ((ch, db) in w.sends.entries.sortedBy { it.key }) {
             if (db <= MONITOR_FLOOR_DB) continue          // off, not quiet
             val role = roles[ch] ?: continue              // unknown, not ours
-            val rung = wants(w.kind, role, ch in kit) ?: continue
+            val rung = wants(w.kind, role, ch in kit, w.inEars) ?: continue
             compared.add(Triple(ch, role, rung))
         }
         if (compared.size < minChannels) return emptyList()
@@ -281,7 +341,7 @@ class MonitorMap {
         // things that should not be in this wedge at all, and are
         for ((ch, db) in w.sends.entries.sortedBy { it.key }) {
             val role = roles[ch] ?: continue
-            if (wants(w.kind, role, ch in kit) == null && db > MONITOR_FLOOR_DB)
+            if (wants(w.kind, role, ch in kit, w.inEars) == null && db > MONITOR_FLOOR_DB)
                 out.add(Note(ch, role, db, null, db - MONITOR_FLOOR_DB))
         }
         for ((ch, role, rung) in compared) {

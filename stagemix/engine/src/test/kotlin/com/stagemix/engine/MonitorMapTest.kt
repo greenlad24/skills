@@ -161,4 +161,51 @@ class MonitorMapTest {
         assertTrue(piano > kick && di2 > kick,
             "the kit is competing with the piano and DI2 in bus 6: piano $piano, di2 $di2, kick $kick")
     }
+
+    @Test
+    fun `a drummer on a floor wedge gets the band, vocals on top, not the kit`() {
+        val m = MonitorMap()
+        val K = MonitorMap.Kind.DRUM_IEM
+        // NOT in-ears: the operator flipped this monitor to a floor wedge
+        fun w(role: Role, kit: Boolean = false) =
+            m.wants(K, role, kit, inEars = false)!!
+        val vocal = w(Role.VOCAL)
+        val bassDi = w(Role.FOUNDATION)          // Bass DI / DI2
+        val kick   = w(Role.FOUNDATION, kit = true)
+        val piano  = w(Role.KEYS)
+        val gtrAmp = w(Role.SOLO_GTR)
+        val horn   = w(Role.COLOR)               // sax / harmonica
+
+        assertTrue(vocal > bassDi, "vocals must be on top of the drum wedge")
+        assertTrue(bassDi > kick, "the bass DIs sit a little above the kit here")
+        assertTrue(bassDi > piano && bassDi > gtrAmp,
+            "the bass DIs are a little more than the rest of the band")
+        assertTrue(kick >= horn && piano > horn,
+            "the horns sit low in the drummer's floor wedge")
+        // and the kit is PRESENT (not dropped as it would be on a
+        // non-drummer's floor wedge)
+        assertTrue(m.wants(K, Role.PERCUSSION, isKit = true, inEars = false) != null,
+            "the drummer's own floor wedge must keep the kit")
+    }
+
+    @Test
+    fun `the in-ears toggle switches the drum monitor between the two mixes`() {
+        val m = MonitorMap()
+        m.onBusName(3, "DRUM IEM")
+        // by name it is in-ears: kit on top
+        assertTrue(m.inEarsFor(3))
+        val iemKick = m.wants(MonitorMap.Kind.DRUM_IEM, Role.FOUNDATION,
+            isKit = true, inEars = m.inEarsFor(3))!!
+        // flip it to a floor wedge
+        m.setInEars(3, false)
+        assertTrue(!m.inEarsFor(3))
+        val wedgeVocal = m.wants(MonitorMap.Kind.DRUM_IEM, Role.VOCAL,
+            isKit = false, inEars = m.inEarsFor(3))!!
+        val wedgeKick = m.wants(MonitorMap.Kind.DRUM_IEM, Role.FOUNDATION,
+            isKit = true, inEars = m.inEarsFor(3))!!
+        assertTrue(iemKick > wedgeKick,
+            "in-ears puts the kit on top; the floor wedge does not")
+        assertTrue(wedgeVocal > wedgeKick,
+            "on the floor wedge the vocal is on top, not the kit")
+    }
 }

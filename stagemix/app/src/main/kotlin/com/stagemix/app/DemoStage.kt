@@ -107,6 +107,8 @@ object DemoStage {
                 .maxByOrNull { kotlin.math.abs((sends[it.key] ?: 0f) - it.value) }
             return AppState.WedgeUi(
                 bus = bus, name = name, kind = kind,
+                inEars = AppState.monitorInEars.value[bus]
+                    ?: (kind == "DRUM_IEM" || kind == "PLAYER_IEM"),
                 top = sends.entries.sortedByDescending { it.value }
                     .take(3).map { it.key },
                 worstOffDb = worst?.let {

@@ -3,6 +3,7 @@ package com.stagemix.app.ui
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -25,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -106,7 +108,7 @@ fun MonitorRack(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Segmented(wedges.map { it.name.take(11) }, sel) { sel = it }
             Spacer(Modifier.width(14.dp))
-            Column {
+            Column(Modifier.weight(1f)) {
                 Text(w.kind.lowercase().replace('_', ' '),
                     color = Accent, fontSize = 14.sp,
                     fontWeight = FontWeight.Bold)
@@ -116,6 +118,10 @@ fun MonitorRack(
                     else "read only — monitor keeping is off in SETUP",
                     color = Muted, fontSize = 12.sp)
             }
+            // IN-EARS / WEDGE — the drummer swaps between the two, and each
+            // wants a different mix. Sealed ears want the whole kit on top;
+            // a floor wedge wants the band in front of it, vocals on top.
+            InEarsToggle(w)
         }
         Spacer(Modifier.height(10.dp))
 
@@ -132,6 +138,51 @@ fun MonitorRack(
                         .padding(horizontal = 3.dp))
             }
         }
+    }
+}
+
+/**
+ * IN-EARS or a FLOOR WEDGE, per monitor. One tap flips it; the mix the
+ * keeper aims for follows (see MonitorMap.wants). Works with or without a
+ * live service — it updates the state directly and lets the service, when
+ * there is one, make it authoritative and persist it.
+ */
+@Composable
+private fun InEarsToggle(w: AppState.WedgeUi) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    fun set(inEars: Boolean) {
+        if (inEars == w.inEars) return
+        // update the state now, so it shows immediately in demo and live
+        AppState.monitorInEars.value =
+            AppState.monitorInEars.value + (w.bus to inEars)
+        AppState.wedges.value = AppState.wedges.value.map {
+            if (it.bus == w.bus) it.copy(inEars = inEars) else it }
+        // and tell the service (a no-op in the demo, authoritative live)
+        com.stagemix.app.MixerService.cmd(ctx,
+            com.stagemix.app.MixerService.ACTION_MONITOR_INEARS,
+            "bus" to w.bus, "inEars" to inEars)
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        InEarPill("IN-EARS", w.inEars) { set(true) }
+        Spacer(Modifier.width(6.dp))
+        InEarPill("WEDGE", !w.inEars) { set(false) }
+    }
+}
+
+@Composable
+private fun InEarPill(label: String, on: Boolean, onTap: () -> Unit) {
+    Box(
+        Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (on) Accent.copy(alpha = 0.18f) else Color(0x14FFFFFF))
+            .border(1.dp, if (on) Accent else Color(0x22FFFFFF),
+                RoundedCornerShape(8.dp))
+            .clickable { onTap() }
+            .padding(horizontal = 12.dp, vertical = 7.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, color = if (on) Accent else Muted, fontSize = 12.sp,
+            fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp, maxLines = 1)
     }
 }
 
