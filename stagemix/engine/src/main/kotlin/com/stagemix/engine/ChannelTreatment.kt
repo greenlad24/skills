@@ -306,6 +306,30 @@ class ChannelTreatment(
     /** bands the human has moved since we set them: never ours again */
     private val handsOff = HashMap<Int, MutableSet<String>>()
 
+    /**
+     * What the DESK had on this channel when the app took over — the
+     * high-pass corner (and whether it was in), and each EQ band's gain
+     * in dB. Without this the chain wrote absolutely and blind, and two
+     * of its writes ADDED gain at exactly this rig's ring frequencies:
+     *
+     *  · a high-pass written at the preset (100 Hz) over an engineer's
+     *    own 200 Hz low-cut is +4.8 dB at 160 Hz on an open mic;
+     *  · every unset band flattened to 0 dB erased a house engineer's
+     *    ring-out — +8 dB at 3377 Hz.
+     *
+     * With the snapshot the chain can prove it only ever STEEPENS the
+     * high-pass (writes the higher corner of the two) and only flattens
+     * a band the desk was BOOSTING — a cut it leaves exactly alone.
+     */
+    private class Desk(val hpfHz: Float?, val hpfOn: Boolean,
+                       val eqDb: FloatArray?)
+    private val desk = HashMap<Int, Desk>()
+
+    fun snapshotDesk(ch: Int, hpfHz: Float?, hpfOn: Boolean,
+                     eqDb: FloatArray?) {
+        desk[ch] = Desk(hpfHz, hpfOn, eqDb)
+    }
+
     /** what has been done to a channel, for the screen and the log */
     fun treatedRole(ch: Int): Role? = applied[ch]?.role
     fun treatedAt(ch: Int): Double? = applied[ch]?.tSec
@@ -506,9 +530,24 @@ class ChannelTreatment(
         // would silently disable channel treatment for the whole night.
         val c = osc("%02d", ch + 1)
 
-        chain.hpfHz?.let {
-            put("/ch/$c/preamp/hpon", 1f)
-            put("/ch/$c/preamp/hpf", hpfToFloat(it))
+        chain.hpfHz?.let { want ->
+            // NEVER LOWER A HIGH-PASS THE ENGINEER SET. Lowering a
+            // corner UN-cuts the low end — it adds gain there — and if
+            // the engineer put the corner high on purpose to fight a
+            // low ring, dropping it to the preset walks the stage
+            // straight back into that ring. So the corner written is
+            // the HIGHER of the book's and the desk's, and if the desk
+            // was already steeper the app leaves the high-pass alone
+            // entirely. When the desk state is unknown (no snapshot)
+            // the book is written as before — the risk only exists when
+            // the engineer had set something and we could see it.
+            val d = desk[ch]
+            val deskCorner = if (d?.hpfOn == true) d.hpfHz else null
+            val corner = maxOf(want, deskCorner ?: 0f)
+            if (deskCorner == null || corner > deskCorner + 1f) {
+                put("/ch/$c/preamp/hpon", 1f)
+                put("/ch/$c/preamp/hpf", hpfToFloat(corner))
+            }
         }
         if (chain.eq.isNotEmpty()) {
             // SWITCHING THE EQ ON IS NOT A NEUTRAL ACT.
@@ -521,15 +560,24 @@ class ChannelTreatment(
             // at 3 kHz is a boost on an open vocal microphone that
             // isGainAdding never sees, because we never wrote it.
             //
-            // So every band this chain does not set is written flat
-            // first. What comes out of the EQ is then exactly what this
-            // book asked for and nothing else.
+            // So every band this chain does not set, and that the desk
+            // is BOOSTING, is written flat first. A band the desk is
+            // CUTTING is left exactly alone — that is a house
+            // engineer's ring-out, and flattening it was +8 dB at the
+            // very frequency they had tamed. When the desk state is
+            // unknown, flat is the safe default (a stored boost we
+            // cannot see is the hazard), so an unsnapshotted channel
+            // still has every band written flat.
             // Band 4 belongs to the ring-out and is never touched
-            // here — see RingOut.RING_BAND. A notch that the next
-            // re-treat flattens is not a notch.
+            // here — see RingOut.RING_BAND.
             val mine = chain.eq.map { it.band }.toSet()
-            for (b in 1..4) if (b !in mine && b != RingOut.RING_BAND)
-                put("/ch/$c/eq/$b/g", eqGainToFloat(0f))
+            val deskEq = desk[ch]?.eqDb
+            for (b in 1..4) if (b !in mine && b != RingOut.RING_BAND) {
+                val had = deskEq?.getOrNull(b - 1)
+                // known cut → theirs, keep it; boost/flat/unknown → flatten
+                if (had == null || had > -0.3f)
+                    put("/ch/$c/eq/$b/g", eqGainToFloat(0f))
+            }
             put("/ch/$c/eq/on", 1f)
             for (b in chain.eq) {
                 put("/ch/$c/eq/${b.band}/f", freqToFloat(b.hz))

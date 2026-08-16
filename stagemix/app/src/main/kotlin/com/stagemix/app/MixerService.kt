@@ -1185,6 +1185,11 @@ class MixerService : Service() {
                 send(OscMessage(osc("/ch/%02d/eq/%d/g", ch + 1, b),
                     emptyList()))
             send(OscMessage(osc("/ch/%02d/dyn/thr", ch + 1), emptyList()))
+            // The high-pass the engineer had. Read so the chain can
+            // prove it only ever steepens it, never lowers it into a
+            // low ring.
+            send(OscMessage(osc("/ch/%02d/preamp/hpon", ch + 1), emptyList()))
+            send(OscMessage(osc("/ch/%02d/preamp/hpf", ch + 1), emptyList()))
         }
         // Paced, not fired as one 96-packet burst: a burst that big is
         // routinely clipped by the console's receive buffer or the
@@ -1289,6 +1294,29 @@ class MixerService : Service() {
                     ?.let { it * 60f - 60f }
                 d.snapshotChannel(ch.index,
                     if (haveEq) gains else null, thr)
+            }
+        }
+        // The chain gets the SAME snapshot — the high-pass corner the
+        // desk had, whether it was in, and the four band gains — so it
+        // can refuse to lower a high-pass or flatten a cut. Read
+        // outside the doctor block because the chain runs even when the
+        // doctor is off.
+        engine?.let { eng ->
+            for (ch in chans) {
+                val eqDb = FloatArray(4) { b ->
+                    pending[osc("/ch/%02d/eq/%d/g", ch.index + 1, b + 1)]
+                        ?.let { it * 30f - 15f } ?: 0f
+                }
+                val haveEq = (0 until 4).any {
+                    pending.containsKey(
+                        osc("/ch/%02d/eq/%d/g", ch.index + 1, it + 1)) }
+                val hpOn = pending[osc("/ch/%02d/preamp/hpon", ch.index + 1)]
+                    ?.let { it > 0.5f }
+                val hpHz = pending[osc("/ch/%02d/preamp/hpf", ch.index + 1)]
+                    // invert hpfToFloat: 20 * 20^v
+                    ?.let { 20f * Math.pow(20.0, it.toDouble()).toFloat() }
+                eng.treatment.snapshotDesk(ch.index, hpHz, hpOn ?: false,
+                    if (haveEq) eqDb else null)
             }
         }
         // the wedges, as the engineer has them right now
