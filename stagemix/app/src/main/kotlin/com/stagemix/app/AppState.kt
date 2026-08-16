@@ -146,6 +146,17 @@ object AppState {
         /** the worst disagreement with what this position wants, in dB */
         val worstOffDb: Float = 0f,
         val worstCh: Int? = null,
+        /**
+         * The wedge as a mixer: every channel's send level, where this
+         * position wants it, and how far the keeper has moved it.
+         *
+         * A wedge IS a mix — sixteen sends with a balance between them,
+         * exactly like the mains — so it is read the same way, on
+         * strips, rather than described in a paragraph.
+         */
+        val sendDb: Map<Int, Float> = emptyMap(),
+        val targetDb: Map<Int, Float> = emptyMap(),
+        val appDb: Map<Int, Float> = emptyMap(),
     )
 
     val wedges = MutableStateFlow<List<WedgeUi>>(emptyList())

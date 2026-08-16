@@ -115,7 +115,7 @@ open_demo 0 true
 want "channel strips and their instruments" \
   "DRUM KICK" "BASS DI" "VOCAL CEN" "HARMONI" "LEAD"
 want "the transport, including the new REBAL key" \
-  "MIX" "FREEZE" "KEEP" "REBAL" "UNDO"
+  "MIX" "FREEZE" "KEEP" "Re-Balance" "UNDO"
 want "all five tabs" "MIXER" "MONITORS" "STATUS" "LOG" "SETUP"
 want "the state word and the master meters" "MIXING" "LEAD" "BAND"
 want "a ring-out notch drawn on the channel it is on" "196 Hz"
@@ -175,7 +175,7 @@ fi
 open_demo 0 true
 if tap "FREEZE"; then want "FREEZE holds everything" "FROZEN"; fi
 open_demo 0 true
-tap "REBAL" >/dev/null 2>&1 || bad "REBAL not tappable"
+tap "Re-Balance" >/dev/null 2>&1 || bad "Re-Balance not tappable"
 sleep 2
 [ "$(crashes)" = "0" ] || bad "crashed pressing a transport key"
 

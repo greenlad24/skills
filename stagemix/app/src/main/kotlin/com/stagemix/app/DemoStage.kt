@@ -92,13 +92,55 @@ object DemoStage {
         AppState.busNames.value = mapOf(
             0 to "CENTER MON", 1 to "PIANO MON", 2 to "DRUM IEM",
             3 to "BASS MON", 5 to "IN EAR 2")
+        // Each wedge as a real mix: what the desk has on every send,
+        // where that position wants it, and what the keeper has moved.
+        // Channels absent from sendDb are simply not routed there —
+        // which is a decision, not a fault, and is drawn as OFF.
+        fun wedge(bus: Int, name: String, kind: String,
+                  sends: Map<Int, Float>, wants: Map<Int, Float>,
+                  moved: Map<Int, Float> = emptyMap()): AppState.WedgeUi {
+            val worst = wants.entries
+                .maxByOrNull { kotlin.math.abs((sends[it.key] ?: 0f) - it.value) }
+            return AppState.WedgeUi(
+                bus = bus, name = name, kind = kind,
+                top = sends.entries.sortedByDescending { it.value }
+                    .take(3).map { it.key },
+                worstOffDb = worst?.let {
+                    (sends[it.key] ?: 0f) - it.value } ?: 0f,
+                worstCh = worst?.key,
+                sendDb = sends, targetDb = wants, appDb = moved)
+        }
         AppState.wedges.value = listOf(
-            AppState.WedgeUi(1, "CENTER MON", "CENTRE_VOCAL",
-                listOf(8, 3, 9), -4.2f, 8),
-            AppState.WedgeUi(2, "PIANO MON", "GUITAR", listOf(4, 8, 5)),
-            AppState.WedgeUi(3, "DRUM IEM", "DRUM_IEM", listOf(0, 1, 11)),
-            AppState.WedgeUi(4, "BASS MON", "BASS", listOf(11, 13, 12)),
-            AppState.WedgeUi(6, "IN EAR 2", "PLAYER_IEM", listOf(5, 13, 8)))
+            wedge(1, "CENTER MON", "CENTRE_VOCAL",
+                mapOf(3 to -8f, 4 to -20f, 5 to -22f, 6 to -22f,
+                      8 to -6f, 9 to -11f, 11 to -18f, 13 to -18f,
+                      14 to -24f, 15 to -26f),
+                mapOf(3 to -9f, 4 to -19f, 5 to -20f, 6 to -20f,
+                      8 to -4f, 9 to -12f, 11 to -19f, 13 to -19f,
+                      14 to -21f, 15 to -21f),
+                mapOf(11 to -1.4f, 5 to -0.7f)),
+            wedge(2, "PIANO MON", "GUITAR",
+                mapOf(4 to -6f, 3 to -16f, 5 to -14f, 6 to -14f,
+                      8 to -12f, 9 to -18f, 11 to -18f, 13 to -18f),
+                mapOf(4 to -6f, 3 to -14f, 5 to -16f, 6 to -16f,
+                      8 to -11f, 9 to -17f, 11 to -19f, 13 to -19f),
+                mapOf(8 to 0.7f)),
+            wedge(3, "DRUM IEM", "DRUM_IEM",
+                mapOf(0 to -5f, 1 to -6f, 2 to -12f, 11 to -8f,
+                      13 to -9f, 8 to -12f, 12 to -14f, 5 to -18f),
+                mapOf(0 to -6f, 1 to -6f, 2 to -11f, 11 to -8f,
+                      13 to -8f, 8 to -13f, 12 to -12f, 5 to -17f)),
+            wedge(4, "BASS MON", "BASS",
+                mapOf(11 to -5f, 13 to -6f, 12 to -11f, 8 to -16f,
+                      3 to -19f, 4 to -19f, 5 to -21f),
+                mapOf(11 to -6f, 13 to -6f, 12 to -10f, 8 to -15f,
+                      3 to -20f, 4 to -20f, 5 to -20f)),
+            wedge(6, "IN EAR 2", "PLAYER_IEM",
+                mapOf(5 to -6f, 6 to -7f, 13 to -8f, 11 to -10f,
+                      0 to -12f, 1 to -12f, 8 to -13f, 4 to -19f),
+                mapOf(5 to -6f, 6 to -6f, 13 to -7f, 11 to -11f,
+                      0 to -13f, 1 to -13f, 8 to -13f, 4 to -18f),
+                mapOf(5 to -0.7f)))
 
         AppState.strips.value = NAMES.indices.map { i ->
             AppState.StripUi(

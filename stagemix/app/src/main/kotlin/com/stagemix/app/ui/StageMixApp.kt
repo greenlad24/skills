@@ -299,7 +299,8 @@ fun ConsoleScreen() {
                 // as the automatic work — pressing a button is
                 // permission to act now, not permission to act
                 // differently.
-                TransportKey("REBAL", false, Accent, Modifier.width(88.dp)) {
+                TransportKey("Re-Balance", false, Accent,
+                    Modifier.width(104.dp)) {
                     MixerService.cmd(ctx, MixerService.ACTION_REBALANCE)
                 }
                 Spacer(Modifier.width(8.dp))
@@ -472,32 +473,17 @@ private fun LastFive(decisions: List<com.stagemix.engine.Decision>,
 private fun MonitorPanel(modifier: Modifier) {
     val wedges by AppState.wedges.collectAsState()
     val names by AppState.mixerChannelNames.collectAsState()
-    Column(modifier.well(10.dp).padding(16.dp)) {
-        Text("MONITORS — READ ONLY", color = Muted, fontSize = 12.sp,
-            letterSpacing = 2.sp)
-        Spacer(Modifier.height(8.dp))
-        if (wedges.isEmpty())
-            Text("Nothing read yet. The wedges are read when the app " +
-                "takes the mains.", color = Ink2, fontSize = 15.sp)
-        for (w in wedges) {
-            Column(Modifier.padding(bottom = 12.dp)) {
-                Text("${w.name}  ·  ${w.kind.lowercase().replace('_', ' ')}",
-                    color = Ink, fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold)
-                Text("loudest: " + (w.top.joinToString(", ") {
-                        names[it] ?: "ch%02d".format(it + 1) }
-                        .ifBlank { "nothing" }),
-                    color = Ink2, fontSize = 14.sp)
-                w.worstCh?.let { ch ->
-                    Text((names[ch] ?: "ch%02d".format(ch + 1)) +
-                        " is %+.1f dB from where this position wants it"
-                            .format(-w.worstOffDb),
-                        color = Warn, fontSize = 14.sp)
-                }
-            }
-        }
-        Spacer(Modifier.weight(1f))
-        Text("The app has never written a monitor send or a bus master.",
+    val keeping by AppState.keepMonitors.collectAsState()
+    Column(modifier.well(10.dp).padding(12.dp)) {
+        MonitorRack(wedges, names, keeping, Modifier.fillMaxWidth().weight(1f))
+        Spacer(Modifier.height(6.dp))
+        Text(
+            if (keeping)
+                "Cuts before boosts, at most 6 dB down and 1.5 dB up on " +
+                "any send all night, nothing between songs — and no " +
+                "address in this app can move a bus master."
+            else "Monitor keeping is off: these are read from the desk " +
+                "and nothing is written.",
             color = Muted, fontSize = 12.sp)
     }
 }

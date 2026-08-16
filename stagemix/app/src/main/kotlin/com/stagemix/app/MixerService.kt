@@ -983,9 +983,10 @@ class MixerService : Service() {
                 it.hz, it.cutDb) }
         val roles = e.state.mapValues { it.value.role }
         val kit = e.drumKit()
+        val moves = monBal.moved().groupBy { it.bus }
         AppState.wedges.value = monitors.all().map { w ->
-            val worst = monitors.critique(w.bus, roles, kit)
-                .firstOrNull { kotlin.math.abs(it.offDb) > 3f }
+            val notes = monitors.critique(w.bus, roles, kit)
+            val worst = notes.firstOrNull { kotlin.math.abs(it.offDb) > 3f }
             AppState.WedgeUi(
                 bus = w.bus,
                 name = AppState.busNames.value[w.bus - 1] ?: w.name,
@@ -995,7 +996,13 @@ class MixerService : Service() {
                         .MONITOR_FLOOR_DB }
                     .sortedByDescending { it.value }.take(3).map { it.key },
                 worstOffDb = worst?.offDb ?: 0f,
-                worstCh = worst?.ch)
+                worstCh = worst?.ch,
+                // the wedge as a mix, one entry per channel
+                sendDb = w.sends.toMap(),
+                targetDb = notes.mapNotNull { n ->
+                    n.wantDb?.let { n.ch to it } }.toMap(),
+                appDb = moves[w.bus]?.associate { it.ch to it.appDb }
+                    ?: emptyMap())
         }
     }
 
