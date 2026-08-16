@@ -631,6 +631,7 @@ class ChannelState(val cfg: ChannelConfig) {
     var featureLift = 0f             // and how far up they go, decided at the latch
     var featureReleaseAt = -1.0      // when the feature ended, to ease the lift off
     var featureReleaseFrom = 0f      // the lifted offset it eases down from
+    var rangAt = -1e9                // last time this mic was in a feedback ring
     var duetLatched = false          // singing WITH the lead (latched)
     var featureVotes = 0             // ticks reading as a feature (leaky)
     var nearFeatureT = -1000.0       // last "nearly a solo" note, throttled
@@ -743,6 +744,14 @@ const val ENSEMBLE_CH = 16
  * bar. Everything above this is earned by stepping further out.
  */
 const val SOLO_LIFT_FLOOR_DB = 2.0f
+
+/**
+ * How long a microphone that has been in a ring is barred from being
+ * lifted again (§4: "several minutes after a howl"). Matches the monitor
+ * keeper's own post-ring quiet so both sides of the stage remember a
+ * howl for the same length of time.
+ */
+const val RING_QUIET_SEC = 240.0
 
 /**
  * How far a placement may be clamped before it stops counting as a
@@ -964,6 +973,31 @@ class StageEngine(
      * pyramid a small, bounded lesson — so every correction makes the
      * next night's mix start closer to your taste.
      */
+    /**
+     * A feedback ring was traced to this microphone (a notch went on it).
+     * §4: "never raise a microphone that has been in a ring; no raising
+     * anywhere on the stage for several minutes after a howl." The
+     * monitor keeper already remembers this per wedge-send; the mains
+     * engine did not, so a soloing mic that rang would be lifted straight
+     * back into the loop once the 3 s watchdog veto cleared. Remember it,
+     * bar a new feature on it (see canFeature), and end any feature it is
+     * mid-way through so the lift eases OFF instead of climbing back.
+     */
+    fun onRing(ch: Int, tSec: Double) {
+        val st = state[ch] ?: return
+        st.rangAt = tSec
+        if (st.featureStart >= 0) {
+            st.featureStart = -1.0
+            st.featureVotes = 0
+            st.engaged = false
+            st.featureReleaseAt = tSec
+            st.featureReleaseFrom = st.offset
+            log(tSec, "feature-end", ch, 0f,
+                "${st.name} rang while it was up — easing it back down " +
+                "rather than lifting it into the loop")
+        }
+    }
+
     fun operatorOverride(ch: Int, faderDb: Float, tSec: Double) {
         val st = state[ch] ?: return
         // a fader nudge cannot grant the engine authority it was never
@@ -2314,8 +2348,15 @@ class StageEngine(
                 // what a feature does. Left open to every role it fired
                 // on all of them, dozens of times an hour, and each one
                 // suspended the ride on that channel for ninety seconds.
-                val canFeature = settings.mode != BalanceMode.KEEP ||
-                    isSoloist(st)
+                // AND never lift a microphone that has just been in a
+                // ring (§4). A solo on an open COLOR/guitar mic is exactly
+                // what rings it; the watchdog veto clears ~3 s after the
+                // howl stops, but the player is still soloing, so without
+                // this the feature-lift would resume and push the same mic
+                // straight back into the loop. Bar a new feature on it for
+                // several minutes after it rang.
+                val canFeature = (settings.mode != BalanceMode.KEEP ||
+                    isSoloist(st)) && tSec - st.rangAt >= RING_QUIET_SEC
                 val need = if (st.settled && settings.holdAfterBalance)
                     settings.holdSoloRiseDb else settings.featureRiseDb
                 if (canFeature && hadWindow && rose - ensembleRise > need)

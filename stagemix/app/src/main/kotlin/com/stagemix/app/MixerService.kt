@@ -429,6 +429,13 @@ class MixerService : Service() {
                     return@launch
                 }
                 AppState.conn.value = AppState.Conn.CONNECTED
+                // The console has answered at least once this session.
+                // This gates every "the mixer is gone" surface (opState's
+                // NO_MIXER, the lost-mixer advice) — and it must be set on
+                // the FIRST connect, not only after a dropout→recovery, or
+                // the very first mid-show disconnect reads as "still
+                // mixing" over a dead console.
+                AppState.everConnected.value = true
                 AppState.config.value = cfg.copy(mixerIp = ip)
                 fetchNames()
                 engine?.let { eng ->
@@ -500,6 +507,13 @@ class MixerService : Service() {
         var lastRx = now(); lastRxT = lastRx
         var rtaFocus = -1
         var rtaFocusT = 0.0
+        // RTA frames in since the last source switch. The first frame
+        // after a switch can still be the PREVIOUS channel's spectrum
+        // (the console has not swapped yet), and RingOut keeps a per-
+        // channel max at the ring frequency, so one stale loud frame
+        // would permanently inflate an innocent channel's reading and
+        // could point the notch at the wrong mic. Drop that first frame.
+        var rtaFramesSinceSwitch = 0
         var lastResync = 0.0
         while (scope.isActive && AppState.conn.value != AppState.Conn.DISCONNECTED) {
             val t = now()
@@ -584,6 +598,7 @@ class MixerService : Service() {
                         .mod(active.size)]
                     if (next != rtaFocus) {
                         rtaFocus = next
+                        rtaFramesSinceSwitch = 0
                         send(OscMessage("/-stat/rta/source", listOf(rtaFocus)))
                         // a different channel's spectrum is not this
                         // one's getting louder — see sourceChanged()
@@ -635,8 +650,23 @@ class MixerService : Service() {
                 // an autopilot that starts reaching for new controls
                 // mid-gig with no way to stop it is not one anybody
                 // should take to a show.
+                // RingOut owns the ring band (4) whenever it has a live
+                // cut on a channel. A first-time treatment pass reads the
+                // desk from the TAKEOVER snapshot, which can show a stale
+                // band-4 boost, and flattening that would wipe a notch
+                // written after takeover and re-open the loop. So drop any
+                // treatment write to the ring band on a channel that
+                // currently has an active notch — the boost-flatten still
+                // runs on every other channel, closing the §0.1 leak
+                // without ever fighting a live ring-out.
+                val ringed = ringOut.active().map { it.ch }.toSet()
+                val ringBandRe = Regex(
+                    "^/ch/(\\d\\d)/eq/${com.stagemix.engine.RingOut.RING_BAND}/")
                 if (directing && AppState.doctorOn.value)
                     for (w in e.treatmentPass(t)) {
+                        val ringBandCh = ringBandRe.find(w.address)
+                            ?.groupValues?.get(1)?.toIntOrNull()?.minus(1)
+                        if (ringBandCh != null && ringBandCh in ringed) continue
                         lastParam[w.address] = w.value
                         send(OscMessage(w.address, listOf(w.value)))
                         // Every processing write, decoded. The engine
@@ -669,13 +699,17 @@ class MixerService : Service() {
                 }
                 // ANY MICROPHONE THAT HAS RUNG STOPS BEING RAISED.
                 //
-                // The keeper is the only thing in this app that can add
-                // gain to a stage, and the one place that must never
-                // happen is a channel already proven to be in a loop.
-                // Telling it about every notch closes that door for the
-                // night, and quiets raising anywhere on the stage for a
-                // few minutes after a howl.
-                for (n in ringOut.active()) monBal.onRing(n.ch, t)
+                // The keeper is not the only thing that can add gain: the
+                // MAINS engine lifts a soloing mic up to +6 dB, and a solo
+                // on an open mic is exactly what rings it. So BOTH sides
+                // are told about every notch — the keeper quiets that
+                // wedge-send, and the engine bars a new feature on the mic
+                // and eases off any lift it was mid-way through, for a few
+                // minutes after the howl (§4).
+                for (n in ringOut.active()) {
+                    monBal.onRing(n.ch, t)
+                    e.onRing(n.ch, t)
+                }
 
                 // THE WEDGES, SLIGHTLY.
                 //
@@ -868,7 +902,13 @@ class MixerService : Service() {
                             "— boosts frozen; notch it on the GEQ"
                         else null
                     }
-                    ringOut.onRta(rtaFocus, bins, t)
+                    // skip the first frame after a source switch (it may
+                    // still be the previous channel's spectrum); the hunt
+                    // dwells 0.5 s per channel, so every later frame in
+                    // the dwell still feeds RingOut
+                    rtaFramesSinceSwitch++
+                    if (rtaFramesSinceSwitch > 1)
+                        ringOut.onRta(rtaFocus, bins, t)
                     // channel attribution for the doctor needs the
                     // analyzer settled on its focus source
                     if (rtaFocus >= 0 && t - rtaFocusT > 0.5) {
@@ -1383,8 +1423,15 @@ class MixerService : Service() {
         }
         if (faders.isEmpty()) {
             collecting = false
+            // The engine never took over (takeoverT stays -1 and every
+            // tick writes nothing), so leaving directing=true would have
+            // every status surface assert MIXING over a console the app
+            // never took. Drop back to watching so the truth shows and
+            // the operator can retry.
+            AppState.directing.value = false
             AppState.lastError.value =
                 "Takeover failed — no fader positions received from the mixer"
+            updateNotif()
             return@withLock
         }
         // A PARTIAL takeover is not a success. Channels with no fader

@@ -144,9 +144,11 @@ class MonitorMapTest {
         val kick = m.wants(MonitorMap.Kind.DRUM_IEM, Role.FOUNDATION, isKit = true)!!
         val snare = m.wants(MonitorMap.Kind.DRUM_IEM, Role.PERCUSSION, isKit = true)!!
         val bass = m.wants(MonitorMap.Kind.DRUM_IEM, Role.FOUNDATION, isKit = false)!!
-        assertTrue(kick >= snare,
-            "the kick sits under the snare in the drummers own ears: kick $kick, snare $snare")
-        assertTrue(kick > bass,
+        // §3: "the kick included, ABOVE the snare, not a rung under it"
+        assertTrue(kick > snare,
+            "the kick must sit above the snare in the drummers own ears: " +
+            "kick $kick, snare $snare")
+        assertTrue(snare > bass,
             "the kit is not above the bass guitar in the drum in-ear")
     }
 

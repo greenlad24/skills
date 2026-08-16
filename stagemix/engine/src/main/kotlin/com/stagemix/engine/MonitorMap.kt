@@ -187,6 +187,10 @@ class MonitorMap {
         // kit above everything, with the congas just under and the
         // bass guitar present but below the kit.
         Kind.DRUM_IEM -> when {
+            // the kick sits ABOVE the rest of the kit, not level with the
+            // snare (§3: "the kick included, above the snare, not a rung
+            // under it"). The kick's role is FOUNDATION, but in the kit.
+            isKit && role == Role.FOUNDATION -> 8f
             isKit -> 7f
             role == Role.PERCUSSION -> 6f
             role == Role.FOUNDATION -> 2f
