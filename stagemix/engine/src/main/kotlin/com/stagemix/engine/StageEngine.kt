@@ -371,6 +371,42 @@ data class EngineSettings(
     val settleTolDb: Float = 1.0f,
     /** how far a released channel may be trimmed from where it settled */
     val trimBandDb: Float = 2.5f,
+    /**
+     * THE OPERATOR'S VOLUME LAW — above every balancing rule below.
+     *
+     * Some faders are the engineer's and never the app's. Asked for in
+     * these words: "1.2.3 channels should be locked and never touched in
+     * volume, as well vocal channels." The drum kit is set at the desk and
+     * left there; a vocal fader is a human decision, and moving it is
+     * exactly the gain change that rings a room. The app mixes the band
+     * AROUND these — it never moves them.
+     *
+     * The whole policy — the locks, the bass deadband, the piano/guitar
+     * floor, the guest-soloist channel — rides behind this one switch. It
+     * is OFF in the bare engine so the core control-loop tests keep
+     * guarding the untouched behaviour, and the shipping app and the bench
+     * turn it ON (this is a bespoke rig; the deployed default is on).
+     */
+    val operatorPolicy: Boolean = false,
+    val lockedChannels: Set<Int> = setOf(0, 1, 2),   // ch1/2/3, the kit
+    val lockVocalVolume: Boolean = true,
+    /**
+     * BASS holds still until it is clearly wrong. "Bass channels should go
+     * down only if they are overwhelming and go up if they are
+     * underwhelming." So it moves only when it is this far off its place —
+     * never the continuous half-dB chase that makes a channel restless.
+     */
+    val bassDeadbandDb: Float = 5f,
+    /**
+     * PIANO AND GUITAR sit in the middle and are never buried. "The piano
+     * should be in a good spot in the middle most of the time (never be
+     * low)" and "piano and guitar should be sitting in the medium level."
+     * However quiet the player goes between phrases, the app will not hold
+     * either more than this far below where the engineer set it.
+     */
+    val midFloorDb: Float = -3f,
+    val midLevelRoles: Set<Role> = setOf(
+        Role.KEYS, Role.RHYTHM_GTR, Role.SOLO_GTR),
     /** how far a solo is lifted out of a held mix, and no further */
     /**
      * How far a soloist comes up when they step out.
@@ -397,9 +433,24 @@ data class EngineSettings(
     val arrivalGraceSec: Float = 25f,
     /** a source silent for this long is ARRIVING when it plays again */
     val arrivalSilenceSec: Float = 25f,
-    /** the instruments that take solos, and so may step out of the hold */
+    /**
+     * The instruments that take solos, and so may step out of the hold.
+     * "Soloists are — vocals, Saxophone, Guitar Amp or Guitar DI, rarely
+     * the bass or Piano or another instrument." Guitar amp is SOLO_GTR,
+     * guitar DI is RHYTHM_GTR, sax/harp is COLOR, piano is KEYS. Vocals
+     * solo too, but a vocal is never LIFTED (its fader is locked) — a
+     * vocal solo is served by ducking the band under it. Bass is allowed
+     * to solo as well (see isSoloist); it just rarely does.
+     */
     val soloRoles: Set<Role> = setOf(
         Role.SOLO_GTR, Role.RHYTHM_GTR, Role.COLOR, Role.KEYS),
+    /**
+     * The GUEST-SOLOIST channel. "Usually channel 11 is for another
+     * instrument solo — last night it was trombone." Whatever is plugged
+     * into it, it may step out for a solo, and it is never volume-locked
+     * even when the desk's name makes it look like a vocal.
+     */
+    val soloistChannels: Set<Int> = setOf(10),   // ch11, 0-indexed
     /**
      * How much more of the singing a challenger must be doing before the
      * lead moves to them while the current lead is still audible. Spill
@@ -1106,7 +1157,29 @@ class StageEngine(
     /** true if this channel is one the operator rides for solos */
     fun isSoloist(st: ChannelState): Boolean =
         st.role in settings.soloRoles ||
-            st.name.trim().lowercase() in soloistNames
+            st.name.trim().lowercase() in soloistNames ||
+            (settings.operatorPolicy &&
+                (st.cfg.index in settings.soloistChannels ||
+                    isBassChannel(st)))        // rarely, but it happens
+
+    /**
+     * The operator's law: this channel's volume is never the app's to move.
+     * ch1/2/3 (the kit) and every vocal mic. Checked before any balancing
+     * rule, and it wins over all of them. The guest-soloist channel is the
+     * exception — it may look like a vocal on the desk but it steps out to
+     * solo, so it is never locked.
+     */
+    fun volumeLocked(idx: Int, st: ChannelState): Boolean {
+        if (!settings.operatorPolicy) return false
+        if (idx in settings.soloistChannels) return false
+        return idx in settings.lockedChannels ||
+            (settings.lockVocalVolume &&
+                (st.role == Role.VOCAL || st.role == Role.BACKING_VOCAL))
+    }
+
+    /** a bass channel — foundation whose name says bass (Bass DI, DI2…) */
+    private fun isBassChannel(st: ChannelState): Boolean =
+        st.role == Role.FOUNDATION && isBassName(st.name)
 
     /** how long a fader must be still before the hand counts as off it */
     private val gestureQuietSec = 1.5
@@ -2179,6 +2252,16 @@ class StageEngine(
                 continue
             }
             if (tSec < st.overrideUntil) continue  // human owns it right now
+            // THE OPERATOR'S LOCKS COME FIRST. A locked channel (the kit,
+            // the vocals) gets no target and no steering — the pyramid, the
+            // feature ride and the settle logic below are all skipped, so it
+            // never generates a move or a log line. Its fader is the
+            // engineer's; the app spends its effort on the band around it.
+            if (volumeLocked(idx, st)) {
+                st.target = st.offset
+                st.engaged = false
+                continue
+            }
             // Already out of the mains, by the operator's hand and on
             // the one control that says so unambiguously. Pulling its
             // fader down as well would achieve nothing now and drop the
@@ -3126,8 +3209,13 @@ class StageEngine(
         // existed. A muted stage is not a quiet stage: it is no stage.
         if (stageMuted) return emptyList()
         val writes = ArrayList<FaderWrite>()
-        for ((_, st) in state) {
+        for ((idx, st) in state) {
             if (st.frozen) continue
+            // THE OPERATOR'S LOCKS, ENFORCED AT THE ONE PLACE EVERY MOVE
+            // PASSES THROUGH. Whatever any rule above wanted, a locked
+            // channel's fader does not move: the kit and the vocals are the
+            // engineer's.
+            if (volumeLocked(idx, st)) continue
             // A muted channel is the operator's, not ours. It is
             // contributing nothing, so there is nothing to correct, and
             // writing its fader would only mean the level jumps when
@@ -3139,7 +3227,21 @@ class StageEngine(
             if (tSec < st.overrideUntil) continue
             val base = st.baselineDb ?: continue
             var tgt = boundOffset(st.target + st.duckDb, base)
+            // PIANO AND GUITAR STAY IN THE MIDDLE. Never held more than
+            // midFloorDb below where the engineer set it, however quiet the
+            // player goes between phrases — they are always present.
+            if (settings.operatorPolicy && st.role in settings.midLevelRoles)
+                tgt = max(tgt, settings.midFloorDb)
             val cur = st.offset
+            // BASS HOLDS STILL UNTIL IT IS CLEARLY WRONG. Only a target
+            // more than a wide deadband from where it sits moves it — down
+            // when overwhelming, up when underwhelming — so it never joins
+            // the restless half-dB chase. A bass solo (rare, but real) is a
+            // feature and steps past this untouched.
+            if (settings.operatorPolicy && isBassChannel(st) &&
+                st.featureStart < 0 &&
+                abs(tgt - cur) < settings.bassDeadbandDb)
+                continue
             // GIVING IT BACK IS ALWAYS ALLOWED. Applied here rather
             // than to `target`, because everything between recomputes
             // the target from the pyramid and would simply overwrite

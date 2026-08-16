@@ -18,6 +18,7 @@ import com.stagemix.engine.osc
 import com.stagemix.engine.OscMessage
 import com.stagemix.engine.REVERT_HOLD_SEC
 import com.stagemix.engine.ShowLog
+import com.stagemix.engine.EngineSettings
 import com.stagemix.engine.StageEngine
 import com.stagemix.engine.ToneDoctor
 import kotlinx.coroutines.CoroutineScope
@@ -418,7 +419,8 @@ class MixerService : Service() {
                 show?.close()
                 show = ShowLog(getExternalFilesDir(null) ?: filesDir)
                 AppState.logPath.value = show?.file?.absolutePath ?: ""
-                engine = StageEngine(cfg.channels).also { eng ->
+                engine = StageEngine(cfg.channels,
+                    EngineSettings(operatorPolicy = true)).also { eng ->
                     // CONTINUE FROM LAST NIGHT'S PROGRESS — through the
                     // front door.
                     //

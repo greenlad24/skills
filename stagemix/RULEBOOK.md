@@ -137,6 +137,63 @@ Consequences that follow from this and are not optional:
 - **KEEP means keep.** Once a balance is adopted, only the source
   genuinely moving, a solo, or an instrument arriving changes anything.
 
+### The operator's volume law
+
+These are the engineer's own rules, in their own words, and they take
+precedence over every balancing rule above. All of it rides behind
+`EngineSettings.operatorPolicy`, which the shipping app and the bench
+turn **on** and the bare engine leaves off (so the core control-loop
+tests keep guarding the untouched behaviour).
+
+- **Channels 1, 2, 3 are locked — never touched in volume.** The drum kit
+  (kick, snare, overheads) is set at the desk and left there all night.
+
+  > "1.2.3 channels should be locked and never touched in volume."
+
+- **Vocal channels are locked — never touched in volume.** A vocal fader
+  is a human decision, and moving it is exactly the gain change that rings
+  a room. The lead-vocal-on-top relationship is therefore held by
+  **ducking the band under the vocal**, never by lifting the vocal.
+
+  > "as well vocal channels."
+
+- **Bass moves only when it is clearly wrong.** A wide deadband (≈5 dB):
+  it comes **down only if it is overwhelming** and **up only if it is
+  underwhelming** — never the continuous half-dB chase. A bass solo (rare)
+  is a feature and steps past the deadband.
+
+  > "bass channels should go down only if they are overwhelming and go up
+  > if they are underwhelming."
+
+- **Piano and guitar sit in the medium level and are never buried.** They
+  are never held more than ≈3 dB below where the engineer set them, however
+  quiet the player goes between phrases — piano or guitar amp are the base
+  of the harmony and stay present.
+
+  > "the piano should be in a good spot in the middle most of the time
+  > (never be low)" · "piano and guitar should be sitting in the medium
+  > level" · "the piano or guitar amp usually lead the show (they are the
+  > base of the harmony) and the drums and bass or DI2 lead the rhythm."
+
+- **Piano and guitar are EQed to never cancel each other.** Cut-only and
+  complementary: the piano keeps the low-mid **body** (~300 Hz) and cedes
+  the **presence** band (~2.5 kHz) to the guitar's pick; the guitar cedes
+  the low-mid body (~350 Hz) back to the piano. They interlock instead of
+  piling up in the frequencies they share.
+
+  > "piano and guitar should be … EQed to never cancel each other."
+
+- **Soloists** are the vocals, the saxophone, the guitar amp or guitar DI,
+  and — rarely — the bass, the piano, or another instrument. **Channel 11
+  is the guest-soloist channel** (last night a trombone): whatever is
+  plugged into it may step out for a solo, and it is never volume-locked
+  even when the desk's name makes it look like a vocal. A vocal "solo" is
+  served by ducking the band, not by lifting the vocal.
+
+  > "soloists are — vocals, Saxophone, Guitar Amp or Guitar DI, rarely the
+  > bass or Piano or another instrument (usually channel 11 is for another
+  > instrument solo — last night it was trombone)."
+
 ---
 
 ## 3 · The monitors — how each position should sound

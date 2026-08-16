@@ -229,11 +229,17 @@ val STARTING_CHAINS: Map<Role, Chain> = mapOf(
         why = "backing vocal: further back, wetter, out of the lead's way"),
     Role.KEYS to Chain(
         hpfHz = 60f,
-        eq = listOf(EqBand(2, 300f, -2f, 1.2f)),
+        // Piano and guitar must not cancel each other. The piano keeps the
+        // low-mid BODY (200-400 Hz) — the guitar cedes it below — and in
+        // return cedes the PRESENCE band (~2.5 kHz) to the guitar's pick
+        // attack, so the two interlock instead of piling up in the same
+        // frequencies. Band 2 also clears the vocal's low-mids as before.
+        eq = listOf(EqBand(2, 300f, -2f, 1.2f), EqBand(3, 2500f, -1.5f, 1.4f)),
         compThrDb = -22f, compRatio = 2f,
         compAttackMs = 30f, compReleaseMs = 200f, compMakeupDb = null,
         reverbSendDb = -16f,
-        why = "keys: a wide bed, cleared out of the vocal's low-mids"),
+        why = "keys: a wide bed, out of the vocal's low-mids, presence ceded " +
+            "to the guitar so the two never cancel"),
     Role.COLOR to Chain(
         hpfHz = 120f,
         eq = listOf(EqBand(3, 2500f, -2f, 1.5f)),
@@ -243,11 +249,15 @@ val STARTING_CHAINS: Map<Role, Chain> = mapOf(
         why = "horn or harp: the honk taken off, sitting in some room"),
     Role.SOLO_GTR to Chain(
         hpfHz = 100f,
-        eq = listOf(EqBand(3, 2500f, -2f, 1.5f)),
+        // Harshness trimmed at 2.5k as before; band 2 cedes the low-mid
+        // BODY (~350 Hz) to the piano so the guitar and piano interlock and
+        // never cancel in the frequencies they share.
+        eq = listOf(EqBand(3, 2500f, -2f, 1.5f), EqBand(2, 350f, -2f, 1.2f)),
         compThrDb = -18f, compRatio = 3f,
         compAttackMs = 20f, compReleaseMs = 150f, compMakeupDb = null,
         reverbSendDb = -16f,
-        why = "lead guitar: harshness trimmed, a little room behind it"),
+        why = "lead guitar: harshness trimmed, low-mids ceded to the piano " +
+            "so the two never cancel, a little room behind it"),
     Role.RHYTHM_GTR to Chain(
         hpfHz = 120f,
         eq = listOf(EqBand(2, 350f, -2f, 1.2f)),

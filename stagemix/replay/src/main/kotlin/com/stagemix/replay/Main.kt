@@ -106,7 +106,7 @@ private fun runReplay(args: Array<String>) {
             src.profile[i].role.name))
 
     val engine = StageEngine(src.profile,
-        EngineSettings(mode = opts.mode))
+        EngineSettings(mode = opts.mode, operatorPolicy = true))
     val doctor = ToneDoctor(src.profile.map { it.index },
         src.profile.associate { it.index to it.role })
     val log = ShowLog(outDir, snapshotSec = opts.snapshotSec,
@@ -552,7 +552,7 @@ private fun replayCapture(file: File, opts: Opts, outDir: File, take: String) {
         onHeader = { tape ->
             profile = profileFor(tape.names, defaultRigProfile())
             names = profile.associate { it.index to it.name }
-            val e = StageEngine(profile, EngineSettings(mode = opts.mode))
+            val e = StageEngine(profile, EngineSettings(mode = opts.mode, operatorPolicy = true))
             val d = ToneDoctor(profile.map { it.index },
                 profile.associate { it.index to it.role })
             val l = ShowLog(outDir, snapshotSec = opts.snapshotSec,
