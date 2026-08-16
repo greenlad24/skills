@@ -95,7 +95,7 @@ object DemoStage {
         AppState.ringNotches.value = mapOf(8 to "196 Hz -4.0 dB")
         AppState.busNames.value = mapOf(
             0 to "CENTER MON", 1 to "PIANO MON", 2 to "DRUM IEM",
-            3 to "BASS MON", 5 to "IN EAR 2")
+            3 to "BASS MON", 4 to "MON 5", 5 to "IN EAR 2")
         // Each wedge as a real mix: what the desk has on every send,
         // where that position wants it, and what the keeper has moved.
         // Channels absent from sendDb are simply not routed there —
@@ -141,6 +141,11 @@ object DemoStage {
                       3 to -19f, 4 to -19f, 5 to -21f),
                 mapOf(11 to -6f, 13 to -6f, 12 to -10f, 8 to -15f,
                       3 to -20f, 4 to -20f, 5 to -20f)),
+            wedge(5, "MON 5", "UNKNOWN",
+                mapOf(8 to -8f, 9 to -12f, 4 to -14f, 3 to -16f,
+                      11 to -16f, 13 to -17f, 14 to -20f, 15 to -22f),
+                mapOf(8 to -8f, 9 to -12f, 4 to -14f, 3 to -16f,
+                      11 to -16f, 13 to -17f, 14 to -20f, 15 to -22f)),
             wedge(6, "IN EAR 2", "PLAYER_IEM",
                 mapOf(5 to -6f, 6 to -7f, 13 to -8f, 11 to -10f,
                       0 to -12f, 1 to -12f, 8 to -13f, 4 to -19f),

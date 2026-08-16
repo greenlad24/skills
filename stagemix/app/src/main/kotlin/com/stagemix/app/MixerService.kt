@@ -1533,7 +1533,17 @@ class MixerService : Service() {
                     }
             }
         }
-        for ((b, nm) in AppState.busNames.value) monitors.onBusName(b + 1, nm)
+        // SHOW ALL SIX AUX BUSES, always. The M18 has six monitor sends,
+        // and a wedge used to appear only once it had a name or a routed
+        // send — so a monitor with nothing up yet, or an unnamed bus,
+        // simply went missing (the piano in-ears on bus 6 among them). Seed
+        // every bus so all six are on the glass; a bus with no name reads
+        // as "MON n" until the console gives it one.
+        for (b in com.stagemix.engine.AUX_SEND_FIRST..
+                 com.stagemix.engine.AUX_SEND_LAST)
+            monitors.onBusName(b,
+                AppState.busNames.value[b - 1]?.takeIf { it.isNotBlank() }
+                    ?: "MON $b")
         // re-apply the operator's saved in-ears/wedge choices: a name read
         // can rebuild a wedge, and the drummer's floor-wedge choice must
         // survive that
