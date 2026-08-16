@@ -105,8 +105,8 @@ Consequences that follow from this and are not optional:
 - **Lead-follow between the vocal mics** — whoever is carrying the song
   is the lead, and it can change during the night.
 - **Everything else laddered underneath**, by role.
-- **A solo is featured** — sax, guitar, harmonica **and the piano**
-  step up and are held up for the duration, then eased back.
+- **A solo is featured** — sax, flute, guitar, harmonica **and the
+  piano** step up and are held up for the duration, then eased back.
 
   > "the piano can also do solos."
 
@@ -115,6 +115,13 @@ Consequences that follow from this and are not optional:
   Lifting only the one that crossed the threshold pulls the image hard
   to one side for the length of the solo, which is worse than not
   lifting it at all. The same applies to anything else paired.
+- **The foundation and the lead vocal are a deliberate pair, not a
+  contest.** The lead vocal sits on top of every *accompaniment*
+  channel; the kick and bass (the low-end *group*) are the exception —
+  their combined level sits with the lead by design, because that is
+  what makes a mix feel full rather than thin. "On top of everything"
+  is about the accompaniment, not about beating the kick drum in
+  isolation.
 - **A new instrument arriving** is listened to before being placed.
 - **Held roles stay where the operator put them:** VOCAL,
   BACKING_VOCAL, FOUNDATION, PERCUSSION. The app's authority is the
@@ -177,7 +184,9 @@ read off the name the engineer typed.)*
 > "in-ears need a balanced mix with the current playing instruments
 > above - for drums in-ear is the drums"
 
-- the **kit** on top
+- the **whole kit** on top — the kick included, above the snare, not
+  a rung under it (the kick's *role* is FOUNDATION, but in the
+  drummer's ears it is part of the kit, and the kit is the point)
 - a balanced mix of whatever is currently playing underneath
 
 ### Bus 6 — the second in-ears (piano + bass)
@@ -208,10 +217,20 @@ Which means, concretely:
   loudest open microphone in the room. Cutting its neighbours produces
   the identical ratio and spends none. Balancing the monitors and never
   causing feedback are only compatible in that order.
-- **A send that is OFF is a routing decision, not a balance error.**
-- Slightly: one small move per bus at a time, bounded hard over a whole
-  night, nothing between songs, and nothing at all on a wedge that is
+- **A send that is OFF is a routing decision, not a balance error** —
+  and a cut may never take a send *to* the off floor: the app does not
+  un-route what the engineer chose to route.
+- Slightly: one small move per bus at a time (0.7 dB), bounded hard
+  over a whole night (at most 6 dB of cut, 1.5 dB of raise on any one
+  send), nothing between songs, and nothing at all on a wedge that is
   already close enough.
+- **Re-Balance is "act now", not "act differently."** Pressing it does
+  a pass immediately instead of waiting for the throttle — but at the
+  same small step, and no single send moves more than once per press.
+- **Monitor keeping is a choice, and it defaults OFF.** A wedge is in a
+  musician's ears and is not reversible in one tap the way a main
+  fader is, so the app does not touch the wedges unless the operator
+  turns keeping on for a night they are watching.
 
 ---
 
@@ -227,12 +246,22 @@ after a howl; no gain, ever, by any route.
 **Fix:** find *which* microphone the loop is in — every open mic hears
 a howl, but the one in the loop hears it far louder — and put a narrow
 cut on that channel, so one move fixes the wedge, the side-fill and the
-mains at once. Fast, but never faster than it can actually know: a
-wrong cut damages an innocent channel *and* stops the app finding the
-real one.
+mains at once. Fast, but never faster than it can actually know: the
+early exit needs most of the stage measured (not a handful of
+channels) before it calls a culprit, because a wrong cut damages an
+innocent channel *and* stops the app finding the real one.
 
 The four frequencies this rig has actually produced: **196, 160, 226
 and 3377 Hz.**
+
+**And the processing must never make feedback more likely.** The
+starting chain and the tone doctor read the desk at takeover and:
+- never *lower* a high-pass the engineer set (that un-cuts the low end
+  — it adds gain where a low ring lives);
+- never flatten an EQ band the engineer is *cutting* (that erases a
+  ring-out — it adds gain at the very frequency they tamed);
+- never add gain by any route — not the preamp, not an EQ boost, not
+  compressor makeup — and stay entirely quiet between songs.
 
 ---
 
@@ -255,3 +284,19 @@ and 3377 Hz.**
 > "the auto mix should be on by default - when the app is opened it
 > should connect automatically (if available) to the mixer and start
 > mixing"
+
+- **No control may be silently dead.** A key that does nothing and says
+  nothing is the same failure as three shows in watching mode. If a
+  control is pressed before there is anything to act on, it says so —
+  on screen and in the log. FREEZE and MIX change the truth the instant
+  they are pressed, with or without a live service behind them, because
+  they are the panic controls.
+- **The status-bar line tells the truth.** MIXING, SHADOW, FROZEN,
+  WAITING, NO MIXER — refreshed whenever any of them changes, because it
+  is the only thing visible when the app is in the background, and it
+  once read "MIXING" for a whole show that was not.
+- **The log records everything the app does and everything it tells
+  you.** Every fader move with its reason, every processing write
+  decoded to dB and Hz, every wedge move, every ring-out, every
+  override, every mode change, and the fault stream the operator saw. A
+  decision is never dropped, even when a bulk log is trimmed.
