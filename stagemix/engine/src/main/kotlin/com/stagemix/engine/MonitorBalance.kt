@@ -128,10 +128,10 @@ class MonitorBalance(
             s.appDb = 0f
             s.writtenDb = db
             handUntil[bus] = tSec + handBackOffSec
-            notes.add(("bus %d ch%02d — you moved that send to %+.1f dB; " +
-                "taking it as the balance you want and leaving bus %d " +
-                "alone for %d min").format(java.util.Locale.ROOT,
-                    bus, ch + 1, db, bus, (handBackOffSec / 60).toInt()))
+            notes.add("bus " + bus + " ch" + (ch + 1) + " — you moved " +
+                "that send to " + db(db) + " dB; taking it as the " +
+                "balance you want and leaving bus " + bus + " alone for " +
+                (handBackOffSec / 60).toInt() + " min")
         }
     }
 
@@ -142,8 +142,12 @@ class MonitorBalance(
     fun onRing(ch: Int, tSec: Double) {
         for (bus in map.buses) {
             ringQuietUntil[bus] = tSec + ringQuietSec
-            val s = sends[key(bus, ch)] ?: continue
-            if (s.nowDb > MonitorMap.MONITOR_FLOOR_DB) s.ringProne = true
+            // getOrPut, not a raw lookup. Send replies get dropped on a
+            // venue's Wi-Fi all the time, and a send whose reply was
+            // lost is exactly the one this must not forget: without the
+            // entry, ringProne is never set, and four minutes later the
+            // keeper is free to raise the microphone that just howled.
+            send(bus, ch).ringProne = true
         }
     }
 
@@ -181,13 +185,28 @@ class MonitorBalance(
             if (following(w.bus, tSec)) continue
             if (!push && tSec - (lastBusMove[w.bus] ?: -1e9) < minGapSec)
                 continue
-            val notes0 = map.critique(w.bus, roles, kit)
-            if (notes0.isEmpty()) continue
+            // RE-READ THE WEDGE AFTER EVERY MOVE.
+            //
+            // The critique is a ratio against the wedge's own average,
+            // so one cut changes every other channel's verdict. Walking
+            // a stale list was two bugs at once: in a push pass all
+            // three moves picked the SAME channel as the thing to bring
+            // down and dropped it 4.2 dB in one batch, and between
+            // passes the identical verdict came back for ever, so a
+            // 3 dB error was "corrected" nine times until the send hit
+            // its 6 dB cap. Recomputing makes the loop closed and makes
+            // it stop when the wedge is right.
             var made = 0
-            for (n in notes0) {
-                if (made >= movesPerBus) break
-                val write = moveFor(w, n, notes0, step, tSec) ?: continue
-                out.add(write)
+            while (made < movesPerBus) {
+                val ns = map.critique(w.bus, roles, kit)
+                if (ns.isEmpty()) break
+                var did: ParamWrite? = null
+                for (n in ns) {
+                    did = moveFor(w, n, ns, step, tSec)
+                    if (did != null) break
+                }
+                if (did == null) break
+                out.add(did)
                 made++
             }
             if (made > 0) lastBusMove[w.bus] = tSec
@@ -211,17 +230,16 @@ class MonitorBalance(
         if (n.wantDb == null) {
             if (n.nowDb <= MonitorMap.MONITOR_FLOOR_DB) return null
             return cut(s, step, tSec,
-                "${w.name}: the kit is three feet away — taking it out of " +
-                "the wedge, it only costs gain before feedback")
+                w.name + ": the kit is three feet away — taking it out " +
+                "of the wedge, it only costs gain before feedback")
         }
 
         if (abs(n.offDb) <= tolDb) return null
 
         // Too loud: turn it down. Simple, and always available.
         if (n.offDb > 0) return cut(s, min(step, n.offDb / 2f), tSec,
-            "${w.name}: ${label(n)} is %.1f dB above where this position "
-                .format(java.util.Locale.ROOT, n.offDb) +
-            "wants it")
+            w.name + ": " + label(n) + " is " + db(n.offDb) +
+            " dB above where this position wants it")
 
         // TOO QUIET — AND THIS IS THE INTERESTING ONE.
         //
@@ -235,17 +253,17 @@ class MonitorBalance(
         if (loudest != null) {
             val ls = send(w.bus, loudest.ch)
             return cut(ls, min(step, loudest.offDb), tSec,
-                "${w.name}: ${label(n)} is %.1f dB low — "
-                    .format(java.util.Locale.ROOT, -n.offDb) +
-                "bringing ${label(loudest)} down instead of raising it, " +
-                "so the balance moves without spending any gain")
+                w.name + ": " + label(n) + " is " + db(-n.offDb) +
+                " dB low — bringing " + label(loudest) + " down instead " +
+                "of raising it, so the balance moves without spending " +
+                "any gain")
         }
 
         // Nothing left to cut. Only now may a send go up, and barely.
         if (s.ringProne) {
-            once("bus${w.bus}rp${n.ch}",
-                "${w.name}: ${label(n)} is low, but that microphone has " +
-                "been in a ring on this stage — leaving it where it is")
+            once("bus" + w.bus + "rp" + n.ch,
+                w.name + ": " + label(n) + " is low, but that microphone " +
+                "has been in a ring on this stage — leaving it alone")
             return null
         }
         if (raiseBarred(w.bus, tSec)) return null
@@ -253,11 +271,10 @@ class MonitorBalance(
         val by = min(min(step, -n.offDb), maxRaiseDb - s.appDb)
         if (by < 0.1f) return null
         return write(s, by, tSec,
-            "${w.name}: ${label(n)} is %.1f dB low and there is nothing "
-                .format(java.util.Locale.ROOT, -n.offDb) +
-            "left to bring down — up %.1f dB, %.1f dB of headroom used "
-                .format(java.util.Locale.ROOT, by, s.appDb + by) +
-            "of the %.1f allowed".format(java.util.Locale.ROOT, maxRaiseDb))
+            w.name + ": " + label(n) + " is " + db(-n.offDb) + " dB low " +
+            "and there is nothing left to bring down — up " + db(by) +
+            " dB, " + db(s.appDb + by) + " of the " + db(maxRaiseDb) +
+            " dB of headroom allowed all night")
     }
 
     private fun cut(s: Send, by: Float, tSec: Double, why: String):
@@ -269,17 +286,45 @@ class MonitorBalance(
     }
 
     private fun write(s: Send, deltaDb: Float, tSec: Double, why: String):
-        ParamWrite {
+        ParamWrite? {
+        // BUILD AND CHECK THE ADDRESS BEFORE CHANGING ANY STATE.
+        //
+        // plan() used to filter the list at the end, after write() had
+        // already banked the move. A discarded write left the class
+        // believing it had moved a send it never touched, with
+        // writtenDb set to a level the desk had never seen — so the
+        // next reading looked like the engineer's hand, refilled the
+        // night's cut budget and froze the bus for five minutes. If it
+        // is not going to be sent, nothing about it may be recorded.
+        val addr = osc("/ch/%02d/mix/%02d/level", s.ch + 1, s.bus)
+        if (!isMonitorSend(addr)) return null
+
         s.appDb += deltaDb
         s.lastMoveT = tSec
         val target = s.nowDb
         s.writtenDb = target
-        notes.add(why + " · %+.1f dB (net %+.1f)".format(
-            java.util.Locale.ROOT, deltaDb, s.appDb))
-        return ParamWrite(
-            osc("/ch/%02d/mix/%02d/level", s.ch + 1, s.bus),
-            FaderLaw.dbToFloat(target))
+        // And tell the map, so the next critique sees what this did.
+        // Without it the keeper is open-loop: it cannot observe its own
+        // effect and repeats the same correction until it runs out of
+        // authority.
+        map.onSend(s.bus, s.ch, target)
+        notes.add(why + " · " + db(deltaDb) + " dB (net " +
+            db(s.appDb) + ")")
+        return ParamWrite(addr, FaderLaw.dbToFloat(target))
     }
+
+    /**
+     * A number, as text.
+     *
+     * Nothing in this class may put desk-supplied text through
+     * String.format. Bus names are typed by the engineer, and a wedge
+     * called "MON 100%" turned every log line into an
+     * UnknownFormatConversionException thrown out of plan(), on every
+     * tick, until the tick-failure limit switched MIXING off mid-set.
+     * Numbers get formatted; names get concatenated.
+     */
+    private fun db(v: Float) =
+        "%+.1f".format(java.util.Locale.ROOT, v)
 
     private val said = HashSet<String>()
     private fun once(k: String, msg: String) {

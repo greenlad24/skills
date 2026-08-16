@@ -203,43 +203,56 @@ class MonitorMap {
         if (w.kind == Kind.UNKNOWN) return emptyList()
         val live = w.sends.filter { it.value > MONITOR_FLOOR_DB }
         if (live.size < minChannels) return emptyList()
-        val mean = live.values.average().toFloat()
 
-        // CENTRE THE LADDER ON WHAT IS ACTUALLY IN THIS WEDGE.
+        // THE COMPARED SET IS THE SAME SET ON BOTH SIDES.
         //
-        // The ladder in `wants` is a shape — vocal above guitar above
-        // bass — and only the gaps between its rungs mean anything. Its
-        // absolute height does not, and cannot: it depends on which
-        // instruments happen to be in this particular wedge tonight.
+        // Two separate ways of getting this wrong, both of which end
+        // with a whole wedge cut to its caps in the middle of a song.
         //
-        // Comparing raw `mean + want` against the sends silently smuggles
-        // that height in as a target. On the centre wedge the rungs
-        // average +3, so a mix already in perfect shape reads as every
-        // single channel being 3 dB too quiet — and a keeper acting on
-        // that would cut the whole wedge to its caps and still be
-        // "wrong", in a musician's ears, all night, for nothing.
+        // First, a send the engineer never routed reads −90 dB. Judged
+        // against a ladder it is seventy dB "too quiet", it sorts to
+        // the top of the critique as the worst problem in the wedge,
+        // and since no amount of work can ever satisfy it, the keeper
+        // cuts everything else in that wedge to the floor trying. A
+        // send that is OFF is not a balance error; it is a routing
+        // decision, and it is not ours.
         //
-        // Subtracting the mean of the rungs that are actually present
-        // leaves the gaps untouched and makes a correctly-shaped wedge
-        // read as correct. What survives is the only thing this app has
-        // any business having an opinion about: the balance. How loud
-        // the wedge is stays with the person standing in front of it.
-        val present = w.sends.keys.mapNotNull { ch ->
-            roles[ch]?.let { wants(w.kind, it, ch in kit) } }
-        if (present.isEmpty()) return emptyList()
-        val ladderMean = present.average().toFloat()
+        // Second, the reference level and the ladder centre have to be
+        // averaged over the SAME channels. Take the level from every
+        // live send but the ladder only from the ones that have a role
+        // and a rung, and the difference between those two sets lands
+        // on every channel as a uniform bias — one roleless channel
+        // sitting quietly at −55 dB in a −14 dB wedge was enough to
+        // make all six sends read as ~7 dB too loud. Cutting cannot
+        // remove that bias, because cutting moves the mean too; it just
+        // runs everything to the cap.
+        //
+        // So: build the compared set first, and take both averages from
+        // it. What is left is the shape, which is the only thing this
+        // app has an opinion about. How loud the wedge is stays with
+        // the person standing in front of it.
+        val compared = ArrayList<Triple<Int, Role, Float>>()
+        for ((ch, db) in w.sends.entries.sortedBy { it.key }) {
+            if (db <= MONITOR_FLOOR_DB) continue          // off, not quiet
+            val role = roles[ch] ?: continue              // unknown, not ours
+            val rung = wants(w.kind, role, ch in kit) ?: continue
+            compared.add(Triple(ch, role, rung))
+        }
+        if (compared.size < minChannels) return emptyList()
+        val mean = compared.map { w.sends[it.first]!! }.average().toFloat()
+        val ladderMean = compared.map { it.third }.average().toFloat()
 
         val out = ArrayList<Note>()
+        // things that should not be in this wedge at all, and are
         for ((ch, db) in w.sends.entries.sortedBy { it.key }) {
             val role = roles[ch] ?: continue
-            val want = wants(w.kind, role, ch in kit)?.minus(ladderMean)
-            if (want == null) {
-                // should not be here at all: only worth saying if it IS
-                if (db > MONITOR_FLOOR_DB)
-                    out.add(Note(ch, role, db, null, db - MONITOR_FLOOR_DB))
-                continue
-            }
-            out.add(Note(ch, role, db, mean + want, db - (mean + want)))
+            if (wants(w.kind, role, ch in kit) == null && db > MONITOR_FLOOR_DB)
+                out.add(Note(ch, role, db, null, db - MONITOR_FLOOR_DB))
+        }
+        for ((ch, role, rung) in compared) {
+            val target = mean + (rung - ladderMean)
+            out.add(Note(ch, role, w.sends[ch]!!, target,
+                w.sends[ch]!! - target))
         }
         return out.sortedByDescending { abs(it.offDb) }
     }

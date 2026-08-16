@@ -49,14 +49,25 @@ class RingOut(
      * How far clear of the field a channel has to be to end the sweep
      * early, and how many channels must have been measured first.
      *
-     * Six dB is not a close call. A microphone in the loop typically
-     * reads fifteen to twenty-five dB above the others at the ringing
-     * frequency; six is chosen to be well outside anything two mics on
-     * the same source could produce, so an early call is only ever made
-     * when the sweep would have reached the same answer anyway.
+     * Six dB is not a close call BETWEEN OPEN MICROPHONES — but that
+     * is only the right comparison if most of the stage has actually
+     * been measured. `heard` contains only the channels the analyzer
+     * has physically visited, and at a half-second dwell the first
+     * version of this could fire having seen four consecutive channels:
+     * one subgroup, chosen by wherever the RTA happened to be parked.
+     * Four DIs reading their own noise floor differ by more than six dB
+     * routinely, and a bass playing G3 reads loud at a 196 Hz ring
+     * without being anywhere near the loop.
+     *
+     * The consequence was not a slower fix, it was the wrong one: a
+     * notch on an innocent channel, and — because a notch claims its
+     * frequency — no further hunt for the microphone that was actually
+     * howling. Twelve of sixteen is three quarters of the stage, about
+     * six seconds instead of eight, which is the whole honest saving
+     * here.
      */
     val decisiveDb: Float = 6f,
-    val minHeardChannels: Int = 4,
+    val minHeardChannels: Int = 12,
     /** silence at that frequency for this long and the cut is eased out */
     val releaseAfterSec: Double = 600.0,
     /** how much comes back at a time, so nothing snaps */
@@ -66,7 +77,7 @@ class RingOut(
 ) {
 
     /** one cut on one channel, and why it is there */
-    class Notch(val ch: Int, val hz: Float) {
+    class Notch(val ch: Int, var hz: Float) {
         var cutDb = 0f
         var wanted = 0f
         var lastRingT = -1.0
@@ -94,7 +105,14 @@ class RingOut(
      */
     fun ringing(hz: Int, tSec: Double) {
         if (hz <= 0) return
-        val existing = notches.values.firstOrNull { sameNote(it.hz, hz.toFloat()) }
+        // Only a notch that is actually CUTTING owns its frequency. A
+        // fully-released one still matched here, so the next ring at
+        // that pitch re-cut the old channel and suppressed the hunt —
+        // and if the singer had moved to a different microphone in the
+        // meantime, the app cut an innocent channel and did nothing
+        // whatever about the howl.
+        val existing = notches.values.firstOrNull {
+            it.wanted > 0f && sameNote(it.hz, hz.toFloat()) }
         if (existing != null) {
             existing.rings++
             existing.lastRingT = tSec
@@ -164,6 +182,24 @@ class RingOut(
             val best = heard.maxByOrNull { it.value }
             if (best != null && best.value > -90f) {
                 val n = notches.getOrPut(best.key) { Notch(best.key, huntHz) }
+                // ONE RESERVED BAND MEANS ONE NOTCH PER CHANNEL, so when
+                // the same microphone rings at a genuinely different
+                // frequency the band has to MOVE. It used to keep the
+                // old frequency and merely deepen it, while the log
+                // said it had cut the new one: a 9 dB hole grew at
+                // 196 Hz in a voice's fundamentals and the 3377 Hz howl
+                // — the most piercing of the four this rig produces —
+                // was never touched at all, all night.
+                if (!sameNote(n.hz, huntHz)) {
+                    lastAction = ("ch%02d already had a cut at %.0f Hz; " +
+                        "it is ringing at %.0f now, so the cut moves " +
+                        "there — one microphone, one reserved band")
+                        .format(java.util.Locale.ROOT, n.ch + 1, n.hz, huntHz)
+                    n.hz = huntHz
+                    n.wanted = 0f
+                    n.rings = 0
+                    n.written = false
+                }
                 n.rings++
                 n.lastRingT = tSec
                 n.wanted = if (n.wanted <= 0f) firstCutDb

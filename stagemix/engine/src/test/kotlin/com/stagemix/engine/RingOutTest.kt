@@ -157,15 +157,41 @@ class RingOutTest {
     }
 
     /**
-     * "Fix feedbacks as fast as it can." A microphone that is actually
-     * in the loop is not marginally louder at the ringing frequency —
-     * it is enormously louder, because every other mic is hearing the
-     * same howl across a room. When that is true the sweep should stop
-     * immediately rather than burn its full eight seconds while the
-     * stage is howling.
+     * "Fix feedbacks as fast as it can" — but not faster than it can
+     * know. The sweep may end early only once MOST of the stage has
+     * been measured and one microphone is decisively clear of the rest.
      */
     @Test
-    fun `an obvious culprit ends the sweep early`() {
+    fun `an obvious culprit ends the sweep early once the stage is swept`() {
+        val r = RingOut()
+        r.ringing(196, 0.0)
+        val loud = FloatArray(100) { -80f }
+        loud[FrequencyMap.binOf(196f)] = -8f
+        val quiet = FloatArray(100) { -80f }
+        quiet[FrequencyMap.binOf(196f)] = -40f
+        // three quarters of the stage measured, culprit among them
+        for (ch in 0 until 12) if (ch != 8) r.onRta(ch, quiet, 0.5)
+        r.onRta(8, loud, 1.0)
+        val w = r.tick(6.0, mayWrite = true)
+        assertFalse(r.hunting, "kept sweeping when the answer was obvious")
+        assertTrue(w.any { it.address.startsWith("/ch/09/eq/") },
+            "did not cut the microphone it had already identified: " +
+            w.map { it.address })
+    }
+
+    /**
+     * THE ONE THAT MATTERS. A handful of channels is not a stage.
+     *
+     * The analyzer visits channels in order, so the first few measured
+     * are one consecutive block — a drum subgroup, or the DI block —
+     * chosen by wherever the RTA happened to be parked. Four DIs
+     * reading their own noise floor differ by more than six dB
+     * routinely. Deciding on that sample notches an innocent channel
+     * AND, because a notch claims its frequency, stops the app ever
+     * hunting for the microphone that is actually howling.
+     */
+    @Test
+    fun `four channels is not enough to call it`() {
         val r = RingOut()
         r.ringing(196, 0.0)
         val loud = FloatArray(100) { -80f }
@@ -173,13 +199,10 @@ class RingOutTest {
         val quiet = FloatArray(100) { -80f }
         quiet[FrequencyMap.binOf(196f)] = -40f
         for (ch in listOf(1, 2, 3)) r.onRta(ch, quiet, 0.5)
-        r.onRta(8, loud, 1.0)
-        // two seconds in, nowhere near the eight-second deadline
-        val w = r.tick(2.0, mayWrite = true)
-        assertFalse(r.hunting, "kept sweeping when the answer was obvious")
-        assertTrue(w.any { it.address.startsWith("/ch/09/eq/") },
-            "did not cut the microphone it had already identified: " +
-            w.map { it.address })
+        r.onRta(4, loud, 1.0)
+        r.tick(2.0, mayWrite = true)
+        assertTrue(r.hunting,
+            "called the culprit having measured a quarter of the stage")
     }
 
     /** and when it is a close call, it still takes the whole sweep */
@@ -191,9 +214,68 @@ class RingOutTest {
         a[FrequencyMap.binOf(196f)] = -20f
         val b = FloatArray(100) { -80f }
         b[FrequencyMap.binOf(196f)] = -22f
-        for (ch in listOf(1, 2, 3)) r.onRta(ch, b, 0.5)
+        for (ch in 0 until 12) if (ch != 8) r.onRta(ch, b, 0.5)
         r.onRta(8, a, 1.0)
-        r.tick(2.0, mayWrite = true)
+        r.tick(6.0, mayWrite = true)
         assertTrue(r.hunting, "called it early on a two dB difference")
+    }
+
+    /**
+     * One reserved band means one notch per channel — so when the same
+     * microphone rings at a genuinely different frequency, the cut has
+     * to MOVE there. It used to keep the old frequency and merely
+     * deepen it while the log claimed it had cut the new one: a growing
+     * hole in a voice's fundamentals, and the piercing ring untouched.
+     */
+    @Test
+    fun `a second frequency on the same mic moves the notch`() {
+        val r = RingOut()
+        fun hunt(hz: Int, t: Double) {
+            r.ringing(hz, t)
+            val loud = FloatArray(100) { -80f }
+            loud[FrequencyMap.binOf(hz.toFloat())] = -6f
+            val quiet = FloatArray(100) { -80f }
+            quiet[FrequencyMap.binOf(hz.toFloat())] = -45f
+            for (ch in 0 until 14) if (ch != 8) r.onRta(ch, quiet, t + 0.5)
+            r.onRta(8, loud, t + 1.0)
+            r.tick(t + 9.0, mayWrite = true)
+        }
+        hunt(196, 0.0)
+        assertEquals(196f, r.active().single().hz, 1f)
+        hunt(3377, 100.0)
+        val n = r.active().single()
+        assertEquals(8, n.ch)
+        assertEquals(3377f, n.hz, 40f,
+            "the notch stayed on the old frequency while the log " +
+            "claimed it had cut the new one")
+    }
+
+    /**
+     * A notch that has fully released must stop owning its frequency.
+     * Otherwise the next ring at that pitch re-cuts the old channel and
+     * suppresses the hunt — and if the singer has moved to a different
+     * microphone, the app cuts an innocent channel and does nothing at
+     * all about the howl.
+     */
+    @Test
+    fun `a released notch does not claim its frequency for ever`() {
+        val r = RingOut()
+        r.ringing(196, 0.0)
+        val loud = FloatArray(100) { -80f }
+        loud[FrequencyMap.binOf(196f)] = -6f
+        val quiet = FloatArray(100) { -80f }
+        quiet[FrequencyMap.binOf(196f)] = -45f
+        for (ch in 0 until 14) if (ch != 8) r.onRta(ch, quiet, 0.5)
+        r.onRta(8, loud, 1.0)
+        r.tick(9.0, mayWrite = true)
+        assertTrue(r.active().isNotEmpty())
+        // let it ease all the way out
+        var t = 100.0
+        repeat(20) { r.tick(t, mayWrite = true); t += 610.0 }
+        assertTrue(r.active().isEmpty(), "the cut never came back out")
+        // now the same pitch rings again: it must HUNT, not re-cut
+        r.ringing(196, t)
+        assertTrue(r.hunting,
+            "a dead notch still owned 196 Hz and suppressed the hunt")
     }
 }

@@ -211,14 +211,29 @@ class MixerService : Service() {
                 e.rebalance(t)
                 show?.user("you pressed REBALANCE — re-laddering the " +
                     "mains and taking one pass at the wedges")
-                if (AppState.keepMonitors.value && AppState.directing.value) {
-                    applyMonitorPlan(monBal.plan(
-                        tSec = t,
-                        roles = e.state.mapValues { it.value.role },
-                        kit = e.drumKit(),
-                        playing = !e.betweenSongs,
-                        push = true), t)
-                    scope.launch { pollSends() }
+                if (AppState.keepMonitors.value && AppState.directing.value &&
+                    !e.frozenAll) {
+                    // ON THE IO SCOPE, NOT HERE. onStartCommand runs on
+                    // the main thread, and a DatagramSocket.send() from
+                    // the main thread throws NetworkOnMainThreadException
+                    // on this targetSdk — which send() then swallowed
+                    // into a log line. The keeper had already banked
+                    // every move, so the screen and the show log both
+                    // reported wedge corrections that never left the
+                    // tablet, and the night's authority was spent on
+                    // nothing. FREEZE and the listen window are checked
+                    // here too: the tick path always honoured them and
+                    // this path did not, so the panic button did not
+                    // stop the one control that reaches a musician's ears.
+                    scope.launch {
+                        applyMonitorPlan(monBal.plan(
+                            tSec = t,
+                            roles = e.state.mapValues { it.value.role },
+                            kit = e.drumKit(),
+                            playing = !e.betweenSongs && e.ready,
+                            push = true), t)
+                        pollSends()
+                    }
                 } else if (!AppState.keepMonitors.value) {
                     show?.user("(monitor keeping is off, so only the " +
                         "mains were rebalanced)")
@@ -634,7 +649,8 @@ class MixerService : Service() {
                 // Re-read the sends now and then: it is the only way to
                 // notice the engineer's hand on a wedge, and following
                 // that hand is the whole agreement.
-                if (t - sendsReadT > 25.0) {
+                if (directing && AppState.keepMonitors.value &&
+                    t - sendsReadT > 25.0) {
                     sendsReadT = t
                     scope.launch { pollSends() }
                 }
@@ -686,10 +702,17 @@ class MixerService : Service() {
                         lg.card(t, e, names)
                     }
                 }
-            }
                 // A tick that got all the way through is the only
-                // evidence that whatever went wrong is over.
+                // evidence that whatever went wrong is over. INSIDE the
+                // once-a-second block: this sat at loop-body level, and
+                // the loop spins five times a second on the receive
+                // timeout, so a tick that threw was followed 200 ms
+                // later by an iteration that did no work at all and
+                // cleared the count. The counter could never reach two,
+                // and the "five in a row and it stops writing" guard
+                // could never fire.
                 tickFailures = 0
+            }
             } catch (ex: Exception) {
                 engineFailed(ex)
             }
@@ -830,6 +853,26 @@ class MixerService : Service() {
                 val v = m.args.firstOrNull() as? Float
                 if (v != null) {
                     pending[m.address] = v
+                    // A WEDGE SEND CAME BACK. Route it, or the keeper is
+                    // blind: monitors.onSend/monBal.onSend used to be
+                    // called only during takeover, so the 25-second
+                    // re-read asked ninety-six questions a night and
+                    // threw every answer away. That made hand-detection
+                    // — "understand what the engineer is doing and go
+                    // with it" — dead code, and left the keeper unable
+                    // to see its own effect.
+                    if (com.stagemix.engine.isMonitorSend(m.address)) {
+                        Regex("^/ch/(\\d\\d)/mix/(\\d\\d)/level$")
+                            .find(m.address)?.let { mm ->
+                                val ch = mm.groupValues[1].toInt() - 1
+                                val bus = mm.groupValues[2].toInt()
+                                val db = FaderLaw.floatToDb(v)
+                                if (!collecting) {
+                                    monitors.onSend(bus, ch, db)
+                                    monBal.onSend(bus, ch, db, now())
+                                }
+                            }
+                    }
                     // /xremotenfb means our own writes are never echoed —
                     // a fader update arriving here is a HUMAN move (or
                     // another client). While mixing, the human wins.
@@ -1008,11 +1051,16 @@ class MixerService : Service() {
                     .toInt().coerceAtLeast(0),
                 alarm = ph.alarm)
         } else {
+            // THE ENGINE ALREADY KNOWS THIS NUMBER. The first version
+            // counted channels whose fader was still near where the
+            // operator left it — which is the count of channels the app
+            // has NOT moved, very nearly the inverse of "sitting where
+            // they should be". It read low exactly when the engine was
+            // working hardest, on the one bar an operator watches to
+            // decide whether the thing is doing anything.
             com.stagemix.engine.holdingWork(
-                inPlace = e.state.count { (_, st) ->
-                    st.baselineDb != null &&
-                    kotlin.math.abs(st.planFaderDb -
-                        (st.baselineDb ?: 0f)) <= e.settings.deadbandDb },
+                inPlace = Math.round(
+                    e.health().inPlacePct / 100f * mixed),
                 total = mixed.coerceAtLeast(1),
                 kept = AppState.balanceKept.value)
         }

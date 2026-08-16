@@ -341,6 +341,17 @@ class ToneDoctor(
         if (eqSnap != null) for (b in 0 until 4) {
             val step = step(st.eqOffset[b], st.eqTarget[b],
                 settings.eqStepDb, upAllowed)
+            // NOT THE RESERVED BAND. RingOut owns eq/4 and has retuned
+            // it to a ringing frequency at Q8; the doctor still thinks
+            // of it as its own high shelf. Writing it did two things at
+            // once — landed a "high frequency" correction as a narrow
+            // cut at 196 Hz, and overwrote the notch with an absolute
+            // value, after which RingOut never rewrote it because its
+            // `wanted` had not changed. The cut vanished off the desk
+            // while the screen, the log and the monitor keeper all went
+            // on reporting it in place, and the stage rang again at a
+            // frequency the app believed it had already fixed.
+            if (b + 1 == RingOut.RING_BAND) continue
             if (step != 0f) {
                 st.eqOffset[b] += step
                 val db = (eqSnap[b] + st.eqOffset[b]).coerceIn(-15f, 15f)
@@ -374,9 +385,13 @@ class ToneDoctor(
     private fun writesFor(ch: Int, st: ChState, all: Boolean): List<ParamWrite> {
         val out = ArrayList<ParamWrite>()
         st.eqSnapshotDb?.let { snap ->
-            for (b in 0 until 4)
+            // Same reservation on the restore path: putting the
+            // snapshot back would wipe a notch that arrived after it.
+            for (b in 0 until 4) {
+                if (b + 1 == RingOut.RING_BAND) continue
                 out.add(ParamWrite(osc("/ch/%02d/eq/%d/g", ch + 1, b + 1),
                     (snap[b].coerceIn(-15f, 15f) + 15f) / 30f))
+            }
         }
         st.thrSnapshotDb?.let {
             out.add(ParamWrite(osc("/ch/%02d/dyn/thr", ch + 1),
