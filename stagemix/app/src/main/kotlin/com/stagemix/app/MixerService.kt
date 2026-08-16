@@ -1787,6 +1787,14 @@ class MixerService : Service() {
         const val ACTION_FEEDBACK = "com.stagemix.FEEDBACK"
 
         fun cmd(ctx: Context, action: String, vararg extras: Pair<String, Any>) {
+            // In the demo there is no console and there must be no
+            // service. The transport keys already flip AppState at the
+            // tap; starting a real service here would spin up a bare
+            // instance with no engine, which Android reclaims — and its
+            // onDestroy calls shutdown(), which sets conn=DISCONNECTED
+            // and corrupts the very demo state the key just changed. So
+            // in demo the click-site flip is the whole behaviour.
+            if (DemoStage.running) return
             val i = Intent(ctx, MixerService::class.java).setAction(action)
             for ((k, v) in extras) when (v) {
                 is String -> i.putExtra(k, v)

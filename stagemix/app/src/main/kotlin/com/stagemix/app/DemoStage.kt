@@ -78,6 +78,10 @@ object DemoStage {
             name = "MR18-DEMO", model = "MR18", firmware = "1.18",
             ip = "demo")
         AppState.directing.value = directing
+        // start clean: a previous demo run may have left these set
+        AppState.frozenAll.value = false
+        AppState.stageMuted.value = false
+        AppState.lastError.value = null
         AppState.balanceKept.value = directing
         AppState.doctorOn.value = true
         AppState.mixingSinceMs.value =
