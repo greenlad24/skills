@@ -57,12 +57,42 @@ These are not preferences. They override everything below.
 | Bass DI | **bass** | in the pyramid |
 | DI 2 | **bass** | *also* the bass — both are the bass |
 | 11 | usually **conga**, sometimes a **third vocal** | must tolerate both |
+| 15 | usually **saxophone**, sometimes a **flute** | must tolerate both |
+| 16 | usually **harmonica**, sometimes a **backing vocal** | must tolerate both |
 
 > "The first and second channels will always be Kick and Snare mics."
 > "Bass DI and DI 2 are very important (both are the bass - in the
 > pyramid) ... both of these channels will also stay always in their
 > current positions."
 > "channel 11 - usually a conga but sometimes a third vocal"
+> "channel 15 - saxophone most of the time and sometimes flute.
+>  channel 16 - harmonica most of the time, sometimes a back vocal."
+
+### The three channels that change instrument
+
+Channels **11, 15 and 16** are the ones that are not a fixed fact. Each
+carries one thing most of the night and something quite different for a
+song or two, and the app has to be right in **both** states without
+being told:
+
+| Channel | Usually | Sometimes | What changes when it does |
+|---|---|---|---|
+| 11 | conga (PERCUSSION) | third vocal (VOCAL) | joins the vocals; becomes a held role |
+| 15 | saxophone (COLOR) | flute (COLOR) | same role, very different spectrum — a flute is quiet, breathy and high, and must not be mistaken for silence or for a cymbal |
+| 16 | harmonica (COLOR) | backing vocal (BACKING_VOCAL) | becomes a held role, and stops being solo-eligible |
+
+Consequences that follow from this and are not optional:
+
+- **A wrong guess must cost a couple of dB, not a song.** These three
+  are exactly why the app may only move the channels that are not the
+  fixed shape of the mix.
+- **Telling it is one tap**, and telling it must also undo whatever it
+  did while it was wrong.
+- **Sax and harmonica are named solo instruments** (§0.6): when either
+  steps up it gets featured and then eased back. A flute does the same
+  job on the same channel and must be featured the same way.
+- **When 11 or 16 is being a voice, it is a held role** — the app does
+  not ride it, and it belongs with the vocals in every monitor ladder.
 
 ---
 

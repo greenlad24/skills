@@ -158,7 +158,23 @@ fun defaultRigProfile(): List<ChannelConfig> = listOf(
     ChannelConfig(11, "Bass DI", Role.FOUNDATION, locked = true),
     ChannelConfig(12, "Congo 2", Role.PERCUSSION),
     ChannelConfig(13, "DI2 Synth Bass", Role.FOUNDATION, locked = true),
-    // and the saxophone is on the channel labelled UTILITY 3
+    // THE TWO CHANNELS THAT CHANGE INSTRUMENT MID-NIGHT.
+    //
+    // "channel 15 - saxophone most of the time and sometimes flute.
+    //  channel 16 - harmonica most of the time, sometimes a back vocal."
+    //
+    // Deliberately NOT locked, unlike the kick, the snare and the two
+    // bass DIs. Those are facts about the rig; these two genuinely
+    // change, so the listener has to be allowed to follow them — and
+    // the cost of it guessing wrong has to stay small, which is what
+    // COLOR's position in the ladder buys.
+    //
+    // 15 stays COLOR either way: a flute is the same job as the sax,
+    // and both are solo instruments that get featured and eased back.
+    // 16 is the awkward one, because a backing vocal is a HELD role
+    // and a harmonica is not — so when it is being a voice the app
+    // stops riding it and it belongs with the vocals in every monitor
+    // ladder. See RULEBOOK.md §1.
     ChannelConfig(14, "Sax", Role.COLOR),
     ChannelConfig(15, "Harmonica", Role.COLOR),
 )
