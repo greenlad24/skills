@@ -87,6 +87,34 @@ object Levels {
 }
 
 /**
+ * The shape of each channel, for the little spectrum under each strip.
+ *
+ * Same reasoning as [Levels]: this is a picture, it changes constantly,
+ * and it has no business in the strip model where it would recompose
+ * text nodes for a living. Twenty-four bands is all a strip that wide
+ * can show, folded down from the console's hundred-bin analyzer.
+ */
+object Spectra {
+    const val BANDS = 24
+    val band = Array(Levels.N) { FloatArray(BANDS) { -60f } }
+
+    /** fold a 100-bin RTA-derived shape into what a strip can draw */
+    fun publish(ch: Int, bins: FloatArray) {
+        if (ch !in 0 until Levels.N) return
+        val out = band[ch]
+        val per = bins.size.toFloat() / BANDS
+        for (b in 0 until BANDS) {
+            var peak = -120f
+            var i = (b * per).toInt()
+            val end = ((b + 1) * per).toInt().coerceAtMost(bins.size)
+            while (i < end) { if (bins[i] > peak) peak = bins[i]; i++ }
+            // ease it, so a strip does not flicker with the music
+            out[b] = out[b] + 0.25f * (peak - out[b])
+        }
+    }
+}
+
+/**
  * Something the app is doing that has a KNOWN END.
  *
  * Every long-running state in this engine has a deadline — the twenty

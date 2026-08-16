@@ -785,6 +785,9 @@ class MixerService : Service() {
                 identEvidence = id?.evidence ?: 0f,
                 heldByYou = e.held(ch.index),
                 deskMuted = e.isDeskMuted(ch.index),
+                baselineDb = st?.baselineDb ?: -10f,
+                takeoverDb = st?.takeoverDb ?: st?.baselineDb ?: -10f,
+                riding = st?.riding ?: false,
             )
         }
         AppState.snapshotTaken.value = e.ready
@@ -795,6 +798,13 @@ class MixerService : Service() {
         AppState.channelsMixed.value = e.state.count {
             it.value.baselineDb != null }
         AppState.tickMs.value = android.os.SystemClock.elapsedRealtime()
+        // the per-channel spectrum for the strips: the accumulated
+        // shape, not the momentary one — the analyzer only visits one
+        // channel at a time, so what a strip can honestly draw is what
+        // that channel has sounded like, not what it is doing this
+        // instant
+        for (ch in 0 until AppState.MIXER_CHANNELS)
+            e.spectrum.shape(ch)?.let { com.stagemix.app.ui.Spectra.publish(ch, it) }
         AppState.phase.value = phaseOf(e, t)
         AppState.ringNotches.value = ringOut.active().associate {
             it.ch to "%.0f Hz -%.1f dB".format(java.util.Locale.ROOT,

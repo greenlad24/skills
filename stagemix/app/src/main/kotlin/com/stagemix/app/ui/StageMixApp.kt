@@ -15,14 +15,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -230,21 +227,16 @@ fun ConsoleScreen() {
                 tickMs = tickMs, shadow = !directing && newest != null)
             phase?.let { PhaseBar(it) }
             Spacer(Modifier.height(10.dp))
-            Row(Modifier.weight(1f)) {
-                // THE STAGE. The picture is the point: a musician
-                // glancing at this between songs is asking what the app
-                // is doing to the band, and a picture answers that in
-                // the time a list of sixteen strips takes to find.
-                StagePlot(
-                    strips = strips, leadVocal = lead, directing = directing,
-                    wedges = wedges, notches = notches,
-                    modifier = Modifier.weight(2.1f).fillMaxHeight()
-                        .background(StageFloor, RoundedCornerShape(12.dp))
-                        .border(1.dp, Line, RoundedCornerShape(12.dp)),
-                    onTap = { ch -> picking = strips.firstOrNull { it.channel == ch } })
-                Spacer(Modifier.width(12.dp))
-                LastFive(decisions, Modifier.weight(1f).fillMaxHeight())
-            }
+            // THE CONSOLE. Sixteen strips, each one the object an
+            // engineer already knows how to read — a meter, a fader in
+            // a lane with a scale, the number, and what that channel
+            // sounds like. Everything on it is a real measurement off
+            // the desk.
+            MixerRack(
+                strips = strips, leadVocal = lead, directing = directing,
+                notches = notches,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                onTap = { picking = it })
         }
 
         ActionPads(
@@ -351,6 +343,53 @@ private fun LastFive(decisions: List<com.stagemix.engine.Decision>,
     }
 }
 
+/**
+ * THE MONITORS, read off the desk and never written.
+ *
+ * The app now reads all ninety-six sends and works out what each wedge
+ * is for from the name you gave it. This is what it found, and where it
+ * thinks each one disagrees with what a monitor in that position wants.
+ * It is a second opinion, not an action: nothing here is ever sent.
+ */
+@Composable
+private fun MonitorPanel(modifier: Modifier) {
+    val wedges by AppState.wedges.collectAsState()
+    val names by AppState.mixerChannelNames.collectAsState()
+    Column(
+        modifier
+            .background(Panel, RoundedCornerShape(12.dp))
+            .border(1.dp, Line, RoundedCornerShape(12.dp))
+            .padding(14.dp)
+    ) {
+        Text("MONITORS — READ ONLY", color = Muted, fontSize = 12.sp,
+            letterSpacing = 2.sp)
+        Spacer(Modifier.height(8.dp))
+        if (wedges.isEmpty())
+            Text("Nothing read yet. The wedges are read when the app " +
+                "takes the mains.", color = Ink2, fontSize = 15.sp)
+        for (w in wedges) {
+            Column(Modifier.padding(bottom = 12.dp)) {
+                Text("${w.name}  ·  ${w.kind.lowercase().replace('_', ' ')}",
+                    color = Ink, fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold)
+                Text("loudest: " + (w.top.joinToString(", ") {
+                        names[it] ?: "ch%02d".format(it + 1) }
+                        .ifBlank { "nothing" }),
+                    color = Ink2, fontSize = 14.sp)
+                w.worstCh?.let { ch ->
+                    Text((names[ch] ?: "ch%02d".format(ch + 1)) +
+                        " is %+.1f dB from where this position wants it"
+                            .format(-w.worstOffDb),
+                        color = Warn, fontSize = 14.sp)
+                }
+            }
+        }
+        Spacer(Modifier.weight(1f))
+        Text("The app has never written a monitor send or a bus master.",
+            color = Muted, fontSize = 12.sp)
+    }
+}
+
 /** everything that is not a mid-song decision */
 @Composable
 private fun DetailSheet(onClose: () -> Unit) {
@@ -424,10 +463,12 @@ private fun DetailSheet(onClose: () -> Unit) {
                               color = if (kind == "good") Ok else Ink2) }
                 }
             }
-            Spacer(Modifier.height(12.dp))
-            LazyRow(Modifier.weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(strips, key = { it.channel }) { s -> Strip(s) }
+            Spacer(Modifier.height(14.dp))
+            Row(Modifier.weight(1f)) {
+                MonitorPanel(Modifier.weight(1f).fillMaxHeight())
+                Spacer(Modifier.width(12.dp))
+                LastFive(AppState.decisions.value,
+                    Modifier.weight(1f).fillMaxHeight())
             }
             Spacer(Modifier.height(10.dp))
             ExportLogButtons()
@@ -435,134 +476,6 @@ private fun DetailSheet(onClose: () -> Unit) {
     }
 }
 
-@Composable
-fun Strip(s: AppState.StripUi) {
-    val ctx = LocalContext.current
-    val vu = ((s.levelDb + 60f) / 60f).coerceIn(0f, 1f)
-    Column(
-        Modifier.width(92.dp).fillMaxHeight()
-            .background(if (s.active) Panel2 else Panel, RoundedCornerShape(10.dp))
-            .border(1.dp, if (s.active) Line else Inset, RoundedCornerShape(10.dp))
-            .padding(8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        // The console's label for the channel — whatever the last
-        // engineer typed, which may well be a lie about what is now
-        // plugged into it.
-        Text(s.name, color = Ink, fontSize = 12.sp, fontWeight = FontWeight.Bold,
-            maxLines = 1)
-        // And underneath it, what the app believes is actually there.
-        //
-        // These are two different claims and the strip has to keep them
-        // apart, because an operator glancing at this mid-song needs to
-        // know which one they are looking at before deciding whether to
-        // trust it. A channel that says CONGOS and sounds like a bass is
-        // the whole reason this line exists.
-        // Tapping it opens "what is on this channel?".
-        //
-        // The app can hear that a channel is a moving melody in the
-        // voice band with nothing underneath. It cannot hear whether
-        // that is a singer or a saxophone — they are the same thing to
-        // a hundred-bin spectrum, which is precisely why both work as
-        // the line over a band. On the rig this was written for, the
-        // channel labelled SAXOPHONE is a singer and the one labelled
-        // UTILITY 3 is the saxophone. No amount of listening sorts that
-        // out; one tap does, and it is remembered by channel name.
-        var picking by remember { mutableStateOf(false) }
-        Text(
-            (if (s.identLabel.isNotEmpty()) s.identLabel else when (s.role) {
-                Role.FOUNDATION -> "low end"; Role.KEYS -> "keys"
-                Role.PERCUSSION -> "percussion"; Role.RHYTHM_GTR -> "rhythm gtr"
-                Role.SOLO_GTR -> "lead gtr"; Role.COLOR -> "horn or harp"
-                Role.BACKING_VOCAL -> "backing vocal"; Role.VOCAL -> "vocal"
-                Role.TALK -> "talkback"; else -> "unclassified"
-            }).uppercase(),
-            color = when (s.role) {
-                Role.VOCAL -> Live
-                Role.BACKING_VOCAL -> Warn
-                Role.FOUNDATION -> Accent
-                else -> Muted
-            }, fontSize = 9.sp, letterSpacing = 0.5.sp, maxLines = 1,
-            modifier = Modifier.clickable { picking = true })
-        if (picking) InstrumentPicker(s) { picking = false }
-        // Where that belief came from: the ear means the AUDIO settled
-        // it, the tag means it is still only the channel name, and the
-        // percentage is how much listening is behind either.
-        Text(
-            if (s.identHeard) "♪ heard %.0f%%".format(s.identEvidence * 100)
-            else if (s.identEvidence > 0.05f)
-                "listening %.0f%%".format(s.identEvidence * 100)
-            else "🏷 from the name",
-            color = if (s.identHeard) Ok else Muted, fontSize = 8.sp,
-            maxLines = 1)
-        // and whether the app will touch this fader at all. A channel
-        // muted on the desk outranks both: the meter above is pre-mute
-        // and goes on showing a healthy signal, so without this the
-        // strip looks identical to a channel that is in the mix.
-        Text(
-            when {
-                s.deskMuted -> "🔇 muted by you"
-                s.heldByYou -> "🔒 yours"
-                else -> "following"
-            },
-            color = when {
-                s.deskMuted -> Warn
-                s.heldByYou -> Accent
-                else -> Muted
-            }, fontSize = 8.sp, maxLines = 1)
-        Spacer(Modifier.height(6.dp))
-        // VU
-        Box(
-            Modifier.weight(1f).width(14.dp)
-                .background(Inset, RoundedCornerShape(4.dp)),
-            contentAlignment = Alignment.BottomCenter,
-        ) {
-            Box(
-                Modifier.fillMaxWidth().fillMaxHeight(vu)
-                    .background(
-                        when {
-                            s.levelDb > -6f -> Bad
-                            s.levelDb > -18f -> Warn
-                            else -> Ok
-                        }, RoundedCornerShape(4.dp))
-            )
-        }
-        Spacer(Modifier.height(6.dp))
-        Text("%+.1f".format(s.offsetDb), color = when {
-            s.offsetDb > 0.2f -> Warn
-            s.offsetDb < -0.2f -> Accent
-            else -> Muted
-        }, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
-        Text("dB adj", color = Muted, fontSize = 9.sp)
-        if (kotlin.math.abs(s.eqOffsetDb) > 0.2f ||
-            kotlin.math.abs(s.thrOffsetDb) > 0.2f) {
-            Text(buildString {
-                if (kotlin.math.abs(s.eqOffsetDb) > 0.2f)
-                    append("EQ%+.1f ".format(s.eqOffsetDb))
-                if (kotlin.math.abs(s.thrOffsetDb) > 0.2f)
-                    append("TH%+.1f".format(s.thrOffsetDb))
-            }, color = Ok, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
-        }
-        Spacer(Modifier.height(6.dp))
-        Box(
-            Modifier.size(30.dp).clickable {
-                MixerService.cmd(ctx, MixerService.ACTION_FREEZE_CH,
-                    "ch" to s.channel, "on" to !s.frozen)
-            }.background(if (s.frozen) Warn else Inset, CircleShape),
-            contentAlignment = Alignment.Center,
-        ) { Text(if (s.frozen) "🔒" else "🔓", fontSize = 13.sp) }
-    }
-}
-
-/**
- * "What is on this channel?" — the call the audio cannot make.
- *
- * A short list in the language of the stage, not of the engine: the
- * operator is picking an instrument, not a role in a balance ladder.
- * What they choose is pinned (the listener will keep forming an opinion
- * and will never move this channel again) and remembered against the
- * console's own name for it, so it holds tomorrow night too.
- */
 @Composable
 private fun InstrumentPicker(s: AppState.StripUi, onDone: () -> Unit) {
     val ctx = LocalContext.current

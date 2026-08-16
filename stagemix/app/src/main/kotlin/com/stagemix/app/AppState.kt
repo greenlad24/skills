@@ -64,6 +64,16 @@ object AppState {
          * a playing one right up until you notice you cannot hear it.
          */
         val deskMuted: Boolean = false,
+        /**
+         * Where YOUR fader is — the level the app is bounded around.
+         * The strip draws its own scale from this, so the fader on
+         * screen is in the same units as the fader on the desk.
+         */
+        val baselineDb: Float = -10f,
+        /** and where it was when the app took over, for the tick */
+        val takeoverDb: Float = -10f,
+        /** true while the app is actually moving this fader right now */
+        val riding: Boolean = false,
     )
 
     val conn = MutableStateFlow(Conn.DISCONNECTED)
