@@ -172,8 +172,8 @@ want "decisions in the operator's language" \
 # ================================================================ 7. setup
 step "7 · SETUP — the switches that decide what it does unasked"
 open_demo 4 true
-want "auto-start and monitor keeping are both offered" \
-  "AUTO-START" "KEEP MONITORS" "EQ + COMP"
+want "auto-start, monitor keeping, pre-ring and tone are all offered" \
+  "AUTO-START" "KEEP MONITORS" "PRE-RING" "EQ + COMP"
 want "and the health figures" "VOCAL ON TOP" "OUT-MIXED"
 
 # ============================================ 8. the transport states render

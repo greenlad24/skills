@@ -515,6 +515,7 @@ private fun SetupPanel(modifier: Modifier) {
     val lastNight by AppState.lastNightSummary.collectAsState()
     val autoStart by AppState.autoStart.collectAsState()
     val keepMon by AppState.keepMonitors.collectAsState()
+    val preRing by AppState.preRing.collectAsState()
     Column(modifier.well(10.dp).padding(16.dp)) {
         // The two switches that decide what the app does without being
         // asked. Both default ON; both are one tap from off.
@@ -543,6 +544,23 @@ private fun SetupPanel(modifier: Modifier) {
             (if (keepMon) "wedges corrected slightly, cut-first, never " +
                 "against your hand"
              else "wedges untouched"),
+            color = Muted, fontSize = 12.5.sp)
+        Spacer(Modifier.height(12.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("PRE-RING", color = if (preRing) Ok else Muted,
+                fontWeight = FontWeight.Bold, fontSize = 15.sp,
+                letterSpacing = 1.sp)
+            Spacer(Modifier.width(8.dp))
+            Switch(checked = preRing, onCheckedChange = {
+                MixerService.cmd(ctx, MixerService.ACTION_PRE_RING, "on" to it)
+            })
+        }
+        Text(
+            if (preRing) "at takeover, a shallow guard cut on frequencies " +
+                "this rig has howled at before — cut-only, deepens if it " +
+                "still rings"
+            else "feedback is learned and logged; turn on to pre-cut the " +
+                "frequencies that howl here",
             color = Muted, fontSize = 12.5.sp)
         Spacer(Modifier.height(12.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {

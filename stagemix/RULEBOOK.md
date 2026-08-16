@@ -291,6 +291,27 @@ innocent channel *and* stops the app finding the real one.
 The four frequencies this rig has actually produced: **196, 160, 226
 and 3377 Hz.**
 
+**Pre-ring: carry the known feedback forward.** The monitors on this
+stage feed back *usually*, and usually at the same frequencies. So the
+app **learns every ring** — which microphone, which frequency, how many
+times — and **remembers it across nights**, the way it already remembers
+a kept balance.
+
+- **All of it is written to the log**, always: the profile carried in
+  from earlier nights at takeover, every ring as it happens, and every
+  guard placed. This is on whether or not pre-ring is switched on — the
+  record is never optional.
+- With **PRE-RING** turned on (a switch in SETUP, defaulting OFF because
+  it writes to the desk before a note is played), the app puts a
+  **shallow guard cut** (a few dB, a tenth-octave notch — inaudible) on
+  each frequency that has howled here before often enough to count, at
+  takeover, so the recurring howl is **pre-empted instead of hunted from
+  cold** every night. It is cut-only, it holds all night, and if the
+  frequency still rings the guard simply **deepens** into a full notch.
+- A guard is *not* a live ring: it does not bar the microphone from
+  being raised the way an actual howl does. The moment it truly howls,
+  it stops being a guard.
+
 **And the processing must never make feedback more likely.** The
 starting chain and the tone doctor read the desk at takeover and:
 - never *lower* a high-pass the engineer set (that un-cuts the low end

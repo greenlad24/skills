@@ -122,6 +122,10 @@ class MixerService : Service() {
     private var tickFailures = 0
     /** last time the full monitor matrix was written to the log */
     private var lastMonMatrix = -1e9
+    /** the feedback profile carried in from earlier nights (ch, Hz, rings) */
+    private var carriedFeedback: List<Triple<Int, Float, Int>> = emptyList()
+    /** the ring-out lastAction last written, so a new ring persists once */
+    private var lastRingActionSaved = ""
     /** the exact banner engineFailed raises, so a clean tick can retract it */
     private val ENGINE_ERROR_MSG =
         "⚠ Something went wrong inside the app — the mixer is " +
@@ -291,6 +295,20 @@ class MixerService : Service() {
                 show?.user("you turned auto-start " +
                     (if (on) "ON — it connects and mixes on its own"
                      else "OFF — it will wait for you to tap MIX"))
+            }
+            ACTION_PRE_RING -> {
+                val on = intent.getBooleanExtra("on", true)
+                AppState.preRing.value = on
+                AppState.saveSwitches(this)
+                show?.user("you turned pre-ring " +
+                    (if (on) "ON — at takeover it puts a shallow guard cut " +
+                        "on frequencies this rig has howled at before, so the " +
+                        "recurring monitor feedback is pre-empted"
+                     else "OFF — feedback is still learned and logged, but " +
+                        "nothing is pre-cut"))
+                // apply/remove takes effect at the next takeover; if already
+                // mixing, place them now so the operator sees it act
+                if (on && engine?.let { it.takeoverT >= 0 } == true) preRingSetup()
             }
             ACTION_MONITOR_INEARS -> {
                 val bus = intent.getIntExtra("bus", -1)
@@ -714,6 +732,10 @@ class MixerService : Service() {
                 if (ringOut.lastAction != lastRingAction) {
                     lastRingAction = ringOut.lastAction
                     show?.mark("RING-OUT", ringOut.lastAction, t)
+                    // a ring happened: fold it into the carried-forward
+                    // feedback profile now, so it survives even if the
+                    // tablet never gets a clean shutdown
+                    persistFeedback()
                 }
                 // ANY MICROPHONE THAT HAS RUNG STOPS BEING RAISED.
                 //
@@ -723,8 +745,11 @@ class MixerService : Service() {
                 // are told about every notch — the keeper quiets that
                 // wedge-send, and the engine bars a new feature on the mic
                 // and eases off any lift it was mid-way through, for a few
-                // minutes after the howl (§4).
+                // minutes after the howl (§4). A pre-ring GUARD is skipped:
+                // it is a standing cut on a known-bad frequency, not a mic
+                // that has howled tonight, so it does not bar a raise.
                 for (n in ringOut.active()) {
+                    if (n.guard) continue
                     monBal.onRing(n.ch, t)
                     e.onRing(n.ch, t)
                 }
@@ -1558,7 +1583,73 @@ class MixerService : Service() {
         // survive that
         for ((bus, ie) in AppState.monitorInEars.value) monitors.setInEars(bus, ie)
         logMonitors()
+        preRingSetup()
         publishStrips(now())
+    }
+
+    /**
+     * The pre-ring: carry this rig's known feedback forward, document it,
+     * and — if the operator has turned pre-ring on — put a shallow guard
+     * cut on every frequency that has howled here before often enough to
+     * count, so the recurring monitor feedback is pre-empted rather than
+     * hunted from cold. The profile is always LOGGED; the guards are only
+     * PLACED when the switch is on.
+     */
+    private fun preRingSetup() {
+        val lg = show ?: return
+        carriedFeedback = AppState.loadFeedbackProfile(this)
+        val names = AppState.mixerChannelNames.value
+        fun nm(ch: Int) = names[ch] ?: "ch%02d".format(ch + 1)
+        if (carriedFeedback.isEmpty()) {
+            lg.note("HOWL", "no feedback history for this rig yet — the app " +
+                "will learn each ring and carry it forward")
+            return
+        }
+        lg.note("HOWL", "── feedback carried forward from earlier nights ──")
+        for ((ch, hz, rings) in carriedFeedback.sortedByDescending { it.third })
+            lg.note("HOWL", "  %s has howled at %.0f Hz %d time%s before"
+                .format(java.util.Locale.ROOT, nm(ch), hz, rings,
+                    if (rings == 1) "" else "s"))
+        if (!AppState.preRing.value) {
+            lg.note("HOWL", "pre-ring is OFF — these are recorded, not " +
+                "pre-cut. Turn PRE-RING on in SETUP to guard them from cold.")
+            return
+        }
+        val placed = ringOut.seedGuards(
+            carriedFeedback.map {
+                com.stagemix.engine.RingOut.Learned(it.first, it.second, it.third) },
+            PRE_RING_MIN_RINGS, PRE_RING_GUARD_DB)
+        if (placed.isEmpty())
+            lg.note("HOWL", "pre-ring is on, but nothing has howled enough " +
+                "times yet to guard (needs $PRE_RING_MIN_RINGS)")
+        else {
+            for (p in placed)
+                lg.mark("HOWL", ("PRE-RING %s at %.0f Hz — a %.1f dB guard " +
+                    "cut, because it has howled %d times here")
+                    .format(java.util.Locale.ROOT, nm(p.ch), p.hz,
+                        PRE_RING_GUARD_DB, p.rings), now())
+            show?.user("pre-ring placed ${placed.size} shallow guard cut" +
+                (if (placed.size == 1) "" else "s") + " on frequencies this " +
+                "rig has howled at before — cut-only, and they deepen if it " +
+                "still rings")
+        }
+    }
+
+    /**
+     * Save the feedback profile: the carried-in counts plus what has rung
+     * this session, as an ABSOLUTE total, so it is idempotent to call
+     * repeatedly (it never double-counts a ring).
+     */
+    private fun persistFeedback() {
+        fun key(ch: Int, hz: Float) = "$ch:${Math.round(hz)}"
+        val m = HashMap<String, Triple<Int, Float, Int>>()
+        for (e in carriedFeedback) m[key(e.first, e.second)] = e
+        for (n in ringOut.learnedProfile()) {
+            val k = key(n.ch, n.hz)
+            val prev = m[k]?.third ?: 0
+            m[k] = Triple(n.ch, n.hz, prev + n.rings)
+        }
+        AppState.saveFeedbackProfile(this, m.values.toList())
     }
 
     /**
@@ -1978,6 +2069,10 @@ class MixerService : Service() {
         const val LOG_ROTATE_HOURS = 10.0
         /** how often the whole monitor matrix is written to the log */
         const val MON_MATRIX_SEC = 60.0
+        /** a frequency must have howled this often before a guard is placed */
+        const val PRE_RING_MIN_RINGS = 2
+        /** how deep a pre-ring guard cut is — shallow, and inaudible */
+        const val PRE_RING_GUARD_DB = 3f
         const val ACTION_DIRECTING = "com.stagemix.DIRECTING"
         const val ACTION_FREEZE_ALL = "com.stagemix.FREEZE_ALL"
         const val ACTION_FREEZE_CH = "com.stagemix.FREEZE_CH"
@@ -1986,6 +2081,7 @@ class MixerService : Service() {
         const val ACTION_REBALANCE = "com.stagemix.REBALANCE"
         const val ACTION_KEEP_MONITORS = "com.stagemix.KEEP_MONITORS"
         const val ACTION_MONITOR_INEARS = "com.stagemix.MONITOR_INEARS"
+        const val ACTION_PRE_RING = "com.stagemix.PRE_RING"
         const val ACTION_AUTO_START = "com.stagemix.AUTO_START"
         const val ACTION_DOCTOR = "com.stagemix.DOCTOR"
         const val ACTION_FEEDBACK = "com.stagemix.FEEDBACK"

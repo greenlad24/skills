@@ -278,4 +278,52 @@ class RingOutTest {
         assertTrue(r.hunting,
             "a dead notch still owned 196 Hz and suppressed the hunt")
     }
+
+    // ---- pre-ring: carry a rig's known feedback forward -----------------
+
+    @Test fun `pre-ring seeds a shallow guard cut that stays put all night`() {
+        val r = RingOut()
+        val placed = r.seedGuards(
+            listOf(RingOut.Learned(9, 196f, 3)), minRings = 2, guardDb = 3f)
+        assertEquals(1, placed.size, "the guard was not placed")
+        val w = r.tick(1.0, mayWrite = true)
+        val g = w.first { it.address == "/ch/10/eq/4/g" }
+        val db = g.value * 30f - 15f
+        assertTrue(db < -1f && db > -4f, "a guard is a shallow cut: $db")
+        // and it does NOT ease out — a guard holds all night by design
+        var t = 1.0
+        repeat(20) { t += 700.0; r.tick(t, mayWrite = true) }
+        assertTrue(r.active().any { it.ch == 9 && it.cutDb > 1f },
+            "the guard eased out; a pre-ring guard should hold")
+    }
+
+    @Test fun `a frequency that has not howled enough is not guarded`() {
+        val r = RingOut()
+        val placed = r.seedGuards(
+            listOf(RingOut.Learned(9, 196f, 1)), minRings = 2, guardDb = 3f)
+        assertTrue(placed.isEmpty(), "one ring is not a pattern to guard")
+    }
+
+    @Test fun `a guard that actually howls becomes a live ring and deepens`() {
+        val r = RingOut()
+        r.seedGuards(listOf(RingOut.Learned(9, 196f, 3)), 2, 3f)
+        r.tick(1.0, mayWrite = true)
+        val guardDepth = r.active().first { it.ch == 9 }.cutDb
+        assertTrue(r.active().first { it.ch == 9 }.guard, "should start a guard")
+        r.ringing(196, 10.0)               // it howls at the guarded pitch
+        r.tick(11.0, mayWrite = true)
+        val n = r.active().first { it.ch == 9 }
+        assertTrue(!n.guard, "a guard that howled is a live ring now")
+        assertTrue(n.cutDb > guardDepth, "the live ring deepened past the guard")
+    }
+
+    @Test fun `the feedback profile exports what has rung`() {
+        val r = RingOut()
+        var t = 0.0
+        r.ringing(196, t); t = sweep(r, t + 0.5, 9, 196f); r.tick(t + 1.0)
+        val profile = r.learnedProfile()
+        assertTrue(profile.any {
+            it.ch == 9 && abs(it.hz - 196f) < 25f && it.rings >= 1 },
+            "the ring was not in the learned profile: $profile")
+    }
 }

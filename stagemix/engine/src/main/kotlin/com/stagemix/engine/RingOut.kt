@@ -83,9 +83,54 @@ class RingOut(
         var lastRingT = -1.0
         var rings = 0
         var written = false
+        /**
+         * A pre-ring GUARD, not a live howl: a shallow standing cut put
+         * on a frequency this rig has fed back at before, so the recurring
+         * howl is pre-empted rather than hunted from cold every night. It
+         * does not ease out on its own, and — unlike a live ring — it does
+         * NOT bar the mic from being raised (it has not howled tonight).
+         * The moment it actually rings it stops being a guard.
+         */
+        var guard = false
     }
 
     private val notches = HashMap<Int, Notch>()
+
+    /** one channel-frequency that has fed back, for carrying across nights */
+    data class Learned(val ch: Int, val hz: Float, val rings: Int)
+
+    /**
+     * The feedback this rig has produced this session, so it can be saved
+     * and carried into the next night. Every channel-frequency that has
+     * actually rung (a guard that never howled is not evidence of
+     * anything, so it is not exported).
+     */
+    fun learnedProfile(): List<Learned> = notches.values
+        .filter { it.rings > 0 }
+        .map { Learned(it.ch, it.hz, it.rings) }
+
+    /**
+     * Pre-ring the stage from a saved profile: put a shallow guard cut on
+     * every channel-frequency that has howled here before often enough to
+     * count. Returns the guards actually placed, for the log. Skips a
+     * channel that is already notched (a live ring owns it).
+     */
+    fun seedGuards(profile: List<Learned>, minRings: Int, guardDb: Float):
+            List<Learned> {
+        val placed = ArrayList<Learned>()
+        for (p in profile) {
+            if (p.rings < minRings) continue
+            if (notches[p.ch]?.let { it.wanted > 0f } == true) continue
+            val n = notches.getOrPut(p.ch) { Notch(p.ch, p.hz) }
+            n.hz = p.hz
+            n.wanted = min(maxCutDb, guardDb)
+            n.guard = true
+            n.written = false
+            n.lastRingT = -1.0
+            placed.add(p)
+        }
+        return placed
+    }
 
     /** the ring being hunted right now, if any */
     private var huntHz = 0f
@@ -119,10 +164,17 @@ class RingOut(
         val existing = notches.values.firstOrNull {
             it.wanted > 0f && sameNote(it.hz, hz.toFloat()) }
         if (existing != null) {
+            // a guard that actually howls is no longer a guard — it is a
+            // live ring now, and follows the reactive rules from here
+            val wasGuard = existing.guard
+            existing.guard = false
             existing.rings++
             existing.lastRingT = tSec
             existing.wanted = min(maxCutDb, existing.wanted + deeperDb)
-            lastAction = ("ch%02d is ringing at %d Hz again — taking it " +
+            lastAction = (if (wasGuard)
+                "ch%02d rang at %d Hz — the pre-ring guard was right; " +
+                "deepening it to %.1f dB"
+                else "ch%02d is ringing at %d Hz again — taking it " +
                 "down %.1f dB in total").format(java.util.Locale.ROOT,
                     existing.ch + 1, hz, existing.wanted)
             return
@@ -213,6 +265,7 @@ class RingOut(
                     n.rings = 0
                     n.written = false
                 }
+                n.guard = false          // it howled: a live ring now
                 n.rings++
                 n.lastRingT = tSec
                 n.wanted = if (n.wanted <= 0f) firstCutDb
@@ -228,9 +281,12 @@ class RingOut(
             }
             heard.clear()
         }
-        // ease out anything that has not rung for a long time
+        // ease out anything that has not rung for a long time — but NOT a
+        // pre-ring guard: it is a standing cut on a known-bad frequency,
+        // held all night by design (a guard that actually rings stops
+        // being a guard, so it will ease out normally after that)
         for (n in notches.values) {
-            if (n.wanted > 0f && n.lastRingT > 0 &&
+            if (n.wanted > 0f && !n.guard && n.lastRingT > 0 &&
                 tSec - n.lastRingT > releaseAfterSec) {
                 n.wanted = max(0f, n.wanted - releaseStepDb)
                 n.lastRingT = tSec

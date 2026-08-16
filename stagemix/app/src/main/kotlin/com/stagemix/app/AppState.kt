@@ -107,6 +107,15 @@ object AppState {
     val stageMuted = MutableStateFlow(false)
     val doctorOn = MutableStateFlow(true)
     val frozenAll = MutableStateFlow(false)
+    /**
+     * Pre-ring: at takeover, put a shallow guard cut on the frequencies
+     * this rig has howled at before, so the recurring monitor feedback is
+     * pre-empted instead of hunted from cold every night. A proactive
+     * tone change, so like monitor keeping it defaults OFF and is the
+     * operator's to turn on. The feedback profile is learned and logged
+     * either way; this switch only decides whether the guards are applied.
+     */
+    val preRing = MutableStateFlow(false)
     val lastError = MutableStateFlow<String?>(null)
 
     /**
@@ -391,6 +400,37 @@ object AppState {
         } catch (e: Exception) { emptyMap() }
     }
 
+    /**
+     * The feedback profile — every channel-frequency this rig has howled
+     * at, and how many times, carried across nights. Each entry is
+     * (channel, Hz, total rings). This writes the ABSOLUTE profile; the
+     * service combines the carried-in counts with this session's before
+     * calling, so writing it repeatedly is idempotent (never double-adds).
+     */
+    fun saveFeedbackProfile(ctx: Context,
+                            profile: List<Triple<Int, Float, Int>>) {
+        val arr = org.json.JSONArray()
+        for (v in profile) arr.put(JSONObject()
+            .put("ch", v.first).put("hz", v.second.toDouble()).put("n", v.third))
+        ctx.getSharedPreferences("stagemix", Context.MODE_PRIVATE)
+            .edit().putString("feedback_profile", arr.toString()).apply()
+    }
+
+    fun loadFeedbackProfile(ctx: Context): List<Triple<Int, Float, Int>> {
+        val raw = ctx.getSharedPreferences("stagemix", Context.MODE_PRIVATE)
+            .getString("feedback_profile", null) ?: return emptyList()
+        return try {
+            val arr = org.json.JSONArray(raw)
+            (0 until arr.length()).mapNotNull { i ->
+                runCatching {
+                    val o = arr.getJSONObject(i)
+                    Triple(o.getInt("ch"), o.getDouble("hz").toFloat(),
+                        o.getInt("n"))
+                }.getOrNull()
+            }
+        } catch (e: Exception) { emptyList() }
+    }
+
     private fun summarizeBias(bias: Map<com.stagemix.engine.Role, Float>): String =
         bias.filterValues { kotlin.math.abs(it) > 0.01f }.entries
             .sortedByDescending { kotlin.math.abs(it.value) }
@@ -420,6 +460,7 @@ object AppState {
         ctx.getSharedPreferences("stagemix", Context.MODE_PRIVATE).edit()
             .putBoolean("auto_start", autoStart.value)
             .putBoolean("keep_monitors", keepMonitors.value)
+            .putBoolean("pre_ring", preRing.value)
             // "3:0,6:1" — bus:in-ears(0/1), only the overridden buses
             .putString("monitor_inears", monitorInEars.value.entries
                 .joinToString(",") { "${it.key}:${if (it.value) 1 else 0}" })
@@ -430,6 +471,7 @@ object AppState {
         val p = ctx.getSharedPreferences("stagemix", Context.MODE_PRIVATE)
         autoStart.value = p.getBoolean("auto_start", true)
         keepMonitors.value = p.getBoolean("keep_monitors", false)
+        preRing.value = p.getBoolean("pre_ring", false)
         monitorInEars.value = (p.getString("monitor_inears", "") ?: "")
             .split(",").filter { it.contains(":") }
             .mapNotNull {
