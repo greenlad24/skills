@@ -350,7 +350,7 @@ class Player(
             // stage — so the meters, the RTA and the speakers all get it.
             val openMics = (0 until channels)
                 .filter { isMic(it) }
-                .map { console.faderDb(it) }
+                .map { console.faderDb(it) + ringBandCutDb(it) }
             if (room.advance(openMics, n, howl))
                 for (c in 0 until channels)
                     if (isMic(c)) for (i in 0 until n) bufs[c][i] += howl[i]
@@ -602,4 +602,24 @@ class Player(
         (f.coerceIn(-1f, 1f) * 32767f).toInt()
 
     private fun db2lin(db: Float) = 10.0.pow(db / 20.0).toFloat()
+
+    /**
+     * How much a channel's ring-out band is cutting the room's resonance,
+     * in dB (0 or negative). The ring-out always notches ON the resonant
+     * frequency, band 4, so a cut there really does reduce this mic's loop
+     * gain — which is what makes the notch quell the modelled howl, not
+     * just log it. Read straight off the console the app is writing to.
+     */
+    private fun ringBandCutDb(ch: Int): Float {
+        val p = console.params
+        fun f(a: String) = p["/ch/%02d/$a".format(java.util.Locale.ROOT, ch + 1)]
+        val gDb = (f("eq/4/g") ?: return 0f) * 30f - 15f
+        if (gDb >= -0.1f) return 0f                         // not a cut
+        if ((f("eq/on") ?: 0f) < 0.5f) return 0f            // EQ bypassed
+        val fHz = 20f * Math.pow(1000.0,
+            (f("eq/4/f") ?: return 0f).toDouble()).toFloat()
+        val ratio = fHz / room.freqHz.toFloat()
+        // only if the notch is tuned near the resonance (~a tone either way)
+        return if (ratio in 0.85f..1.18f) gDb else 0f
+    }
 }

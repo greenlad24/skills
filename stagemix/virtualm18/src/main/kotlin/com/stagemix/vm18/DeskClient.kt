@@ -48,6 +48,17 @@ class DeskClient(
         .ifEmpty { com.stagemix.engine.defaultRigProfile() })
     var doctor: ToneDoctor? = null; private set
     private val watchdog = FeedbackWatchdog()
+    /**
+     * The ring-out, on the bench too — so the Mac can actually notch the
+     * emulator's modelled feedback, not just detect it. Same engine class
+     * the tablet runs.
+     */
+    private val ringOut = com.stagemix.engine.RingOut()
+    private var lastRingAction = ""
+    /** the feedback carried in from earlier bench runs (ch, Hz, rings) */
+    private var carriedFeedback = emptyList<Triple<Int, Float, Int>>()
+    /** pre-ring the known feedback at takeover — ON by default on the bench */
+    var preRing = true
     private var show: ShowLog? = null
     /** the last level written per channel, so the log can say from -> to */
     private val lastFader = HashMap<Int, Float>()
@@ -186,8 +197,12 @@ class DeskClient(
             }
             receiveOnce()?.let { handle(it, t); lastRx = t }
 
-            if (t - rtaFocusT > 3.0) {
-                val active = engine.activeChannels().sorted()
+            // while hunting a howl, sweep the stage fast (every channel in
+            // turn) so the ring-out can find the microphone; otherwise dawdle
+            if (t - rtaFocusT > (if (ringOut.hunting) 0.5 else 3.0)) {
+                val active = if (ringOut.hunting)
+                    (0 until Meters.INPUT_COUNT).toList()
+                    else engine.activeChannels().sorted()
                 if (active.isNotEmpty()) {
                     val next = active[(active.indexOf(rtaFocus) + 1)
                         .mod(active.size)]
@@ -230,6 +245,20 @@ class DeskClient(
                             logDoctor(d, w.address, w.value)
                         }
                 }
+                // RING OUT THE STAGE. Safety, not tone, so it writes even
+                // while only watching — but on the bench there is no harm
+                // either way. Cut-only, on the channel, same as the tablet.
+                for (w in ringOut.tick(t, mayWrite = directing))
+                    send(OscMessage(w.address, listOf(w.value)))
+                if (ringOut.lastAction != lastRingAction) {
+                    lastRingAction = ringOut.lastAction
+                    show?.mark("RING-OUT", ringOut.lastAction, t)
+                    log?.invoke("RING-OUT ${ringOut.lastAction}")
+                    saveFeedbackProfile()
+                }
+                // a microphone that actually howled is not lifted again for
+                // a few minutes (a guard is not a live ring, so it is skipped)
+                for (n in ringOut.active()) if (!n.guard) engine.onRing(n.ch, t)
                 show?.snapshot(t, engine, doctor, names, directing)
                 show?.summary(t, engine, names)
             }
@@ -247,10 +276,18 @@ class DeskClient(
                     if (watchdog.vetoActive != lastVeto) {
                         lastVeto = watchdog.vetoActive
                         engine.watchdogVeto = watchdog.vetoActive
+                        // start / stop the hunt for the microphone in the loop
+                        if (watchdog.vetoActive)
+                            ringOut.ringing(watchdog.lastFreqHz, t)
+                        else ringOut.cleared(t)
                         show?.note("HOWL", if (watchdog.vetoActive)
                             "feedback suspected at ~${watchdog.lastFreqHz} Hz"
                             else "feedback cleared")
                     }
+                    // the hunt needs every channel's level at the ring
+                    // frequency, so feed RingOut on every frame while it is
+                    // sweeping (it self-gates when not hunting)
+                    ringOut.onRta(rtaFocus, bins, t)
                     if (rtaFocus >= 0 && t - rtaFocusT > 0.5) {
                         doctor?.onRta(rtaFocus, bins, t)
                         // and the same frame to the listener that works
@@ -373,6 +410,64 @@ class DeskClient(
             }
         }
         log?.invoke("took over ${faders.size} faders — listening, then leading")
+        preRingSetup()
+    }
+
+    /** carry this rig's known feedback forward, log it, and (if on) guard it */
+    private fun preRingSetup() {
+        carriedFeedback = loadFeedbackProfile()
+        if (carriedFeedback.isEmpty()) {
+            show?.note("HOWL", "no feedback history yet — the bench will " +
+                "learn each ring and carry it forward")
+            return
+        }
+        show?.note("HOWL", "── feedback carried forward from earlier runs ──")
+        for ((ch, hz, rings) in carriedFeedback.sortedByDescending { it.third })
+            show?.note("HOWL", "  %s has howled at %.0f Hz %d time%s before"
+                .format(Locale.ROOT, nameOf(ch), hz, rings,
+                    if (rings == 1) "" else "s"))
+        if (!preRing) {
+            show?.note("HOWL", "pre-ring is OFF — recorded, not pre-cut")
+            return
+        }
+        val placed = ringOut.seedGuards(carriedFeedback.map {
+            com.stagemix.engine.RingOut.Learned(it.first, it.second, it.third) },
+            minRings = 2, guardDb = 3f)
+        for (p in placed)
+            show?.mark("HOWL", ("PRE-RING %s at %.0f Hz — a 3.0 dB guard cut, " +
+                "because it has howled %d times here")
+                .format(Locale.ROOT, nameOf(p.ch), p.hz, p.rings), now())
+        if (placed.isNotEmpty())
+            log?.invoke("pre-ring placed ${placed.size} guard cut(s)")
+    }
+
+    private fun feedbackFile() = File(logDir, "feedback-profile.txt")
+
+    private fun loadFeedbackProfile(): List<Triple<Int, Float, Int>> =
+        runCatching {
+            val f = feedbackFile()
+            if (!f.exists()) return emptyList()
+            f.readLines().mapNotNull { line ->
+                val p = line.trim().split(" ")
+                if (p.size != 3) return@mapNotNull null
+                val ch = p[0].toIntOrNull() ?: return@mapNotNull null
+                val hz = p[1].toFloatOrNull() ?: return@mapNotNull null
+                val n = p[2].toIntOrNull() ?: return@mapNotNull null
+                Triple(ch, hz, n)
+            }
+        }.getOrDefault(emptyList())
+
+    /** the carried-in counts plus this run's, absolute so it never double-adds */
+    private fun saveFeedbackProfile() = runCatching {
+        fun key(ch: Int, hz: Float) = "$ch:${Math.round(hz)}"
+        val m = HashMap<String, Triple<Int, Float, Int>>()
+        for (e in carriedFeedback) m[key(e.first, e.second)] = e
+        for (n in ringOut.learnedProfile()) {
+            val k = key(n.ch, n.hz)
+            m[k] = Triple(n.ch, n.hz, (m[k]?.third ?: 0) + n.rings)
+        }
+        feedbackFile().writeText(m.values.joinToString("\n") {
+            "${it.first} ${it.second} ${it.third}" })
     }
 
     private fun logDoctor(d: ToneDoctor, addr: String, value: Float) {
