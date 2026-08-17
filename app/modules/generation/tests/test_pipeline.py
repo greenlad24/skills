@@ -42,6 +42,23 @@ def _render(db, product, *, options=None):
     return job, script, result
 
 
+def test_product_image_refs_accepts_strings_dicts_and_manual():
+    # Real pipeline stores images as local-path strings; tests use {"url": ...} dicts.
+    assert pipeline._product_image_refs({"images": ["a.jpg", "b.jpg"]}) == ["a.jpg", "b.jpg"]
+    assert pipeline._product_image_refs(
+        {"images": [{"url": "u.jpg"}, {"src": "s.jpg"}]}
+    ) == ["u.jpg", "s.jpg"]
+    # Empty scraped images -> fall back to the operator-supplied manual image.
+    assert pipeline._product_image_refs(
+        {"images": [], "manual_images": ["https://x/y.jpg"]}
+    ) == ["https://x/y.jpg"]
+    # Scraped images win over manual when both present.
+    assert pipeline._product_image_refs(
+        {"images": ["real.jpg"], "manual_images": ["manual.jpg"]}
+    ) == ["real.jpg"]
+    assert pipeline._product_image_refs({}) == []
+
+
 def test_faceless_all_scenes_broll(db, product):
     # Faceless: no avatar lane; every scene is generated b-roll across all roles.
     _, _, result = _render(db, product)

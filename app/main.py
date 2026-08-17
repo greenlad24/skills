@@ -121,6 +121,10 @@ def _to_job_schema(job: VideoJob) -> Job:
 def create_job(body: JobCreate, db: Session = Depends(get_db)) -> JobCreateResponse:
     """Create a video job from a product URL and enqueue the research stage."""
     product = Product(source_url=body.product_url)
+    if body.product_image_url and body.product_image_url.strip():
+        # Preserved across the research overwrite and used as the hero reference
+        # when the scraper can't return a product photo (e.g. a TikTok short link).
+        product.attributes = {"manual_images": [body.product_image_url.strip()]}
     db.add(product)
     db.flush()  # assign product.id
 

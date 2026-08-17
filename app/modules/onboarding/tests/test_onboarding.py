@@ -48,6 +48,7 @@ def test_status_reports_missing_then_complete(monkeypatch):
     monkeypatch.setattr(settings, "ONBOARDED", False, raising=False)
     monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "", raising=False)
     monkeypatch.setattr(settings, "GOOGLE_TTS_API_KEY", "", raising=False)
+    monkeypatch.setattr(settings, "APIFY_API_KEY", "", raising=False)
     monkeypatch.setattr(settings, "MODAL_LTX_URL", "", raising=False)
     monkeypatch.setattr(settings, "TIKTOK_ACCESS_TOKEN", "", raising=False)
     st = service.compute_status()
@@ -56,6 +57,7 @@ def test_status_reports_missing_then_complete(monkeypatch):
 
     monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "a", raising=False)
     monkeypatch.setattr(settings, "GOOGLE_TTS_API_KEY", "g", raising=False)
+    monkeypatch.setattr(settings, "APIFY_API_KEY", "k", raising=False)
     monkeypatch.setattr(settings, "MODAL_LTX_URL", "http://m", raising=False)
     monkeypatch.setattr(settings, "TIKTOK_ACCESS_TOKEN", "t", raising=False)
     st2 = service.compute_status()

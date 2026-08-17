@@ -74,16 +74,18 @@ def _product_to_dict(job: VideoJob) -> dict[str, Any]:
             if isinstance(a, dict):
                 attributes.append(a)
         images = attrs_raw.get("images", []) or []
+        manual_images = attrs_raw.get("manual_images", []) or []
         approved = attrs_raw.get("approved_claims", []) or []
         category = attrs_raw.get("category")
     else:
-        images, approved, category = [], [], None
+        images, manual_images, approved, category = [], [], [], None
     return {
         "title_th": p.title or "สินค้า",
         "brand": p.brand,
         "attributes": attributes,
         "approved_claims": approved,
         "images": images,
+        "manual_images": manual_images,
         "category": category,
         "price_thb": float(p.price) if p.price is not None else None,
     }

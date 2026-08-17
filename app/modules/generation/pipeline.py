@@ -256,6 +256,33 @@ def render_avatar_scene(
 # --------------------------------------------------------------------------- #
 # BROLL lane (§3D.2, §3D.3, §3D.5)
 # --------------------------------------------------------------------------- #
+def _product_image_refs(product: dict[str, Any], limit: int = 3) -> list[str]:
+    """Collect up to `limit` product reference images for the hero step.
+
+    The real research pipeline stores `images` as a list of local path strings
+    (post-download), while tests and some payloads use `[{"url": ...}]` dicts —
+    accept BOTH. Falls back to any operator-supplied `manual_images` (a URL the
+    operator pasted when scraping — e.g. a TikTok short link — yielded nothing).
+    """
+    refs: list[str] = []
+    for source in ("images", "manual_images"):
+        for img in product.get(source, []) or []:
+            url: str | None = None
+            if isinstance(img, str) and img.strip():
+                url = img.strip()
+            elif isinstance(img, dict):
+                cand = img.get("url") or img.get("src") or img.get("local_path")
+                if isinstance(cand, str) and cand.strip():
+                    url = cand.strip()
+            if url and url not in refs:
+                refs.append(url)
+                if len(refs) >= limit:
+                    return refs
+        if refs:  # prefer real scraped images; only touch manual_images if none
+            break
+    return refs
+
+
 def generate_hero_image(
     db: Session,
     job: VideoJob,
@@ -269,11 +296,7 @@ def generate_hero_image(
     Reused by every b-roll scene so DEMO + PROOF share product identity; NOT
     regenerated on reroll.
     """
-    images = product.get("images", []) or []
-    refs = [
-        img.get("url") for img in images
-        if isinstance(img, dict) and img.get("url")
-    ][:3]
+    refs = _product_image_refs(product)
     prompt = compose_hero_prompt(invariants, hero_action_en)
     key = f"{job.id}:hero:1"
 

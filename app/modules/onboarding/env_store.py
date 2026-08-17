@@ -27,8 +27,10 @@ ALLOWED_KEYS: frozenset[str] = frozenset({
     "VIDEOGEN_PROVIDER", "MODAL_LTX_URL", "MODAL_LTX_TOKEN", "LTX_FPS",
     # TikTok posting
     "POSTING_PROVIDER", "TIKTOK_ACCESS_TOKEN", "TIKTOK_POSTING_MODE", "TIKTOK_PRIVACY_LEVEL",
-    # Research scraping (optional)
+    # Research scraping (Apify TikTok/product scraper)
     "SCRAPER_PROVIDER", "APIFY_API_KEY", "FIRECRAWL_API_KEY",
+    "APIFY_TIKTOK_SHOP_ACTOR", "APIFY_TIKTOK_VIDEO_ACTOR",
+    "APIFY_GENERIC_ACTOR", "APIFY_TIKTOK_REGION",
     # Run mode / markers
     "DRY_RUN", "ONBOARDED",
 })

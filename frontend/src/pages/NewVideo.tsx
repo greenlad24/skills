@@ -23,9 +23,11 @@ function UrlForm() {
   const [showOpts, setShowOpts] = useState(false);
   const [seedSet, setSeedSet] = useState("");
   const [duration, setDuration] = useState(30);
+  const [imageUrl, setImageUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const validUrl = /^https?:\/\/.+\..+/.test(url.trim());
+  const imageOk = !imageUrl.trim() || /^https?:\/\/.+/.test(imageUrl.trim());
 
   async function start() {
     setError(null);
@@ -34,6 +36,7 @@ function UrlForm() {
         product_url: url.trim(),
         seed_set: seedSet || undefined,
         duration_s: duration,
+        product_image_url: imageUrl.trim() || undefined,
       });
       nav(`/jobs/${res.job_id}`);
     } catch (e) {
@@ -70,6 +73,18 @@ function UrlForm() {
               <label>Target duration (s)</label>
               <input type="number" min={10} max={90} value={duration} onChange={(e) => setDuration(Number(e.target.value))} />
             </div>
+            <div>
+              <label>Product image URL (optional)</label>
+              <input
+                placeholder="https://…/product.jpg — paste one if the link is a TikTok short link"
+                value={imageUrl}
+                onChange={(e) => setImageUrl(e.target.value)}
+              />
+              {imageUrl && !imageOk && <div className="small" style={{ color: "var(--red)" }}>Enter a valid image URL.</div>}
+              <div className="small muted">
+                TikTok short links can't be auto-scraped for a photo — paste a product image so the video has a reference.
+              </div>
+            </div>
           </div>
         )}
 
@@ -77,7 +92,7 @@ function UrlForm() {
 
         <div className="row spread">
           <span className="small muted">One URL in → walk away → one approval out.</span>
-          <button className="primary" disabled={!validUrl || create.isPending} onClick={start}>
+          <button className="primary" disabled={!validUrl || !imageOk || create.isPending} onClick={start}>
             {create.isPending ? "Starting…" : "Start"}
           </button>
         </div>

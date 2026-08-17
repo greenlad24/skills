@@ -43,7 +43,7 @@ class Settings(BaseSettings):
 
     # --- Provider selection (the single approved stack) ---
     LLM_PROVIDER: str = "anthropic"
-    SCRAPER_PROVIDER: str = "firecrawl"
+    SCRAPER_PROVIDER: str = "apify"
     TTS_PROVIDER: str = "google_tts"
     VIDEOGEN_PROVIDER: str = "ltx_modal"
     POSTING_PROVIDER: str = "tiktok"
@@ -52,6 +52,25 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = ""
     APIFY_API_KEY: str = ""
     FIRECRAWL_API_KEY: str = ""
+
+    # --- Apify scraper (the approved product/image source) ---
+    # TikTok Shop / short links can't be scraped by generic crawlers, so we run an
+    # Apify actor that resolves the link and returns product text + image URLs.
+    # Actors are addressed as "<username>~<actor-name>"; override if you fork one.
+    #
+    # Two TikTok modes, routed by URL:
+    #   * Shop product/shop/category URL -> the TikTok SHOP actor (title, THB price,
+    #     images, variants). webdatalabs is the reliable one and covers the TH market.
+    #   * A plain video link (incl. vt.tiktok.com short links) -> the VIDEO actor,
+    #     whose cover image is used as the product reference.
+    APIFY_TIKTOK_SHOP_ACTOR: str = "webdatalabs~tiktok-shop-scraper"
+    APIFY_TIKTOK_VIDEO_ACTOR: str = "clockworks~tiktok-scraper"
+    APIFY_GENERIC_ACTOR: str = ""  # optional actor for non-TikTok URLs; blank => manual
+    APIFY_TIKTOK_REGION: str = "th"  # Thai storefront/proxy region (ISO alpha-2)
+    # TikTok Shop via residential proxy is slow (1-4 min is normal); Apify's
+    # run-sync endpoint allows up to 300s. Give it room before falling to manual.
+    APIFY_SYNC_TIMEOUT_SECONDS: int = 270
+    APIFY_EST_USD_PER_SCRAPE: float = 0.02  # ledger estimate; real spend = Apify credits
 
     # --- Legacy identities (dormant avatar lane; faceless jobs never use these) ---
     # Kept only so the avatar scene-lane code path stays importable. The approved

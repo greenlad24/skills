@@ -65,14 +65,16 @@ export function SetupWizard() {
         {step === 0 && (
           <ProviderStep
             title="Connect your keys"
-            blurb="Anthropic writes the Thai script; Google Cloud TTS speaks it. Both have free tiers that cover ~90 videos/month."
+            blurb="Anthropic writes the Thai script; Google Cloud TTS speaks it; Apify scrapes the product (and pulls the product image TikTok links hide). All three have free tiers that cover ~90 videos/month."
             fields={[
               { env: "ANTHROPIC_API_KEY", label: "Anthropic API key", type: "password", placeholder: "sk-ant-…" },
               { env: "GOOGLE_TTS_API_KEY", label: "Google Cloud TTS key", type: "password", placeholder: "AIza…" },
+              { env: "APIFY_API_KEY", label: "Apify token", type: "password", placeholder: "apify_api_…" },
             ]}
             tests={[
               { provider: "llm", label: "Anthropic" },
               { provider: "tts", label: "Google TTS" },
+              { provider: "scraper", label: "Apify" },
             ]}
             onNext={next}
           />
@@ -215,7 +217,7 @@ function NavButtons({ onNext, onBack, nextLabel = "Next →", nextDisabled }: { 
 
 function FinishStep({ steps, onBack, onFinish }: { steps?: Record<string, boolean>; onBack: () => void; onFinish: () => void }) {
   const rows = [
-    ["Keys (Anthropic + Google TTS)", steps?.keys],
+    ["Keys (Anthropic + Google TTS + Apify)", steps?.keys],
     ["Video (LTX-2.5 on Modal)", steps?.video],
     ["TikTok posting", steps?.tiktok],
   ] as const;

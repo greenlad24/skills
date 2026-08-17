@@ -114,6 +114,7 @@ export interface JobCreateBody {
   seed_set?: string;
   avatar_id?: string;
   duration_s?: number;
+  product_image_url?: string;
 }
 
 export interface CaptionUpdate {

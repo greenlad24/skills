@@ -92,6 +92,10 @@ def run_research(job_id: str, *, session=None) -> dict:
             db.commit()
             return {"ok": False, "error": "no source_url", "job_id": str(job_id)}
 
+        # Operator-supplied hero image (set at job creation) — survives the overwrite
+        # below and backstops the hero step when the scraper returns no product photo.
+        manual_images = list((product_row.attributes or {}).get("manual_images") or [])
+
         # --- 2A product research (scraper failure must not hard-fail) ---
         result = research_product(url, str(job.id))
         norm = result.product
@@ -100,13 +104,21 @@ def run_research(job_id: str, *, session=None) -> dict:
                     line_item="scrape_product", amount=result.cost_usd,
                     usage={"requests": 1})
 
+        # If the scraper found no usable image but the operator pasted one, the hero
+        # step can still run (no longer "needs manual images").
+        if manual_images and not norm.images:
+            result.needs_manual_images = False
+
         # Persist onto the canonical Product row.
         product_row.title = norm.title
         product_row.brand = (norm.attributes or {}).get("brand") or (norm.attributes or {}).get("vendor")
         product_row.price = norm.price
         product_row.currency = norm.currency
         # normalized extras live in Product.attributes JSON (images/category/tier/voice_gender...)
-        product_row.attributes = norm.as_dict()
+        attrs = norm.as_dict()
+        if manual_images:
+            attrs["manual_images"] = manual_images
+        product_row.attributes = attrs
         product_row.raw_scrape = {"raw": norm.raw_payload, "platform": norm.source_platform}
         product_row.scraper_provider = norm.source_platform
         product_row.scraped_at = datetime.now(timezone.utc)

@@ -2,6 +2,7 @@
 
 The approved stack has exactly three things to configure:
   * keys   — Anthropic (LLM for research + scripting) + Google Cloud TTS (Thai voice)
+             + Apify (product/TikTok scraper that returns the product image)
   * video  — LTX-2.5 on Modal (MODAL_LTX_URL [+ token])
   * tiktok — TikTok Content Posting access token
 """
@@ -18,7 +19,11 @@ from app.modules.onboarding import env_store
 
 def compute_status() -> dict:
     """Which setup steps are satisfied, and whether onboarding is complete."""
-    keys_ok = bool(settings.ANTHROPIC_API_KEY) and bool(settings.GOOGLE_TTS_API_KEY)
+    keys_ok = (
+        bool(settings.ANTHROPIC_API_KEY)
+        and bool(settings.GOOGLE_TTS_API_KEY)
+        and bool(settings.APIFY_API_KEY)
+    )
     video_ok = bool(settings.MODAL_LTX_URL)
     tiktok_ok = bool(settings.TIKTOK_ACCESS_TOKEN)
     steps = {"keys": keys_ok, "video": video_ok, "tiktok": tiktok_ok}
@@ -47,6 +52,8 @@ def test_provider(provider: str) -> dict:
             ok, err = _test_llm()
         elif provider == "tts":
             ok, err = _test_tts()
+        elif provider == "scraper":
+            ok, err = _test_scraper()
         elif provider == "video":
             ok, err = _test_video()
         elif provider == "tiktok":
@@ -82,6 +89,22 @@ def _test_tts() -> tuple[bool, str | None]:
         idempotency_key="onboarding-tts-test",
     )
     return res.ok, res.error
+
+
+def _test_scraper() -> tuple[bool, str | None]:
+    if not settings.APIFY_API_KEY:
+        return False, "APIFY_API_KEY is not set"
+    # Cheap auth check: list the user's actors (no actor run, no credits spent).
+    with httpx.Client(timeout=30) as c:
+        r = c.get(
+            "https://api.apify.com/v2/users/me",
+            params={"token": settings.APIFY_API_KEY},
+        )
+    if r.status_code == 200:
+        return True, None
+    if r.status_code in (401, 403):
+        return False, "Apify token rejected (check the token in your account settings)"
+    return False, f"Apify /users/me returned {r.status_code}"
 
 
 def _test_video() -> tuple[bool, str | None]:

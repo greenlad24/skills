@@ -25,6 +25,9 @@ class JobCreate(BaseModel):
     seed_set: str | None = None
     avatar_id: uuid.UUID | None = None
     duration_s: int | None = None
+    # Optional operator-supplied product image URL. Used as the hero reference when
+    # the scraper can't return a product photo (e.g. a bare TikTok short link).
+    product_image_url: str | None = None
 
 
 class JobCreateResponse(BaseModel):
