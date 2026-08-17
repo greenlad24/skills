@@ -22,7 +22,8 @@ def test_happy_path_scripting_to_editing(db, product, persona):
     assert db.query(Script).filter(Script.video_job_id == job.id).count() == 1
     assets = db.query(MediaAsset).filter(MediaAsset.video_job_id == job.id).all()
     roles = {a.role for a in assets}
-    assert "avatar_clip" in roles
+    # Faceless: no talking-head avatar clip; every scene is generated b-roll.
+    assert "avatar_clip" not in roles
     assert "broll" in roles
     assert "hero_image" in roles
     assert "vo_track" in roles  # clean Thai VO track handed to editing

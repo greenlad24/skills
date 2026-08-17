@@ -43,11 +43,12 @@ def _script(scenes):
 
 
 def test_valid_script_passes():
+    # Faceless: every role is BROLL (generated product footage).
     scenes = [
-        _scene("HOOK", "AVATAR", 0),
+        _scene("HOOK", "BROLL", 0),
         _scene("DEMO", "BROLL", 1),
         _scene("PROOF", "BROLL", 2),
-        _scene("CTA", "AVATAR", 3),
+        _scene("CTA", "BROLL", 3),
     ]
     assert validate_script(_script(scenes)) == []
 

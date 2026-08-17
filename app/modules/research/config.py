@@ -174,5 +174,5 @@ SELF_DUP_JACCARD_MAX = 0.72       # reject new script too similar to operator's 
 SELF_DUP_HISTORY = 5              # M: rolling window of recent operator scripts
 
 # LLM models used for cheap classification / extraction.
-LLM_CLASSIFY_MODEL = "claude-3-5-haiku"
-LLM_EXTRACT_MODEL = "claude-3-5-sonnet"
+LLM_CLASSIFY_MODEL = "claude-haiku-4-5"
+LLM_EXTRACT_MODEL = "claude-sonnet-5"

@@ -19,17 +19,17 @@ ASSET_AVATAR = "AVATAR"
 ASSET_BROLL = "BROLL"
 ASSET_TYPES = frozenset({ASSET_AVATAR, ASSET_BROLL})
 
-# The load-bearing hybrid rule (§3B, decision #3), encoded once:
-#   AVATAR scenes carry HOOK/CTA (talking head, never touches the product);
-#   BROLL scenes carry DEMO/PROOF (product footage, no avatar).
+# FACELESS workflow: every scene is BROLL (generated product footage) with the Thai
+# voiceover played over it — no talking-head avatar. The avatar lane in pipeline.py
+# stays in the code but is never exercised because no scene is ASSET_AVATAR.
 ALLOWED_ROLES_FOR_ASSET: dict[str, frozenset[str]] = {
-    ASSET_AVATAR: frozenset({ROLE_HOOK, ROLE_CTA}),
-    ASSET_BROLL: frozenset({ROLE_DEMO, ROLE_PROOF}),
+    ASSET_AVATAR: frozenset(),                                  # dormant (faceless)
+    ASSET_BROLL: frozenset({ROLE_HOOK, ROLE_DEMO, ROLE_PROOF, ROLE_CTA}),
 }
-# Reverse map: which asset type a role must use.
+# Reverse map: which asset type a role must use — all BROLL for faceless.
 ASSET_FOR_ROLE: dict[str, str] = {
-    ROLE_HOOK: ASSET_AVATAR,
-    ROLE_CTA: ASSET_AVATAR,
+    ROLE_HOOK: ASSET_BROLL,
+    ROLE_CTA: ASSET_BROLL,
     ROLE_DEMO: ASSET_BROLL,
     ROLE_PROOF: ASSET_BROLL,
 }
@@ -79,9 +79,9 @@ ESTIMATED_COST_USD: dict[str, float] = {
 }
 
 # §3A.5 default models (config can override the provider; these label the call)
-DEFAULT_LLM_MODEL = "claude-3-5-sonnet"
-DEFAULT_I2V_MODEL = "fal-ai/kling-video/v3/image-to-video"
-DEFAULT_TTS_MODEL = "eleven_multilingual_v2"
+DEFAULT_LLM_MODEL = "claude-sonnet-5"
+DEFAULT_I2V_MODEL = "ltx-2.5"
+DEFAULT_TTS_MODEL = "google-th-TH-Neural2"
 
 # Poll fallback (§3D.4) — fakes complete immediately, reals may need a few tries.
 POLL_MAX_ATTEMPTS = 60

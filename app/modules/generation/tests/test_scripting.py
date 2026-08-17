@@ -59,15 +59,14 @@ def test_global_invariants_pinned_in_every_visual_prompt():
         assert invariants_present(scene["visual_prompt_en"], inv)
 
 
-def test_hybrid_roles_respected():
+def test_faceless_all_broll():
+    # Faceless workflow: every scene is BROLL (generated product footage), no avatar.
     script, _, _ = scripting.generate_script(
         video_job_id=str(uuid.uuid4()), script_input=_input(),
     )
+    assert script["scenes"], "expected scenes"
     for scene in script["scenes"]:
-        if scene["asset_type"] == "AVATAR":
-            assert scene["role"] in {"HOOK", "CTA"}
-        else:
-            assert scene["role"] in {"DEMO", "PROOF"}
+        assert scene["asset_type"] == "BROLL"
 
 
 def test_forced_bad_narration_fails_gate():

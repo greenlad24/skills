@@ -211,8 +211,8 @@ def _synthesize_script(
                 "on_screen_text_th": on_screen,
                 "duration_s": dur,
                 "asset_type": asset_type,
-                "product_focus": asset_type != ASSET_FOR_ROLE[ROLE_HOOK]
-                and role in (ROLE_DEMO, ROLE_PROOF),
+                # DEMO/PROOF are the product-centric beats (faceless: all b-roll).
+                "product_focus": role in (ROLE_DEMO, ROLE_PROOF),
             }
         )
 

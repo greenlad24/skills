@@ -42,12 +42,12 @@ def _render(db, product, *, options=None):
     return job, script, result
 
 
-def test_avatar_never_in_broll_scene(db, product):
+def test_faceless_all_scenes_broll(db, product):
+    # Faceless: no avatar lane; every scene is generated b-roll across all roles.
     _, _, result = _render(db, product)
-    for a in result.avatar_assets:
-        assert (a.meta or {}).get("role") in {"HOOK", "CTA"}
+    assert result.avatar_assets == []
     for a in result.broll_assets:
-        assert (a.meta or {}).get("role") in {"DEMO", "PROOF"}
+        assert (a.meta or {}).get("role") in {"HOOK", "DEMO", "PROOF", "CTA"}
     assert result.hero_asset is not None
     assert result.vo_track_asset is not None
     assert result.all_ready is True

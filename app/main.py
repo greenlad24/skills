@@ -7,19 +7,20 @@ includes it — so module agents add endpoints WITHOUT editing this file.
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import pkgutil
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, WebSocket
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import __version__
 from app.core.adapters import registry
 from app.core.config import settings
-from app.core.db import get_db
+from app.core.db import SessionLocal, get_db
 from app.core.models import Product, VideoJob
 from app.core.queue import celery_app
 from app.core.schemas import (
@@ -202,6 +203,53 @@ def reroll_job(
 
 
 app.include_router(jobs_router)
+
+
+# --------------------------------------------------------------------------- #
+# Live job stream (§7A.9) — the multiplexed WebSocket the frontend subscribes to.
+# No Redis: we poll the DB and push a `state` event whenever a job's state changes.
+# --------------------------------------------------------------------------- #
+@app.websocket("/ws/jobs")
+async def ws_jobs(ws: WebSocket) -> None:
+    # Optional local password (browsers can't set WS headers, so it's a query param).
+    if settings.APP_PASSWORD and ws.query_params.get("app_password") != settings.APP_PASSWORD:
+        await ws.close(code=1008)
+        return
+    await ws.accept()
+
+    async def _drain() -> None:
+        # Consume client subscribe messages so the receive buffer doesn't fill.
+        try:
+            while True:
+                await ws.receive_text()
+        except Exception:  # noqa: BLE001 — client closed
+            pass
+
+    drain = asyncio.create_task(_drain())
+    seen: dict[str, str] = {}
+    try:
+        while True:
+            try:
+                with SessionLocal() as db:
+                    rows = db.execute(
+                        select(VideoJob.id, VideoJob.state, VideoJob.cost_accrued_usd)
+                    ).all()
+            except Exception:  # noqa: BLE001 — never kill the socket on a DB blip
+                rows = []
+            for jid, state, cost in rows:
+                sid = str(jid)
+                st = state.value if hasattr(state, "value") else str(state)
+                if seen.get(sid) != st:
+                    seen[sid] = st
+                    await ws.send_json({"type": "state", "job_id": sid, "state": st})
+                    await ws.send_json(
+                        {"type": "progress", "job_id": sid, "pct": None, "cost": float(cost or 0)}
+                    )
+            await asyncio.sleep(1.5)
+    except Exception:  # noqa: BLE001 — client disconnected
+        pass
+    finally:
+        drain.cancel()
 
 
 # --------------------------------------------------------------------------- #
