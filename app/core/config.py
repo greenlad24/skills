@@ -173,3 +173,45 @@ def get_settings() -> Settings:
 
 # Convenience module-level singleton.
 settings = get_settings()
+
+
+def reload_settings_from_dotenv() -> None:
+    """Re-read the `.env` file into the live `settings` singleton, in place.
+
+    Secrets entered in the web onboarding are written to `.env` and applied to the
+    web process — but the Celery worker is a SEPARATE process that read its settings
+    at startup and won't otherwise see keys added afterwards. Calling this before each
+    task lets the worker pick up onboarding-saved keys with no restart. Only fields
+    that exist on Settings are touched; unknown lines are ignored.
+    """
+    import os
+    from pathlib import Path
+
+    env_path = Path(os.environ.get("AUTOUGC_ENV_FILE", ".env"))
+    try:
+        lines = env_path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, raw = line.partition("=")
+        key = key.strip()
+        val = raw.strip().strip('"').strip("'")
+        if not hasattr(settings, key):
+            continue
+        current = getattr(settings, key)
+        try:
+            if isinstance(current, bool):
+                coerced: object = val.lower() in ("1", "true", "yes", "on")
+            elif isinstance(current, int) and not isinstance(current, bool):
+                coerced = int(val)
+            elif isinstance(current, float):
+                coerced = float(val)
+            else:
+                coerced = val
+        except ValueError:
+            continue
+        setattr(settings, key, coerced)
+        os.environ[key] = val

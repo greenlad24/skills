@@ -11,8 +11,9 @@ import pkgutil
 from pathlib import Path
 
 from celery import Celery
+from celery.signals import task_prerun
 
-from app.core.config import settings
+from app.core.config import reload_settings_from_dotenv, settings
 
 _broker = settings.CELERY_BROKER_URL or settings.REDIS_URL
 _backend = settings.CELERY_RESULT_BACKEND or settings.REDIS_URL
@@ -70,6 +71,20 @@ def _discover_module_task_packages() -> list[str]:
 # Autodiscover: core task modules + every module's tasks.py.
 _task_packages = ["app.core"] + _discover_module_task_packages()
 celery_app.autodiscover_tasks(_task_packages, related_name="tasks")
+
+
+@task_prerun.connect
+def _reload_env_before_task(*args: object, **kwargs: object) -> None:
+    """Pick up secrets saved via the web onboarding after the worker started.
+
+    The worker is a different process from the web server, so keys entered in the
+    setup wizard (written to `.env`, applied to the web process) don't reach it until
+    it re-reads `.env`. Doing it per task keeps onboarding a no-restart experience.
+    """
+    try:
+        reload_settings_from_dotenv()
+    except Exception:  # noqa: BLE001 — never let a config refresh kill a task
+        pass
 
 
 @celery_app.task(name="core.ping")

@@ -42,6 +42,23 @@ def test_save_coerces_bool(env_file, monkeypatch):
     assert settings.DRY_RUN is False
 
 
+def test_reload_settings_from_dotenv(env_file, monkeypatch):
+    # The worker picks up keys saved by the web onboarding by re-reading .env.
+    from app.core.config import reload_settings_from_dotenv
+
+    env_file.write_text(
+        "GOOGLE_TTS_API_KEY=g-from-env\nSOCIALCRAWL_API_KEY=sc\nDRY_RUN=false\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(settings, "GOOGLE_TTS_API_KEY", "", raising=False)
+    monkeypatch.setattr(settings, "SOCIALCRAWL_API_KEY", "", raising=False)
+    monkeypatch.setattr(settings, "DRY_RUN", True, raising=False)
+    reload_settings_from_dotenv()
+    assert settings.GOOGLE_TTS_API_KEY == "g-from-env"
+    assert settings.SOCIALCRAWL_API_KEY == "sc"
+    assert settings.DRY_RUN is False
+
+
 def test_save_blank_value_keeps_existing_key(env_file, monkeypatch):
     # An empty field must NOT overwrite an already-saved secret (the wizard sends
     # blanks for keys the operator left untouched).
