@@ -52,6 +52,20 @@ class OperatorPolicyTest {
             "ch11 (the guest soloist) must never be locked, even named a vocal")
     }
 
+    @Test fun `the fixed-instrument channels keep their role`() {
+        val r = Rig(POLICY)
+        r.start(band())
+        // corrupt the roles the way the audio listener did on the night
+        r.e.state[4]!!.role = Role.FOUNDATION    // ch5  guitar amp -> bass
+        r.e.state[5]!!.role = Role.FOUNDATION    // ch6  piano -> bass
+        r.e.state[8]!!.role = Role.FOUNDATION    // ch9  vocal -> bass
+        r.run(30.0) { band() }
+        assertEquals(Role.SOLO_GTR, r.e.state[4]!!.role,
+            "ch5 must stay the guitar amp")
+        assertEquals(Role.KEYS, r.e.state[5]!!.role, "ch6 must stay piano")
+        assertEquals(Role.VOCAL, r.e.state[8]!!.role, "ch9 must stay a vocal")
+    }
+
     @Test fun `the harmonica is held at the operator's middle`() {
         val e = StageEngine(rig, POLICY)
         assertTrue(e.volumeLocked(HARMONICA, e.state[HARMONICA]!!),

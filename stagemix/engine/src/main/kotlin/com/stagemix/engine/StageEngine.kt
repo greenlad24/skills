@@ -435,6 +435,26 @@ data class EngineSettings(
      */
     val vocalChannels: Set<Int> = setOf(8, 9),       // ch9/ch10, 0-indexed
     /**
+     * The channels whose instrument is FIXED on this rig, pinned by channel
+     * number to their role and never re-guessed by the listener:
+     *
+     *   "channel 5 is always Guitar AMP, channel 6+7 are always piano" ·
+     *   "channel 9 and 10 are ALWAYS vocals" · the kit is the kit.
+     *
+     * Everything NOT listed here — the dual-use harmonica, the guest
+     * channel, the ambiguous DIs — is still identified by ear.
+     */
+    val pinnedRoles: Map<Int, Role> = mapOf(
+        0 to Role.FOUNDATION,        // ch1  kick
+        1 to Role.DRUMS,             // ch2  snare
+        2 to Role.DRUMS,             // ch3  overheads
+        4 to Role.SOLO_GTR,          // ch5  guitar amp
+        5 to Role.KEYS,              // ch6  piano L
+        6 to Role.KEYS,              // ch7  piano R
+        8 to Role.VOCAL,             // ch9  vocal
+        9 to Role.VOCAL,             // ch10 vocal
+    ),
+    /**
      * HARMONICA stays in the middle, or wherever the operator set it —
      * never ridden down as colour, never featured up. "Harmonica needs to
      * stay at the middle or the user's choice; middle is −30 dB." Held
@@ -1910,17 +1930,20 @@ class StageEngine(
             //
             // The lock is about not ACTING on a verdict. Recording one
             // costs nothing and everything downstream needs it.
-            // ALWAYS VOCALS, BY CHANNEL NUMBER. ch9/ch10 are the singers,
-            // full stop — pinned to VOCAL and role-locked whatever their
-            // name or spectrum says, so they can never be read as bass and
-            // never fall out of the lead.
-            if (settings.operatorPolicy && idx in settings.vocalChannels &&
-                st.role != Role.VOCAL) {
-                st.role = Role.VOCAL
-                st.roleLocked = true
-                st.roleIdentified = true
-                recountGroups()
-                reconsiderLead(tSec)
+            // FIXED-INSTRUMENT CHANNELS ARE PINNED BY NUMBER. ch5 is always
+            // the guitar amp, ch6/7 the piano, ch9/10 the singers, the kit
+            // the kit — pinned to their role whatever name or spectrum says,
+            // so a singer can never be read as bass and the harmony bed
+            // never turns into something else.
+            if (settings.operatorPolicy) settings.pinnedRoles[idx]?.let { pin ->
+                if (st.role != pin) {
+                    st.role = pin
+                    st.roleLocked = true
+                    st.roleIdentified = true
+                    recountGroups()
+                    if (pin == Role.VOCAL || pin == Role.BACKING_VOCAL)
+                        reconsiderLead(tSec)
+                }
             }
             // THE ALWAYS-ONE-THING CHANNELS ARE NOT REGUESSED. Under the
             // policy the kit (ch1/2/3) and the singers (ch9/10) keep their
@@ -1936,9 +1959,7 @@ class StageEngine(
             // again. Its VOLUME stays held either way (see volumeLocked);
             // only its role follows what he is actually doing.
             if (st.roleLocked || st.role == Role.TALK ||
-                (settings.operatorPolicy &&
-                    (idx in settings.lockedChannels ||
-                        idx in settings.vocalChannels))) {
+                (settings.operatorPolicy && idx in settings.pinnedRoles)) {
                 if (!st.isStatic && st.active && st.role != Role.TALK)
                     ident.recognise(idx, ensemble)?.let { recognised[idx] = it }
                 continue

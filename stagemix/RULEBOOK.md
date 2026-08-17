@@ -243,11 +243,15 @@ tests keep guarding the untouched behaviour).
   > the identification was right, but 5 minutes later he returned to
   > harmonica."
 
-- **Channels 9 and 10 are ALWAYS vocals**, pinned by channel number — the
-  singers, whatever their name or spectrum says. Never re-roled, never
-  unlocked.
+- **Fixed-instrument channels are pinned by channel number** — their
+  instrument does not change on this rig, so the listener never re-guesses
+  them: **ch5 is always the Guitar Amp, ch6 + ch7 are always the piano,
+  ch9 + ch10 are always vocals**, and the kit is the kit. Everything else
+  (the dual-use harmonica, the guest ch11, the ambiguous DIs) is still
+  identified by ear.
 
-  > "channel 9 and 10 are ALWAYS vocals."
+  > "channel 9 and 10 are ALWAYS vocals." · "channel 5 is always Guitar AMP,
+  > channel 6+7 are always piano."
 
 - **Soloists** are the vocals, the saxophone, the guitar amp or guitar DI,
   and — rarely — the bass, the piano, or another instrument. **Channel 11
