@@ -63,13 +63,11 @@ off DRY_RUN. Where to get each:
 
 | Key | Used for | Get it at |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | Script / hook / claim-safety (the "brain") | console.anthropic.com |
-| `FAL_API_KEY` | Product b-roll video generation | fal.ai → dashboard → keys |
-| `ELEVENLABS_API_KEY` | Thai voiceover | elevenlabs.io → Profile → API Keys |
-| `HEYGEN_API_KEY` | Your avatar (digital twin) | app.heygen.com → Settings → API |
-| `APIFY_API_KEY` | TikTok / product scraping | console.apify.com → Integrations |
-| `POSTPEER_API_KEY` | Auto-posting to TikTok | postpeer.dev |
-| `FIRECRAWL_API_KEY` | Generic product-page scraping (optional) | firecrawl.dev |
+| `ANTHROPIC_API_KEY` | Research + Thai script + claim-safety (the "brain") | console.anthropic.com |
+| `GOOGLE_TTS_API_KEY` | Thai voiceover (free tier) | console.cloud.google.com → Text-to-Speech |
+| `MODAL_LTX_URL` (+ `MODAL_LTX_TOKEN`) | Video (LTX-2.5 on Modal) | run `modal deploy deploy/modal_ltx.py` |
+| `TIKTOK_ACCESS_TOKEN` | Auto-posting to TikTok | developers.tiktok.com |
+| `FIRECRAWL_API_KEY` | Product / market page scraping | firecrawl.dev |
 
 Then apply the changes:
 
@@ -77,9 +75,9 @@ Then apply the changes:
 make restart
 ```
 
-> You don't need every key to start. The cheapest useful setup is `ANTHROPIC_API_KEY`
-> + `FAL_API_KEY` + `ELEVENLABS_API_KEY`. Anything left blank simply means that provider
-> isn't available yet — keep `DRY_RUN=true` until you've added the ones you want.
+> The easiest path is the **in-app onboarding wizard** (shown on first run at
+> http://localhost:8000), which writes these keys for you and flips `DRY_RUN` off.
+> Keep `DRY_RUN=true` until the wizard's three steps (Keys → Video → TikTok) are green.
 
 You can always edit `.env` by hand instead of `make keys`; it's the single source of
 truth and is git-ignored (your keys never leave your machine).

@@ -50,7 +50,7 @@ if [[ -f .env ]]; then
     warn "DRY_RUN=${dry:-unset(defaults true)} → FREE fake mode (no real videos). Run 'make keys' to go live."
   else
     pass "DRY_RUN=false → live mode (real providers will be billed)"
-    for k in ANTHROPIC_API_KEY FAL_API_KEY ELEVENLABS_API_KEY HEYGEN_API_KEY APIFY_API_KEY POSTPEER_API_KEY; do
+    for k in ANTHROPIC_API_KEY GOOGLE_TTS_API_KEY MODAL_LTX_URL TIKTOK_ACCESS_TOKEN; do
       v=$(grep -E "^$k=" .env | tail -1 | cut -d= -f2-)
       [[ -n "$v" ]] && pass "$k set" || warn "$k empty (that provider will fail in live mode)"
     done

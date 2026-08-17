@@ -49,15 +49,14 @@ mask()    { local v="$1"; [[ -z "$v" ]] && { echo "${DIM}(empty)${RST}"; return;
 printf '%sAutoUGC-TH — provider keys%s\n' "$BOLD" "$RST"
 printf '%sEnter a key to set it, or press Enter to keep the current value. Input is hidden.%s\n' "$DIM" "$RST"
 
-# key label|where-to-get
+# key label|where-to-get  (the single approved stack; the in-app wizard does this too)
 PROVIDERS=(
-  "ANTHROPIC_API_KEY|LLM (scripts, formulas, claim gate)|console.anthropic.com"
-  "FAL_API_KEY|Product b-roll video generation|fal.ai/dashboard/keys"
-  "ELEVENLABS_API_KEY|Thai voiceover|elevenlabs.io → Profile → API Keys"
-  "HEYGEN_API_KEY|Avatar (your digital twin)|app.heygen.com → Settings → API"
-  "APIFY_API_KEY|TikTok/product scraping|console.apify.com → Settings → Integrations"
-  "FIRECRAWL_API_KEY|Generic product-page scraping (optional)|firecrawl.dev"
-  "POSTPEER_API_KEY|Auto-posting to TikTok|postpeer.dev"
+  "ANTHROPIC_API_KEY|LLM (research, scripts, claim gate)|console.anthropic.com"
+  "GOOGLE_TTS_API_KEY|Thai voiceover (Google Cloud TTS, free tier)|console.cloud.google.com → Text-to-Speech"
+  "MODAL_LTX_URL|Video (LTX-2.5 on Modal — URL from 'modal deploy')|deploy/modal_ltx.py"
+  "MODAL_LTX_TOKEN|Shared secret for the Modal endpoint|matches AUTOUGC_LTX_TOKEN"
+  "TIKTOK_ACCESS_TOKEN|Auto-posting to TikTok (Content Posting API)|developers.tiktok.com"
+  "FIRECRAWL_API_KEY|Product/market page scraping|firecrawl.dev"
 )
 
 for entry in "${PROVIDERS[@]}"; do

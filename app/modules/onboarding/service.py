@@ -34,8 +34,8 @@ def save(values: dict[str, str]) -> dict:
 
 
 def mark_complete() -> dict:
-    """Flip the app out of first-run: persist ONBOARDED + leave DRY_RUN off."""
-    env_store.save({"ONBOARDED": "true"})
+    """Flip the app out of first-run: persist ONBOARDED + turn DRY_RUN off (go live)."""
+    env_store.save({"ONBOARDED": "true", "DRY_RUN": "false"})
     return {"complete": True}
 
 

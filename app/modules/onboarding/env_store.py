@@ -89,7 +89,11 @@ def upsert_env(updates: dict[str, str]) -> None:
 
 def save(values: dict[str, str]) -> dict[str, list[str]]:
     """Persist + apply whitelisted keys. Returns which were saved vs. ignored."""
-    updates = {k: v for k, v in values.items() if k in ALLOWED_KEYS}
+    # Strip CR/LF so a pasted multi-line value can't corrupt the .env format.
+    updates = {
+        k: str(v).replace("\r", "").replace("\n", "").strip()
+        for k, v in values.items() if k in ALLOWED_KEYS
+    }
     ignored = [k for k in values if k not in ALLOWED_KEYS]
     if updates:
         upsert_env(updates)

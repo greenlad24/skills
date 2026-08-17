@@ -78,6 +78,7 @@ def ltx(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "MODAL_LTX_TOKEN", "secret-token", raising=False)
     monkeypatch.setattr(settings, "MEDIA_ROOT", str(tmp_path), raising=False)
     monkeypatch.setattr(settings, "MODAL_GPU_USD_PER_SEC", 0.000306, raising=False)
+    monkeypatch.setattr(settings, "MODAL_LTX_EST_SECONDS_PER_CLIP", 90.0, raising=False)
     monkeypatch.setattr(mod.httpx, "Client", _FakeClient)
     _FakeClient.result_ready = True
     img = tmp_path / "product.png"
@@ -106,6 +107,8 @@ def test_submit_encodes_image_and_snaps_frames(ltx):
         aspect="9:16", idempotency_key="idem-1",
     )
     assert sub.ok and sub.provider_job_id == "fc-123"
+    # Cost is billed at submit (pipeline convention) from the render-time estimate.
+    assert sub.cost_usd == pytest.approx(90.0 * 0.000306, rel=1e-6)
     payload = _FakeClient.posted_payload
     # Image was base64-encoded and 9:16 mapped to 480x832.
     assert base64.b64decode(payload["image_b64"]) == b"PNGDATA"
@@ -123,8 +126,10 @@ def test_poll_ready_saves_video_and_records_cost(ltx):
     assert poll.ok and poll.data["status"] == "ready"
     out = Path(poll.data["video_key"])
     assert out.exists() and out.read_bytes() == _FAKE_MP4
-    # Honest cost from returned compute seconds: 90 * 0.000306.
-    assert poll.cost_usd == pytest.approx(90.0 * 0.000306, rel=1e-6)
+    # Poll does not double-charge; it reports the ACTUAL compute cost in usage.
+    assert poll.cost_usd == 0.0
+    assert poll.usage["compute_seconds"] == 90.0
+    assert poll.usage["actual_usd"] == pytest.approx(90.0 * 0.000306, rel=1e-6)
 
 
 def test_poll_before_ready_reports_processing(ltx):

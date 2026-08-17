@@ -5,7 +5,6 @@ import {
   useClaims,
   useCompliance,
   useDeleteClaim,
-  useProviders,
   useSaveBudget,
   useSaveCompliance,
 } from "@/api/queries";
@@ -13,8 +12,8 @@ import { setupApi } from "@/api/client";
 import { useUiStore } from "@/store/uiStore";
 import type { BudgetSettings, ComplianceSettings } from "@/api/types";
 
-// Screen 7 (§7A.7): tabbed settings — Providers / Budget / Compliance / Approved-claims / Seeds / Account.
-const TABS = ["Providers", "Budget", "Compliance", "Claims", "Seeds", "Account"] as const;
+// Tabbed settings — the approved workflow's knobs only.
+const TABS = ["Providers", "Budget", "Compliance", "Claims", "Account"] as const;
 type Tab = (typeof TABS)[number];
 
 export function Settings() {
@@ -33,45 +32,56 @@ export function Settings() {
       {tab === "Budget" && <BudgetTab />}
       {tab === "Compliance" && <ComplianceTab />}
       {tab === "Claims" && <ClaimsTab />}
-      {tab === "Seeds" && <SeedsTab />}
       {tab === "Account" && <AccountTab />}
     </div>
   );
 }
 
-function ProvidersTab() {
-  const providers = useProviders();
-  const [testing, setTesting] = useState<string | null>(null);
-  const [results, setResults] = useState<Record<string, { ok: boolean; latency?: number; error?: string }>>({});
-  const keyNames = ["heygen", "elevenlabs", "fal", "scraper", "postpeer", "llm"];
+// The single approved stack: provider id (matches /api/setup/test/{id}) + its env key.
+const APPROVED_PROVIDERS = [
+  { id: "llm", label: "Anthropic (LLM)", env: "ANTHROPIC_API_KEY" },
+  { id: "tts", label: "Google Thai TTS", env: "GOOGLE_TTS_API_KEY" },
+  { id: "video", label: "Video (Modal LTX)", env: "MODAL_LTX_URL" },
+  { id: "tiktok", label: "TikTok posting", env: "TIKTOK_ACCESS_TOKEN" },
+] as const;
 
-  async function test(p: string) {
-    setTesting(p);
+function ProvidersTab() {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [results, setResults] = useState<Record<string, { ok: boolean; latency?: number; error?: string }>>({});
+
+  async function saveAndTest(p: (typeof APPROVED_PROVIDERS)[number]) {
+    setBusy(p.id);
     try {
-      const r = await setupApi.testKey(p);
-      setResults((s) => ({ ...s, [p]: { ok: r.ok, latency: r.latency_ms, error: r.error } }));
+      const v = values[p.env];
+      if (v) await setupApi.save({ [p.env]: v });
+      const r = await setupApi.testKey(p.id);
+      setResults((s) => ({ ...s, [p.id]: { ok: r.ok, latency: r.latency_ms, error: r.error } }));
     } catch (e) {
-      setResults((s) => ({ ...s, [p]: { ok: false, error: (e as Error).message } }));
+      setResults((s) => ({ ...s, [p.id]: { ok: false, error: (e as Error).message } }));
     } finally {
-      setTesting(null);
+      setBusy(null);
     }
   }
 
   return (
     <div className="card stack">
-      <div className="row spread">
-        <strong>Providers</strong>
-        <span className="chip">scraper: {providers.data?.scraper ?? "—"}</span>
-      </div>
-      <p className="small muted">Rotate keys and re-test. Avatar/voice can be re-created in the setup wizard.</p>
-      {keyNames.map((p) => {
-        const r = results[p];
+      <strong>Providers</strong>
+      <p className="small muted">The approved stack. Paste a value to update it, then "Save &amp; test" runs a live auth check.</p>
+      {APPROVED_PROVIDERS.map((p) => {
+        const r = results[p.id];
         return (
-          <div key={p} className="row" style={{ gap: "0.75rem" }}>
-            <span style={{ width: "6rem", textTransform: "capitalize" }}>{p}</span>
-            <input type="password" placeholder="•••••••• (leave blank to keep)" className="grow" onChange={() => {}} />
-            <button className="small" onClick={() => test(p)} disabled={testing === p}>
-              {testing === p ? "…" : "Test"}
+          <div key={p.id} className="row" style={{ gap: "0.75rem" }}>
+            <span style={{ width: "10rem" }}>{p.label}</span>
+            <input
+              type="password"
+              placeholder="•••••••• (leave blank to keep)"
+              className="grow"
+              value={values[p.env] ?? ""}
+              onChange={(e) => setValues((s) => ({ ...s, [p.env]: e.target.value }))}
+            />
+            <button className="small" onClick={() => saveAndTest(p)} disabled={busy === p.id}>
+              {busy === p.id ? "…" : "Save & test"}
             </button>
             <span className="row" style={{ gap: "0.3rem", width: "6rem" }}>
               <span className={`dot ${r ? (r.ok ? "ok" : "bad") : "idle"}`} />
@@ -247,15 +257,6 @@ function ClaimsTab() {
           ))
         )}
       </div>
-    </div>
-  );
-}
-
-function SeedsTab() {
-  return (
-    <div className="card">
-      <strong>Seed sets</strong>
-      <p className="small muted">Edit the swipe-mining seed sets (TikTok handles / hashtags / sound IDs). Managed in the setup wizard's Seeds step; the same <span className="mono">POST /api/setup/seeds</span> endpoint backs both.</p>
     </div>
   );
 }

@@ -22,7 +22,6 @@ import type {
   JobCreateBody,
   JobState,
   RerollBody,
-  SeedSet,
   TemplateType,
 } from "./types";
 

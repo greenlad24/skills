@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -32,6 +33,9 @@ from app.core.adapters.registry import register_real
 from app.core.config import settings
 
 _ENDPOINT = "https://texttospeech.googleapis.com/v1/text:synthesize"
+# A Google voice name looks like "th-TH-Neural2-C"; a languageCode like "th-TH".
+_GOOGLE_VOICE_RE = re.compile(r"^[a-z]{2}-[A-Z]{2}-")
+_BCP47_RE = re.compile(r"^[a-z]{2}-[A-Z]{2}$")
 
 
 def _probe_duration(path: Path) -> float | None:
@@ -72,8 +76,16 @@ class GoogleTTSProvider:
         if not text.strip():
             return ProviderResult(ok=False, error="google_tts: empty text")
 
-        language_code = language or self._default_lang
-        voice_name = voice_id or self._default_voice
+        # Accept an incoming voice_id ONLY if it's a real Google voice name
+        # (e.g. "th-TH-Neural2-C"). The pipeline may hand us a legacy ElevenLabs-style
+        # id ("eleven-voice-<hash>"); ignore it and use the configured Thai voice.
+        voice_name = voice_id if _GOOGLE_VOICE_RE.match(voice_id or "") else self._default_voice
+        # Derive the BCP-47 languageCode FROM the chosen voice so they always match
+        # (a region-less "th" paired with a "th-TH-…" voice is a 400). Fall back to
+        # an explicit valid BCP-47 language, else the configured default.
+        language_code = "-".join(voice_name.split("-")[:2])
+        if not _BCP47_RE.match(language_code):
+            language_code = language if _BCP47_RE.match(language or "") else self._default_lang
         body = {
             "input": {"text": text},
             "voice": {"languageCode": language_code, "name": voice_name},

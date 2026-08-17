@@ -116,13 +116,22 @@ class TikTokPostingProvider:
 
     # -- helpers ------------------------------------------------------------- #
 
+    @staticmethod
+    def _chunking(size: int) -> tuple[int, int]:
+        """TikTok chunk plan: one chunk up to 64MB, else equal chunks (last absorbs remainder)."""
+        if size <= _UPLOAD_CHUNK:
+            return size, 1
+        count = size // _UPLOAD_CHUNK          # last chunk carries the remainder
+        return _UPLOAD_CHUNK, count
+
     def _init(self, c: httpx.Client, caption: str, ai_disclosure: bool, privacy: str,
               size: int) -> tuple[str, str]:
+        chunk_size, total_chunks = self._chunking(size)
         source_info = {
             "source": "FILE_UPLOAD",
             "video_size": size,
-            "chunk_size": min(size, _UPLOAD_CHUNK),
-            "total_chunk_count": 1,
+            "chunk_size": chunk_size,
+            "total_chunk_count": total_chunks,
         }
         if self._mode == "inbox":
             # Draft upload: no post_info allowed; creator posts from the app.
@@ -151,14 +160,20 @@ class TikTokPostingProvider:
 
     def _upload(self, upload_url: str, video_bytes: bytes) -> None:
         size = len(video_bytes)
-        headers = {
-            "Content-Type": "video/mp4",
-            "Content-Length": str(size),
-            "Content-Range": f"bytes 0-{size - 1}/{size}",
-        }
+        chunk_size, total_chunks = self._chunking(size)
         with httpx.Client(timeout=300) as c:
-            r = c.put(upload_url, content=video_bytes, headers=headers)
-            r.raise_for_status()
+            for i in range(total_chunks):
+                start = i * chunk_size
+                # The final chunk runs to end-of-file (absorbs any remainder).
+                end = size - 1 if i == total_chunks - 1 else start + chunk_size - 1
+                part = video_bytes[start:end + 1]
+                headers = {
+                    "Content-Type": "video/mp4",
+                    "Content-Length": str(len(part)),
+                    "Content-Range": f"bytes {start}-{end}/{size}",
+                }
+                r = c.put(upload_url, content=part, headers=headers)
+                r.raise_for_status()
 
     def _first_allowed_privacy(self, c: httpx.Client) -> str:
         """Query creator_info for an allowed privacy level (required before direct post)."""

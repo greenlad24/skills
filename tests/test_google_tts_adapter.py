@@ -75,7 +75,20 @@ def test_voice_and_language_overrides(tts):
     prov, _ = tts
     prov.synthesize(text="hi", voice_id="th-TH-Standard-A", language="th-TH",
                     model="", idempotency_key="k3")
-    assert _FakeClient.posted["json"]["voice"]["name"] == "th-TH-Standard-A"
+    voice = _FakeClient.posted["json"]["voice"]
+    assert voice["name"] == "th-TH-Standard-A"
+    assert voice["languageCode"] == "th-TH"    # derived from the voice name
+
+
+def test_legacy_elevenlabs_voice_id_is_ignored(tts):
+    # The pipeline may pass an ElevenLabs-style id + region-less "th"; the adapter
+    # must fall back to a real Google voice and a matching BCP-47 languageCode.
+    prov, _ = tts
+    prov.synthesize(text="hi", voice_id="eleven-voice-ab12cd", language="th",
+                    model="", idempotency_key="k6")
+    voice = _FakeClient.posted["json"]["voice"]
+    assert voice["name"] == "th-TH-Neural2-C"   # default, not the eleven id
+    assert voice["languageCode"] == "th-TH"     # not the bad "th"
 
 
 def test_duration_estimate_when_no_ffprobe(tts):

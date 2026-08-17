@@ -69,6 +69,10 @@ class Settings(BaseSettings):
     # $/GPU-second used to estimate real cost from Modal's returned compute time,
     # so the cost ledger is honest. Default ~A10G list rate. Set 0 to report free.
     MODAL_GPU_USD_PER_SEC: float = 0.000306
+    # Expected render seconds per clip, used to bill an estimate at SUBMIT time
+    # (the pipeline records cost at submit; actual compute_seconds is returned at
+    # poll for reconciliation). Measure once after deploy and tune. 0 => report free.
+    MODAL_LTX_EST_SECONDS_PER_CLIP: float = 90.0
     # How long the adapter waits for a submit/poll HTTP call before erroring.
     MODAL_LTX_TIMEOUT_SECONDS: int = 300
 

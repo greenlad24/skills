@@ -9,10 +9,11 @@ renders. Set:
     MODAL_LTX_URL=https://<you>--autougc-ltx-web.modal.run
     MODAL_LTX_TOKEN=<the shared secret you set in the Modal secret>
 
-Cost model: Modal bills per GPU-second. The web app returns `compute_seconds` for
-each render, and this adapter multiplies it by `MODAL_GPU_USD_PER_SEC` so the cost
-ledger is HONEST (a real per-clip number) rather than a guess — while, inside
-Modal's $30/month free credit, your actual out-of-pocket is $0.
+Cost model: Modal bills per GPU-second. The pipeline records the i2v cost at SUBMIT,
+so this adapter charges an estimate there (`MODAL_LTX_EST_SECONDS_PER_CLIP` ×
+`MODAL_GPU_USD_PER_SEC`); at poll it reports the render's ACTUAL `compute_seconds`
+(and derived `actual_usd`) in `usage` for reconciliation, without double-charging.
+Inside Modal's $30/month free credit your real out-of-pocket is $0.
 
 Contract mapping (identical shape to the other VideoGenProviders):
   * generate_hero_image → passes the REAL product photo straight through (no paid
@@ -67,6 +68,7 @@ class LTXModalVideoProvider:
         self._fps = max(1, int(settings.LTX_FPS))
         self._timeout = max(30, int(settings.MODAL_LTX_TIMEOUT_SECONDS))
         self._usd_per_sec = float(settings.MODAL_GPU_USD_PER_SEC)
+        self._est_seconds = float(settings.MODAL_LTX_EST_SECONDS_PER_CLIP)
         self._headers = (
             {"X-LTX-Token": settings.MODAL_LTX_TOKEN} if settings.MODAL_LTX_TOKEN else {}
         )
@@ -117,10 +119,16 @@ class LTXModalVideoProvider:
         except (KeyError, ValueError) as exc:
             return ProviderResult(ok=False, error=f"modal ltx bad response: {exc}")
 
+        # The pipeline bills the i2v step from the SUBMIT result, so charge an
+        # estimate here (est_seconds * $/GPU-sec); poll returns the actual
+        # compute_seconds in usage for reconciliation. Inside Modal's free credit
+        # your real out-of-pocket is still $0.
+        est_cost = round(self._est_seconds * self._usd_per_sec, 6)
         return ProviderResult(
             ok=True,
             data={"status": "processing", "model": model or "ltx-2.5", "seconds": seconds, "aspect": aspect},
-            usage={"seconds": seconds, "frames": frames},
+            cost_usd=est_cost,
+            usage={"seconds": seconds, "frames": frames, "est_render_seconds": self._est_seconds},
             provider_job_id=call_id,
         )
 
@@ -141,6 +149,9 @@ class LTXModalVideoProvider:
             return ProviderResult(ok=False, error=f"modal ltx bad result: {exc}",
                                   provider_job_id=provider_job_id)
 
+        if body.get("status") == "failed":
+            return ProviderResult(ok=False, error=f"modal ltx render failed: {body.get('error', '?')}",
+                                  provider_job_id=provider_job_id)
         if body.get("status") != "ready" or "video_b64" not in body:
             return ProviderResult(ok=False, error="modal ltx result missing video",
                                   provider_job_id=provider_job_id)
@@ -151,12 +162,17 @@ class LTXModalVideoProvider:
             return ProviderResult(ok=False, error=f"modal ltx save error: {exc}",
                                   provider_job_id=provider_job_id)
 
+        # Cost was billed at submit (pipeline convention); report the ACTUAL compute
+        # time here for reconciliation without double-charging the ledger.
         compute_seconds = float(body.get("compute_seconds", 0.0))
         return ProviderResult(
             ok=True,
             data={"status": "ready", "video_key": video_key, "mime_type": "video/mp4"},
-            cost_usd=round(compute_seconds * self._usd_per_sec, 6),
-            usage={"compute_seconds": compute_seconds},
+            cost_usd=0.0,
+            usage={
+                "compute_seconds": compute_seconds,
+                "actual_usd": round(compute_seconds * self._usd_per_sec, 6),
+            },
             provider_job_id=provider_job_id,
         )
 

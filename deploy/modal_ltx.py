@@ -143,12 +143,14 @@ def web():
     from fastapi import FastAPI, Header, HTTPException
     from fastapi.responses import JSONResponse
 
+    import hmac
+
     api = FastAPI()
     expected = os.environ.get("AUTOUGC_LTX_TOKEN", "")
 
     def _auth(token: str) -> None:
-        # Constant-ish check; if no token configured, allow (dev only).
-        if expected and token != expected:
+        # Constant-time compare; if no token configured, allow (dev only).
+        if expected and not hmac.compare_digest(token, expected):
             raise HTTPException(status_code=401, detail="bad or missing X-LTX-Token")
 
     @api.get("/health")
@@ -171,6 +173,8 @@ def web():
             out = call.get(timeout=0)
         except TimeoutError:
             return JSONResponse(status_code=202, content={"status": "processing"})
+        except Exception as exc:  # render raised (OOM, bad weights, decode) — report cleanly
+            return JSONResponse(status_code=200, content={"status": "failed", "error": str(exc)})
         return {"status": "ready", **out}
 
     return api

@@ -39,8 +39,11 @@ class _FakeClient:
             return _Resp(json_data={"data": {"status": "PROCESSING_DOWNLOAD"}})
         raise AssertionError(f"unexpected POST {path}")
 
+    put_calls: list = []
+
     def put(self, url, **kw):
         _FakeClient.put_headers = kw.get("headers")
+        _FakeClient.put_calls.append(kw.get("headers"))
         return _Resp()
 
 
@@ -54,6 +57,7 @@ def tt(monkeypatch, tmp_path):
     monkeypatch.setattr(mod.httpx, "Client", _FakeClient)
     _FakeClient.calls = []
     _FakeClient.put_headers = None
+    _FakeClient.put_calls = []
     _FakeClient.privacy_options = ["PUBLIC_TO_EVERYONE", "SELF_ONLY"]
     vid = tmp_path / "clip.mp4"
     vid.write_bytes(b"MP4BYTES")
@@ -120,6 +124,21 @@ def test_fetch_metrics_reports_unsupported(tt):
     assert res.ok is False
     assert res.data["publish_status"] == "PROCESSING_DOWNLOAD"
     assert "metrics" in (res.error or "").lower()
+
+
+def test_large_video_uploads_in_multiple_chunks(tt, monkeypatch):
+    # Shrink the chunk ceiling so a small fixture exercises the multi-chunk path.
+    monkeypatch.setattr(mod, "_UPLOAD_CHUNK", 4, raising=False)
+    big = tt  # 8 bytes; with a 4-byte chunk that's 2 chunks
+    prov = mod.TikTokPostingProvider()
+    res = prov.publish(video_key=big, caption="c", platform="tiktok",
+                       ai_disclosure=False, schedule_at=None, idempotency_key="k5")
+    assert res.ok
+    init_body = next(b for p, b in _FakeClient.calls if p.endswith("/video/init/"))
+    assert init_body["source_info"]["total_chunk_count"] == 2
+    assert init_body["source_info"]["chunk_size"] == 4
+    ranges = [h["Content-Range"] for h in _FakeClient.put_calls]
+    assert ranges == ["bytes 0-3/8", "bytes 4-7/8"]   # contiguous, last to EOF
 
 
 def test_missing_token_raises(monkeypatch):
