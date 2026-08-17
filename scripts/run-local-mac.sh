@@ -100,8 +100,10 @@ fi
 mkdir -p "$ROOT/.media" "$ROOT/.broker/queue" "$ROOT/.broker/processed"
 
 # --- 6. Migrate the DB --------------------------------------------------------
-say "Applying database migrations..."
-alembic upgrade head >/dev/null 2>&1 || warn "alembic upgrade skipped/failed (ok on first SQLite run if tables auto-create)."
+say "Preparing the database..."
+alembic upgrade head >/dev/null 2>&1 \
+  || python -c "from app.core.db import init_db; init_db()" >/dev/null 2>&1 \
+  || warn "DB init skipped (the app also self-initialises the SQLite schema on boot)."
 
 # --- 7. Launch web + worker ---------------------------------------------------
 say "Starting the app. Web UI at http://localhost:8000  (Ctrl-C to stop both)."

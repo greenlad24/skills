@@ -47,6 +47,23 @@ app = FastAPI(
 LOADED_MODULES: list[str] = []
 
 
+@app.on_event("startup")
+def _ensure_schema() -> None:
+    """First-run safety: on the local SQLite fallback, create tables from the models.
+
+    Production uses Postgres + Alembic migrations; SQLite (no-Docker local runs) may
+    have no migrations applied, so create the schema directly. create_all is
+    idempotent — it only creates missing tables and never touches Postgres.
+    """
+    if settings.is_sqlite:
+        try:
+            from app.core.db import init_db
+
+            init_db()
+        except Exception as exc:  # noqa: BLE001 — never block boot on this
+            print(f"[startup] SQLite schema init skipped: {exc}")
+
+
 # --------------------------------------------------------------------------- #
 # Health
 # --------------------------------------------------------------------------- #
