@@ -83,8 +83,11 @@ DEFAULT_LLM_MODEL = "claude-sonnet-5"
 DEFAULT_I2V_MODEL = "ltx-2.5"
 DEFAULT_TTS_MODEL = "google-th-TH-Neural2"
 
-# Poll fallback (§3D.4) — fakes complete immediately, reals may need a few tries.
-POLL_MAX_ATTEMPTS = 60
+# Poll fallback (§3D.4) — fakes complete immediately; a real LTX-on-Modal render can
+# take minutes (cold start + generation), so the window must be generous. At the 5s
+# cadence set in service.run_generation that's ~10 min per clip — the loop returns the
+# instant a render reports ready, so this only bounds how long we wait, never the norm.
+POLL_MAX_ATTEMPTS = 120
 POLL_INTERVAL_SEC = 5.0
 
 # Consent types (§3C.2)

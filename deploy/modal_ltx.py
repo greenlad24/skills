@@ -75,7 +75,9 @@ secret = modal.Secret.from_name("autougc-ltx")
     image=image,
     volumes={CACHE_DIR: cache},
     secrets=[secret],
-    scaledown_window=120,   # stay warm 2 min after a render, then scale to zero
+    # Stay warm 10 min after a render so the 5 clips of one job reuse a hot container
+    # (only the first cold-starts); then scale to zero so idle cost stays ~$0.
+    scaledown_window=600,
     timeout=1200,           # a single render may take a couple of minutes
 )
 class LTX:

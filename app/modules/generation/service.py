@@ -40,6 +40,7 @@ from app.modules.generation import scripting, setup_service
 from app.modules.generation.constants import (
     ASSET_AVATAR,
     DEFAULT_LLM_MODEL,
+    POLL_INTERVAL_SEC,
 )
 from app.modules.generation.invariants import normalize_invariants
 from app.modules.generation.pipeline import RenderResult, render_video
@@ -303,6 +304,13 @@ def run_generation(
             db.flush()
 
         # ---- §3D render ----
+        # Real video renders (LTX on Modal) take minutes incl. cold start, so pace the
+        # poll loop (5s cadence) instead of hammering it — otherwise every clip "times
+        # out" before Modal finishes and rerolls until the operator gate. Fakes return
+        # ready immediately, and tests pass poll_sleep=0.0 explicitly, so both stay fast.
+        options = dict(options or {})
+        options.setdefault("poll_sleep", POLL_INTERVAL_SEC)
+
         invariants = script_input["global_invariants"]
         result: RenderResult = render_video(
             db, job,
