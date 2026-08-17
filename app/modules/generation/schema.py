@@ -21,6 +21,8 @@ from typing import Any
 from app.modules.generation.constants import (
     ALLOWED_ROLES_FOR_ASSET,
     ASSET_TYPES,
+    MAX_TOTAL_DURATION_S,
+    MIN_TOTAL_DURATION_S,
     SCENE_ROLES,
 )
 
@@ -47,7 +49,11 @@ SCRIPT_JSON_SCHEMA: dict[str, Any] = {
         "language": {"const": "th"},
         "formula_template_id": {"type": "string"},
         "hook_template_id": {"type": "string"},
-        "total_duration_s": {"type": "number", "minimum": 8, "maximum": 60},
+        "total_duration_s": {
+            "type": "number",
+            "minimum": MIN_TOTAL_DURATION_S,
+            "maximum": MAX_TOTAL_DURATION_S,
+        },
         "scenes": {
             "type": "array",
             "minItems": 2,
@@ -157,8 +163,13 @@ def validate_script(script: dict[str, Any]) -> list[str]:
         errors.append("language must be 'th'")
 
     total = script.get("total_duration_s")
-    if not isinstance(total, (int, float)) or not (8 <= total <= 60):
-        errors.append("total_duration_s must be a number in [8, 60]")
+    if not isinstance(total, (int, float)) or not (
+        MIN_TOTAL_DURATION_S <= total <= MAX_TOTAL_DURATION_S
+    ):
+        errors.append(
+            f"total_duration_s must be a number in "
+            f"[{MIN_TOTAL_DURATION_S}, {MAX_TOTAL_DURATION_S}]"
+        )
 
     scenes = script.get("scenes")
     if not isinstance(scenes, list) or not (2 <= len(scenes) <= 8):

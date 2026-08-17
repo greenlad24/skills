@@ -29,6 +29,8 @@ from app.modules.generation import claim_gate
 from app.modules.generation.constants import (
     ASSET_FOR_ROLE,
     DEFAULT_LLM_MODEL,
+    MAX_TOTAL_DURATION_S,
+    MIN_TOTAL_DURATION_S,
     ROLE_CTA,
     ROLE_DEMO,
     ROLE_HOOK,
@@ -114,6 +116,10 @@ def build_system_prompt(script_input: dict[str, Any]) -> str:
         f"{json.dumps(plan, ensure_ascii=False)}\n"
         "- AVATAR scenes = HOOK or CTA only, talking head, NO product in hand.\n"
         "- BROLL scenes  = DEMO or PROOF only, product-focused, no avatar.\n\n"
+        "DURATION (hard):\n"
+        f"- total_duration_s (sum of every scene duration_s) MUST be between "
+        f"{MIN_TOTAL_DURATION_S} and {MAX_TOTAL_DURATION_S} seconds — never longer "
+        f"than {MAX_TOTAL_DURATION_S}s. Write narration short enough to fit.\n\n"
         "CLAIM RULES (hard — you will be audited and rejected):\n"
         f"- Use ONLY these product attributes: {json.dumps(attributes, ensure_ascii=False)}\n"
         f"- Use ONLY these approved claims verbatim: {json.dumps(approved, ensure_ascii=False)}\n"
@@ -216,12 +222,19 @@ def _synthesize_script(
             }
         )
 
-    # Clamp total into [8, 60] by nudging durations if the plan was extreme.
+    # Clamp total into [MIN, MAX] seconds by nudging durations if the plan was extreme.
     total = sum(s["duration_s"] for s in scenes)
-    if total < 8 and scenes:
-        pad = (8 - total) / len(scenes)
+    if total < MIN_TOTAL_DURATION_S and scenes:
+        pad = (MIN_TOTAL_DURATION_S - total) / len(scenes)
         for s in scenes:
             s["duration_s"] = round(min(15.0, s["duration_s"] + pad), 2)
+        total = sum(s["duration_s"] for s in scenes)
+    if total > MAX_TOTAL_DURATION_S and scenes:
+        # Scale every scene down proportionally so the finished video stays within
+        # the TikTok cap (never below 1.5s/scene, matching the per-beat floor above).
+        factor = MAX_TOTAL_DURATION_S / total
+        for s in scenes:
+            s["duration_s"] = round(max(1.5, s["duration_s"] * factor), 2)
         total = sum(s["duration_s"] for s in scenes)
 
     return {

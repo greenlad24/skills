@@ -58,6 +58,11 @@ KIND_LLM = "LLM"
 # --------------------------------------------------------------------------- #
 ASPECT_VERTICAL = "9:16"
 
+# Total finished-video length bounds (seconds). TikTok deliverables are capped at
+# 30s per the operator; the script stage targets and validates against this.
+MIN_TOTAL_DURATION_S = 8
+MAX_TOTAL_DURATION_S = 30
+
 # §3D.5 product-consistency QA gate
 QA_SIMILARITY_THRESHOLD = 0.85
 MAX_REROLLS = 3                     # per scene (§3D.5)
