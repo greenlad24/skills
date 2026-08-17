@@ -42,11 +42,14 @@ import modal
 
 # --- The one thing to update if a download 404s: the model repo id. -----------
 LTX_MODEL_ID = os.environ.get("LTX_MODEL_ID", "Lightricks/LTX-Video-0.9.7-distilled")
-# GPU tier. A10G (24GB) is the cheapest tier that needs no payment method on the
-# Modal account. LTX-0.9.7's weights (~22GB) don't leave room for inference if kept
-# resident, so on A10G we use sequential CPU offload (see load()) to fit. A 48GB
-# L40S would run resident + faster, but Modal gates L40S behind a saved card.
-LTX_GPU = os.environ.get("LTX_GPU", "A10G")
+# GPU tier. LTX-0.9.7 needs >22GB for inference, so a 24GB card (A10G/L4) can only
+# run it via sequential CPU offload (slow); a 48GB L40S runs the whole pipeline
+# resident and fast. Default to L40S; load() picks resident-vs-offload by tier, so
+# LTX_GPU=A10G still works (offload) for a card-free fallback.
+LTX_GPU = os.environ.get("LTX_GPU", "L40S")
+
+# 24GB (or smaller) tiers can't hold LTX resident and must stream via offload.
+_SMALL_GPUS = {"A10G", "A10", "L4", "T4"}
 # ------------------------------------------------------------------------------
 
 CACHE_DIR = "/cache"
@@ -95,14 +98,18 @@ class LTX:
             torch_dtype=torch.bfloat16,
             cache_dir=CACHE_DIR,
         )
-        # LTX-0.9.7 (~22GB, dominated by the T5-XXL text encoder) does not leave room
-        # to run inference resident on a 24GB A10G — model_cpu_offload still OOMs at
-        # the denoise step. Sequential offload streams one submodule at a time, so
-        # peak VRAM stays low enough to fit 24GB. Trade-off: slower per render.
-        # (Do NOT also call `.to("cuda")` — offload manages device placement itself.)
-        self.pipe.enable_sequential_cpu_offload()
+        # On a 48GB L40S the whole pipeline fits resident on the GPU — fastest, no
+        # per-render streaming. On a 24GB tier (A10G/L4) LTX-0.9.7 (~22GB, dominated
+        # by the T5-XXL text encoder) won't fit resident, so stream it one submodule
+        # at a time via sequential CPU offload (slower, but avoids the OOM).
+        if LTX_GPU.split(":")[0].upper() in _SMALL_GPUS:
+            self.pipe.enable_sequential_cpu_offload()
+            mode = "sequential_cpu_offload"
+        else:
+            self.pipe.to("cuda")
+            mode = "resident"
         self.pipe.vae.enable_tiling()
-        print(f"LTX load OK on {LTX_GPU}: sequential_cpu_offload + vae tiling", flush=True)
+        print(f"LTX load OK on {LTX_GPU}: {mode} + vae tiling", flush=True)
         # Persist any newly-downloaded weights for the next cold start.
         cache.commit()
 
