@@ -86,6 +86,27 @@ class Settings(BaseSettings):
     # How long the adapter waits for a submit/poll HTTP call before erroring.
     MODAL_LTX_TIMEOUT_SECONDS: int = 300
 
+    # --- Near-free Thai TTS (Google Cloud Text-to-Speech) ---
+    # Set TTS_PROVIDER=google_tts. Free tier (1M chars Neural2 / 4M Standard) covers
+    # ~90 videos/mo, so Thai narration is effectively $0.
+    GOOGLE_TTS_API_KEY: str = ""
+    GOOGLE_TTS_VOICE: str = "th-TH-Neural2-C"     # natural Thai; th-TH-Standard-A is cheaper
+    GOOGLE_TTS_LANGUAGE: str = "th-TH"
+    # $/million chars used only for ledger honesty; 0 = report free (inside free tier).
+    GOOGLE_TTS_USD_PER_MILLION: float = 0.0
+    # Fallback duration estimate (sec/char) when ffprobe isn't available.
+    GOOGLE_TTS_SEC_PER_CHAR: float = 0.08
+
+    # --- Free TikTok posting (official Content Posting API) ---
+    # Set POSTING_PROVIDER=tiktok. No per-post fee; needs an OAuth user token.
+    TIKTOK_ACCESS_TOKEN: str = ""
+    TIKTOK_API_BASE: str = "https://open.tiktokapis.com"
+    # "direct" = publish to profile (audited app, video.publish scope);
+    # "inbox"  = upload to drafts, creator posts from the app (unaudited, video.upload).
+    TIKTOK_POSTING_MODE: str = "direct"
+    # Empty => auto-pick an allowed level from creator_info (direct mode).
+    TIKTOK_PRIVACY_LEVEL: str = ""
+
     # --- Guards & run mode ---
     DRY_RUN: bool = True
     PER_VIDEO_COST_BUDGET_USD: float = 5.00

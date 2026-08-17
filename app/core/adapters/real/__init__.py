@@ -23,5 +23,13 @@ from __future__ import annotations
 from app.core.adapters.real import anthropic_llm  # noqa: F401
 from app.core.adapters.real import wan_comfyui  # noqa: F401  (free Wan video via ComfyUI)
 from app.core.adapters.real import ltx_modal  # noqa: F401  (serverless LTX-2.5 via Modal)
+from app.core.adapters.real import google_tts  # noqa: F401  (near-free Thai TTS)
+from app.core.adapters.real import tiktok_posting  # noqa: F401  (free TikTok posting)
 
-__all__ = ["anthropic_llm", "wan_comfyui", "ltx_modal"]
+__all__ = [
+    "anthropic_llm",
+    "wan_comfyui",
+    "ltx_modal",
+    "google_tts",
+    "tiktok_posting",
+]
