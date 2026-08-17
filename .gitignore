@@ -22,3 +22,9 @@ htmlcov/
 /data/
 *.sqlite3
 *.db
+
+# Local run artifacts
+control/
+.broker/
+.media/
+celery_results.sqlite3

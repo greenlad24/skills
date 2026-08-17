@@ -70,9 +70,9 @@ if [ ! -d .venv ]; then
 fi
 # shellcheck disable=SC1091
 source .venv/bin/activate
-say "Installing Python dependencies..."
-python -m pip install --quiet --upgrade pip
-python -m pip install --quiet -r requirements.txt
+say "Installing Python dependencies (progress shown; --prefer-binary avoids slow source builds)..."
+python -m pip install --upgrade pip
+python -m pip install --prefer-binary -r requirements.txt
 
 # --- 5. .env + broker selection ----------------------------------------------
 FRESH_ENV=0
