@@ -42,7 +42,10 @@ import modal
 
 # --- The one thing to update if a download 404s: the model repo id. -----------
 LTX_MODEL_ID = os.environ.get("LTX_MODEL_ID", "Lightricks/LTX-Video-0.9.7-distilled")
-# GPU tier. A10G (24GB) is the cheap default; bump to "L40S" for the 48GB models.
+# GPU tier. A10G (24GB) is the cheapest tier that needs no payment method on the
+# Modal account. LTX-0.9.7's weights (~22GB) don't leave room for inference if kept
+# resident, so on A10G we use sequential CPU offload (see load()) to fit. A 48GB
+# L40S would run resident + faster, but Modal gates L40S behind a saved card.
 LTX_GPU = os.environ.get("LTX_GPU", "A10G")
 # ------------------------------------------------------------------------------
 
@@ -62,7 +65,8 @@ image = (
         "fastapi[standard]",
     )
     # Keep the big weights on a persistent volume so cold starts don't re-download.
-    .env({"HF_HOME": CACHE_DIR})
+    # expandable_segments cuts CUDA fragmentation (the OOM error explicitly suggests it).
+    .env({"HF_HOME": CACHE_DIR, "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True"})
 )
 
 app = modal.App("autougc-ltx")
@@ -78,7 +82,7 @@ secret = modal.Secret.from_name("autougc-ltx")
     # Stay warm 10 min after a render so the 5 clips of one job reuse a hot container
     # (only the first cold-starts); then scale to zero so idle cost stays ~$0.
     scaledown_window=600,
-    timeout=1200,           # a single render may take a couple of minutes
+    timeout=3000,           # sequential CPU offload is slow; give a wide ceiling
 )
 class LTX:
     @modal.enter()
@@ -90,7 +94,15 @@ class LTX:
             LTX_MODEL_ID,
             torch_dtype=torch.bfloat16,
             cache_dir=CACHE_DIR,
-        ).to("cuda")
+        )
+        # LTX-0.9.7 (~22GB, dominated by the T5-XXL text encoder) does not leave room
+        # to run inference resident on a 24GB A10G — model_cpu_offload still OOMs at
+        # the denoise step. Sequential offload streams one submodule at a time, so
+        # peak VRAM stays low enough to fit 24GB. Trade-off: slower per render.
+        # (Do NOT also call `.to("cuda")` — offload manages device placement itself.)
+        self.pipe.enable_sequential_cpu_offload()
+        self.pipe.vae.enable_tiling()
+        print(f"LTX load OK on {LTX_GPU}: sequential_cpu_offload + vae tiling", flush=True)
         # Persist any newly-downloaded weights for the next cold start.
         cache.commit()
 
