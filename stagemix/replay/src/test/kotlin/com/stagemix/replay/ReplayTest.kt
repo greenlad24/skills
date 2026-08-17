@@ -65,8 +65,10 @@ class ReplayTest {
 
         fun decisionsWith(vararg extra: String): Int {
             val out = File(dir, "out-" + extra.joinToString("").ifEmpty { "default" })
+            // the bare-engine question: LEAD vs KEEP mode, without the
+            // operator policy (whose locks would hold these very channels)
             main(arrayOf(dir.absolutePath, "--out", out.absolutePath,
-                "--snapshot", "2", *extra))
+                "--snapshot", "2", "--no-policy", *extra))
             val log = File(out, "logs").listFiles()?.firstOrNull()
             assertTrue(log != null, "no show log written")
             return log!!.readLines().count { " DEC " in it }

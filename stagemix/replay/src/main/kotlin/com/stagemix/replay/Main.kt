@@ -107,7 +107,7 @@ private fun runReplay(args: Array<String>) {
             src.profile[i].role.name))
 
     val engine = StageEngine(src.profile,
-        EngineSettings(mode = opts.mode, operatorPolicy = true), RESEARCH_PYRAMID)
+        EngineSettings(mode = opts.mode, operatorPolicy = opts.policy), RESEARCH_PYRAMID)
     val doctor = ToneDoctor(src.profile.map { it.index },
         src.profile.associate { it.index to it.role })
     val log = ShowLog(outDir, snapshotSec = opts.snapshotSec,
@@ -198,13 +198,20 @@ private class Opts(
      * KEEP have done to a mix that already existed.
      */
     val mode: BalanceMode,
+    /**
+     * The operator's volume policy — the locks, the pinned instruments, the
+     * bass deadband. ON by default so a replay matches the shipping app and
+     * the bench; --no-policy asks the bare-engine question instead (what the
+     * pyramid alone does), which is what the mode-comparison test wants.
+     */
+    val policy: Boolean,
 ) {
     companion object {
         fun parse(a: Array<String>): Opts {
             var path = ""; var render = false; var out: String? = null
             var fader = -10f; var start = 0.0; var len = 0.0
             var snap = 5.0; var shadow = false; var cap: String? = null
-            var mode = BalanceMode.LEAD
+            var mode = BalanceMode.LEAD; var policy = true
             var i = 0
             // A flag with no value used to walk off the end of the array
             // and throw an ArrayIndexOutOfBounds; a non-number after
@@ -231,12 +238,14 @@ private class Opts(
                     "--capture" -> cap = value("--capture")
                     "--keep" -> mode = BalanceMode.KEEP
                     "--lead" -> mode = BalanceMode.LEAD
+                    "--no-policy" -> policy = false
+                    "--policy" -> policy = true
                     else -> if (path.isEmpty()) path = a[i]
                 }
                 i++
             }
             return Opts(path, render, out, fader, start, len, snap, shadow,
-                cap, mode)
+                cap, mode, policy)
         }
     }
 }
@@ -553,7 +562,7 @@ private fun replayCapture(file: File, opts: Opts, outDir: File, take: String) {
         onHeader = { tape ->
             profile = profileFor(tape.names, defaultRigProfile())
             names = profile.associate { it.index to it.name }
-            val e = StageEngine(profile, EngineSettings(mode = opts.mode, operatorPolicy = true), RESEARCH_PYRAMID)
+            val e = StageEngine(profile, EngineSettings(mode = opts.mode, operatorPolicy = opts.policy), RESEARCH_PYRAMID)
             val d = ToneDoctor(profile.map { it.index },
                 profile.associate { it.index to it.role })
             val l = ShowLog(outDir, snapshotSec = opts.snapshotSec,
