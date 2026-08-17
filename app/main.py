@@ -230,3 +230,25 @@ def load_modules(target_app: FastAPI) -> list[str]:
 
 # Load modules at import time so uvicorn picks them up on boot.
 LOADED_MODULES.extend(load_modules(app))
+
+
+# --------------------------------------------------------------------------- #
+# Frontend (single-origin): serve the built React app so no Node is needed to run.
+# Registered LAST so /health, /api/*, and every module router take precedence.
+# --------------------------------------------------------------------------- #
+_FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+if (_FRONTEND_DIST / "index.html").is_file():
+    from fastapi.responses import FileResponse
+    from fastapi.staticfiles import StaticFiles
+
+    _assets = _FRONTEND_DIST / "assets"
+    if _assets.is_dir():
+        app.mount("/assets", StaticFiles(directory=str(_assets)), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    def spa(full_path: str) -> FileResponse:
+        """Serve a built static file if it exists, else index.html (SPA routing)."""
+        candidate = _FRONTEND_DIST / full_path
+        if full_path and candidate.is_file() and candidate.is_relative_to(_FRONTEND_DIST):
+            return FileResponse(str(candidate))
+        return FileResponse(str(_FRONTEND_DIST / "index.html"))
