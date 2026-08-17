@@ -428,6 +428,13 @@ data class EngineSettings(
     val lockedChannels: Set<Int> = setOf(0, 1, 2),   // ch1/2/3, the kit
     val lockVocalVolume: Boolean = true,
     /**
+     * ALWAYS vocals, by channel number. "Channel 9 and 10 are ALWAYS
+     * vocals." Pinned to the VOCAL role and locked regardless of name or
+     * what the audio listener thinks — these two mics are the singers and
+     * nothing re-roles them.
+     */
+    val vocalChannels: Set<Int> = setOf(8, 9),       // ch9/ch10, 0-indexed
+    /**
      * HARMONICA stays in the middle, or wherever the operator set it —
      * never ridden down as colour, never featured up. "Harmonica needs to
      * stay at the middle or the user's choice; middle is −30 dB." Held
@@ -1223,6 +1230,7 @@ class StageEngine(
         if (!settings.operatorPolicy) return false
         if (idx in settings.soloistChannels) return false
         return idx in settings.lockedChannels ||
+            idx in settings.vocalChannels ||
             (settings.lockVocalVolume &&
                 (st.role == Role.VOCAL || st.role == Role.BACKING_VOCAL ||
                     isVocalName(st.name))) ||
@@ -1902,16 +1910,35 @@ class StageEngine(
             //
             // The lock is about not ACTING on a verdict. Recording one
             // costs nothing and everything downstream needs it.
-            // THE OPERATOR'S DECLARED CHANNELS ARE NOT REGUESSED. Under the
-            // policy the kit, the vocals and the harmonica keep the role
-            // their name gives them — the audio listener may still LISTEN
-            // (so the readout is honest), but it never re-roles them. This
-            // is the fix for the vocal mic read as bass: once that happened
-            // the singer lost the lock, fell out of the lead, and joined
-            // the anchor, and REBALANCE then chased a moving target all
-            // night. The name the engineer set is the operator's word.
+            // ALWAYS VOCALS, BY CHANNEL NUMBER. ch9/ch10 are the singers,
+            // full stop — pinned to VOCAL and role-locked whatever their
+            // name or spectrum says, so they can never be read as bass and
+            // never fall out of the lead.
+            if (settings.operatorPolicy && idx in settings.vocalChannels &&
+                st.role != Role.VOCAL) {
+                st.role = Role.VOCAL
+                st.roleLocked = true
+                st.roleIdentified = true
+                recountGroups()
+                reconsiderLead(tSec)
+            }
+            // THE ALWAYS-ONE-THING CHANNELS ARE NOT REGUESSED. Under the
+            // policy the kit (ch1/2/3) and the singers (ch9/10) keep their
+            // role whatever the spectrum says — the listener may still
+            // LISTEN (so the readout is honest) but never re-roles them.
+            // This is the fix for the vocal mic read as bass: once that
+            // happened the singer lost the lock, fell out of the lead, and
+            // joined the anchor, and REBALANCE then chased a moving target.
+            //
+            // The harmonica is DELIBERATELY not in this list: it is one
+            // player's harmonica AND his backing-vocal mic, so it must be
+            // free to switch harmonica <-> voice through the night and back
+            // again. Its VOLUME stays held either way (see volumeLocked);
+            // only its role follows what he is actually doing.
             if (st.roleLocked || st.role == Role.TALK ||
-                (settings.operatorPolicy && volumeLocked(idx, st))) {
+                (settings.operatorPolicy &&
+                    (idx in settings.lockedChannels ||
+                        idx in settings.vocalChannels))) {
                 if (!st.isStatic && st.active && st.role != Role.TALK)
                     ident.recognise(idx, ensemble)?.let { recognised[idx] = it }
                 continue

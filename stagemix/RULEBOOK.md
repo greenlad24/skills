@@ -233,6 +233,22 @@ tests keep guarding the untouched behaviour).
   > "harmonica needs to stay at the middle or the user's choice; middle is
   > −30 dB."
 
+  The harmonica channel is **dual-use** — the player plays harmonica *and*
+  sings backing vocal on the same mic — so its **role** is free to switch
+  harmonica ↔ voice through the night and back again, and the audio
+  listener is right to follow that. Only its **volume** is held; the role
+  tracks what he is actually doing.
+
+  > "the harmonica channel did use his voice at some point in that night, so
+  > the identification was right, but 5 minutes later he returned to
+  > harmonica."
+
+- **Channels 9 and 10 are ALWAYS vocals**, pinned by channel number — the
+  singers, whatever their name or spectrum says. Never re-roled, never
+  unlocked.
+
+  > "channel 9 and 10 are ALWAYS vocals."
+
 - **Soloists** are the vocals, the saxophone, the guitar amp or guitar DI,
   and — rarely — the bass, the piano, or another instrument. **Channel 11
   is the guest-soloist channel** (last night a trombone): whatever is
