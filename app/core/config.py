@@ -72,6 +72,20 @@ class Settings(BaseSettings):
     COMFYUI_POLL_SECONDS: int = 5
     COMFYUI_TIMEOUT_SECONDS: int = 900
 
+    # --- Serverless video (LTX-2.5 on Modal) — the cheap "no GPU to babysit" path ---
+    # Set VIDEOGEN_PROVIDER=ltx_modal and point this at your deployed Modal web app
+    # (see deploy/modal_ltx.py + `modal deploy`). Generation then scales to zero
+    # between renders; ~$0/mo inside Modal's free credit, ~$6/mo beyond it.
+    MODAL_LTX_URL: str = ""
+    # Optional shared secret; must match the AUTOUGC_LTX_TOKEN in the Modal secret.
+    MODAL_LTX_TOKEN: str = ""
+    LTX_FPS: int = 24
+    # $/GPU-second used to estimate real cost from Modal's returned compute time,
+    # so the cost ledger is honest. Default ~A10G list rate. Set 0 to report free.
+    MODAL_GPU_USD_PER_SEC: float = 0.000306
+    # How long the adapter waits for a submit/poll HTTP call before erroring.
+    MODAL_LTX_TIMEOUT_SECONDS: int = 300
+
     # --- Guards & run mode ---
     DRY_RUN: bool = True
     PER_VIDEO_COST_BUDGET_USD: float = 5.00

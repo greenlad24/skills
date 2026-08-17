@@ -66,6 +66,20 @@ The per-video spend ceiling is `PER_VIDEO_COST_BUDGET_USD` (default `5.00`, targ
 a projected breach fails the job with `failure_reason=budget_exceeded` rather than
 overspending.
 
+## Choosing a video provider (cost vs effort)
+
+`VIDEOGEN_PROVIDER` picks how product footage is generated. The cheap, fully-generated
+options for a ~90 videos/month, ~300฿/month target:
+
+| `VIDEOGEN_PROVIDER` | Model | Cost/mo | Setup | Docs |
+|---|---|---|---|---|
+| `ltx_modal` **(recommended)** | LTX-2.5, serverless on Modal | **~$0–7** (inside $30 free credit) | deploy once, no GPU to babysit | [docs/free-video-ltx-modal.md](docs/free-video-ltx-modal.md) |
+| `wan_comfyui` | Wan 2.2 on self-hosted ComfyUI | ~$2–6 (rented GPU) or free tier | run a ComfyUI GPU | [docs/free-video-wan.md](docs/free-video-wan.md) |
+| `fal` | managed API (e.g. LTX-2.3 Fast) | ~$30–58 | just an API key | — |
+
+Start in `DRY_RUN=true` (below) to rehearse the whole pipeline at $0, then switch to
+`ltx_modal` for real, cheap, fully-generated video.
+
 ## Local dev without Docker
 
 ```bash

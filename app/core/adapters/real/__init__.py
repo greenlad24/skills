@@ -22,5 +22,6 @@ from __future__ import annotations
 # Importing each module runs its register_real(...) call.
 from app.core.adapters.real import anthropic_llm  # noqa: F401
 from app.core.adapters.real import wan_comfyui  # noqa: F401  (free Wan video via ComfyUI)
+from app.core.adapters.real import ltx_modal  # noqa: F401  (serverless LTX-2.5 via Modal)
 
-__all__ = ["anthropic_llm", "wan_comfyui"]
+__all__ = ["anthropic_llm", "wan_comfyui", "ltx_modal"]
