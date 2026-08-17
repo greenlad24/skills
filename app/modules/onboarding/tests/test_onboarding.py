@@ -42,6 +42,18 @@ def test_save_coerces_bool(env_file, monkeypatch):
     assert settings.DRY_RUN is False
 
 
+def test_save_blank_value_keeps_existing_key(env_file, monkeypatch):
+    # An empty field must NOT overwrite an already-saved secret (the wizard sends
+    # blanks for keys the operator left untouched).
+    env_file.write_text("ANTHROPIC_API_KEY=keepme\n", encoding="utf-8")
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "keepme", raising=False)
+    out = env_store.save({"ANTHROPIC_API_KEY": "  ", "SOCIALCRAWL_API_KEY": "sc-new"})
+    assert "ANTHROPIC_API_KEY" in out["skipped_blank"]
+    assert out["saved"] == ["SOCIALCRAWL_API_KEY"]
+    assert "ANTHROPIC_API_KEY=keepme" in env_file.read_text(encoding="utf-8")
+    assert settings.ANTHROPIC_API_KEY == "keepme"        # untouched
+
+
 # --- status ----------------------------------------------------------------- #
 
 def test_status_reports_missing_then_complete(monkeypatch):

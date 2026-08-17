@@ -76,17 +76,18 @@ export function SetupWizard() {
         {step === 0 && (
           <ProviderStep
             title="Connect your keys"
-            blurb="Anthropic writes the Thai script; Google Cloud TTS speaks it; SocialCrawl looks up the product on TikTok Shop TH (title, image, THB price). All three have free tiers that cover ~90 videos/month."
+            blurb="Anthropic writes the Thai script; Google Cloud TTS speaks it; SocialCrawl looks up the product on TikTok Shop TH (title, image, THB price). Keys already set are kept — just fill any that are missing."
             fields={[
               { env: "ANTHROPIC_API_KEY", label: "Anthropic API key", type: "password", placeholder: "sk-ant-…" },
               { env: "GOOGLE_TTS_API_KEY", label: "Google Cloud TTS key", type: "password", placeholder: "AIza…" },
               { env: "SOCIALCRAWL_API_KEY", label: "SocialCrawl key", type: "password", placeholder: "sc-…" },
             ]}
             tests={[
-              { provider: "llm", label: "Anthropic" },
-              { provider: "tts", label: "Google TTS" },
-              { provider: "scraper", label: "SocialCrawl" },
+              { provider: "llm", label: "Anthropic", env: "ANTHROPIC_API_KEY" },
+              { provider: "tts", label: "Google TTS", env: "GOOGLE_TTS_API_KEY" },
+              { provider: "scraper", label: "SocialCrawl", env: "SOCIALCRAWL_API_KEY" },
             ]}
+            configured={status.data?.configured}
             onNext={next}
           />
         )}
@@ -98,7 +99,8 @@ export function SetupWizard() {
               { env: "MODAL_LTX_URL", label: "Modal web URL", placeholder: "https://…modal.run" },
               { env: "MODAL_LTX_TOKEN", label: "Shared token", type: "password", placeholder: "matches AUTOUGC_LTX_TOKEN" },
             ]}
-            tests={[{ provider: "video", label: "Modal /health" }]}
+            tests={[{ provider: "video", label: "Modal /health", env: "MODAL_LTX_URL" }]}
+            configured={status.data?.configured}
             onNext={next}
             onBack={back}
           />
@@ -111,7 +113,8 @@ export function SetupWizard() {
               { env: "TIKTOK_ACCESS_TOKEN", label: "Access token", type: "password", placeholder: "act.…" },
               { env: "TIKTOK_POSTING_MODE", label: "Mode", type: "select", options: ["direct", "inbox"] },
             ]}
-            tests={[{ provider: "tiktok", label: "TikTok auth" }]}
+            tests={[{ provider: "tiktok", label: "TikTok auth", env: "TIKTOK_ACCESS_TOKEN" }]}
+            configured={status.data?.configured}
             optional
             onNext={next}
             onBack={back}
@@ -125,16 +128,18 @@ export function SetupWizard() {
 
 // A generic "save these fields, then test these providers" step.
 function ProviderStep({
-  title, blurb, fields, tests, optional, onNext, onBack,
+  title, blurb, fields, tests, configured, optional, onNext, onBack,
 }: {
   title: string;
   blurb: string;
   fields: Field[];
-  tests: { provider: string; label: string }[];
+  tests: { provider: string; label: string; env?: string }[];
+  configured?: Record<string, boolean>;
   optional?: boolean;
   onNext: () => void;
   onBack?: () => void;
 }) {
+  const isSet = (env?: string) => !!(env && configured?.[env]);
   const [values, setValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(fields.map((f) => [f.env, f.type === "select" ? (f.options?.[0] ?? "") : ""])),
   );
@@ -144,7 +149,11 @@ function ProviderStep({
   async function saveAndTest() {
     setSaving(true);
     try {
-      await setupApi.save(values);
+      // Only send non-empty values so a blank "already set" field is never wiped.
+      const payload = Object.fromEntries(
+        Object.entries(values).filter(([, v]) => v.trim() !== ""),
+      );
+      await setupApi.save(payload);
       for (const t of tests) setResults((r) => ({ ...r, [t.provider]: "testing" }));
       for (const t of tests) {
         try {
@@ -159,9 +168,10 @@ function ProviderStep({
     }
   }
 
+  // A provider is satisfied if it just tested green OR it was already configured.
   const allGreen = tests.every((t) => {
     const r = results[t.provider];
-    return r && r !== "testing" && r.ok;
+    return (r && r !== "testing" && r.ok) || isSet(t.env);
   });
 
   return (
@@ -169,9 +179,14 @@ function ProviderStep({
       <strong>{title}</strong>
       <p className="small muted">{blurb}</p>
 
-      {fields.map((f) => (
+      {fields.map((f) => {
+        const set = isSet(f.env);
+        return (
         <div key={f.env} className="row" style={{ gap: "0.6rem" }}>
-          <span style={{ width: "12rem" }}>{f.label}</span>
+          <span style={{ width: "12rem" }}>
+            {f.label}
+            {set && <span className="small" style={{ color: "var(--green)" }}> ✓ set</span>}
+          </span>
           {f.type === "select" ? (
             <select className="grow" value={values[f.env] ?? ""} onChange={(e) => setValues((v) => ({ ...v, [f.env]: e.target.value }))}>
               {(f.options ?? []).map((o) => (
@@ -182,13 +197,14 @@ function ProviderStep({
             <input
               type={f.type === "password" ? "password" : "text"}
               className="grow"
-              placeholder={f.placeholder ?? ""}
+              placeholder={set ? "leave blank to keep current" : (f.placeholder ?? "")}
               value={values[f.env] ?? ""}
               onChange={(e) => setValues((v) => ({ ...v, [f.env]: e.target.value }))}
             />
           )}
         </div>
-      ))}
+        );
+      })}
 
       <div className="row" style={{ gap: "0.6rem", marginTop: "0.3rem" }}>
         <button className="small" onClick={saveAndTest} disabled={saving}>
@@ -196,12 +212,17 @@ function ProviderStep({
         </button>
         {tests.map((t) => {
           const r = results[t.provider];
+          const set = isSet(t.env);
+          const cls = r && r !== "testing" ? (r.ok ? "ok" : "bad") : set ? "ok" : "idle";
+          const text = r === "testing"
+            ? "…"
+            : r
+              ? (r.ok ? `ok ${r.latency_ms ?? "?"}ms` : r.error || "fail")
+              : set ? "configured" : "—";
           return (
             <span key={t.provider} className="row" style={{ gap: "0.3rem" }}>
-              <span className={`dot ${r && r !== "testing" ? (r.ok ? "ok" : "bad") : "idle"}`} />
-              <span className="small muted">
-                {t.label}: {r === "testing" ? "…" : r ? (r.ok ? `ok ${r.latency_ms ?? "?"}ms` : r.error || "fail") : "—"}
-              </span>
+              <span className={`dot ${cls}`} />
+              <span className="small muted">{t.label}: {text}</span>
             </span>
           );
         })}

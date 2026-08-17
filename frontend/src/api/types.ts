@@ -143,7 +143,9 @@ export type SetupStepKey = "keys" | "video" | "tiktok";
 export interface SetupStatus {
   complete: boolean;
   steps: Record<SetupStepKey, boolean>;
+  configured?: Record<string, boolean>;
   dry_run?: boolean;
+  onboarded?: boolean;
 }
 
 export interface SaveResult {

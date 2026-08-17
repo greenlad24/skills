@@ -33,9 +33,20 @@ def compute_status() -> dict:
     # optional for this gate. DRY_RUN (fakes) needs no real keys.
     required_ok = keys_ok and video_ok
     complete = bool(settings.DRY_RUN) or required_ok
+    # Per-field presence so the wizard can show "already set" and only ask for what's
+    # missing (values are never returned — just whether each is configured).
+    configured = {
+        "ANTHROPIC_API_KEY": bool(settings.ANTHROPIC_API_KEY),
+        "GOOGLE_TTS_API_KEY": bool(settings.GOOGLE_TTS_API_KEY),
+        "SOCIALCRAWL_API_KEY": bool(settings.SOCIALCRAWL_API_KEY),
+        "MODAL_LTX_URL": bool(settings.MODAL_LTX_URL),
+        "MODAL_LTX_TOKEN": bool(settings.MODAL_LTX_TOKEN),
+        "TIKTOK_ACCESS_TOKEN": bool(settings.TIKTOK_ACCESS_TOKEN),
+    }
     return {
         "complete": complete,
         "steps": steps,
+        "configured": configured,
         "dry_run": settings.DRY_RUN,
         "onboarded": bool(settings.ONBOARDED),
     }
