@@ -28,6 +28,7 @@ deliberately defensive because actor payloads vary field-by-field.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 from urllib.parse import urlparse
 
@@ -99,6 +100,26 @@ def _harvest_images(node: Any, out: list[str], depth: int = 0) -> None:
                 _harvest_images(node[key], out, depth + 1)
 
 
+def _render_input(template: str, url: str, region: str) -> dict[str, Any]:
+    """Render an APIFY_INPUT JSON template, substituting {url}/{region}/{REGION}.
+
+    Falls back to a minimal `{"startUrls":[{"url": url}]}` if the template is blank
+    or not valid JSON, so a typo never hard-fails the scrape.
+    """
+    if not template.strip():
+        return {"startUrls": [{"url": url}]}
+    filled = (
+        template.replace("{url}", url)
+        .replace("{region}", region)
+        .replace("{REGION}", region.upper())
+    )
+    try:
+        parsed = json.loads(filled)
+        return parsed if isinstance(parsed, dict) else {"startUrls": [{"url": url}]}
+    except ValueError:
+        return {"startUrls": [{"url": url}]}
+
+
 def _first_str(*vals: Any) -> str | None:
     for v in vals:
         if isinstance(v, str) and v.strip():
@@ -134,6 +155,14 @@ class ApifyScraperProvider:
 
     def scrape_product(self, *, url: str, idempotency_key: str) -> ProviderResult:
         region = (settings.APIFY_TIKTOK_REGION or "th").lower()
+
+        # Universal override: any manually-tested actor + input, no code change.
+        if settings.APIFY_ACTOR:
+            actor = settings.APIFY_ACTOR
+            run_input = _render_input(settings.APIFY_INPUT, url, region)
+            items = self._run_actor(actor, run_input)
+            return self._items_to_result(items, url, actor)
+
         if _is_tiktok_shop(url):
             # Real TikTok Shop product/shop URL -> the reliable Shop actor (TH market).
             # The Thai storefront is selected by routing through a Thai RESIDENTIAL
@@ -171,6 +200,12 @@ class ApifyScraperProvider:
             run_input = {"startUrls": [{"url": url}], "country": region}
 
         items = self._run_actor(actor, run_input)
+        return self._items_to_result(items, url, actor)
+
+    def _items_to_result(
+        self, items: list[Any] | ProviderResult, url: str, actor: str
+    ) -> ProviderResult:
+        """Map an Apify dataset (defensively, field names vary) into a scrape result."""
         if isinstance(items, ProviderResult):  # error passthrough
             return items
         if not items:

@@ -33,6 +33,19 @@ def test_harvest_images_walks_nested_payloads():
     assert "not-a-url" not in out
 
 
+def test_render_input_substitutes_placeholders():
+    tmpl = '{"productUrls":["{url}"],"proxyConfiguration":{"apifyProxyCountry":"{REGION}"}}'
+    out = apify._render_input(tmpl, "https://x/view/product/1", "th")
+    assert out["productUrls"] == ["https://x/view/product/1"]
+    assert out["proxyConfiguration"]["apifyProxyCountry"] == "TH"
+
+
+def test_render_input_falls_back_on_bad_template():
+    # Blank or invalid JSON never hard-fails the scrape.
+    assert apify._render_input("", "u", "th") == {"startUrls": [{"url": "u"}]}
+    assert apify._render_input("{not json", "u", "th") == {"startUrls": [{"url": "u"}]}
+
+
 def test_looks_like_image():
     assert apify._looks_like_image("https://cdn.example/a/b/photo.jpg")
     assert apify._looks_like_image("https://cdn.example/dynamic-cover/x")

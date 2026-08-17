@@ -66,6 +66,14 @@ class Settings(BaseSettings):
     APIFY_TIKTOK_SHOP_ACTOR: str = "webdatalabs~tiktok-shop-scraper"
     APIFY_TIKTOK_VIDEO_ACTOR: str = "clockworks~tiktok-scraper"
     APIFY_GENERIC_ACTOR: str = ""  # optional actor for non-TikTok URLs; blank => manual
+    # Universal override: point the app at ANY Apify actor you tested manually,
+    # without a code change. When APIFY_ACTOR is set it wins for every URL, and
+    # APIFY_INPUT (a JSON template with {url} and {region}/{REGION} placeholders)
+    # is sent as its input verbatim. Example:
+    #   APIFY_ACTOR=some-user~their-tiktok-shop-scraper
+    #   APIFY_INPUT={"productUrls":["{url}"],"proxyConfiguration":{"useApifyProxy":true,"apifyProxyCountry":"{REGION}"}}
+    APIFY_ACTOR: str = ""
+    APIFY_INPUT: str = ""
     APIFY_TIKTOK_REGION: str = "th"  # Thai storefront/proxy region (ISO alpha-2)
     # TikTok Shop via residential proxy is slow (1-4 min is normal); Apify's
     # run-sync endpoint allows up to 300s. Give it room before falling to manual.
