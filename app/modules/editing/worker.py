@@ -145,7 +145,12 @@ def resolve_job_spec(db, job: VideoJob) -> JobSpec:
     # Assets for scenes (avatar/broll clips) + the clean VO + optional music.
     assets = db.query(MediaAsset).filter(MediaAsset.video_job_id == job.id).all()
     by_id = {str(a.id): a for a in assets}
-    vo_asset = next((a for a in assets if a.role == "tts_audio"), None)
+    # Faceless writes the full Thai VO as role "vo_track" (constants.MEDIA_VO_TRACK,
+    # "the clean, full Thai VO track for §04 editing"); "tts_audio" is the dormant
+    # per-avatar-scene lane. Prefer the editing VO track, fall back to per-scene TTS.
+    vo_asset = next((a for a in assets if a.role == "vo_track"), None) or next(
+        (a for a in assets if a.role == "tts_audio"), None
+    )
     music_asset = next((a for a in assets if a.role == "music"), None)
 
     # Derive hook (lowest sequence_no unless a scene's asset meta overrides) + VO spans
