@@ -24,13 +24,29 @@ if ! command -v brew >/dev/null 2>&1; then
 fi
 
 # --- 2. System deps (idempotent) ---------------------------------------------
-say "Checking Python 3.11, Redis, ffmpeg via Homebrew..."
-brew list python@3.11 >/dev/null 2>&1 || brew install python@3.11
-brew list redis       >/dev/null 2>&1 || brew install redis
-brew list ffmpeg      >/dev/null 2>&1 || brew install ffmpeg
+# Detect tools that already exist (any install, not just brew) so we never
+# rebuild them. On old macOS, brew compiles from source (slow / can fail), so we
+# fetch a PREBUILT ffmpeg instead of building it.
+say "Checking Python 3.11, Redis, ffmpeg..."
+command -v python3.11   >/dev/null 2>&1 || brew install python@3.11
+command -v redis-server >/dev/null 2>&1 || brew install redis
 
-PYBIN="$(brew --prefix)/bin/python3.11"
-[ -x "$PYBIN" ] || PYBIN="python3.11"
+if ! command -v ffmpeg >/dev/null 2>&1; then
+  say "Installing a prebuilt ffmpeg (no compiling)..."
+  ok=0
+  for tool in ffmpeg ffprobe; do
+    if curl -fsSL "https://evermeet.cx/ffmpeg/getrelease/$tool/zip" -o "/tmp/$tool.zip" \
+       && unzip -o -q "/tmp/$tool.zip" -d /tmp; then
+      sudo mv "/tmp/$tool" /usr/local/bin/ && sudo chmod +x "/usr/local/bin/$tool" && ok=1
+    fi
+  done
+  if [ "$ok" != "1" ]; then
+    warn "prebuilt ffmpeg download failed — falling back to Homebrew (slow, may take 20-40 min)"
+    brew install ffmpeg
+  fi
+fi
+
+PYBIN="$(command -v python3.11 || echo python3.11)"
 
 # --- 3. Redis running ---------------------------------------------------------
 if ! redis-cli ping >/dev/null 2>&1; then
