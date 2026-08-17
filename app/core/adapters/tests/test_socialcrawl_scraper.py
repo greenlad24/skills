@@ -37,11 +37,40 @@ def test_helpers():
     assert socialcrawl._to_float("28.99") == 28.99
     assert socialcrawl._to_float("฿199.00") == 199.00
     assert socialcrawl._currency_of({"currency_symbol": "฿"}) == "THB"
-    imgs = socialcrawl._images_of(_ITEM)
+    imgs = socialcrawl._images_of(_ITEM)  # no hi-res rewrite when size=0
     assert imgs == [
         "https://p16-oec-sg.ibyteimg.com/tos/f3931612.webp?a=1",
         "https://p19-oec-sg.ibyteimg.com/tos/f3931612.webp?a=1",
     ]
+
+
+def test_hires_url_rewrite():
+    orig = (
+        "https://p16-oec-sg.ibyteimg.com/tos-alisg-i-aphluv4xwc-sg/f3931612"
+        "~tplv-aphluv4xwc-crop-webp:400:400.webp?dr=15592&t=555f072d"
+    )
+    hi = socialcrawl._hires_url(orig, 1080)
+    assert hi is not None
+    assert "~tplv-aphluv4xwc-crop-webp:1080:1080.webp" in hi
+    assert hi.endswith("?dr=15592&t=555f072d")  # query string preserved
+    # No template -> no rewrite; size 0 disabled.
+    assert socialcrawl._hires_url("https://x/y.webp?a=1", 1080) is None
+    assert socialcrawl._hires_url(orig, 0) is None
+
+
+def test_images_of_prepends_hires():
+    item = {
+        "image": {
+            "url_list": [
+                "https://p16-oec-sg.ibyteimg.com/tos-alisg-i-aphluv4xwc-sg/f39"
+                "~tplv-aphluv4xwc-crop-webp:400:400.webp?a=1"
+            ]
+        }
+    }
+    imgs = socialcrawl._images_of(item, hires_size=1080)
+    assert len(imgs) == 2
+    assert ":1080:1080." in imgs[0]  # hi-res first
+    assert ":400:400." in imgs[1]    # original fallback second
 
 
 def test_scrape_product_maps_search_item(monkeypatch):

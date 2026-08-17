@@ -78,19 +78,41 @@ class LTXModalVideoProvider:
     def generate_hero_image(
         self, *, prompt: str, refs: list[str], idempotency_key: str
     ) -> ProviderResult:
-        """Cheapest hero = the real product photo, passed straight through."""
+        """Cheapest hero = the real product photo, passed straight through.
+
+        `refs` is ordered best-first (e.g. a high-res CDN rendition, then the original).
+        Pick the first one that actually fetches so a rejected hi-res variant falls back
+        to the original instead of failing the job.
+        """
         if not refs:
             return ProviderResult(
                 ok=False,
                 error="ltx_modal hero needs a product reference image (refs is empty); "
                 "the serverless adapter does image-to-video, not text-to-image.",
             )
+        chosen = self._first_fetchable(refs) or refs[0]
         return ProviderResult(
             ok=True,
-            data={"image_key": refs[0], "mime_type": "image/*", "seed": _seed_from(idempotency_key)},
+            data={"image_key": chosen, "mime_type": "image/*", "seed": _seed_from(idempotency_key)},
             cost_usd=0.0,
             usage={"images": 0, "note": "real-product-passthrough"},
         )
+
+    def _first_fetchable(self, refs: list[str]) -> str | None:
+        """Return the first ref that resolves (local path, or an HTTP 200/206)."""
+        for ref in refs:
+            if not isinstance(ref, str) or not ref:
+                continue
+            if not ref.startswith(("http://", "https://")):
+                return ref  # local/relative path — assume present
+            try:
+                with httpx.Client(timeout=20, follow_redirects=True) as c:
+                    r = c.get(ref, headers={"Range": "bytes=0-0"})
+                if r.status_code in (200, 206):
+                    return ref
+            except httpx.HTTPError:
+                continue
+        return None
 
     def submit_image_to_video(
         self, *, image_key: str, prompt: str, model: str, seconds: float, aspect: str,

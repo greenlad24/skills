@@ -33,6 +33,18 @@ from app.core.config import settings
 # A TikTok Shop product id is a long run of digits (e.g. in /product/<id> or /pdp/<id>).
 _PRODUCT_ID_RE = re.compile(r"(\d{15,})")
 
+# ByteImg/TikTok CDN resize template, e.g. "~tplv-aphluv4xwc-crop-webp:400:400.webp".
+# The ":W:H" is a rendition size we can raise for a higher-resolution image.
+_TPLV_SIZE_RE = re.compile(r"(~tplv-[^:/?]+):\d+:\d+(\.\w+)")
+
+
+def _hires_url(url: str, size: int) -> str | None:
+    """Rewrite a ByteImg resize template to `size`×`size`; None if it doesn't apply."""
+    if size <= 0 or not isinstance(url, str):
+        return None
+    new = _TPLV_SIZE_RE.sub(rf"\g<1>:{size}:{size}\g<2>", url, count=1)
+    return new if new != url else None
+
 
 def _first_str(*vals: Any) -> str | None:
     for v in vals:
@@ -50,22 +62,34 @@ def _to_float(v: Any) -> float | None:
         return None
 
 
-def _images_of(item: dict[str, Any]) -> list[str]:
-    """Collect product image URLs from a SocialCrawl TikTok Shop search item."""
+def _images_of(item: dict[str, Any], hires_size: int = 0) -> list[str]:
+    """Collect product image URLs, high-resolution variant first (original as fallback).
+
+    For each CDN URL we prepend a higher-res rendition (rewritten resize template) so
+    the hero reference is crisp; the original stays right after it so the LTX hero step
+    can fall back if a hi-res variant is ever rejected.
+    """
     out: list[str] = []
+
+    def _add(u: str) -> None:
+        if not (isinstance(u, str) and u.startswith("http")):
+            return
+        hi = _hires_url(u, hires_size)
+        for cand in (hi, u):
+            if cand and cand not in out:
+                out.append(cand)
+
     img = item.get("image")
     if isinstance(img, dict):
         for u in img.get("url_list") or []:
-            if isinstance(u, str) and u.startswith("http") and u not in out:
-                out.append(u)
+            _add(u)
     # Some items carry multiple images under `images`.
     for extra in item.get("images") or []:
         if isinstance(extra, dict):
             for u in extra.get("url_list") or []:
-                if isinstance(u, str) and u.startswith("http") and u not in out:
-                    out.append(u)
-        elif isinstance(extra, str) and extra.startswith("http") and extra not in out:
-            out.append(extra)
+                _add(u)
+        elif isinstance(extra, str):
+            _add(extra)
     return out
 
 
@@ -92,6 +116,7 @@ class SocialCrawlScraperProvider:
         self._region = (settings.SOCIALCRAWL_REGION or "TH").upper()
         self._headers = {"x-api-key": settings.SOCIALCRAWL_API_KEY}
         self._est_per_credit = float(settings.SOCIALCRAWL_EST_USD_PER_CALL)
+        self._image_size = int(settings.SOCIALCRAWL_IMAGE_SIZE)
 
     # -- ScraperProvider ----------------------------------------------------- #
 
@@ -120,7 +145,7 @@ class SocialCrawlScraperProvider:
             item = items[0]
 
         price_info = item.get("product_price_info") or {}
-        images = _images_of(item)
+        images = _images_of(item, hires_size=self._image_size)
         rate = item.get("rate_info") or {}
         seller = item.get("seller_info") or {}
         seo = item.get("seo_url") or {}

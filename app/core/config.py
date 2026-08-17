@@ -62,6 +62,10 @@ class Settings(BaseSettings):
     SOCIALCRAWL_BASE: str = "https://www.socialcrawl.dev/v1"
     SOCIALCRAWL_REGION: str = "TH"  # ISO alpha-2, uppercase
     SOCIALCRAWL_EST_USD_PER_CALL: float = 0.008  # ledger estimate (~£15 / 2,500 calls)
+    # TikTok/ByteImg CDN images embed a resize template (e.g. ...:400:400.webp).
+    # We rewrite it to this size for a crisp hero reference; the original stays as a
+    # fallback and the LTX hero step picks whichever actually fetches. 0 => no rewrite.
+    SOCIALCRAWL_IMAGE_SIZE: int = 1080
 
     # --- Apify scraper (the approved product/image source) ---
     # TikTok Shop / short links can't be scraped by generic crawlers, so we run an

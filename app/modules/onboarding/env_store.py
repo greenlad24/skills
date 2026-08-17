@@ -29,6 +29,7 @@ ALLOWED_KEYS: frozenset[str] = frozenset({
     "POSTING_PROVIDER", "TIKTOK_ACCESS_TOKEN", "TIKTOK_POSTING_MODE", "TIKTOK_PRIVACY_LEVEL",
     # Research scraping (SocialCrawl TikTok Shop TH search — the approved source)
     "SCRAPER_PROVIDER", "SOCIALCRAWL_API_KEY", "SOCIALCRAWL_REGION",
+    "SOCIALCRAWL_IMAGE_SIZE",
     # Alternative scrapers (optional, swappable)
     "APIFY_API_KEY", "FIRECRAWL_API_KEY",
     "APIFY_TIKTOK_SHOP_ACTOR", "APIFY_TIKTOK_VIDEO_ACTOR",
