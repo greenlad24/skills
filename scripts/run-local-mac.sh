@@ -29,10 +29,10 @@ fi
 # fetch a PREBUILT ffmpeg instead of building it.
 say "Checking Python 3.11, ffmpeg (Redis is optional)..."
 command -v python3.11   >/dev/null 2>&1 || brew install python@3.11
-# Redis is OPTIONAL — if it isn't installed and Homebrew can't fetch it (rate limits
-# on old macOS), we fall back to a built-in file-based queue that needs no server.
-command -v redis-server >/dev/null 2>&1 || brew install redis >/dev/null 2>&1 \
-  || warn "Redis unavailable — using the built-in file queue (no Redis needed)."
+# Redis is OPTIONAL and we never try to install it (Homebrew rate-limits/hangs on
+# old macOS). If it's already present we use it; otherwise the built-in file queue.
+command -v redis-server >/dev/null 2>&1 \
+  || warn "No Redis installed — using the built-in file queue (nothing to install)."
 
 if ! command -v ffmpeg >/dev/null 2>&1; then
   say "Installing a prebuilt ffmpeg (no compiling)..."
