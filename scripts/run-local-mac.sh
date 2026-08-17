@@ -27,9 +27,12 @@ fi
 # Detect tools that already exist (any install, not just brew) so we never
 # rebuild them. On old macOS, brew compiles from source (slow / can fail), so we
 # fetch a PREBUILT ffmpeg instead of building it.
-say "Checking Python 3.11, Redis, ffmpeg..."
+say "Checking Python 3.11, ffmpeg (Redis is optional)..."
 command -v python3.11   >/dev/null 2>&1 || brew install python@3.11
-command -v redis-server >/dev/null 2>&1 || brew install redis
+# Redis is OPTIONAL — if it isn't installed and Homebrew can't fetch it (rate limits
+# on old macOS), we fall back to a built-in file-based queue that needs no server.
+command -v redis-server >/dev/null 2>&1 || brew install redis >/dev/null 2>&1 \
+  || warn "Redis unavailable — using the built-in file queue (no Redis needed)."
 
 if ! command -v ffmpeg >/dev/null 2>&1; then
   say "Installing a prebuilt ffmpeg (no compiling)..."
@@ -48,13 +51,17 @@ fi
 
 PYBIN="$(command -v python3.11 || echo python3.11)"
 
-# --- 3. Redis running ---------------------------------------------------------
-if ! redis-cli ping >/dev/null 2>&1; then
-  say "Starting Redis..."
-  brew services start redis >/dev/null 2>&1 || (redis-server --daemonize yes >/dev/null 2>&1 || true)
-  sleep 1
+# --- 3. Redis (optional) — else use the built-in file queue -------------------
+REDIS_OK=0
+if command -v redis-server >/dev/null 2>&1; then
+  if ! redis-cli ping >/dev/null 2>&1; then
+    say "Starting Redis..."
+    brew services start redis >/dev/null 2>&1 || redis-server --daemonize yes >/dev/null 2>&1 || true
+    sleep 1
+  fi
+  redis-cli ping >/dev/null 2>&1 && REDIS_OK=1
 fi
-redis-cli ping >/dev/null 2>&1 && say "Redis is up." || warn "Redis not responding; the worker may fail to start."
+[ "$REDIS_OK" = 1 ] && say "Redis is up." || say "No Redis — using the built-in file queue (zero setup)."
 
 # --- 4. Virtualenv + deps -----------------------------------------------------
 if [ ! -d .venv ]; then
@@ -67,25 +74,30 @@ say "Installing Python dependencies..."
 python -m pip install --quiet --upgrade pip
 python -m pip install --quiet -r requirements.txt
 
-# --- 5. Starter .env ----------------------------------------------------------
-if [ ! -f .env ]; then
-  say "Writing a starter .env (SQLite, DRY_RUN on, local Redis)..."
-  cp .env.example .env
-  # Point Celery/Redis at the local brew Redis and use the SQLite fallback.
-  {
-    echo ""
-    echo "# --- local-mac overrides (written by scripts/run-local-mac.sh) ---"
-    echo "DATABASE_URL="
-    echo "REDIS_URL=redis://localhost:6379/0"
-    echo "CELERY_BROKER_URL=redis://localhost:6379/0"
-    echo "CELERY_RESULT_BACKEND=redis://localhost:6379/1"
-    echo "MEDIA_ROOT=$ROOT/.media"
-    echo "DRY_RUN=true"
-  } >> .env
-  mkdir -p "$ROOT/.media"
-  warn "Starter .env created with DRY_RUN=true (no spend). Edit it to add keys and"
-  warn "set VIDEOGEN_PROVIDER=ltx_modal, TTS_PROVIDER=google_tts, POSTING_PROVIDER=tiktok, DRY_RUN=false when ready."
+# --- 5. .env + broker selection ----------------------------------------------
+FRESH_ENV=0
+if [ ! -f .env ]; then cp .env.example .env; FRESH_ENV=1; fi
+
+# Replace an existing KEY= line (or append) — keeps re-runs idempotent.
+set_env() {
+  local k="$1" v="$2"
+  grep -vE "^${k}=" .env > .env.tmp 2>/dev/null || true
+  mv .env.tmp .env
+  printf '%s=%s\n' "$k" "$v" >> .env
+}
+
+set_env DATABASE_URL ""                    # empty => local SQLite
+set_env MEDIA_ROOT "$ROOT/.media"
+if [ "$REDIS_OK" = 1 ]; then
+  set_env CELERY_BROKER_URL "redis://localhost:6379/0"
+  set_env CELERY_RESULT_BACKEND "redis://localhost:6379/1"
+else
+  set_env CELERY_BROKER_URL "filesystem://"
+  set_env CELERY_RESULT_BACKEND "db+sqlite:///./celery_results.sqlite3"
+  set_env CELERY_BROKER_DIR "$ROOT/.broker"
 fi
+[ "$FRESH_ENV" = 1 ] && set_env DRY_RUN "true"   # first run: safe fake mode
+mkdir -p "$ROOT/.media" "$ROOT/.broker/queue" "$ROOT/.broker/processed"
 
 # --- 6. Migrate the DB --------------------------------------------------------
 say "Applying database migrations..."

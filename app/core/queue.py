@@ -6,6 +6,7 @@ package and their tasks are discovered automatically — no edit to this file ne
 
 from __future__ import annotations
 
+import os
 import pkgutil
 from pathlib import Path
 
@@ -13,11 +14,25 @@ from celery import Celery
 
 from app.core.config import settings
 
-celery_app = Celery(
-    "autougc",
-    broker=settings.CELERY_BROKER_URL or settings.REDIS_URL,
-    backend=settings.CELERY_RESULT_BACKEND or settings.REDIS_URL,
-)
+_broker = settings.CELERY_BROKER_URL or settings.REDIS_URL
+_backend = settings.CELERY_RESULT_BACKEND or settings.REDIS_URL
+
+celery_app = Celery("autougc", broker=_broker, backend=_backend)
+
+# Redis-free local mode: a `filesystem://` broker keeps the async worker
+# architecture with NO server to install (used by scripts/run-local-mac.sh when
+# Redis isn't available). Messages are exchanged through a folder on disk.
+if _broker.startswith("filesystem://"):
+    _broker_dir = settings.CELERY_BROKER_DIR or ".broker"
+    _queue = os.path.join(_broker_dir, "queue")
+    _processed = os.path.join(_broker_dir, "processed")
+    os.makedirs(_queue, exist_ok=True)
+    os.makedirs(_processed, exist_ok=True)
+    celery_app.conf.broker_transport_options = {
+        "data_folder_in": _queue,
+        "data_folder_out": _queue,
+        "data_folder_processed": _processed,
+    }
 
 celery_app.conf.update(
     task_track_started=True,
