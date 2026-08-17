@@ -89,9 +89,3 @@ image-to-video checkpoint; swap it for the confirmed 2.5 weights when you deploy
   hands-on beats to ~3s and one action, frame the product **held up to camera** rather
   than actively operated, and start i2v from a clean still where the grip already looks
   right. Plan content around hero shots + "held to camera" beats for the best realism.
-
-## Going hands-off later (optional)
-
-If you'd rather never think about infra, set `VIDEOGEN_PROVIDER` to a managed
-endpoint instead (fal hosting LTX-2.3 Fast) — same adapter contract, ~$30–58/mo, no
-Modal deploy. This LTX-Modal path stays the cheapest.

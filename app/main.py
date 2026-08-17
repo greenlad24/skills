@@ -58,7 +58,6 @@ def health(db: Session = Depends(get_db)) -> HealthResponse:
         ProviderHealth(provider=settings.LLM_PROVIDER, kind="llm", mode=mode),
         ProviderHealth(provider=settings.SCRAPER_PROVIDER, kind="scraper", mode=mode),
         ProviderHealth(provider=settings.TTS_PROVIDER, kind="tts", mode=mode),
-        ProviderHealth(provider=settings.AVATAR_PROVIDER, kind="avatar", mode=mode),
         ProviderHealth(provider=settings.VIDEOGEN_PROVIDER, kind="videogen", mode=mode),
         ProviderHealth(provider=settings.POSTING_PROVIDER, kind="posting", mode=mode),
     ]

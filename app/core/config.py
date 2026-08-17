@@ -39,38 +39,24 @@ class Settings(BaseSettings):
     MINIO_ROOT_USER: str = "minio"
     MINIO_ROOT_PASSWORD: str = "change-me"
 
-    # --- Provider selection (registry keys) ---
+    # --- Provider selection (the single approved stack) ---
     LLM_PROVIDER: str = "anthropic"
-    SCRAPER_PROVIDER: str = "apify"
-    AVATAR_PROVIDER: str = "heygen"
-    TTS_PROVIDER: str = "elevenlabs"
-    VIDEOGEN_PROVIDER: str = "fal"
-    POSTING_PROVIDER: str = "postpeer"
+    SCRAPER_PROVIDER: str = "firecrawl"
+    TTS_PROVIDER: str = "google_tts"
+    VIDEOGEN_PROVIDER: str = "ltx_modal"
+    POSTING_PROVIDER: str = "tiktok"
 
     # --- External API keys (secrets) ---
     ANTHROPIC_API_KEY: str = ""
-    HEYGEN_API_KEY: str = ""
-    ELEVENLABS_API_KEY: str = ""
-    FAL_API_KEY: str = ""
     APIFY_API_KEY: str = ""
     FIRECRAWL_API_KEY: str = ""
-    RAINFOREST_API_KEY: str = ""
-    POSTPEER_API_KEY: str = ""
 
-    # --- Reused-forever identities ---
+    # --- Legacy identities (dormant avatar lane; faceless jobs never use these) ---
+    # Kept only so the avatar scene-lane code path stays importable. The approved
+    # faceless workflow produces no ASSET_AVATAR scenes, so these stay empty.
+    AVATAR_PROVIDER: str = "fake-avatar"
     HEYGEN_AVATAR_ID: str = ""
     ELEVENLABS_VOICE_ID: str = ""
-
-    # --- Free/self-hosted video (Wan via ComfyUI) ---
-    # Set VIDEOGEN_PROVIDER=wan_comfyui and point this at a ComfyUI server:
-    # a free Kaggle/Colab GPU (see notebooks/wan_comfyui_kaggle.ipynb) or a rented GPU.
-    COMFYUI_URL: str = ""
-    # ComfyUI "API-format" workflow JSON with placeholder tokens (see the sample).
-    # Empty => the bundled sample template is used.
-    COMFYUI_WORKFLOW_PATH: str = ""
-    COMFYUI_FPS: int = 16
-    COMFYUI_POLL_SECONDS: int = 5
-    COMFYUI_TIMEOUT_SECONDS: int = 900
 
     # --- Serverless video (LTX-2.5 on Modal) — the cheap "no GPU to babysit" path ---
     # Set VIDEOGEN_PROVIDER=ltx_modal and point this at your deployed Modal web app
@@ -110,6 +96,8 @@ class Settings(BaseSettings):
     # --- Guards & run mode ---
     DRY_RUN: bool = True
     PER_VIDEO_COST_BUDGET_USD: float = 5.00
+    # Set true by the in-app onboarding wizard when first-run setup is finished.
+    ONBOARDED: bool = False
 
     # --- Auth ---
     APP_PASSWORD: str = ""

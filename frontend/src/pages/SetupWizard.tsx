@@ -3,11 +3,24 @@ import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { setupApi } from "@/api/client";
 import { useSetupStatus, qk } from "@/api/queries";
-import type { KeyTestResult, SeedSet } from "@/api/types";
+import type { KeyTestResult } from "@/api/types";
 
-// Screen 1 (§7A.1): first-run setup wizard. 6 linear steps with a progress rail; each step
-// persists on completion (resumable). Backed by the /api/setup/* endpoints.
-const STEPS = ["Keys", "Avatar+Voice", "Consent", "TikTok", "Seeds", "Review"] as const;
+// First-run setup for the single approved workflow. Three things to configure:
+// Keys (Anthropic + Google Thai TTS) → Video (LTX-2.5 on Modal) → TikTok posting.
+// Each field is written straight to .env via /api/setup/save; "Test" does a live
+// auth call via /api/setup/test/{provider}.
+const STEPS = ["Keys", "Video", "TikTok", "Finish"] as const;
+
+type TestState = KeyTestResult | "testing" | undefined;
+
+interface Field {
+  env: string;
+  label: string;
+  placeholder?: string;
+  type?: "text" | "password" | "select";
+  options?: string[];
+  help?: string;
+}
 
 export function SetupWizard() {
   const nav = useNavigate();
@@ -24,6 +37,8 @@ export function SetupWizard() {
   }
 
   async function finish() {
+    // Flip the app into the real stack and mark first-run complete.
+    await setupApi.save({ DRY_RUN: "false" }).catch(() => {});
     await setupApi.complete().catch(() => {});
     await qc.invalidateQueries({ queryKey: qk.setupStatus });
     nav("/");
@@ -47,13 +62,144 @@ export function SetupWizard() {
           ))}
         </div>
 
-        {step === 0 && <KeysStep onNext={next} />}
-        {step === 1 && <AvatarVoiceStep onNext={next} onBack={back} />}
-        {step === 2 && <ConsentStep onNext={next} onBack={back} />}
-        {step === 3 && <TikTokStep onNext={next} onBack={back} />}
-        {step === 4 && <SeedsStep onNext={next} onBack={back} />}
-        {step === 5 && <ReviewStep steps={status.data?.steps} onBack={back} onFinish={finish} />}
+        {step === 0 && (
+          <ProviderStep
+            title="Connect your keys"
+            blurb="Anthropic writes the Thai script; Google Cloud TTS speaks it. Both have free tiers that cover ~90 videos/month."
+            fields={[
+              { env: "ANTHROPIC_API_KEY", label: "Anthropic API key", type: "password", placeholder: "sk-ant-…" },
+              { env: "GOOGLE_TTS_API_KEY", label: "Google Cloud TTS key", type: "password", placeholder: "AIza…" },
+            ]}
+            tests={[
+              { provider: "llm", label: "Anthropic" },
+              { provider: "tts", label: "Google TTS" },
+            ]}
+            onNext={next}
+          />
+        )}
+        {step === 1 && (
+          <ProviderStep
+            title="Video engine — LTX-2.5 on Modal"
+            blurb="Deploy once with `modal deploy deploy/modal_ltx.py`, then paste the URL it prints. Generation scales to zero between renders (~$0/mo inside Modal's free credit)."
+            fields={[
+              { env: "MODAL_LTX_URL", label: "Modal web URL", placeholder: "https://…modal.run" },
+              { env: "MODAL_LTX_TOKEN", label: "Shared token", type: "password", placeholder: "matches AUTOUGC_LTX_TOKEN" },
+            ]}
+            tests={[{ provider: "video", label: "Modal /health" }]}
+            onNext={next}
+            onBack={back}
+          />
+        )}
+        {step === 2 && (
+          <ProviderStep
+            title="Connect TikTok"
+            blurb="Paste a Content Posting API access token. 'inbox' mode uploads to your drafts (works before app audit); 'direct' posts to the profile once your app is audited. AI-label is applied automatically."
+            fields={[
+              { env: "TIKTOK_ACCESS_TOKEN", label: "Access token", type: "password", placeholder: "act.…" },
+              { env: "TIKTOK_POSTING_MODE", label: "Mode", type: "select", options: ["direct", "inbox"] },
+            ]}
+            tests={[{ provider: "tiktok", label: "TikTok auth" }]}
+            optional
+            onNext={next}
+            onBack={back}
+          />
+        )}
+        {step === 3 && <FinishStep steps={status.data?.steps} onBack={back} onFinish={finish} />}
       </main>
+    </div>
+  );
+}
+
+// A generic "save these fields, then test these providers" step.
+function ProviderStep({
+  title, blurb, fields, tests, optional, onNext, onBack,
+}: {
+  title: string;
+  blurb: string;
+  fields: Field[];
+  tests: { provider: string; label: string }[];
+  optional?: boolean;
+  onNext: () => void;
+  onBack?: () => void;
+}) {
+  const [values, setValues] = useState<Record<string, string>>(() =>
+    Object.fromEntries(fields.map((f) => [f.env, f.type === "select" ? (f.options?.[0] ?? "") : ""])),
+  );
+  const [results, setResults] = useState<Record<string, TestState>>({});
+  const [saving, setSaving] = useState(false);
+
+  async function saveAndTest() {
+    setSaving(true);
+    try {
+      await setupApi.save(values);
+      for (const t of tests) setResults((r) => ({ ...r, [t.provider]: "testing" }));
+      for (const t of tests) {
+        try {
+          const res = await setupApi.testKey(t.provider);
+          setResults((r) => ({ ...r, [t.provider]: res }));
+        } catch (e) {
+          setResults((r) => ({ ...r, [t.provider]: { ok: false, error: (e as Error).message } }));
+        }
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const allGreen = tests.every((t) => {
+    const r = results[t.provider];
+    return r && r !== "testing" && r.ok;
+  });
+
+  return (
+    <div className="card stack">
+      <strong>{title}</strong>
+      <p className="small muted">{blurb}</p>
+
+      {fields.map((f) => (
+        <div key={f.env} className="row" style={{ gap: "0.6rem" }}>
+          <span style={{ width: "12rem" }}>{f.label}</span>
+          {f.type === "select" ? (
+            <select className="grow" value={values[f.env] ?? ""} onChange={(e) => setValues((v) => ({ ...v, [f.env]: e.target.value }))}>
+              {(f.options ?? []).map((o) => (
+                <option key={o} value={o}>{o}</option>
+              ))}
+            </select>
+          ) : (
+            <input
+              type={f.type === "password" ? "password" : "text"}
+              className="grow"
+              placeholder={f.placeholder ?? ""}
+              value={values[f.env] ?? ""}
+              onChange={(e) => setValues((v) => ({ ...v, [f.env]: e.target.value }))}
+            />
+          )}
+        </div>
+      ))}
+
+      <div className="row" style={{ gap: "0.6rem", marginTop: "0.3rem" }}>
+        <button className="small" onClick={saveAndTest} disabled={saving}>
+          {saving ? "Saving…" : "Save & test"}
+        </button>
+        {tests.map((t) => {
+          const r = results[t.provider];
+          return (
+            <span key={t.provider} className="row" style={{ gap: "0.3rem" }}>
+              <span className={`dot ${r && r !== "testing" ? (r.ok ? "ok" : "bad") : "idle"}`} />
+              <span className="small muted">
+                {t.label}: {r === "testing" ? "…" : r ? (r.ok ? `ok ${r.latency_ms ?? "?"}ms` : r.error || "fail") : "—"}
+              </span>
+            </span>
+          );
+        })}
+      </div>
+
+      <NavButtons
+        onNext={onNext}
+        onBack={onBack}
+        nextDisabled={!allGreen && !optional}
+        nextLabel={!allGreen && optional ? "Skip for now →" : "Next →"}
+      />
     </div>
   );
 }
@@ -67,274 +213,11 @@ function NavButtons({ onNext, onBack, nextLabel = "Next →", nextDisabled }: { 
   );
 }
 
-// --- Step 1: API keys ---
-const REQUIRED_KEYS = [
-  { id: "heygen", label: "HeyGen" },
-  { id: "elevenlabs", label: "ElevenLabs" },
-  { id: "fal", label: "fal.ai" },
-  { id: "scraper", label: "Scraper (Apify / Firecrawl)" },
-  { id: "postpeer", label: "PostPeer" },
-  { id: "llm", label: "LLM (Anthropic / OpenAI)" },
-];
-
-function KeysStep({ onNext }: { onNext: () => void }) {
-  const [values, setValues] = useState<Record<string, string>>({});
-  const [results, setResults] = useState<Record<string, KeyTestResult | "testing">>({});
-  const [scraper, setScraper] = useState<"apify" | "firecrawl">("firecrawl");
-
-  async function saveAndTest(id: string) {
-    const key = values[id];
-    if (!key) return;
-    setResults((r) => ({ ...r, [id]: "testing" }));
-    try {
-      await setupApi.saveKey(id === "scraper" ? scraper : id, key);
-      const res = await setupApi.testKey(id === "scraper" ? scraper : id);
-      setResults((r) => ({ ...r, [id]: res }));
-    } catch (e) {
-      setResults((r) => ({ ...r, [id]: { ok: false, error: (e as Error).message } }));
-    }
-  }
-
-  const allGreen = REQUIRED_KEYS.every((k) => {
-    const r = results[k.id];
-    return r && r !== "testing" && r.ok;
-  });
-
-  return (
-    <div className="card stack">
-      <strong>Connect your API keys</strong>
-      <p className="small muted">Each key is stored in the encrypted secret store. "Test" does a cheap live auth call. All must be green to advance.</p>
-      {REQUIRED_KEYS.map((k) => {
-        const r = results[k.id];
-        return (
-          <div key={k.id} className="stack" style={{ gap: "0.35rem" }}>
-            <div className="row" style={{ gap: "0.6rem" }}>
-              <span style={{ width: "12rem" }}>{k.label}</span>
-              <input type="password" className="grow" placeholder="paste key" value={values[k.id] ?? ""} onChange={(e) => setValues((v) => ({ ...v, [k.id]: e.target.value }))} />
-              <button className="small" onClick={() => saveAndTest(k.id)} disabled={!values[k.id] || r === "testing"}>
-                {r === "testing" ? "…" : "Test"}
-              </button>
-              <span className="row" style={{ gap: "0.3rem", width: "5rem" }}>
-                <span className={`dot ${r && r !== "testing" ? (r.ok ? "ok" : "bad") : "idle"}`} />
-                <span className="small muted">
-                  {r === "testing" ? "…" : r ? (r.ok ? `${r.latency_ms ?? "?"}ms` : r.error || "fail") : "—"}
-                </span>
-              </span>
-            </div>
-            {k.id === "scraper" && (
-              <div className="row small" style={{ paddingLeft: "12rem", gap: "1rem" }}>
-                <label className="row" style={{ gap: "0.3rem", margin: 0 }}>
-                  <input type="radio" style={{ width: "auto" }} checked={scraper === "apify"} onChange={() => setScraper("apify")} /> Apify
-                </label>
-                <label className="row" style={{ gap: "0.3rem", margin: 0 }}>
-                  <input type="radio" style={{ width: "auto" }} checked={scraper === "firecrawl"} onChange={() => setScraper("firecrawl")} /> Firecrawl
-                </label>
-              </div>
-            )}
-          </div>
-        );
-      })}
-      <NavButtons onNext={onNext} nextDisabled={!allGreen} />
-    </div>
-  );
-}
-
-// --- Step 2: Avatar + Voice ---
-function AvatarVoiceStep({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
-  const [avatarRef, setAvatarRef] = useState("");
-  const [voiceRef, setVoiceRef] = useState("");
-  const [avatarId, setAvatarId] = useState<string | null>(null);
-  const [voiceId, setVoiceId] = useState<string | null>(null);
-  const [clip, setClip] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  async function createAvatar() {
-    if (!avatarRef) return;
-    setBusy(true);
-    try {
-      const res = await setupApi.createAvatar(avatarRef);
-      setAvatarId(res.avatar_id);
-    } catch { /* degrade */ } finally { setBusy(false); }
-  }
-  async function createVoice() {
-    if (!voiceRef) return;
-    setBusy(true);
-    try {
-      const res = await setupApi.createVoice(voiceRef);
-      setVoiceId(res.voice_id);
-    } catch { /* degrade */ } finally { setBusy(false); }
-  }
-  async function preview() {
-    try {
-      const res = await setupApi.avatarPreview();
-      setClip(res.clip_url);
-    } catch { /* degrade */ }
-  }
-
-  return (
-    <div className="card stack">
-      <strong>Create your reusable avatar + voice</strong>
-      <div className="stack" style={{ borderLeft: "2px solid var(--border)", paddingLeft: "0.9rem" }}>
-        <label>Consent footage reference (uploaded clip key)</label>
-        <div className="row">
-          <input className="grow" placeholder="footage_ref (e.g. minio key)" value={avatarRef} onChange={(e) => setAvatarRef(e.target.value)} />
-          <button onClick={createAvatar} disabled={!avatarRef || busy}>Create HeyGen avatar</button>
-        </div>
-        {avatarId && <div className="small check-ok">avatar_id: <span className="mono">{avatarId}</span></div>}
-      </div>
-      <div className="stack" style={{ borderLeft: "2px solid var(--border)", paddingLeft: "0.9rem" }}>
-        <label>Voice sample reference (uploaded audio key)</label>
-        <div className="row">
-          <input className="grow" placeholder="sample_ref" value={voiceRef} onChange={(e) => setVoiceRef(e.target.value)} />
-          <button onClick={createVoice} disabled={!voiceRef || busy}>Create ElevenLabs voice</button>
-        </div>
-        {voiceId && <div className="small check-ok">voice_id: <span className="mono">{voiceId}</span></div>}
-      </div>
-      <div className="row">
-        <button className="ghost" onClick={preview} disabled={!avatarId}>Render 5s test clip</button>
-        {clip && <video src={clip} controls style={{ height: "8rem" }} />}
-      </div>
-      <NavButtons onNext={onNext} onBack={onBack} nextDisabled={!avatarId || !voiceId} />
-    </div>
-  );
-}
-
-// --- Step 3: Consent ---
-const CONSENT_TEXT =
-  "I authorize AutoUGC-TH to use my likeness and voice to generate synthetic UGC videos " +
-  "for the products I submit. I confirm I am the operator, that this consent is revocable, " +
-  "and that all generated content will carry the required AI-generated disclosure.";
-
-function ConsentStep({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
-  const [name, setName] = useState("");
-  const [agreed, setAgreed] = useState(false);
-  const [hash, setHash] = useState<string | null>(null);
-
-  async function sign() {
-    if (!name || !agreed) return;
-    try {
-      const res = await setupApi.saveConsent(name, new Date().toISOString());
-      setHash(res.hash);
-    } catch { /* degrade */ }
-  }
-
-  return (
-    <div className="card stack">
-      <strong>Consent record</strong>
-      <div className="card" style={{ background: "var(--surface-2)" }}>
-        <p style={{ margin: 0 }}>{CONSENT_TEXT}</p>
-      </div>
-      <label className="row" style={{ gap: "0.5rem", cursor: "pointer" }}>
-        <input type="checkbox" style={{ width: "auto" }} checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
-        <span>I have read and agree to the above.</span>
-      </label>
-      <div>
-        <label>Typed-name signature</label>
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your full legal name" />
-      </div>
-      <div className="row">
-        <button onClick={sign} disabled={!name || !agreed || !!hash}>Sign consent</button>
-        {hash && <span className="small check-ok">Signed · hash <span className="mono">{hash.slice(0, 12)}…</span></span>}
-      </div>
-      <NavButtons onNext={onNext} onBack={onBack} nextDisabled={!hash} />
-    </div>
-  );
-}
-
-// --- Step 4: TikTok connect ---
-function TikTokStep({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
-  const [handle, setHandle] = useState<string | null>(null);
-  const [warning, setWarning] = useState<string | null>(null);
-  const [expires, setExpires] = useState<string | null>(null);
-
-  async function connect() {
-    try {
-      const { url } = await setupApi.tiktokOauthUrl();
-      const popup = window.open(url, "tiktok-oauth", "width=520,height=680");
-      // In a real deployment the callback posts a message with the code; here we listen for it.
-      const listener = async (ev: MessageEvent) => {
-        if (ev.data?.type === "tiktok_code" && ev.data.code) {
-          window.removeEventListener("message", listener);
-          popup?.close();
-          const res = await setupApi.tiktokCallback(ev.data.code);
-          setHandle(res.handle);
-          setExpires(res.expires_at ?? null);
-          setWarning(res.audit_warning ?? null);
-        }
-      };
-      window.addEventListener("message", listener);
-    } catch { /* degrade — backend down */ }
-  }
-
-  return (
-    <div className="card stack">
-      <strong>Connect TikTok</strong>
-      <div className="caveat-banner">
-        ⚠ New or unaudited accounts may not be able to post immediately. Posting will queue and retry.
-      </div>
-      {handle ? (
-        <div className="small check-ok">
-          Connected: <strong>@{handle}</strong>
-          {expires && <span className="muted"> · token expires {expires}</span>}
-        </div>
-      ) : (
-        <button className="primary" onClick={connect} style={{ alignSelf: "flex-start" }}>Connect TikTok</button>
-      )}
-      {warning && <div className="small" style={{ color: "var(--amber)" }}>{warning}</div>}
-      <NavButtons onNext={onNext} onBack={onBack} nextDisabled={!handle} />
-    </div>
-  );
-}
-
-// --- Step 5: Seeds ---
-function SeedsStep({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
-  const [name, setName] = useState("TH-Beauty-Top");
-  const [niche, setNiche] = useState("Beauty");
-  const [handles, setHandles] = useState("");
-  const [hashtags, setHashtags] = useState("");
-  const [saved, setSaved] = useState(false);
-
-  async function save() {
-    const seed: SeedSet = {
-      name,
-      niche,
-      handles: handles.split(/[\s,]+/).filter(Boolean),
-      hashtags: hashtags.split(/[\s,]+/).filter(Boolean),
-    };
-    try {
-      await setupApi.saveSeeds([seed]);
-      setSaved(true);
-    } catch { setSaved(true); /* allow advancing even if backend down */ }
-  }
-
-  return (
-    <div className="card stack">
-      <strong>Seed accounts for swipe mining</strong>
-      <p className="small muted">Define the mining set that feeds the Swipe Library (§2). Editable later in Settings.</p>
-      <div className="row wrap">
-        <div className="grow"><label>Seed set name</label><input value={name} onChange={(e) => setName(e.target.value)} /></div>
-        <div className="grow"><label>Niche</label><input value={niche} onChange={(e) => setNiche(e.target.value)} /></div>
-      </div>
-      <div><label>TikTok handles (space/comma separated)</label><input value={handles} onChange={(e) => setHandles(e.target.value)} placeholder="@creator1 @creator2" /></div>
-      <div><label>Hashtags / sound IDs</label><input value={hashtags} onChange={(e) => setHashtags(e.target.value)} placeholder="#skincare #รีวิว" /></div>
-      <div className="row">
-        <button onClick={save}>Save seed set</button>
-        {saved && <span className="small check-ok">Saved</span>}
-      </div>
-      <NavButtons onNext={onNext} onBack={onBack} />
-    </div>
-  );
-}
-
-// --- Step 6: Review ---
-function ReviewStep({ steps, onBack, onFinish }: { steps?: Record<string, boolean>; onBack: () => void; onFinish: () => void }) {
+function FinishStep({ steps, onBack, onFinish }: { steps?: Record<string, boolean>; onBack: () => void; onFinish: () => void }) {
   const rows = [
-    ["API keys", steps?.keys],
-    ["Avatar", steps?.avatar],
-    ["Voice", steps?.voice],
-    ["Consent", steps?.consent],
-    ["TikTok", steps?.tiktok],
-    ["Seeds", steps?.seeds],
+    ["Keys (Anthropic + Google TTS)", steps?.keys],
+    ["Video (LTX-2.5 on Modal)", steps?.video],
+    ["TikTok posting", steps?.tiktok],
   ] as const;
   return (
     <div className="card stack">
@@ -342,13 +225,13 @@ function ReviewStep({ steps, onBack, onFinish }: { steps?: Record<string, boolea
       {rows.map(([label, ok]) => (
         <div key={label} className="row spread" style={{ borderBottom: "1px solid var(--border)", paddingBottom: "0.4rem" }}>
           <span>{label}</span>
-          <span className={ok ? "check-ok" : "muted"}>{ok ? "✓ done" : "— not reported"}</span>
+          <span className={ok ? "check-ok" : "muted"}>{ok ? "✓ configured" : "— not set"}</span>
         </div>
       ))}
-      <p className="small muted">Finishing flips setup to complete and takes you to the dashboard.</p>
+      <p className="small muted">Finishing turns off DRY_RUN (the app starts using your real keys) and opens the dashboard. You can paste a product URL to make your first video.</p>
       <div className="row spread">
         <button className="ghost" onClick={onBack}>Back</button>
-        <button className="success" onClick={onFinish}>Finish</button>
+        <button className="success" onClick={onFinish}>Finish setup</button>
       </div>
     </div>
   );

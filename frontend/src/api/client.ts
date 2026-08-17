@@ -17,10 +17,9 @@ import type {
   LibraryResponse,
   ProvidersSettings,
   RerollBody,
-  SeedSet,
+  SaveResult,
   SetupStatus,
   TemplateType,
-  TikTokCallbackResult,
   Template,
   VideoPerformance,
 } from "./types";
@@ -98,42 +97,13 @@ function uuid(): string {
 // --------------------------------------------------------------------------- //
 export const setupApi = {
   status: () => request<SetupStatus>("/setup/status"),
-  saveKey: (provider: string, key: string) =>
-    request<{ ok: boolean }>("/setup/keys", {
-      method: "POST",
-      body: { provider, key },
-    }),
+  // Persist whitelisted env keys (Anthropic, Google TTS, Modal LTX, TikTok, ...).
+  save: (values: Record<string, string>) =>
+    request<SaveResult>("/setup/save", { method: "POST", body: { values } }),
+  // Live-test one provider: "llm" | "tts" | "video" | "tiktok".
   testKey: (provider: string) =>
-    request<KeyTestResult>(`/setup/test-key/${encodeURIComponent(provider)}`, {
+    request<KeyTestResult>(`/setup/test/${encodeURIComponent(provider)}`, {
       method: "POST",
-    }),
-  createAvatar: (footage_ref: string) =>
-    request<{ avatar_id: string; job_id: string }>("/setup/avatar", {
-      method: "POST",
-      body: { footage_ref },
-    }),
-  avatarPreview: () =>
-    request<{ clip_url: string }>("/setup/avatar/preview", { method: "POST" }),
-  createVoice: (sample_ref: string) =>
-    request<{ voice_id: string }>("/setup/voice", {
-      method: "POST",
-      body: { sample_ref },
-    }),
-  saveConsent: (signed_name: string, ts: string) =>
-    request<{ consent_id: string; hash: string }>("/setup/consent", {
-      method: "POST",
-      body: { signed_name, ts },
-    }),
-  tiktokOauthUrl: () => request<{ url: string }>("/setup/tiktok/oauth-url"),
-  tiktokCallback: (code: string) =>
-    request<TikTokCallbackResult>("/setup/tiktok/callback", {
-      method: "POST",
-      body: { code },
-    }),
-  saveSeeds: (seed_sets: SeedSet[]) =>
-    request<{ ok: boolean }>("/setup/seeds", {
-      method: "POST",
-      body: { seed_sets },
     }),
   complete: () =>
     request<{ complete: boolean }>("/setup/complete", { method: "POST" }),

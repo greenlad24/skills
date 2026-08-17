@@ -134,17 +134,19 @@ export interface DecisionResponse {
 }
 
 // --- Setup ---
-export type SetupStepKey =
-  | "keys"
-  | "avatar"
-  | "voice"
-  | "consent"
-  | "tiktok"
-  | "seeds";
+// The single approved workflow configures exactly three things.
+export type SetupStepKey = "keys" | "video" | "tiktok";
 
 export interface SetupStatus {
   complete: boolean;
   steps: Record<SetupStepKey, boolean>;
+  dry_run?: boolean;
+}
+
+export interface SaveResult {
+  saved: string[];
+  ignored: string[];
+  restart_required: boolean;
 }
 
 export interface KeyTestResult {

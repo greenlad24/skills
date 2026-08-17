@@ -66,19 +66,21 @@ The per-video spend ceiling is `PER_VIDEO_COST_BUDGET_USD` (default `5.00`, targ
 a projected breach fails the job with `failure_reason=budget_exceeded` rather than
 overspending.
 
-## Choosing a video provider (cost vs effort)
+## The approved stack (one workflow, no options)
 
-`VIDEOGEN_PROVIDER` picks how product footage is generated. The cheap, fully-generated
-options for a ~90 videos/month, ~300฿/month target:
+The app runs a single fully-generated Thai pipeline. Provider selection is fixed:
 
-| `VIDEOGEN_PROVIDER` | Model | Cost/mo | Setup | Docs |
-|---|---|---|---|---|
-| `ltx_modal` **(recommended)** | LTX-2.5, serverless on Modal | **~$0–7** (inside $30 free credit) | deploy once, no GPU to babysit | [docs/free-video-ltx-modal.md](docs/free-video-ltx-modal.md) |
-| `wan_comfyui` | Wan 2.2 on self-hosted ComfyUI | ~$2–6 (rented GPU) or free tier | run a ComfyUI GPU | [docs/free-video-wan.md](docs/free-video-wan.md) |
-| `fal` | managed API (e.g. LTX-2.3 Fast) | ~$30–58 | just an API key | — |
+| Step | Provider | Cost/mo | Docs |
+|---|---|---|---|
+| Research + Thai script | Anthropic (`anthropic`) | ~$5–9 | — |
+| Video | LTX-2.5 serverless on Modal (`ltx_modal`) | **~$0–7** (inside Modal's $30 free credit) | [docs/free-video-ltx-modal.md](docs/free-video-ltx-modal.md) |
+| Thai voiceover | Google Cloud TTS (`google_tts`) | ~$0 (free tier) | — |
+| Captions | reuse the generated script text | $0 | — |
+| Posting | TikTok Content Posting API (`tiktok`) | $0 (no per-post fee) | — |
 
-Start in `DRY_RUN=true` (below) to rehearse the whole pipeline at $0, then switch to
-`ltx_modal` for real, cheap, fully-generated video.
+You don't hand-edit these — the **in-app onboarding wizard** (shown on first run at
+http://localhost:8000) writes the keys and flips `DRY_RUN` off. Start in
+`DRY_RUN=true` (below) to rehearse the whole pipeline at $0 first.
 
 ## Local dev without Docker
 

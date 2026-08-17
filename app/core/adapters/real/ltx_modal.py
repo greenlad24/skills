@@ -1,9 +1,9 @@
 """LTX-2.5 image-to-video via a self-deployed Modal serverless app — the cheap
 "no GPU to babysit" `VideoGenProvider` (§1.6).
 
-This is the serverless sibling of `wan_comfyui`: instead of keeping a ComfyUI GPU
-running, you deploy LTX-2.5 to Modal once (see deploy/modal_ltx.py) and it scales
-to zero between renders. Set:
+The single approved video route: instead of keeping a GPU running, you deploy
+LTX-2.5 to Modal once (see deploy/modal_ltx.py) and it scales to zero between
+renders. Set:
 
     VIDEOGEN_PROVIDER=ltx_modal
     MODAL_LTX_URL=https://<you>--autougc-ltx-web.modal.run

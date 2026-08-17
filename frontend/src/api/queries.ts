@@ -211,10 +211,3 @@ export function useDeleteClaim() {
     onSuccess: () => qc.invalidateQueries({ queryKey: qk.claims }),
   });
 }
-export function useSaveSeeds() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (seeds: SeedSet[]) => setupApi.saveSeeds(seeds),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.setupStatus }),
-  });
-}
