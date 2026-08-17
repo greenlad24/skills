@@ -19,21 +19,23 @@ export function NewVideo() {
 function UrlForm() {
   const nav = useNavigate();
   const create = useCreateJob();
-  const [url, setUrl] = useState("");
+  const [query, setQuery] = useState("");
   const [showOpts, setShowOpts] = useState(false);
   const [seedSet, setSeedSet] = useState("");
   const [duration, setDuration] = useState(30);
+  const [url, setUrl] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const validUrl = /^https?:\/\/.+\..+/.test(url.trim());
+  const validQuery = query.trim().length >= 2;
   const imageOk = !imageUrl.trim() || /^https?:\/\/.+/.test(imageUrl.trim());
 
   async function start() {
     setError(null);
     try {
       const res = await create.mutateAsync({
-        product_url: url.trim(),
+        product_query: query.trim(),
+        product_url: url.trim() || undefined,
         seed_set: seedSet || undefined,
         duration_s: duration,
         product_image_url: imageUrl.trim() || undefined,
@@ -49,22 +51,44 @@ function UrlForm() {
       <h1 className="page-title">New Video</h1>
       <div className="card stack">
         <div>
-          <label>Product URL</label>
+          <label>Product (Thai title or keyword)</label>
           <input
             autoFocus
-            placeholder="https://shop.example/collagen-serum"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && validUrl && start()}
+            placeholder="เช่น LIPBUSYCARE ชาผักผลไม้ 11-in-1"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && validQuery && imageOk && start()}
           />
-          {url && !validUrl && <div className="small" style={{ color: "var(--red)" }}>Enter a valid product URL.</div>}
+          <div className="small muted">
+            We search TikTok Shop Thailand for this and use the top match's photo, price, and title.
+            Paste the full product name for the most exact match.
+          </div>
         </div>
 
         <button className="ghost small" onClick={() => setShowOpts((v) => !v)} style={{ alignSelf: "flex-start" }}>
-          {showOpts ? "⌃" : "⌄"} Options (niche · seed set · duration)
+          {showOpts ? "⌃" : "⌄"} Options (product link · image · seed set · duration)
         </button>
         {showOpts && (
           <div className="stack" style={{ borderLeft: "2px solid var(--border)", paddingLeft: "0.9rem" }}>
+            <div>
+              <label>Product URL (optional)</label>
+              <input
+                placeholder="https://www.tiktok.com/view/product/…"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+              />
+              <div className="small muted">Kept for reference and exact product-id matching.</div>
+            </div>
+            <div>
+              <label>Product image URL (optional)</label>
+              <input
+                placeholder="https://…/product.jpg — overrides the scraped photo"
+                value={imageUrl}
+                onChange={(e) => setImageUrl(e.target.value)}
+              />
+              {imageUrl && !imageOk && <div className="small" style={{ color: "var(--red)" }}>Enter a valid image URL.</div>}
+              <div className="small muted">Backstop: used as the hero reference if the search returns no usable photo.</div>
+            </div>
             <div>
               <label>Seed set</label>
               <input placeholder="TH-Beauty-Top (default)" value={seedSet} onChange={(e) => setSeedSet(e.target.value)} />
@@ -73,26 +97,14 @@ function UrlForm() {
               <label>Target duration (s)</label>
               <input type="number" min={10} max={90} value={duration} onChange={(e) => setDuration(Number(e.target.value))} />
             </div>
-            <div>
-              <label>Product image URL (optional)</label>
-              <input
-                placeholder="https://…/product.jpg — paste one if the link is a TikTok short link"
-                value={imageUrl}
-                onChange={(e) => setImageUrl(e.target.value)}
-              />
-              {imageUrl && !imageOk && <div className="small" style={{ color: "var(--red)" }}>Enter a valid image URL.</div>}
-              <div className="small muted">
-                TikTok short links can't be auto-scraped for a photo — paste a product image so the video has a reference.
-              </div>
-            </div>
           </div>
         )}
 
         {error && <div className="small" style={{ color: "var(--red)" }}>{error}</div>}
 
         <div className="row spread">
-          <span className="small muted">One URL in → walk away → one approval out.</span>
-          <button className="primary" disabled={!validUrl || !imageOk || create.isPending} onClick={start}>
+          <span className="small muted">One product in → walk away → one approval out.</span>
+          <button className="primary" disabled={!validQuery || !imageOk || create.isPending} onClick={start}>
             {create.isPending ? "Starting…" : "Start"}
           </button>
         </div>

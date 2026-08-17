@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, WebSocket
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import __version__
@@ -29,6 +29,8 @@ from app.core.schemas import (
     Job,
     JobCreate,
     JobCreateResponse,
+    ProductListResponse,
+    ProductSummary,
     ProviderHealth,
     RerollRequest,
 )
@@ -61,8 +63,33 @@ def _ensure_schema() -> None:
             from app.core.db import init_db
 
             init_db()
+            _patch_sqlite_columns()
         except Exception as exc:  # noqa: BLE001 — never block boot on this
             print(f"[startup] SQLite schema init skipped: {exc}")
+
+
+def _patch_sqlite_columns() -> None:
+    """Add columns introduced after a local SQLite DB was first created.
+
+    ``create_all`` only creates MISSING TABLES, never new columns on existing ones,
+    so an older local DB needs a tiny idempotent ALTER for each added column. SQLite
+    only — Postgres uses Alembic migrations.
+    """
+    from sqlalchemy import text
+
+    from app.core.db import engine
+
+    # (table, column, DDL type) for columns added over time.
+    wanted = [("products", "external_product_id", "VARCHAR(64)")]
+    with engine.begin() as conn:
+        for table, column, ddl in wanted:
+            try:
+                cols = {row[1] for row in conn.execute(text(f"PRAGMA table_info({table})"))}
+                if cols and column not in cols:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
+                    print(f"[startup] added {table}.{column}")
+            except Exception as exc:  # noqa: BLE001 — best-effort, never block boot
+                print(f"[startup] column patch {table}.{column} skipped: {exc}")
 
 
 # --------------------------------------------------------------------------- #
@@ -117,16 +144,45 @@ def _to_job_schema(job: VideoJob) -> Job:
     )
 
 
+def _enqueue_research(job_id: str) -> None:
+    """Best-effort publish of the first pipeline stage (broker may be absent locally)."""
+    try:
+        celery_app.send_task("research.run", kwargs={"job_id": job_id})
+    except Exception:  # noqa: BLE001
+        pass
+
+
 @jobs_router.post("", response_model=JobCreateResponse, status_code=201)
 def create_job(body: JobCreate, db: Session = Depends(get_db)) -> JobCreateResponse:
-    """Create a video job from a product URL and enqueue the research stage."""
-    product = Product(source_url=body.product_url)
-    if body.product_image_url and body.product_image_url.strip():
-        # Preserved across the research overwrite and used as the hero reference
-        # when the scraper can't return a product photo (e.g. a TikTok short link).
-        product.attributes = {"manual_images": [body.product_image_url.strip()]}
-    db.add(product)
-    db.flush()  # assign product.id
+    """Create a video job.
+
+    Two ways in:
+      * ``reuse_product_id`` — make ANOTHER video for an already-scraped product; the
+        research stage detects it is scraped and skips the (paid) network call.
+      * ``product_query`` (the Thai title/keyword) and/or ``product_url`` — a fresh
+        product; research scrapes it via SocialCrawl TH search and saves it.
+    """
+    if body.reuse_product_id is not None:
+        product = db.get(Product, body.reuse_product_id)
+        if product is None:
+            raise HTTPException(status_code=404, detail="product not found")
+    else:
+        query = (body.product_query or "").strip()
+        url = (body.product_url or "").strip()
+        if not query and not url:
+            raise HTTPException(status_code=422, detail="provide product_query or product_url")
+        product = Product(source_url=url or query)
+        attrs: dict[str, object] = {}
+        if query:
+            attrs["search_query"] = query
+        if body.product_image_url and body.product_image_url.strip():
+            # Preserved across the research overwrite; used as the hero reference when
+            # the scraper returns no product photo.
+            attrs["manual_images"] = [body.product_image_url.strip()]
+        if attrs:
+            product.attributes = attrs
+        db.add(product)
+        db.flush()  # assign product.id
 
     job = VideoJob(
         product_id=product.id,
@@ -138,13 +194,7 @@ def create_job(body: JobCreate, db: Session = Depends(get_db)) -> JobCreateRespo
     db.commit()
     db.refresh(job)
 
-    # Enqueue the first pipeline stage. The research module registers `research.run`;
-    # if it isn't loaded yet, sending is a no-op broker publish (skeleton behavior).
-    try:
-        celery_app.send_task("research.run", kwargs={"job_id": str(job.id)})
-    except Exception:  # noqa: BLE001 — broker may be absent in local/skeleton runs
-        pass
-
+    _enqueue_research(str(job.id))
     return JobCreateResponse(job_id=job.id, state=JobState.QUEUED)
 
 
@@ -207,6 +257,72 @@ def reroll_job(
 
 
 app.include_router(jobs_router)
+
+
+# --------------------------------------------------------------------------- #
+# Saved-product catalog — scrape once, make many videos.
+# --------------------------------------------------------------------------- #
+products_router = APIRouter(prefix="/api/products", tags=["products"])
+
+
+def _first_product_image(attributes: dict | None) -> str | None:
+    if not isinstance(attributes, dict):
+        return None
+    for source in ("images", "manual_images"):
+        for img in attributes.get(source, []) or []:
+            if isinstance(img, str) and img.strip():
+                return img.strip()
+            if isinstance(img, dict):
+                cand = img.get("url") or img.get("src")
+                if isinstance(cand, str) and cand.strip():
+                    return cand.strip()
+    return None
+
+
+@products_router.get("", response_model=ProductListResponse)
+def list_products(db: Session = Depends(get_db)) -> ProductListResponse:
+    """Every product we've scraped (deduped by marketplace id, newest first).
+
+    Pick one and POST /api/jobs with `reuse_product_id` to make another video for it
+    without paying to scrape again.
+    """
+    rows = (
+        db.execute(
+            select(Product)
+            .where(Product.scraped_at.isnot(None))
+            .order_by(Product.scraped_at.desc())
+        )
+        .scalars()
+        .all()
+    )
+    seen: set[str] = set()
+    out: list[ProductSummary] = []
+    for p in rows:
+        key = p.external_product_id or str(p.id)
+        if key in seen:
+            continue
+        seen.add(key)
+        vc = (
+            db.execute(select(func.count(VideoJob.id)).where(VideoJob.product_id == p.id))
+            .scalar_one()
+        )
+        out.append(
+            ProductSummary(
+                id=p.id,
+                external_product_id=p.external_product_id,
+                title=p.title,
+                brand=p.brand,
+                price=float(p.price) if p.price is not None else None,
+                currency=p.currency,
+                image=_first_product_image(p.attributes),
+                video_count=int(vc or 0),
+                scraped_at=p.scraped_at,
+            )
+        )
+    return ProductListResponse(products=out)
+
+
+app.include_router(products_router)
 
 
 # --------------------------------------------------------------------------- #

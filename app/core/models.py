@@ -103,6 +103,9 @@ class Product(TimestampMixin, Base):
 
     id: Mapped[uuid.UUID] = _pk()
     source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    # Stable marketplace product id (e.g. TikTok Shop product_id) — the dedupe key
+    # that lets many videos reuse ONE saved product without re-scraping.
+    external_product_id: Mapped[str | None] = mapped_column(String(64), index=True)
     title: Mapped[str | None] = mapped_column(Text)
     brand: Mapped[str | None] = mapped_column(Text)
     price: Mapped[float | None] = mapped_column(Numeric(12, 2))

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { setupApi } from "@/api/client";
@@ -27,6 +27,17 @@ export function SetupWizard() {
   const qc = useQueryClient();
   const status = useSetupStatus();
   const [step, setStep] = useState(0);
+  const [jumped, setJumped] = useState(false);
+
+  // Open directly on the first UNFILLED step (keys → video → tiktok) so a missing
+  // API drops the operator straight onto the screen they need to fill in.
+  useEffect(() => {
+    if (jumped || !status.data?.steps) return;
+    const order: Array<keyof typeof status.data.steps> = ["keys", "video", "tiktok"];
+    const first = order.findIndex((k) => !status.data!.steps[k]);
+    setStep(first === -1 ? 0 : first);
+    setJumped(true);
+  }, [status.data, jumped]);
 
   function next() {
     setStep((s) => Math.min(s + 1, STEPS.length - 1));
@@ -65,16 +76,16 @@ export function SetupWizard() {
         {step === 0 && (
           <ProviderStep
             title="Connect your keys"
-            blurb="Anthropic writes the Thai script; Google Cloud TTS speaks it; Apify scrapes the product (and pulls the product image TikTok links hide). All three have free tiers that cover ~90 videos/month."
+            blurb="Anthropic writes the Thai script; Google Cloud TTS speaks it; SocialCrawl looks up the product on TikTok Shop TH (title, image, THB price). All three have free tiers that cover ~90 videos/month."
             fields={[
               { env: "ANTHROPIC_API_KEY", label: "Anthropic API key", type: "password", placeholder: "sk-ant-…" },
               { env: "GOOGLE_TTS_API_KEY", label: "Google Cloud TTS key", type: "password", placeholder: "AIza…" },
-              { env: "APIFY_API_KEY", label: "Apify token", type: "password", placeholder: "apify_api_…" },
+              { env: "SOCIALCRAWL_API_KEY", label: "SocialCrawl key", type: "password", placeholder: "sc-…" },
             ]}
             tests={[
               { provider: "llm", label: "Anthropic" },
               { provider: "tts", label: "Google TTS" },
-              { provider: "scraper", label: "Apify" },
+              { provider: "scraper", label: "SocialCrawl" },
             ]}
             onNext={next}
           />
@@ -217,7 +228,7 @@ function NavButtons({ onNext, onBack, nextLabel = "Next →", nextDisabled }: { 
 
 function FinishStep({ steps, onBack, onFinish }: { steps?: Record<string, boolean>; onBack: () => void; onFinish: () => void }) {
   const rows = [
-    ["Keys (Anthropic + Google TTS + Apify)", steps?.keys],
+    ["Keys (Anthropic + Google TTS + SocialCrawl)", steps?.keys],
     ["Video (LTX-2.5 on Modal)", steps?.video],
     ["TikTok posting", steps?.tiktok],
   ] as const;

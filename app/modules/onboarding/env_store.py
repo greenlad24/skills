@@ -27,8 +27,10 @@ ALLOWED_KEYS: frozenset[str] = frozenset({
     "VIDEOGEN_PROVIDER", "MODAL_LTX_URL", "MODAL_LTX_TOKEN", "LTX_FPS",
     # TikTok posting
     "POSTING_PROVIDER", "TIKTOK_ACCESS_TOKEN", "TIKTOK_POSTING_MODE", "TIKTOK_PRIVACY_LEVEL",
-    # Research scraping (Apify TikTok/product scraper)
-    "SCRAPER_PROVIDER", "APIFY_API_KEY", "FIRECRAWL_API_KEY",
+    # Research scraping (SocialCrawl TikTok Shop TH search — the approved source)
+    "SCRAPER_PROVIDER", "SOCIALCRAWL_API_KEY", "SOCIALCRAWL_REGION",
+    # Alternative scrapers (optional, swappable)
+    "APIFY_API_KEY", "FIRECRAWL_API_KEY",
     "APIFY_TIKTOK_SHOP_ACTOR", "APIFY_TIKTOK_VIDEO_ACTOR",
     "APIFY_GENERIC_ACTOR", "APIFY_TIKTOK_REGION",
     "APIFY_ACTOR", "APIFY_INPUT",

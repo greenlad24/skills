@@ -110,11 +110,13 @@ export interface JobCreateResponse {
 }
 
 export interface JobCreateBody {
-  product_url: string;
+  product_query?: string;
+  product_url?: string;
   seed_set?: string;
   avatar_id?: string;
   duration_s?: number;
   product_image_url?: string;
+  reuse_product_id?: string;
 }
 
 export interface CaptionUpdate {

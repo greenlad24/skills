@@ -21,13 +21,39 @@ from app.core.state_machine import JobState
 class JobCreate(BaseModel):
     """POST /api/jobs body."""
 
-    product_url: str
+    # The Thai product title / keyword — the SocialCrawl TH search seed (primary input).
+    product_query: str | None = None
+    # Optional canonical product URL (kept for reference / exact-id matching).
+    product_url: str | None = None
     seed_set: str | None = None
     avatar_id: uuid.UUID | None = None
     duration_s: int | None = None
     # Optional operator-supplied product image URL. Used as the hero reference when
-    # the scraper can't return a product photo (e.g. a bare TikTok short link).
+    # the scraper can't return a product photo.
     product_image_url: str | None = None
+    # Reuse a previously-scraped product (its saved details) for a NEW video — no
+    # re-scrape, no scraper credits spent.
+    reuse_product_id: uuid.UUID | None = None
+
+
+class ProductSummary(BaseModel):
+    """Row shape for GET /api/products (the saved-product catalog)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    external_product_id: str | None = None
+    title: str | None = None
+    brand: str | None = None
+    price: float | None = None
+    currency: str | None = None
+    image: str | None = None
+    video_count: int = 0
+    scraped_at: datetime | None = None
+
+
+class ProductListResponse(BaseModel):
+    products: list[ProductSummary] = Field(default_factory=list)
 
 
 class JobCreateResponse(BaseModel):

@@ -43,7 +43,7 @@ class Settings(BaseSettings):
 
     # --- Provider selection (the single approved stack) ---
     LLM_PROVIDER: str = "anthropic"
-    SCRAPER_PROVIDER: str = "apify"
+    SCRAPER_PROVIDER: str = "socialcrawl"
     TTS_PROVIDER: str = "google_tts"
     VIDEOGEN_PROVIDER: str = "ltx_modal"
     POSTING_PROVIDER: str = "tiktok"
@@ -52,6 +52,16 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = ""
     APIFY_API_KEY: str = ""
     FIRECRAWL_API_KEY: str = ""
+
+    # --- SocialCrawl (the approved product/image source) ---
+    # Per-call HTTP API (not a residential-proxy actor), so it's fast + reliable for
+    # Thai TikTok Shop. The by-URL endpoints are US-only, so we use keyword SEARCH in
+    # the TH region and take the top match: it returns the product title, image URLs,
+    # and THB price. 100 free credits, 1 credit/call.
+    SOCIALCRAWL_API_KEY: str = ""
+    SOCIALCRAWL_BASE: str = "https://www.socialcrawl.dev/v1"
+    SOCIALCRAWL_REGION: str = "TH"  # ISO alpha-2, uppercase
+    SOCIALCRAWL_EST_USD_PER_CALL: float = 0.008  # ledger estimate (~£15 / 2,500 calls)
 
     # --- Apify scraper (the approved product/image source) ---
     # TikTok Shop / short links can't be scraped by generic crawlers, so we run an

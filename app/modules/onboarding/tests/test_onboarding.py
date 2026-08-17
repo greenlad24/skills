@@ -45,10 +45,11 @@ def test_save_coerces_bool(env_file, monkeypatch):
 # --- status ----------------------------------------------------------------- #
 
 def test_status_reports_missing_then_complete(monkeypatch):
+    monkeypatch.setattr(settings, "DRY_RUN", False, raising=False)
     monkeypatch.setattr(settings, "ONBOARDED", False, raising=False)
     monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "", raising=False)
     monkeypatch.setattr(settings, "GOOGLE_TTS_API_KEY", "", raising=False)
-    monkeypatch.setattr(settings, "APIFY_API_KEY", "", raising=False)
+    monkeypatch.setattr(settings, "SOCIALCRAWL_API_KEY", "", raising=False)
     monkeypatch.setattr(settings, "MODAL_LTX_URL", "", raising=False)
     monkeypatch.setattr(settings, "TIKTOK_ACCESS_TOKEN", "", raising=False)
     st = service.compute_status()
@@ -57,7 +58,7 @@ def test_status_reports_missing_then_complete(monkeypatch):
 
     monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "a", raising=False)
     monkeypatch.setattr(settings, "GOOGLE_TTS_API_KEY", "g", raising=False)
-    monkeypatch.setattr(settings, "APIFY_API_KEY", "k", raising=False)
+    monkeypatch.setattr(settings, "SOCIALCRAWL_API_KEY", "k", raising=False)
     monkeypatch.setattr(settings, "MODAL_LTX_URL", "http://m", raising=False)
     monkeypatch.setattr(settings, "TIKTOK_ACCESS_TOKEN", "t", raising=False)
     st2 = service.compute_status()
@@ -65,9 +66,25 @@ def test_status_reports_missing_then_complete(monkeypatch):
     assert st2["complete"] is True   # all steps green
 
 
-def test_status_complete_via_onboarded_flag(monkeypatch):
+def test_dry_run_bypasses_keys(monkeypatch):
+    # In DRY_RUN (fakes) no real keys are needed, so the wizard is not forced.
+    monkeypatch.setattr(settings, "DRY_RUN", True, raising=False)
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "", raising=False)
+    assert service.compute_status()["complete"] is True
+
+
+def test_missing_required_key_forces_wizard_even_if_onboarded(monkeypatch):
+    # Live mode: a missing required API re-opens onboarding, ONBOARDED flag notwithstanding.
+    monkeypatch.setattr(settings, "DRY_RUN", False, raising=False)
     monkeypatch.setattr(settings, "ONBOARDED", True, raising=False)
     monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "", raising=False)
+    monkeypatch.setattr(settings, "GOOGLE_TTS_API_KEY", "g", raising=False)
+    monkeypatch.setattr(settings, "SOCIALCRAWL_API_KEY", "s", raising=False)
+    monkeypatch.setattr(settings, "MODAL_LTX_URL", "http://m", raising=False)
+    assert service.compute_status()["complete"] is False
+    # TikTok missing alone does NOT force the wizard (posting-time only).
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "a", raising=False)
+    monkeypatch.setattr(settings, "TIKTOK_ACCESS_TOKEN", "", raising=False)
     assert service.compute_status()["complete"] is True
 
 

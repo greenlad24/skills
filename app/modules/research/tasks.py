@@ -85,46 +85,73 @@ def run_research(job_id: str, *, session=None) -> dict:
         db.commit()
 
         product_row = db.get(Product, job.product_id) if job.product_id else None
+        prior = dict(product_row.attributes or {}) if product_row else {}
+        # SocialCrawl searches by the operator's Thai title/keyword; fall back to the URL.
+        search_query = (prior.get("search_query") or "").strip()
         url = product_row.source_url if product_row else None
-        if not url:
+        seed = search_query or url
+        if not seed:
             transition(job, JobState.FAILED)
-            job.failure_reason = "no product source_url"
+            job.failure_reason = "no product source_url or query"
             db.commit()
-            return {"ok": False, "error": "no source_url", "job_id": str(job_id)}
+            return {"ok": False, "error": "no source_url or query", "job_id": str(job_id)}
 
         # Operator-supplied hero image (set at job creation) — survives the overwrite
         # below and backstops the hero step when the scraper returns no product photo.
-        manual_images = list((product_row.attributes or {}).get("manual_images") or [])
+        manual_images = list(prior.get("manual_images") or [])
 
-        # --- 2A product research (scraper failure must not hard-fail) ---
-        result = research_product(url, str(job.id))
-        norm = result.product
-        if result.cost_usd:
-            _charge(db, job, provider=norm.source_platform or "scraper",
-                    line_item="scrape_product", amount=result.cost_usd,
-                    usage={"requests": 1})
+        # Reuse: if this product was already scraped (another video for it), skip the
+        # paid network scrape and reuse the saved details — 0 scraper credits.
+        reused = bool(product_row.scraped_at) and bool(prior.get("images"))
+        needs_manual_images = False
+        if reused:
+            niche = prior.get("category") or "misc"
+            scrape_status = prior.get("scrape_status") or "ok"
+            tier = prior.get("tier")
+            voice_gender = prior.get("voice_gender")
+            n_images = len(prior.get("images") or [])
+        else:
+            # --- 2A product research (scraper failure must not hard-fail) ---
+            result = research_product(seed, str(job.id))
+            norm = result.product
+            if result.cost_usd:
+                _charge(db, job, provider=norm.source_platform or "scraper",
+                        line_item="scrape_product", amount=result.cost_usd,
+                        usage={"requests": 1})
 
-        # If the scraper found no usable image but the operator pasted one, the hero
-        # step can still run (no longer "needs manual images").
-        if manual_images and not norm.images:
-            result.needs_manual_images = False
+            # If the scraper found no usable image but the operator pasted one, the hero
+            # step can still run (no longer "needs manual images").
+            if manual_images and not norm.images:
+                result.needs_manual_images = False
 
-        # Persist onto the canonical Product row.
-        product_row.title = norm.title
-        product_row.brand = (norm.attributes or {}).get("brand") or (norm.attributes or {}).get("vendor")
-        product_row.price = norm.price
-        product_row.currency = norm.currency
-        # normalized extras live in Product.attributes JSON (images/category/tier/voice_gender...)
-        attrs = norm.as_dict()
-        if manual_images:
-            attrs["manual_images"] = manual_images
-        product_row.attributes = attrs
-        product_row.raw_scrape = {"raw": norm.raw_payload, "platform": norm.source_platform}
-        product_row.scraper_provider = norm.source_platform
-        product_row.scraped_at = datetime.now(timezone.utc)
+            # Persist onto the canonical Product row (the saved, reusable product).
+            product_row.title = norm.title
+            product_row.brand = (norm.attributes or {}).get("brand") or (norm.attributes or {}).get("vendor")
+            product_row.price = norm.price
+            product_row.currency = norm.currency
+            # Stable dedupe key so future videos reuse this product without re-scraping.
+            product_row.external_product_id = (
+                (norm.attributes or {}).get("product_id") or product_row.external_product_id
+            )
+            # normalized extras live in Product.attributes JSON (images/category/tier/...)
+            attrs = norm.as_dict()
+            if manual_images:
+                attrs["manual_images"] = manual_images
+            if search_query:
+                attrs["search_query"] = search_query  # keep the seed for provenance
+            product_row.attributes = attrs
+            product_row.raw_scrape = {"raw": norm.raw_payload, "platform": norm.source_platform}
+            product_row.scraper_provider = norm.source_platform
+            product_row.scraped_at = datetime.now(timezone.utc)
+
+            niche = norm.category or "misc"
+            scrape_status = norm.scrape_status
+            tier = norm.tier
+            voice_gender = norm.voice_gender
+            n_images = len(norm.images)
+            needs_manual_images = result.needs_manual_images
 
         # --- pull relevant swipe templates for this product's category ---
-        niche = norm.category or "misc"
         linked = {"formula": None, "hook": None, "pacing": None}
         try:
             create_research_tables()
@@ -157,9 +184,9 @@ def run_research(job_id: str, *, session=None) -> dict:
 
         return {
             "ok": True, "job_id": str(job.id), "state": job.state.value if isinstance(job.state, JobState) else job.state,
-            "scrape_status": norm.scrape_status, "category": niche,
-            "tier": norm.tier, "voice_gender": norm.voice_gender,
-            "images": len(norm.images), "needs_manual_images": result.needs_manual_images,
+            "scrape_status": scrape_status, "category": niche, "reused_product": reused,
+            "tier": tier, "voice_gender": voice_gender,
+            "images": n_images, "needs_manual_images": needs_manual_images,
             "cost_accrued_usd": float(job.cost_accrued_usd or 0),
             "templates_linked": linked,
         }

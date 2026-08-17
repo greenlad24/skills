@@ -23,7 +23,8 @@ from __future__ import annotations
 # approved stack — LLM (Anthropic), Thai TTS (Google), video (LTX-2.5 on Modal),
 # posting (TikTok Content Posting API).
 from app.core.adapters.real import anthropic_llm  # noqa: F401
-from app.core.adapters.real import apify  # noqa: F401  (TikTok/product scraper + images)
+from app.core.adapters.real import socialcrawl  # noqa: F401  (TikTok Shop TH search + images)
+from app.core.adapters.real import apify  # noqa: F401  (alt TikTok/product scraper, swappable)
 from app.core.adapters.real import ltx_modal  # noqa: F401  (serverless LTX-2.5 via Modal)
 from app.core.adapters.real import google_tts  # noqa: F401  (near-free Thai TTS)
 from app.core.adapters.real import tiktok_posting  # noqa: F401  (free TikTok posting)

@@ -2,7 +2,7 @@
 
 The approved stack has exactly three things to configure:
   * keys   — Anthropic (LLM for research + scripting) + Google Cloud TTS (Thai voice)
-             + Apify (product/TikTok scraper that returns the product image)
+             + SocialCrawl (TikTok Shop TH search → product title, image, THB price)
   * video  — LTX-2.5 on Modal (MODAL_LTX_URL [+ token])
   * tiktok — TikTok Content Posting access token
 """
@@ -22,13 +22,23 @@ def compute_status() -> dict:
     keys_ok = (
         bool(settings.ANTHROPIC_API_KEY)
         and bool(settings.GOOGLE_TTS_API_KEY)
-        and bool(settings.APIFY_API_KEY)
+        and bool(settings.SOCIALCRAWL_API_KEY)
     )
     video_ok = bool(settings.MODAL_LTX_URL)
     tiktok_ok = bool(settings.TIKTOK_ACCESS_TOKEN)
     steps = {"keys": keys_ok, "video": video_ok, "tiktok": tiktok_ok}
-    complete = bool(settings.ONBOARDED) or all(steps.values())
-    return {"complete": complete, "steps": steps, "dry_run": settings.DRY_RUN}
+    # The pipeline can't run without the keys + a video engine, so the wizard is
+    # forced whenever either is missing — even after first-run onboarding (e.g. a key
+    # was removed). TikTok posting is only needed at the posting stage, so it stays
+    # optional for this gate. DRY_RUN (fakes) needs no real keys.
+    required_ok = keys_ok and video_ok
+    complete = bool(settings.DRY_RUN) or required_ok
+    return {
+        "complete": complete,
+        "steps": steps,
+        "dry_run": settings.DRY_RUN,
+        "onboarded": bool(settings.ONBOARDED),
+    }
 
 
 def save(values: dict[str, str]) -> dict:
@@ -92,19 +102,17 @@ def _test_tts() -> tuple[bool, str | None]:
 
 
 def _test_scraper() -> tuple[bool, str | None]:
-    if not settings.APIFY_API_KEY:
-        return False, "APIFY_API_KEY is not set"
-    # Cheap auth check: list the user's actors (no actor run, no credits spent).
-    with httpx.Client(timeout=30) as c:
-        r = c.get(
-            "https://api.apify.com/v2/users/me",
-            params={"token": settings.APIFY_API_KEY},
-        )
+    if not settings.SOCIALCRAWL_API_KEY:
+        return False, "SOCIALCRAWL_API_KEY is not set"
+    # Free auth check: read the credit balance (spends no search credits).
+    base = settings.SOCIALCRAWL_BASE.rstrip("/")
+    with httpx.Client(timeout=30, headers={"x-api-key": settings.SOCIALCRAWL_API_KEY}) as c:
+        r = c.get(f"{base}/credits/balance")
     if r.status_code == 200:
         return True, None
     if r.status_code in (401, 403):
-        return False, "Apify token rejected (check the token in your account settings)"
-    return False, f"Apify /users/me returned {r.status_code}"
+        return False, "SocialCrawl key rejected (check the key in your dashboard)"
+    return False, f"SocialCrawl /credits/balance returned {r.status_code}"
 
 
 def _test_video() -> tuple[bool, str | None]:
