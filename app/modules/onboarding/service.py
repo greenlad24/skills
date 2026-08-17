@@ -52,16 +52,34 @@ def compute_status() -> dict:
     }
 
 
+# The single approved provider stack — pinned so a stale .env (e.g. a leftover
+# SCRAPER_PROVIDER=firecrawl) can't silently route to a provider with no real adapter.
+_APPROVED_STACK = {
+    "LLM_PROVIDER": "anthropic",
+    "SCRAPER_PROVIDER": "socialcrawl",
+    "TTS_PROVIDER": "google_tts",
+    "VIDEOGEN_PROVIDER": "ltx_modal",
+    "POSTING_PROVIDER": "tiktok",
+}
+
+
 def save(values: dict[str, str]) -> dict:
-    """Persist whitelisted keys to .env + live settings; report the outcome."""
-    result = env_store.save(values)
+    """Persist whitelisted keys to .env + live settings; report the outcome.
+
+    Adding the SocialCrawl key also selects it as the scraper, so configuring the
+    key is all it takes to use it (correcting an older .env that pinned firecrawl).
+    """
+    vals = dict(values)
+    if str(vals.get("SOCIALCRAWL_API_KEY", "")).strip() and "SCRAPER_PROVIDER" not in vals:
+        vals["SCRAPER_PROVIDER"] = "socialcrawl"
+    result = env_store.save(vals)
     result["restart_required"] = False   # apply_live updates the running process
     return result
 
 
 def mark_complete() -> dict:
-    """Flip the app out of first-run: persist ONBOARDED + turn DRY_RUN off (go live)."""
-    env_store.save({"ONBOARDED": "true", "DRY_RUN": "false"})
+    """Flip the app out of first-run: pin the approved stack, ONBOARDED, DRY_RUN off."""
+    env_store.save({"ONBOARDED": "true", "DRY_RUN": "false", **_APPROVED_STACK})
     return {"complete": True}
 
 

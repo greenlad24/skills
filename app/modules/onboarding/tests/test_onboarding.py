@@ -42,6 +42,23 @@ def test_save_coerces_bool(env_file, monkeypatch):
     assert settings.DRY_RUN is False
 
 
+def test_save_socialcrawl_key_selects_provider(env_file, monkeypatch):
+    # Adding the SocialCrawl key must also switch SCRAPER_PROVIDER to socialcrawl,
+    # correcting an older .env that pinned firecrawl (which has no real adapter).
+    monkeypatch.setattr(settings, "SCRAPER_PROVIDER", "firecrawl", raising=False)
+    service.save({"SOCIALCRAWL_API_KEY": "sc-key"})
+    assert settings.SCRAPER_PROVIDER == "socialcrawl"
+    assert "SCRAPER_PROVIDER=socialcrawl" in env_file.read_text(encoding="utf-8")
+
+
+def test_mark_complete_pins_approved_stack(env_file, monkeypatch):
+    monkeypatch.setattr(settings, "SCRAPER_PROVIDER", "firecrawl", raising=False)
+    monkeypatch.setattr(settings, "DRY_RUN", True, raising=False)
+    service.mark_complete()
+    assert settings.SCRAPER_PROVIDER == "socialcrawl"
+    assert settings.DRY_RUN is False
+
+
 def test_reload_settings_from_dotenv(env_file, monkeypatch):
     # The worker picks up keys saved by the web onboarding by re-reading .env.
     from app.core.config import reload_settings_from_dotenv
