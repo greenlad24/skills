@@ -1224,7 +1224,8 @@ class StageEngine(
         if (idx in settings.soloistChannels) return false
         return idx in settings.lockedChannels ||
             (settings.lockVocalVolume &&
-                (st.role == Role.VOCAL || st.role == Role.BACKING_VOCAL)) ||
+                (st.role == Role.VOCAL || st.role == Role.BACKING_VOCAL ||
+                    isVocalName(st.name))) ||
             (settings.lockHarmonica && isHarmonica(st))
     }
 
@@ -1251,6 +1252,18 @@ class StageEngine(
     private fun isHarmonica(st: ChannelState): Boolean {
         val n = st.name.trim().lowercase()
         return "harmonica" in n || "harp" in n
+    }
+
+    /**
+     * A channel the operator NAMED as a vocal. Checked by name, not role,
+     * so the audio listener reclassifying it (a vocal mic whose spectrum
+     * reads bass-heavy on a quiet passage) can never quietly revoke its
+     * lock — the name the engineer gave it is the operator's declaration.
+     */
+    private fun isVocalName(name: String): Boolean {
+        val n = name.trim().lowercase()
+        return listOf("vocal", "vox", "voice", "sing", "lead v")
+            .any { it in n }
     }
 
     /** how long a fader must be still before the hand counts as off it */
@@ -1889,7 +1902,16 @@ class StageEngine(
             //
             // The lock is about not ACTING on a verdict. Recording one
             // costs nothing and everything downstream needs it.
-            if (st.roleLocked || st.role == Role.TALK) {
+            // THE OPERATOR'S DECLARED CHANNELS ARE NOT REGUESSED. Under the
+            // policy the kit, the vocals and the harmonica keep the role
+            // their name gives them — the audio listener may still LISTEN
+            // (so the readout is honest), but it never re-roles them. This
+            // is the fix for the vocal mic read as bass: once that happened
+            // the singer lost the lock, fell out of the lead, and joined
+            // the anchor, and REBALANCE then chased a moving target all
+            // night. The name the engineer set is the operator's word.
+            if (st.roleLocked || st.role == Role.TALK ||
+                (settings.operatorPolicy && volumeLocked(idx, st))) {
                 if (!st.isStatic && st.active && st.role != Role.TALK)
                     ident.recognise(idx, ensemble)?.let { recognised[idx] = it }
                 continue

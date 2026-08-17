@@ -61,6 +61,16 @@ class OperatorPolicyTest {
             "with the policy off the harmonica is not held")
     }
 
+    @Test fun `a vocal-named channel stays locked even if reclassified to bass`() {
+        val e = StageEngine(rig, POLICY)
+        // the audio listener has decided the vocal mic "sounds like bass" —
+        // the exact failure the operator hit. Its lock must survive that.
+        e.state[8]!!.role = Role.FOUNDATION       // ch09 "Vocal Center"
+        assertTrue(e.volumeLocked(8, e.state[8]!!),
+            "a channel the operator named a vocal must stay locked even " +
+                "after the listener re-roles it")
+    }
+
     @Test fun `nothing is locked with the policy off`() {
         val e = StageEngine(rig, EngineSettings(mode = BalanceMode.LEAD))
         for (i in 0 until 16)

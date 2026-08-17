@@ -176,6 +176,14 @@ tests keep guarding the untouched behaviour).
 
   > "as well vocal channels."
 
+  The lock is by the **name** the engineer gave the channel, not by what
+  the audio listener guesses — a vocal mic whose spectrum reads bass-heavy
+  on a quiet passage can never quietly lose its lock. More generally, under
+  the policy the operator's declared channels (the kit, the vocals, the
+  harmonica) are **never re-roled** by the listener: the name wins. This is
+  what stops a vocal being read as bass — which used to drop the singer out
+  of the lead, into the anchor, and make REBALANCE chase a moving target.
+
 - **Bass moves only when it is clearly wrong.** A wide deadband (≈5 dB):
   it comes **down only if it is overwhelming** and **up only if it is
   underwhelming** — never the continuous half-dB chase. A bass solo (rare)
