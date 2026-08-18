@@ -33,6 +33,27 @@ fun gitSha(): String {
     } catch (e: Exception) { "unknown" }
 }
 
+/**
+ * A versionCode that CHANGES every build. This one number is what
+ * Android uses to decide an install is newer than the one already on
+ * the tablet — a static versionCode means "install over" can silently
+ * keep the OLD apk, which is exactly the trap that had the operator
+ * staring at a build that was two fixes behind. CI passes its run number
+ * (monotonic, always up); a local build falls back to the git commit
+ * count, and finally to 1. Whatever the source, it moves forward.
+ */
+fun dynamicVersionCode(): Int {
+    System.getenv("GITHUB_RUN_NUMBER")?.trim()?.toIntOrNull()
+        ?.takeIf { it > 0 }?.let { return 1000 + it }
+    return try {
+        val gitDir = rootProject.file("../.git")
+        // commit count off the packed + loose logs is enough to move
+        val n = File(gitDir, "logs/HEAD").takeIf { it.exists() }
+            ?.readLines()?.size ?: 0
+        if (n > 0) n else 1
+    } catch (e: Exception) { 1 }
+}
+
 android {
     namespace = "com.stagemix.app"
     compileSdk = 35
@@ -41,8 +62,8 @@ android {
         applicationId = "com.stagemix.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = dynamicVersionCode()
+        versionName = "0.1.${dynamicVersionCode()} · ${gitSha()}"
         buildConfigField("String", "GIT_SHA", "\"${gitSha()}\"")
         buildConfigField("String", "BUILT_AT",
             "\"${LocalDateTime.now()}\"")

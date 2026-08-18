@@ -169,6 +169,19 @@ class MixerService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+      // EVERYTHING IN HERE RUNS ON THE MAIN THREAD, UNCAUGHT.
+      //
+      // The coroutine scope has a handler and the tick/handle loops guard
+      // themselves, but this method does not — and it is the one path CI's
+      // demo mode never runs, because the demo never starts this service.
+      // A throwable off startForegroundNotif() (foreground-service-type
+      // enforcement on Android 14+), acquireLocks(), or the synchronous
+      // top of connect() would go straight to Android's default handler
+      // and close the app the instant the operator switched mixing on
+      // against a real desk — which is exactly the crash being chased.
+      // Catch it here: it lands in crash.txt and on the connect screen
+      // instead of killing the process with nothing to show for it.
+      try {
         when (intent?.action) {
             ACTION_CONNECT -> {
                 startForegroundNotif()
@@ -360,6 +373,15 @@ class MixerService : Service() {
             }
             ACTION_DISCONNECT -> shutdown()
         }
+      } catch (ex: Throwable) {
+        // Make sure we are foreground before anything else — a service
+        // started with startForegroundService() that never calls
+        // startForeground() is itself killed with a crash, so if the
+        // failure was BEFORE that call, do it now with a plain notice.
+        runCatching { startForegroundNotif() }
+        Log.w(TAG, "onStartCommand failed", ex)
+        engineFailed(ex)
+      }
         return START_NOT_STICKY
     }
 
@@ -904,6 +926,24 @@ class MixerService : Service() {
      */
     private fun engineFailed(ex: Throwable) {
         tickFailures++
+        // WRITE THE FULL TRACE WHERE THE OPERATOR CAN SEND IT.
+        //
+        // The uncaught-crash handler writes crash.txt, but a failure that
+        // is CAUGHT here (the onStartCommand guard, the takeover guard,
+        // the tick guard) never reaches that handler — so without this the
+        // one trace that would explain the connect-time failure never
+        // leaves the tablet. Same file, same "Send crash report" button.
+        runCatching {
+            val dir = getExternalFilesDir(null) ?: filesDir
+            java.io.File(dir, "crash.txt").writeText(buildString {
+                appendLine("StageMix engine error — " + java.util.Date())
+                appendLine("build ${BuildConfig.GIT_SHA} " +
+                    "(v${BuildConfig.VERSION_NAME})")
+                appendLine("(caught — app kept running, mixer holding last mix)")
+                appendLine()
+                append(android.util.Log.getStackTraceString(ex))
+            })
+        }
         show?.mark("ERROR", "${ex.javaClass.simpleName}: " +
             (ex.message ?: "") + " (#$tickFailures in a row)", now())
         show?.net("ENGINE ERROR ($tickFailures in a row): " +

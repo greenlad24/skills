@@ -104,6 +104,18 @@ fun ConnectScreen() {
             fontWeight = FontWeight.Black, letterSpacing = 4.sp)
         Text("the on-stage mix engineer for your M18",
             color = Ink2, fontSize = 14.sp)
+        // WHICH BUILD IS THIS. Print it big enough to read across the
+        // desk: the whole "am I on the new apk?" question is answered
+        // here, without opening Android settings. versionName carries the
+        // build number and the commit; GIT_SHA/BUILT_AT come straight off
+        // BuildConfig so a screenshot pins the exact code that is running.
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "build ${com.stagemix.app.BuildConfig.GIT_SHA} · " +
+            com.stagemix.app.BuildConfig.BUILT_AT.take(16),
+            color = Accent, fontSize = 12.sp,
+            fontFamily = FontFamily.Monospace,
+        )
         Spacer(Modifier.height(28.dp))
         Text(
             "Join the same Wi-Fi / network as the mixer, then enter the " +
