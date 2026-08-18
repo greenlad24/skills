@@ -22,9 +22,20 @@ class MainActivity : ComponentActivity() {
         val crashedLast = prefs.getBoolean("crashed", false)
         if (crashedLast) {
             prefs.edit().putBoolean("crashed", false).apply()
-            AppState.lastError.value = "The app closed unexpectedly last time — " +
-                "auto-start is off for now. Use EXPORT LOG (crash.txt) so it " +
-                "can be fixed, then reconnect when ready."
+            // Show the actual crash on screen so it can be SCREENSHOT and
+            // sent — crash.txt lives in scoped storage a file manager can't
+            // reach, so a photo of this screen is the quickest way to get
+            // the stack trace out of the tablet and fix the real cause.
+            val crash = runCatching {
+                java.io.File(getExternalFilesDir(null) ?: filesDir, "crash.txt")
+                    .takeIf { it.exists() }?.readText()
+            }.getOrNull()
+            AppState.lastError.value = buildString {
+                append("Closed unexpectedly last time — auto-start is OFF. ")
+                append("SCREENSHOT this and send it so it can be fixed:\n\n")
+                if (crash.isNullOrBlank()) append("(no crash file found)")
+                else append(crash.lineSequence().take(30).joinToString("\n"))
+            }
         }
         // SHOWING THE APP WITHOUT A BAND.
         //

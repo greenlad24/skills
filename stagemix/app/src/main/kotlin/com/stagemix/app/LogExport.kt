@@ -55,11 +55,23 @@ object LogExport {
                 ctx, "${ctx.packageName}.logs", staged)
             val when_ = SimpleDateFormat("EEE d MMM, HH:mm", Locale.ROOT)
                 .format(Date(log.lastModified()))
+            // If the app has crashed, its stack trace is the most important
+            // thing to get out — put it right at the top of the message so
+            // it comes through even when the attachment does not.
+            val crash = runCatching {
+                File(ctx.getExternalFilesDir(null) ?: ctx.filesDir, "crash.txt")
+                    .takeIf { it.exists() }?.readText()
+            }.getOrNull()
             Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
                 putExtra(Intent.EXTRA_STREAM, uri)
                 putExtra(Intent.EXTRA_SUBJECT, "StageMix show log — $when_")
                 putExtra(Intent.EXTRA_TEXT, buildString {
+                    if (!crash.isNullOrBlank()) {
+                        append("⚠️ CRASH REPORT — please send this:\n")
+                        append(crash.take(6000))
+                        append("\n\n————————————————\n\n")
+                    }
                     append("StageMix show log — $when_\n")
                     append("${log.length() / 1024} KB. ")
                     append("Levels, EQ, compression and every decision the ")
