@@ -229,8 +229,12 @@ private fun MonStrip(
 
         Canvas(Modifier.fillMaxWidth().weight(1f)) {
             tick
-            drawMonStrip(this, level.getOrElse(ch) { -128f },
-                sendDb, wantDb, appDb, tint, off)
+            // A wedge's bad frame must never vanish the app mid-set —
+            // DrawGuard keeps the show going and captures the cause once.
+            com.stagemix.app.DrawGuard.run {
+                drawMonStrip(this, level.getOrElse(ch) { -128f },
+                    sendDb, wantDb, appDb, tint, off)
+            }
         }
 
         Spacer(Modifier.height(5.dp))

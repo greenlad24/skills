@@ -173,9 +173,16 @@ private fun ChannelStrip(
         // ---- meter and fader, drawn as one piece of hardware
         Canvas(Modifier.fillMaxWidth().weight(1f)) {
             tick                                  // draw-phase subscribe
-            drawStrip(this, s, tint, directing,
-                level.getOrElse(s.channel) { -128f },
-                peak.getOrElse(s.channel) { -128f })
+            // A DRAW MUST NEVER TAKE THE SHOW DOWN. One strip's bad frame
+            // — a value from a real desk no sanitizer anticipated — used
+            // to vanish the whole app mid-set. DrawGuard swallows it (that
+            // strip skips a frame, the app carries on) AND captures the
+            // stack the first time, so the cause is not lost with it.
+            com.stagemix.app.DrawGuard.run {
+                drawStrip(this, s, tint, directing,
+                    level.getOrElse(s.channel) { -128f },
+                    peak.getOrElse(s.channel) { -128f })
+            }
         }
 
         Spacer(Modifier.height(4.dp))
@@ -233,8 +240,10 @@ private fun ChannelStrip(
         Box(Modifier.fillMaxWidth().height(16.dp).well(5.dp)) {
             Canvas(Modifier.fillMaxWidth().fillMaxHeight()) {
                 tick
-                drawSpectrum(this, Spectra.band.getOrNull(s.channel), tint,
-                    s.active)
+                com.stagemix.app.DrawGuard.run {
+                    drawSpectrum(this, Spectra.band.getOrNull(s.channel),
+                        tint, s.active)
+                }
             }
         }
     }
