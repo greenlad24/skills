@@ -34,6 +34,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.stagemix.app.AppState
+import com.stagemix.app.clampFinite
+import com.stagemix.app.finite
 import com.stagemix.engine.Role
 import kotlin.math.abs
 import kotlin.math.max
@@ -250,10 +252,15 @@ private fun drawStrip(
     val faderX = meterW + (w - meterW) * 0.52f
 
     // ---------------- METER: segmented, -60..0 dBFS
-    fun yOf(db: Float) = h * (1f - ((db + 60f) / 60f).coerceIn(0f, 1f))
+    // A non-finite dB here becomes a NaN Canvas coordinate, which crashes
+    // Skia natively (no trace) — clampFinite lands NaN safely on the floor
+    // where coerceIn would pass it straight through.
+    val levelDb = levelDb.finite(-128f)
+    val peakDb = peakDb.finite(-128f)
+    fun yOf(db: Float) = h * (1f - ((db + 60f) / 60f).clampFinite(0f, 1f))
     val segs = 26
     val segH = h / segs
-    val lit = (((levelDb + 60f) / 60f).coerceIn(0f, 1f) * segs).toInt()
+    val lit = (((levelDb + 60f) / 60f).clampFinite(0f, 1f) * segs).toInt()
     for (i in 0 until segs) {
         val y = h - (i + 1) * segH
         val on = i < lit
@@ -272,17 +279,18 @@ private fun drawStrip(
     }
 
     // ---------------- FADER: the window the app may work in
-    val base = s.baselineDb
+    val base = s.baselineDb.finite(-10f)
+    val offset = s.offsetDb.finite(0f)
     val lo = base - LANE_BELOW
     val hi = base + LANE_ABOVE
     fun laneY(db: Float) =
-        h * (1f - ((db - lo) / (hi - lo)).coerceIn(0f, 1f))
+        h * (1f - ((db - lo) / (hi - lo)).clampFinite(0f, 1f))
 
-    val travelTint = if (s.offsetDb > 0) Warn else Accent
+    val travelTint = if (offset > 0) Warn else Accent
     drawFader(
         x = faderX, top = 6f, bottom = h - 6f, slotW = slotW,
-        yourY = laneY(base).coerceIn(6f, h - 6f),
-        capY = laneY(base + s.offsetDb).coerceIn(6f, h - 6f),
+        yourY = laneY(base).clampFinite(6f, h - 6f),
+        capY = laneY(base + offset).clampFinite(6f, h - 6f),
         tint = travelTint,
         glow = when {
             s.deskMuted -> null
@@ -308,7 +316,7 @@ private fun drawSpectrum(
     val p = Path()
     p.moveTo(0f, size.height)
     for (i in 0 until n) {
-        val v = ((bands[i] + 40f) / 40f).coerceIn(0f, 1f)
+        val v = ((bands[i] + 40f) / 40f).clampFinite(0f, 1f)
         p.lineTo(i * bw + bw / 2, size.height * (1f - v))
     }
     p.lineTo(size.width, size.height)

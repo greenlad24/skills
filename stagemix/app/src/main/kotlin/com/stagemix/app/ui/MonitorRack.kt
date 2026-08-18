@@ -36,6 +36,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.stagemix.app.AppState
+import com.stagemix.app.clampFinite
+import com.stagemix.app.finite
 import kotlin.math.abs
 import kotlin.math.max
 
@@ -272,9 +274,12 @@ private fun drawMonStrip(
     val faderX = meterW + (w - meterW) * 0.52f
 
     // the source feeding this wedge
+    // Sanitize every dB before it becomes a Canvas coordinate: a NaN from
+    // a real desk send crashes Skia natively, and coerceIn won't stop it.
+    val levelDb = levelDb.finite(-128f)
     val segs = 22
     val segH = h / segs
-    val lit = (((levelDb + 60f) / 60f).coerceIn(0f, 1f) * segs).toInt()
+    val lit = (((levelDb + 60f) / 60f).clampFinite(0f, 1f) * segs).toInt()
     for (i in 0 until segs) {
         val y = h - (i + 1) * segH
         val on = i < lit
@@ -294,23 +299,25 @@ private fun drawMonStrip(
         return@with
     }
 
+    val appDb = appDb.finite(0f)
     fun yOf(db: Float) = h * (1f -
         ((db - MON_BOTTOM_DB) / (MON_TOP_DB - MON_BOTTOM_DB))
-            .coerceIn(0f, 1f))
+            .clampFinite(0f, 1f))
 
     // where the engineer had it, before the keeper moved anything
-    val yours = yOf(sendDb!! - appDb)
+    val send = sendDb!!.finite(MON_BOTTOM_DB)
+    val yours = yOf(send - appDb)
     drawFader(
         x = faderX, top = 6f, bottom = h - 6f, slotW = slotW,
-        yourY = yours.coerceIn(6f, h - 6f),
-        capY = yOf(sendDb).coerceIn(6f, h - 6f),
+        yourY = yours.clampFinite(6f, h - 6f),
+        capY = yOf(send).clampFinite(6f, h - 6f),
         tint = tint,
         glow = if (abs(appDb) > 0.05f) tint else null,
         held = false, dim = false)
 
     // a ghost where this position wants it
     if (wantDb != null) {
-        val y = yOf(wantDb).coerceIn(2f, h - 2f)
+        val y = yOf(wantDb.finite(MON_BOTTOM_DB)).clampFinite(2f, h - 2f)
         drawLine(Warn.copy(alpha = 0.55f),
             Offset(faderX - slotW * 1.6f, y),
             Offset(faderX + slotW * 1.6f, y), strokeWidth = 2f)

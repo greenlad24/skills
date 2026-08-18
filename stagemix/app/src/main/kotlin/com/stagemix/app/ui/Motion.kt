@@ -81,7 +81,9 @@ object Levels {
 
     fun publish(v: FloatArray) {
         val n = minOf(v.size, N)
-        for (i in 0 until n) db[i] = v[i]
+        // A non-finite meter value is drawn straight into a Canvas and
+        // crashes Skia natively — floor it here so it never reaches a draw.
+        for (i in 0 until n) db[i] = v[i].let { if (it.isFinite()) it else -128f }
         seq++
     }
 }
@@ -107,9 +109,14 @@ object Spectra {
             var peak = -120f
             var i = (b * per).toInt()
             val end = ((b + 1) * per).toInt().coerceAtMost(bins.size)
-            while (i < end) { if (bins[i] > peak) peak = bins[i]; i++ }
+            while (i < end) {
+                val v = bins[i]
+                if (v.isFinite() && v > peak) peak = v
+                i++
+            }
             // ease it, so a strip does not flicker with the music
-            out[b] = out[b] + 0.25f * (peak - out[b])
+            val eased = out[b] + 0.25f * (peak - out[b])
+            out[b] = if (eased.isFinite()) eased else -120f
         }
     }
 }

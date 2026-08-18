@@ -1170,24 +1170,30 @@ class MixerService : Service() {
             val st = e.state[ch.index]
             val tone = doctor?.offsets(ch.index)
             val id = e.channelIdent(ch.index)
+            // EVERY NUMBER HERE FEEDS A CANVAS. A non-finite one — a NaN
+            // out of a bad engine calc on real-desk data — crashes Skia
+            // natively with no trace, which is the vanish-at-takeover bug.
+            // Sanitize at the source so nothing bad can ever propagate.
             AppState.StripUi(
                 channel = ch.index,
                 name = AppState.mixerChannelNames.value[ch.index] ?: ch.name,
                 role = st?.role ?: ch.role,
-                levelDb = st?.lastLevelDb ?: -128f,
+                levelDb = (st?.lastLevelDb ?: -128f).finite(-128f),
                 active = st?.active ?: false,
                 frozen = st?.frozen ?: false,
-                offsetDb = e.offsetDb(ch.index),
-                targetDb = e.targetDb(ch.index),
-                eqOffsetDb = tone?.first?.maxByOrNull { kotlin.math.abs(it) } ?: 0f,
-                thrOffsetDb = tone?.second ?: 0f,
+                offsetDb = e.offsetDb(ch.index).finite(0f),
+                targetDb = e.targetDb(ch.index).finite(0f),
+                eqOffsetDb = (tone?.first?.maxByOrNull { kotlin.math.abs(it) }
+                    ?: 0f).finite(0f),
+                thrOffsetDb = (tone?.second ?: 0f).finite(0f),
                 identLabel = id?.label ?: "",
                 identHeard = id?.heard ?: false,
-                identEvidence = id?.evidence ?: 0f,
+                identEvidence = (id?.evidence ?: 0f).finite(0f),
                 heldByYou = e.held(ch.index),
                 deskMuted = e.isDeskMuted(ch.index),
-                baselineDb = st?.baselineDb ?: -10f,
-                takeoverDb = st?.takeoverDb ?: st?.baselineDb ?: -10f,
+                baselineDb = (st?.baselineDb ?: -10f).finite(-10f),
+                takeoverDb = (st?.takeoverDb ?: st?.baselineDb ?: -10f)
+                    .finite(-10f),
                 riding = st?.riding ?: false,
             )
         }
