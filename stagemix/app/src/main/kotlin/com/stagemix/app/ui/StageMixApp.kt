@@ -95,9 +95,10 @@ fun ConnectScreen() {
     var ip by remember { mutableStateOf(cfg.mixerIp) }
 
     Column(
-        Modifier.fillMaxSize().padding(48.dp),
+        Modifier.fillMaxSize().padding(48.dp)
+            .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
+        verticalArrangement = Arrangement.Top,
     ) {
         Text("STAGEMIX AI", color = Ink, fontSize = 34.sp,
             fontWeight = FontWeight.Black, letterSpacing = 4.sp)
@@ -139,19 +140,39 @@ fun ConnectScreen() {
                 MixerService.cmd(ctx, MixerService.ACTION_CONNECT, "ip" to ip)
             },
         ) { Text("Connect to this IP") }
-        err?.let {
+        err?.let { crashText ->
             Spacer(Modifier.height(14.dp))
             // Scrollable + selectable: after a crash this holds the whole
             // stack trace, which must stay readable (and copyable) rather
             // than run off the bottom of the screen.
             SelectionContainer {
-                Text(it, color = Bad, fontSize = 12.sp,
+                Text(crashText, color = Bad, fontSize = 12.sp,
                     fontFamily = FontFamily.Monospace,
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(max = 340.dp)
                         .verticalScroll(rememberScrollState()))
             }
+            // One tap to send the full crash file — no need to reach the
+            // mixing screen (which the operator cannot, since it crashes).
+            Spacer(Modifier.height(10.dp))
+            Button(onClick = {
+                val full = runCatching {
+                    java.io.File(ctx.getExternalFilesDir(null) ?: ctx.filesDir,
+                        "crash.txt").takeIf { f -> f.exists() }?.readText()
+                }.getOrNull() ?: crashText
+                val send = android.content.Intent(
+                    android.content.Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(android.content.Intent.EXTRA_SUBJECT,
+                        "StageMix crash report")
+                    putExtra(android.content.Intent.EXTRA_TEXT, full)
+                }
+                runCatching {
+                    ctx.startActivity(android.content.Intent.createChooser(
+                        send, "Send crash report"))
+                }
+            }) { Text("📤 Send crash report") }
         }
         Spacer(Modifier.height(18.dp))
         OutlinedButton(onClick = {
