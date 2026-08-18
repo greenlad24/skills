@@ -1392,7 +1392,7 @@ class MixerService : Service() {
      * the current EQ/comp settings as the doctor's anchors. Monitor
      * buses are never read for automation and never written, period.
      */
-    private suspend fun takeoverNow() = takeoverLock.withLock {
+    private suspend fun takeoverNow(): Unit = try { takeoverLock.withLock {
         // Serialized: two takeovers racing (flip MIXING on while a
         // re-baseline is in flight) both cleared `pending` and both
         // flipped `collecting`, so one of them built an empty map and
@@ -1597,6 +1597,14 @@ class MixerService : Service() {
         logMonitors()
         preRingSetup()
         publishStrips(now())
+    } } catch (ex: Throwable) {
+        // A takeover that throws — a real M18 reply the emulator never
+        // sends, say — must not crash the app or leave it "MIXING" with a
+        // half-built engine. Drop cleanly back to WATCHING and report it,
+        // the same fail-safe posture the tick loop takes.
+        collecting = false
+        AppState.directing.value = false
+        engineFailed(ex)
     }
 
     /**
