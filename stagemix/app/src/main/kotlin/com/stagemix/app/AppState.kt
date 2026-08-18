@@ -119,6 +119,15 @@ object AppState {
     val lastError = MutableStateFlow<String?>(null)
 
     /**
+     * We crashed on the last run. Set once at launch from the crash pref.
+     * It holds the app on the setup screen with the trace showing, instead
+     * of auto-connecting straight back into whatever brought it down — the
+     * console's own connect-on-launch used to ignore this and re-enter the
+     * crash on a loop.
+     */
+    @Volatile @JvmField var startedFromCrash = false
+
+    /**
      * THE ONE READING OF "is the app mixing, and if not, why not".
      *
      * The header word, the background notification, and the progress bar

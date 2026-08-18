@@ -59,7 +59,10 @@ fun StageMixApp() {
         // Fully automatic: on launch, find the mixer on this network
         // (the M18's own AP — offline, no internet needed) and connect.
         androidx.compose.runtime.LaunchedEffect(Unit) {
-            if (AppState.conn.value == AppState.Conn.DISCONNECTED)
+            // After a crash, stay put and show the trace — do not dive
+            // straight back into the connect that brought the app down.
+            if (!AppState.startedFromCrash &&
+                AppState.conn.value == AppState.Conn.DISCONNECTED)
                 MixerService.cmd(ctx, MixerService.ACTION_CONNECT,
                     "ip" to AppState.config.value.mixerIp)
         }

@@ -34,6 +34,10 @@ class MainActivity : ComponentActivity() {
             "${AppState.autoStart.value} conn=${AppState.conn.value} " +
             "ip='${AppState.config.value.mixerIp}'")
         if (crashedLast) {
+            // Hold the app on the setup screen with the trace showing —
+            // do NOT auto-connect back into the crash (the console's
+            // connect-on-launch checks this flag too).
+            AppState.startedFromCrash = true
             prefs.edit().putBoolean("crashed", false).apply()
             // Show the actual crash on screen so it can be SCREENSHOT and
             // sent — crash.txt lives in scoped storage a file manager can't
