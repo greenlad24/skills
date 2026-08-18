@@ -12,11 +12,15 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -137,7 +141,17 @@ fun ConnectScreen() {
         ) { Text("Connect to this IP") }
         err?.let {
             Spacer(Modifier.height(14.dp))
-            Text(it, color = Bad, fontSize = 13.sp)
+            // Scrollable + selectable: after a crash this holds the whole
+            // stack trace, which must stay readable (and copyable) rather
+            // than run off the bottom of the screen.
+            SelectionContainer {
+                Text(it, color = Bad, fontSize = 12.sp,
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 340.dp)
+                        .verticalScroll(rememberScrollState()))
+            }
         }
         Spacer(Modifier.height(18.dp))
         OutlinedButton(onClick = {
