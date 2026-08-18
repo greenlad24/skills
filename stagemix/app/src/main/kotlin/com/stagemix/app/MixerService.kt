@@ -472,6 +472,24 @@ class MixerService : Service() {
                 show?.note("BOOT", "── the app's first moments (before the " +
                     "mixer answered) ──")
                 for (l in BootLog.recent()) show?.note("BOOT", l)
+                // AND THE LAST CRASH REPORT, INSIDE THE LOG ITSELF.
+                //
+                // The export prepends crash.txt to the share message, but
+                // the operator wants it in the log FILE that gets attached
+                // — so fold it in here too. This is the previous run's
+                // crash (or a render error the draw guard just caught);
+                // either way it belongs at the top of the night's log.
+                runCatching {
+                    val crash = java.io.File(
+                        getExternalFilesDir(null) ?: filesDir, "crash.txt")
+                        .takeIf { it.exists() }?.readText()
+                    if (!crash.isNullOrBlank()) {
+                        show?.note("CRASH", "── last crash report (see " +
+                            "crash.txt) ──")
+                        for (l in crash.lineSequence().take(60))
+                            show?.note("CRASH", l)
+                    }
+                }
                 engine = StageEngine(cfg.channels,
                     EngineSettings(operatorPolicy = true),
                     RESEARCH_PYRAMID).also { eng ->

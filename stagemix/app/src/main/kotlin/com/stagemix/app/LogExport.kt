@@ -184,7 +184,20 @@ object LogExport {
     fun shareDigest(ctx: Context, log: File): Intent =
         Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
-            putExtra(Intent.EXTRA_TEXT, digest(log))
+            // the crash report rides on the short export too, so whichever
+            // button the operator reaches for carries it out
+            val crash = runCatching {
+                File(ctx.getExternalFilesDir(null) ?: ctx.filesDir, "crash.txt")
+                    .takeIf { it.exists() }?.readText()
+            }.getOrNull()
+            putExtra(Intent.EXTRA_TEXT, buildString {
+                if (!crash.isNullOrBlank()) {
+                    append("⚠️ CRASH REPORT — please send this:\n")
+                    append(crash.take(6000))
+                    append("\n\n————————————————\n\n")
+                }
+                append(digest(log))
+            })
             putExtra(Intent.EXTRA_SUBJECT, "StageMix — the night in short")
         }
 }

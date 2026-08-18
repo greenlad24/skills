@@ -682,6 +682,9 @@ class ShowLog(
             // the app's first moments, folded in when the log opens —
             // low-volume and written once, never a runaway
             "BOOT",
+            // the last crash report, folded in at the top of the log so it
+            // is inside the file the operator exports — written once
+            "CRASH",
             // §5: "every processing write decoded to dB and Hz, every
             // wedge move, every ring-out … never dropped." These are
             // decision-driven and low-volume (a chain fires once per

@@ -36,12 +36,14 @@ object BootLog {
     private val clock = SimpleDateFormat("HH:mm:ss.SSS", Locale.ROOT)
     private val recent = ArrayDeque<String>()
     private var file: File? = null
+    private var baseDir: File? = null
     private var t0 = 0L
 
     /** Call FIRST thing in onCreate. Idempotent within a process. */
     @Synchronized fun init(ctx: Context) {
         if (file != null) return
         t0 = System.currentTimeMillis()
+        baseDir = ctx.getExternalFilesDir(null) ?: ctx.filesDir
         val dir = File(ctx.getExternalFilesDir(null) ?: ctx.filesDir, "logs")
         runCatching { dir.mkdirs() }
         val f = File(dir, "boot.txt")
@@ -82,4 +84,15 @@ object BootLog {
         File(File(ctx.getExternalFilesDir(null) ?: ctx.filesDir, "logs"),
             "boot.txt").takeIf { it.exists() }?.readText()
     }.getOrNull() ?: ""
+
+    /**
+     * Write the crash report file — the same crash.txt the export folds
+     * in and the setup screen shows. Used by the draw guard, which has no
+     * Context of its own but must still land its trace where the export
+     * and the next launch look for it.
+     */
+    @Synchronized fun writeCrash(text: String) {
+        val dir = baseDir ?: return
+        runCatching { File(dir, "crash.txt").writeText(text) }
+    }
 }

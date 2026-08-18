@@ -33,6 +33,14 @@ object DrawGuard {
         BootLog.log("DRAW", "RENDER CRASH CAUGHT (app kept running): " +
             "${t.javaClass.simpleName}: ${t.message}")
         for (line in stack.lineSequence().take(20)) BootLog.log("DRAW", line)
+        // Land it in crash.txt too, so EXPORT folds it into the log and
+        // the next launch shows it — the same place every other crash goes.
+        BootLog.writeCrash(buildString {
+            append("StageMix render error (caught — app kept running) — ")
+            append(java.util.Date())
+            append("\n\n")
+            append(stack)
+        })
         AppState.lastError.value = buildString {
             append("A drawing error was caught — the app kept running ")
             append("instead of closing. SCREENSHOT this or tap EXPORT:\n\n")
