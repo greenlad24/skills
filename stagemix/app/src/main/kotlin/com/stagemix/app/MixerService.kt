@@ -1556,6 +1556,8 @@ class MixerService : Service() {
                 ?.let { faders[ch.index] = FaderLaw.floatToDb(it) }
         }
         if (faders.isEmpty()) {
+            BootLog.log("MIX", "takeover got NO fader positions — dropping " +
+                "to WATCHING")
             collecting = false
             // The engine never took over (takeoverT stays -1 and every
             // tick writes nothing), so leaving directing=true would have
@@ -1574,6 +1576,8 @@ class MixerService : Service() {
         // console log says takeover worked.
         if (faders.size < chans.size) {
             val silent = chans.filter { it.index !in faders.keys }
+            BootLog.log("MIX", "PARTIAL takeover: ${faders.size}/" +
+                "${chans.size} faders answered")
             show?.net("PARTIAL TAKEOVER: only ${faders.size}/${chans.size} " +
                 "faders answered; " + silent.joinToString(",") {
                     "ch%02d".format(java.util.Locale.ROOT, it.index + 1) } +

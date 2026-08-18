@@ -15,6 +15,11 @@ class MainActivity : ComponentActivity() {
         BootLog.init(this)
         BootLog.log("APP", "MainActivity.onCreate")
         installCrashLogger()
+        // Catch a FREEZE, not just a throw. The boot log shows the app
+        // dying at takeover with no Java exception — the signature of an
+        // ANR (the system killing a frozen UI thread). This writes the
+        // main thread's stuck stack to crash.txt before that kill.
+        AnrWatchdog.start(this)
         // A mixer console never sleeps mid-show; screen-on also keeps the
         // low-latency Wi-Fi lock honored and Doze away (see checklist).
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
