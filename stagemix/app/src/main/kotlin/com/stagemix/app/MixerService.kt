@@ -22,6 +22,7 @@ import com.stagemix.engine.EngineSettings
 import com.stagemix.engine.RESEARCH_PYRAMID
 import com.stagemix.engine.StageEngine
 import com.stagemix.engine.ToneDoctor
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.Dispatchers
@@ -71,7 +72,16 @@ class MixerService : Service() {
      */
     private val t0 = System.nanoTime()
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    // A FAILURE IN A LAUNCHED COROUTINE MUST NOT KILL THE APP. The tick
+    // loop guards itself, but the takeover coroutine (scope.launch {
+    // takeoverNow() }) ran on a scope with no handler — so any throwable it
+    // hit against a live console went straight to Android's default handler
+    // and crashed the process. On a real mixer, mid-show. This routes every
+    // uncaught coroutine failure — Exception or Error — into the same
+    // fail-safe path the loop uses: log it, show it, hold the last mix.
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.IO +
+        CoroutineExceptionHandler { _, ex -> engineFailed(ex) })
     private var socket: DatagramSocket? = null
     private var mixerAddr: InetSocketAddress? = null
     private var engine: StageEngine? = null
@@ -872,7 +882,7 @@ class MixerService : Service() {
                     updateNotif()
                 }
             }
-            } catch (ex: Exception) {
+            } catch (ex: Throwable) {
                 engineFailed(ex)
             }
         }
@@ -892,7 +902,7 @@ class MixerService : Service() {
      * Repeating is what "it is not a blip" means, and repeating is what
      * this now counts.
      */
-    private fun engineFailed(ex: Exception) {
+    private fun engineFailed(ex: Throwable) {
         tickFailures++
         show?.mark("ERROR", "${ex.javaClass.simpleName}: " +
             (ex.message ?: "") + " (#$tickFailures in a row)", now())
