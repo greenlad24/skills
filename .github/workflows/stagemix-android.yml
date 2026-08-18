@@ -45,7 +45,21 @@ jobs:
         run: ./gradlew :app:assembleRelease --console=plain
 
       - name: Rename APK
-        run: cp app/build/outputs/apk/release/app-release.apk StageMix.apk
+        # TWO names for the one apk. StageMix.apk keeps a stable link.
+        # StageMix-b<run>-<sha>.apk is UNIQUE to this build, so its
+        # download URL has never been seen before and no browser cache
+        # or old copy in Downloads can be handed back in its place — the
+        # single most common reason a "new" install turned out to be the
+        # old one. The name also matches the "build <sha>" line the app
+        # prints on its setup screen, so the file and the running app can
+        # be checked against each other.
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk StageMix.apk
+          SHA7="${GITHUB_SHA:0:7}"
+          UNIQUE="StageMix-b${GITHUB_RUN_NUMBER}-${SHA7}.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$UNIQUE"
+          echo "UNIQUE_APK=$UNIQUE" >> "$GITHUB_ENV"
+          echo "Built $UNIQUE"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -53,6 +67,7 @@ jobs:
           name: StageMix-apk
           path: |
             stagemix/StageMix.apk
+            stagemix/${{ env.UNIQUE_APK }}
             stagemix/stagemix-replay.jar
             stagemix/virtual-m18.jar
 
@@ -65,6 +80,7 @@ jobs:
           prerelease: true
           files: |
             stagemix/StageMix.apk
+            stagemix/${{ env.UNIQUE_APK }}
             stagemix/stagemix-replay.jar
             stagemix/virtual-m18.jar
           body: |
@@ -75,6 +91,15 @@ jobs:
             monitor buses**: monitors stay 100 % yours in Mixing Station.
             Download it on the tablet, open it, and allow "install unknown
             apps" when asked. It installs over the previous version.
+
+            > **Grabbing the same file twice?** Every build also ships a
+            > second copy named **StageMix-b&lt;run&gt;-&lt;sha&gt;.apk** — a
+            > name that has never been used before, so the browser and the
+            > Downloads folder cannot hand you back an old cached copy by
+            > mistake. Use that one if a "new" install ever turns out to be
+            > the old app. The name matches the **build …** line on the
+            > setup screen, so you can check the file against the running
+            > app. **Uninstall the old StageMix first** to be certain.
 
             1. Put the tablet on the M18's Wi-Fi. Open StageMix — it finds
                the mixer and reads your channel names by itself.
