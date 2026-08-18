@@ -9,6 +9,11 @@ import com.stagemix.app.ui.StageMixApp
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // BEFORE ANYTHING ELSE: start the first-moments log. From here on
+        // every step of startup is written down, so a close during launch
+        // or connect leaves a trail instead of a silence.
+        BootLog.init(this)
+        BootLog.log("APP", "MainActivity.onCreate")
         installCrashLogger()
         // A mixer console never sleeps mid-show; screen-on also keeps the
         // low-latency Wi-Fi lock honored and Doze away (see checklist).
@@ -20,6 +25,9 @@ class MainActivity : ComponentActivity() {
         // and kept in crash.txt next to the logs so it can be read and fixed.
         val prefs = getSharedPreferences("stagemix-crash", MODE_PRIVATE)
         val crashedLast = prefs.getBoolean("crashed", false)
+        BootLog.log("APP", "crashedLast=$crashedLast autoStart=" +
+            "${AppState.autoStart.value} conn=${AppState.conn.value} " +
+            "ip='${AppState.config.value.mixerIp}'")
         if (crashedLast) {
             prefs.edit().putBoolean("crashed", false).apply()
             // Show the actual crash on screen so it can be SCREENSHOT and
@@ -70,9 +78,11 @@ class MainActivity : ComponentActivity() {
         // rig that always uses the same address connects instantly.
         else if (!crashedLast && AppState.autoStart.value &&
                  AppState.conn.value == AppState.Conn.DISCONNECTED) {
+            BootLog.log("APP", "auto-connect: starting MixerService (CONNECT)")
             MixerService.cmd(this, MixerService.ACTION_CONNECT,
                 "ip" to AppState.config.value.mixerIp)
         }
+        BootLog.log("APP", "setContent — first frame")
         setContent { StageMixApp() }
     }
 
@@ -86,6 +96,10 @@ class MainActivity : ComponentActivity() {
     private fun installCrashLogger() {
         val prev = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, ex ->
+            runCatching {
+                BootLog.log("CRASH", "${ex.javaClass.simpleName}: " +
+                    (ex.message ?: "") + " on ${thread.name}")
+            }
             runCatching {
                 val dir = getExternalFilesDir(null) ?: filesDir
                 java.io.File(dir, "crash.txt").writeText(buildString {

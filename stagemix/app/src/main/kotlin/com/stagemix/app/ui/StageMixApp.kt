@@ -765,12 +765,23 @@ private fun shareShowLog(ctx: android.content.Context) {
             java.io.File(ctx.getExternalFilesDir(null) ?: ctx.filesDir,
                 "crash.txt").takeIf { it.exists() }?.readText()
         }.getOrNull()
-        if (!crash.isNullOrBlank()) {
+        val boot = com.stagemix.app.BootLog.text(ctx)
+        if (!crash.isNullOrBlank() || boot.isNotBlank()) {
+            val body = buildString {
+                if (!crash.isNullOrBlank()) {
+                    append("⚠️ CRASH REPORT — please send this:\n\n")
+                    append(crash)
+                    append("\n\n————————————————\n\n")
+                }
+                if (boot.isNotBlank()) {
+                    append("— the app's first moments —\n")
+                    append(boot)
+                }
+            }
             val send = Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
                 putExtra(Intent.EXTRA_SUBJECT, "StageMix crash report")
-                putExtra(Intent.EXTRA_TEXT,
-                    "⚠️ CRASH REPORT — please send this:\n\n$crash")
+                putExtra(Intent.EXTRA_TEXT, body)
             }
             ctx.startActivity(Intent.createChooser(send,
                 "Send crash report").apply {

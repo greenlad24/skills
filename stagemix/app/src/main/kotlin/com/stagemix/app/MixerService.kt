@@ -181,11 +181,14 @@ class MixerService : Service() {
       // against a real desk — which is exactly the crash being chased.
       // Catch it here: it lands in crash.txt and on the connect screen
       // instead of killing the process with nothing to show for it.
+      BootLog.log("SVC", "onStartCommand ${intent?.action}")
       try {
         when (intent?.action) {
             ACTION_CONNECT -> {
                 startForegroundNotif()
+                BootLog.log("SVC", "foreground notification up")
                 acquireLocks()
+                BootLog.log("SVC", "wake/wifi locks acquired")
                 connect(intent.getStringExtra("ip") ?: return START_NOT_STICKY)
             }
             ACTION_SNAPSHOT -> {
@@ -374,6 +377,8 @@ class MixerService : Service() {
             ACTION_DISCONNECT -> shutdown()
         }
       } catch (ex: Throwable) {
+        BootLog.log("FATAL", "onStartCommand ${ex.javaClass.simpleName}: " +
+            (ex.message ?: ""))
         // Make sure we are foreground before anything else — a service
         // started with startForegroundService() that never calls
         // startForeground() is itself killed with a crash, so if the
@@ -430,12 +435,16 @@ class MixerService : Service() {
             AppState.conn.value != AppState.Conn.DISCONNECTED) return
         AppState.conn.value = AppState.Conn.CONNECTING
         AppState.lastError.value = null
+        BootLog.log("CONN", "connect requested ip='${ipWanted}'")
         loopJob?.cancel()
         loopJob = scope.launch {
             try {
                 // Empty IP -> find the mixer ourselves (tablet lives on
                 // the M18's own Wi-Fi; the console answers broadcasts).
+                if (ipWanted.isBlank())
+                    BootLog.log("CONN", "no IP set — broadcasting to discover")
                 val ip = ipWanted.ifBlank { discover() ?: "" }
+                BootLog.log("CONN", "resolved ip='${ip}'")
                 if (ip.isBlank()) {
                     AppState.conn.value = AppState.Conn.DISCONNECTED
                     AppState.lastError.value =
@@ -447,11 +456,22 @@ class MixerService : Service() {
                 bindSocket(s)
                 socket = s
                 mixerAddr = InetSocketAddress(InetAddress.getByName(ip), PORT)
+                BootLog.log("CONN", "socket bound, sending /xinfo to $ip:$PORT")
 
                 val cfg = AppState.config.value
                 show?.close()
                 show = ShowLog(getExternalFilesDir(null) ?: filesDir)
                 AppState.logPath.value = show?.file?.absolutePath ?: ""
+                // FOLD THE FIRST MOMENTS INTO THE NIGHT'S LOG.
+                //
+                // Everything from app-open to this line was written to the
+                // boot log while the show log did not yet exist. Copy it in
+                // now, at the top, so the one file the operator exports
+                // reads from the very first moment — not from the first
+                // meter packet.
+                show?.note("BOOT", "── the app's first moments (before the " +
+                    "mixer answered) ──")
+                for (l in BootLog.recent()) show?.note("BOOT", l)
                 engine = StageEngine(cfg.channels,
                     EngineSettings(operatorPolicy = true),
                     RESEARCH_PYRAMID).also { eng ->
@@ -499,12 +519,15 @@ class MixerService : Service() {
                     }
                 }
                 if (!ok) {
+                    BootLog.log("CONN", "NO ANSWER from $ip:$PORT in 3s")
                     show?.net("no mixer answered at $ip:$PORT")
                     AppState.conn.value = AppState.Conn.DISCONNECTED
                     AppState.lastError.value =
                         "No mixer answered at $ip:$PORT — check Wi-Fi/IP"
                     return@launch
                 }
+                BootLog.log("CONN", "mixer answered: " +
+                    "'${AppState.mixer.value.name}' ${AppState.mixer.value.model}")
                 AppState.conn.value = AppState.Conn.CONNECTED
                 // The console has answered at least once this session.
                 // This gates every "the mixer is gone" surface (opState's
@@ -549,6 +572,8 @@ class MixerService : Service() {
                         "found the desk — it listens for " +
                         "${engine?.settings?.learnSec?.toInt() ?: 20}s " +
                         "before it writes anything", now())
+                    BootLog.log("MIX", "auto-start: taking the mains, " +
+                        "arming takeover")
                     scope.launch { takeoverNow() }
                     updateNotif()
                 } else if (AppState.directing.value &&
@@ -562,8 +587,11 @@ class MixerService : Service() {
                     AppState.mixingSinceMs.value = 0L
                     updateNotif()
                 }
+                BootLog.log("CONN", "entering show loop")
                 runLoop()
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                BootLog.log("FATAL", "connect ${e.javaClass.simpleName}: " +
+                    (e.message ?: ""))
                 Log.w(TAG, "connect failed", e)
                 AppState.conn.value = AppState.Conn.DISCONNECTED
                 AppState.lastError.value = e.message
@@ -926,6 +954,8 @@ class MixerService : Service() {
      */
     private fun engineFailed(ex: Throwable) {
         tickFailures++
+        BootLog.log("ERR", "engineFailed #$tickFailures " +
+            "${ex.javaClass.simpleName}: ${ex.message ?: ""}")
         // WRITE THE FULL TRACE WHERE THE OPERATOR CAN SEND IT.
         //
         // The uncaught-crash handler writes crash.txt, but a failure that
@@ -1438,6 +1468,7 @@ class MixerService : Service() {
         // flipped `collecting`, so one of them built an empty map and
         // reported "no fader positions received" with the console
         // answering perfectly.
+        BootLog.log("MIX", "takeoverNow: reading fader positions")
         val e = engine ?: return@withLock
         collecting = true          // our own enquiry replies are NOT
         pending.clear()            // human fader moves
@@ -1637,6 +1668,8 @@ class MixerService : Service() {
         logMonitors()
         preRingSetup()
         publishStrips(now())
+        BootLog.log("MIX", "takeover complete — ${faders.size} channels; " +
+            "the app now has the mains")
     } } catch (ex: Throwable) {
         // A takeover that throws — a real M18 reply the emulator never
         // sends, say — must not crash the app or leave it "MIXING" with a

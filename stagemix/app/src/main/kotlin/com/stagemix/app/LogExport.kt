@@ -62,6 +62,9 @@ object LogExport {
                 File(ctx.getExternalFilesDir(null) ?: ctx.filesDir, "crash.txt")
                     .takeIf { it.exists() }?.readText()
             }.getOrNull()
+            // The app's first moments — everything from open to the first
+            // meter packet. On a crash at connect this is the whole story.
+            val boot = BootLog.text(ctx)
             Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
                 putExtra(Intent.EXTRA_STREAM, uri)
@@ -70,6 +73,11 @@ object LogExport {
                     if (!crash.isNullOrBlank()) {
                         append("⚠️ CRASH REPORT — please send this:\n")
                         append(crash.take(6000))
+                        append("\n\n————————————————\n\n")
+                    }
+                    if (boot.isNotBlank()) {
+                        append("— the app's first moments —\n")
+                        append(boot.takeLast(4000))
                         append("\n\n————————————————\n\n")
                     }
                     append("StageMix show log — $when_\n")

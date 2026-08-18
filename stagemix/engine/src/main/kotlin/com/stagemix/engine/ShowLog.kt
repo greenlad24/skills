@@ -679,6 +679,9 @@ class ShowLog(
         /** never dropped, even past the hard cap — the record of what happened */
         private val KEEP_ALWAYS = setOf(
             "DEC", "FADER", "MARK", "USER", "NET", "CARD", "HEAD",
+            // the app's first moments, folded in when the log opens —
+            // low-volume and written once, never a runaway
+            "BOOT",
             // §5: "every processing write decoded to dB and Hz, every
             // wedge move, every ring-out … never dropped." These are
             // decision-driven and low-volume (a chain fires once per
