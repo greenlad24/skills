@@ -370,6 +370,20 @@ fun ConsoleScreen() {
                     AppState.directing.value = false
                     MixerService.cmd(ctx, MixerService.ACTION_REVERT)
                 }
+                Spacer(Modifier.width(8.dp))
+                // EXPORT, RIGHT HERE AT THE TOP — after UNDO.
+                //
+                // It used to live at the very bottom of the SETUP tab,
+                // behind a scroll, which is exactly where it could not be
+                // found on a night that needed it. In the transport row it
+                // is one tap from every screen. The share it fires carries
+                // the whole show log AND, prepended, the full crash trace
+                // (LogExport folds crash.txt into the message) — so this
+                // one button is also how the crash report leaves the
+                // tablet. Lamp turns red when there is a crash to send.
+                TransportKey("EXPORT",
+                    err != null, if (err != null) Bad else Accent,
+                    Modifier.width(96.dp)) { shareShowLog(ctx) }
             }
 
             Spacer(Modifier.height(10.dp))
@@ -734,6 +748,53 @@ private fun InstrumentPicker(s: AppState.StripUi, onDone: () -> Unit) {
  * as an attachment, and a one-screen digest that pastes straight into a
  * chat message.
  */
+/**
+ * Fire the share sheet for the night's log — with the crash trace, if
+ * there is one, folded in at the top by LogExport. One path so the
+ * transport-row EXPORT key and the SETUP-tab button behave identically:
+ * either can be the one that gets the crash report off the tablet.
+ */
+private fun shareShowLog(ctx: android.content.Context) {
+    val f = LogExport.latest(ctx)
+    if (f == null) {
+        // No show log yet — but a crash before the first connect is
+        // exactly when the trace matters most, and it is sitting in
+        // crash.txt. Send THAT on its own rather than telling the
+        // operator there is nothing to send.
+        val crash = runCatching {
+            java.io.File(ctx.getExternalFilesDir(null) ?: ctx.filesDir,
+                "crash.txt").takeIf { it.exists() }?.readText()
+        }.getOrNull()
+        if (!crash.isNullOrBlank()) {
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_SUBJECT, "StageMix crash report")
+                putExtra(Intent.EXTRA_TEXT,
+                    "⚠️ CRASH REPORT — please send this:\n\n$crash")
+            }
+            ctx.startActivity(Intent.createChooser(send,
+                "Send crash report").apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                })
+        } else {
+            Toast.makeText(ctx,
+                "No show log yet — connect to the mixer first",
+                Toast.LENGTH_SHORT).show()
+        }
+        return
+    }
+    val intent = LogExport.shareIntent(ctx, f)
+    if (intent == null) {
+        Toast.makeText(ctx, "Log is at ${f.absolutePath}",
+            Toast.LENGTH_LONG).show()
+    } else {
+        ctx.startActivity(Intent.createChooser(intent,
+            "Send the show log").apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            })
+    }
+}
+
 @Composable
 private fun ExportLogButtons() {
     val ctx = LocalContext.current
@@ -741,25 +802,7 @@ private fun ExportLogButtons() {
     fun latest() = LogExport.latest(ctx)
 
     Button(
-        onClick = {
-            val f = latest()
-            if (f == null) {
-                Toast.makeText(ctx,
-                    "No show log yet — connect to the mixer first",
-                    Toast.LENGTH_SHORT).show()
-                return@Button
-            }
-            val intent = LogExport.shareIntent(ctx, f)
-            if (intent == null) {
-                Toast.makeText(ctx, "Log is at ${f.absolutePath}",
-                    Toast.LENGTH_LONG).show()
-            } else {
-                ctx.startActivity(Intent.createChooser(intent,
-                    "Send the show log").apply {
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    })
-            }
-        },
+        onClick = { shareShowLog(ctx) },
         colors = ButtonDefaults.buttonColors(containerColor = Panel2),
     ) { Text("⤴  EXPORT LOG", color = Ink, fontSize = 12.sp) }
 
