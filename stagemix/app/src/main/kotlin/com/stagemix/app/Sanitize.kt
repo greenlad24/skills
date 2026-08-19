@@ -20,6 +20,19 @@ package com.stagemix.app
  */
 fun Float.finite(fallback: Float = 0f): Float = if (isFinite()) this else fallback
 
-/** coerceIn, but a non-finite value lands on [lo] instead of passing through */
-fun Float.clampFinite(lo: Float, hi: Float): Float =
-    if (isFinite()) coerceIn(lo, hi) else lo
+/**
+ * coerceIn, made total. Two inputs it must survive that plain coerceIn
+ * does not:
+ *  · a non-finite value (NaN/Infinity) — lands on [lo] instead of passing
+ *    through, since NaN fails every comparison;
+ *  · an INVERTED range, hi < lo — coerceIn throws
+ *    "Cannot coerce value to an empty range" on it, and that is exactly
+ *    what took the app down: a strip drawn on a zero-height Canvas frame
+ *    computes clampFinite(6f, h-6f) with h≈0, i.e. coerceIn(6f, -6f).
+ *    A degenerate range has one point; return it ([lo]) rather than throw.
+ */
+fun Float.clampFinite(lo: Float, hi: Float): Float {
+    if (!isFinite()) return lo
+    if (hi <= lo) return lo
+    return coerceIn(lo, hi)
+}
