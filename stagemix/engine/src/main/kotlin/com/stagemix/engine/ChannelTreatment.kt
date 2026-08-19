@@ -196,10 +196,15 @@ data class Chain(
  */
 val STARTING_CHAINS: Map<Role, Chain> = mapOf(
     Role.FOUNDATION to Chain(
-        // No high-pass worth the name: this is where the low end lives.
-        // The 400 Hz dip is the one move that is right on nearly every
-        // kick and most basses — the box, the boxiness.
-        hpfHz = 30f,
+        // NO HIGH-PASS. This is where the low end lives, and the kick is
+        // often the ONLY thing carrying the bottom — on a real night the
+        // bass players dropped out and the kit and piano were all that was
+        // left, so any roll-off on the kick took the sub of the whole mix
+        // with it. A 30 Hz corner was cutting exactly the octave the kick
+        // has to hold when there is no bass in the room. Off. The 400 Hz
+        // dip stays — that is the one move right on nearly every kick and
+        // most basses: the box, the boxiness, not the bottom.
+        hpfHz = null,
         eq = listOf(EqBand(2, 400f, -3f, 1.8f)),
         // PRESERVE THE PUNCH. The book's makeup is forced to zero for
         // ring-safety, so any compression here only ever LOSES level — and
@@ -216,7 +221,10 @@ val STARTING_CHAINS: Map<Role, Chain> = mapOf(
         why = "low end: keep the bottom, take out the box, hold it steady " +
             "WITHOUT catching the transient — the punch stays"),
     Role.DRUMS to Chain(
-        hpfHz = 80f,
+        // Was 80 Hz, which took the weight and thud off the snare and the
+        // kit. Down to 40: still clears subsonic stage rumble, but the
+        // low body of the kit stays — the operator heard it go missing.
+        hpfHz = 40f,
         eq = listOf(EqBand(2, 400f, -3f, 1.5f)),
         // Same as the kick: slow attack so the snare crack passes before
         // the compressor moves, high threshold and 2:1 so it barely acts.
@@ -253,7 +261,14 @@ val STARTING_CHAINS: Map<Role, Chain> = mapOf(
         reverbSendDb = -8f,
         why = "backing vocal: further back, wetter, out of the lead's way"),
     Role.KEYS to Chain(
-        hpfHz = 60f,
+        // NO HIGH-PASS. A 60 Hz corner cut the piano's entire bass
+        // register — its low notes run below 60 Hz — and this band's
+        // pianist carries the bass line with the left hand when the bass
+        // players drop out, so those notes ARE the low end of the mix.
+        // The operator heard them go missing. Off: the piano keeps its
+        // full range. (Only subsonic rumble is lost, which a grand or a
+        // stage piano barely produces.)
+        hpfHz = null,
         // SOFT AT ALL TIMES. A broad cut through the hardness/attack band
         // (~4.5 kHz) keeps the piano mellow, so it sits as the warm
         // harmonic bed and never turns bright or clangy. Then piano and
