@@ -201,26 +201,42 @@ val STARTING_CHAINS: Map<Role, Chain> = mapOf(
         // kick and most basses — the box, the boxiness.
         hpfHz = 30f,
         eq = listOf(EqBand(2, 400f, -3f, 1.8f)),
-        compThrDb = -18f, compRatio = 4f,
-        compAttackMs = 10f, compReleaseMs = 120f, compMakeupDb = null,
+        // PRESERVE THE PUNCH. The book's makeup is forced to zero for
+        // ring-safety, so any compression here only ever LOSES level — and
+        // a fast attack (10 ms) on a kick catches the very transient that
+        // IS the oomph and squashes it. That is exactly the "the kick lost
+        // its punch" a real night reported. So the compressor now barely
+        // engages: a high threshold that only the loudest peaks reach, a
+        // gentle 2:1, and a SLOW attack that lets the beater transient
+        // through untouched before it acts on the sustain. Glue without
+        // flattening — and no makeup, so no ring risk.
+        compThrDb = -10f, compRatio = 2f,
+        compAttackMs = 45f, compReleaseMs = 150f, compMakeupDb = null,
         reverbSendDb = null,
-        why = "low end: keep the bottom, take out the box, hold it steady"),
+        why = "low end: keep the bottom, take out the box, hold it steady " +
+            "WITHOUT catching the transient — the punch stays"),
     Role.DRUMS to Chain(
         hpfHz = 80f,
         eq = listOf(EqBand(2, 400f, -3f, 1.5f)),
-        compThrDb = -16f, compRatio = 3f,
-        compAttackMs = 15f, compReleaseMs = 100f, compMakeupDb = null,
+        // Same as the kick: slow attack so the snare crack passes before
+        // the compressor moves, high threshold and 2:1 so it barely acts.
+        // With makeup forced to zero, gentle-and-late is the only way the
+        // kit keeps its punch instead of being flattened level.
+        compThrDb = -12f, compRatio = 2f,
+        compAttackMs = 40f, compReleaseMs = 120f, compMakeupDb = null,
         reverbSendDb = -14f,
-        why = "kit: high-passed, a little air, a touch of room"),
+        why = "kit: high-passed, a little air, a touch of room — comp late " +
+            "and gentle so the crack stays"),
     // the aux percussion (congas etc) gets the same treatment the kit
     // used to carry when it shared this role
     Role.PERCUSSION to Chain(
         hpfHz = 80f,
         eq = listOf(EqBand(2, 400f, -3f, 1.5f)),
-        compThrDb = -16f, compRatio = 3f,
-        compAttackMs = 15f, compReleaseMs = 100f, compMakeupDb = null,
+        compThrDb = -12f, compRatio = 2f,
+        compAttackMs = 40f, compReleaseMs = 120f, compMakeupDb = null,
         reverbSendDb = -14f,
-        why = "kit: high-passed, a little air, a touch of room"),
+        why = "kit: high-passed, a little air, a touch of room — comp late " +
+            "and gentle so the hit stays"),
     Role.VOCAL to Chain(
         hpfHz = 100f,
         eq = listOf(EqBand(1, 300f, -3f, 1.5f)),
@@ -245,10 +261,15 @@ val STARTING_CHAINS: Map<Role, Chain> = mapOf(
         // (200-400 Hz) — the guitar cedes it below — and in return cedes
         // the PRESENCE band (~2.5 kHz) to the guitar's pick, so the two
         // interlock. Band 2 also clears the vocal's low-mids as before.
+        // The 4.5 kHz roll-off was a touch heavy at -3 and read as dull
+        // ("a little meh" on a real night). Ease it to -2: still mellow,
+        // still soft, but with a little more life on top. The 300 Hz and
+        // 2.5 kHz cuts stay — they clear the vocal's low-mids and cede the
+        // presence band to the guitar so the two never cancel.
         eq = listOf(
             EqBand(2, 300f, -2f, 1.2f),
             EqBand(3, 2500f, -1.5f, 1.4f),
-            EqBand(1, 4500f, -3f, 0.8f)),
+            EqBand(1, 4500f, -2f, 0.8f)),
         compThrDb = -22f, compRatio = 2f,
         compAttackMs = 30f, compReleaseMs = 200f, compMakeupDb = null,
         reverbSendDb = -16f,
