@@ -4309,9 +4309,20 @@ class StageEngine(
             // which is how a chain ends up re-applying itself over a
             // performance nobody asked it to change.
             if (!needsTreatment(idx, st, tSec)) continue
+            // SPLIT THE FOUNDATION ROLE. Kick and bass share it, but the
+            // kick stays completely flat (its own rule) while a bass gets
+            // the clean-stage treatment that keeps its sub. Only when the
+            // AUDIO has confirmed the channel is NOT a kick does the bass
+            // chain apply — until then FOUNDATION stays flat, so the kick
+            // is never briefly bass-treated before it is recognised.
+            val heardInst = recognised[idx]?.instrument
+            val bassOverride =
+                if (st.role == Role.FOUNDATION && heardInst != null &&
+                    heardInst != Instrument.KICK)
+                    BASS_CLEAN else null
             val w = treatment.consider(idx, st.role, ident.verdict(idx),
                 ident.evidence(idx), ident.spectrum(idx), tSec,
-                shapeOf(idx))
+                shapeOf(idx), bassOverride)
             if (w.isEmpty()) continue
             log(tSec, "treat", idx, 0f,
                 "${st.name}: ${treatment.lastReason}")

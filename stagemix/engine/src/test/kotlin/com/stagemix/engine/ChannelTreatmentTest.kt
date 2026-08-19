@@ -436,12 +436,18 @@ class ChannelTreatmentTest {
         assertTrue(ring.third < -3f && ring.third >= -4.01f,
             "cut, and not more than four dB: ${ring.third}")
 
-        // a channel with no lump gets the book and nothing else
-        val plain = ChannelTreatment().consider(2, Role.DRUMS,
+        // a channel with no lump gets the house clean-stage curve, but
+        // nothing aimed at a resonance: its low-mid band stays at the curve
+        // frequency (~350) rather than being pulled onto a 250 Hz lump that
+        // is not there.
+        val plainF = ChannelTreatment().consider(2, Role.DRUMS,
             verdict(0.95f), 1f, spec(), 100.0,
             ChannelTreatment.Shape(lowEdgeHz = 90f))
-        assertTrue(plain.none { it.address == "/ch/03/eq/3/f" },
-            "a smooth instrument is not a problem to solve")
+            .mapNotNull { w ->
+                Regex("/ch/03/eq/\\d/f").find(w.address)?.let {
+                    20f * Math.pow(1000.0, w.value.toDouble()).toFloat() } }
+        assertTrue(plainF.none { abs(it - 250f) < 40f },
+            "with no lump, nothing is aimed at 250 Hz: $plainF")
     }
 
     @Test fun `a map that arrives late is still worth one more write`() {

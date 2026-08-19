@@ -1507,6 +1507,9 @@ class MixerService : Service() {
             for (b in 1..4)
                 send(OscMessage(osc("/ch/%02d/eq/%d/g", ch + 1, b),
                     emptyList()))
+            // whether the EQ is actually engaged — the chain amplifies an
+            // engaged EQ and keeps clear of a bypassed one
+            send(OscMessage(osc("/ch/%02d/eq/on", ch + 1), emptyList()))
             send(OscMessage(osc("/ch/%02d/dyn/thr", ch + 1), emptyList()))
             send(OscMessage(osc("/ch/%02d/dyn/on", ch + 1), emptyList()))
             // The high-pass the engineer had. Read so the chain can
@@ -1657,10 +1660,16 @@ class MixerService : Service() {
                     ?.let { it * 60f - 60f }
                 val compOn = pending[osc("/ch/%02d/dyn/on", ch.index + 1)]
                     ?.let { it > 0.5f } ?: false
+                // whether the desk EQ is actually engaged: an engaged EQ is
+                // the engineer's active idea to amplify, a bypassed one is
+                // dormant scenery to keep clear of
+                val eqOn = pending[osc("/ch/%02d/eq/on", ch.index + 1)]
+                    ?.let { it > 0.5f } ?: false
                 val revDb = pending[osc("/ch/%02d/mix/07/level", ch.index + 1)]
                     ?.let { FaderLaw.floatToDb(it) }
                 eng.treatment.snapshotDesk(ch.index, hpHz, hpOn ?: false,
-                    if (haveEq) eqDb else null, thrDb, compOn, revDb)
+                    if (haveEq) eqDb else null, eqOn = eqOn, thrDb = thrDb,
+                    compOn = compOn, reverbDb = revDb)
             }
         }
         // the wedges, as the engineer has them right now

@@ -194,6 +194,39 @@ data class Chain(
  * listening first, and a chain that is merely unhelpful is recoverable
  * where one that is wrong is not.
  */
+/**
+ * THE HOUSE "CLEAN STAGE" CURVE.
+ *
+ * The monitor sends are PRE-fader, so this EQ reaches the wedges as well
+ * as the mains — clean the stage and the front-of-house cleans with it
+ * (the operator's own point: if both are great, the sound overall is
+ * great). A gentle low-mid dip takes out the box and mud; a gentle
+ * high-mid dip takes off the edge and harshness, so the whole stage reads
+ * softer and clearer. Applied to nearly every instrument by request. The
+ * KICK and the low end are left flat by their own rule; each role adds its
+ * own third band (band 4 is always reserved for the feedback notch).
+ */
+private val STAGE_LOWMID = EqBand(2, 350f, -2.5f, 1.1f)
+private val STAGE_HIMID = EqBand(3, 3000f, -2.5f, 1.1f)
+
+/**
+ * The bass — contained and defined, with its meaty sub kept.
+ *
+ * No high-pass, no low cut: the sub is untouched (the low-end rule). The
+ * clean-stage low-mid and high-mid dips take the mud and edge off so the
+ * notes are defined, and a gentle compressor contains the level note to
+ * note. This is the FOUNDATION treatment for a channel the AUDIO knows is
+ * not the kick — the kick itself stays completely flat.
+ */
+val BASS_CLEAN: Chain = Chain(
+    hpfHz = null,
+    eq = listOf(STAGE_LOWMID, STAGE_HIMID),
+    compThrDb = -18f, compRatio = 3f,
+    compAttackMs = 30f, compReleaseMs = 150f, compMakeupDb = null,
+    reverbSendDb = null,
+    why = "bass: sub kept, low-mid and high-mid cleaned, contained by a " +
+        "gentle compressor — meaty but defined")
+
 val STARTING_CHAINS: Map<Role, Chain> = mapOf(
     Role.FOUNDATION to Chain(
         // HANDS OFF THE LOW END — completely flat.
@@ -217,101 +250,78 @@ val STARTING_CHAINS: Map<Role, Chain> = mapOf(
         why = "low end: left flat by rule — the app does not high-cut, " +
             "low-cut or compress the kick and bass; the stage stays as set"),
     Role.DRUMS to Chain(
-        // Was 80 Hz, which took the weight and thud off the snare and the
-        // kit. Down to 40: still clears subsonic stage rumble, but the
-        // low body of the kit stays — the operator heard it go missing.
+        // Snare and overheads. 40 Hz only clears subsonic rumble so the
+        // low body of the kit stays; the house clean-stage curve softens
+        // the low-mid box and the high-mid edge; the comp is late and
+        // gentle so the crack survives.
         hpfHz = 40f,
-        eq = listOf(EqBand(2, 400f, -3f, 1.5f)),
-        // Same as the kick: slow attack so the snare crack passes before
-        // the compressor moves, high threshold and 2:1 so it barely acts.
-        // With makeup forced to zero, gentle-and-late is the only way the
-        // kit keeps its punch instead of being flattened level.
+        eq = listOf(STAGE_LOWMID, STAGE_HIMID),
         compThrDb = -12f, compRatio = 2f,
         compAttackMs = 40f, compReleaseMs = 120f, compMakeupDb = null,
         reverbSendDb = -14f,
-        why = "kit: high-passed, a little air, a touch of room — comp late " +
-            "and gentle so the crack stays"),
-    // the aux percussion (congas etc) gets the same treatment the kit
-    // used to carry when it shared this role
+        why = "kit: low-mid and high-mid softened for a clean stage; " +
+            "comp late and gentle so the crack stays"),
     Role.PERCUSSION to Chain(
         hpfHz = 80f,
-        eq = listOf(EqBand(2, 400f, -3f, 1.5f)),
+        eq = listOf(STAGE_LOWMID, STAGE_HIMID),
         compThrDb = -12f, compRatio = 2f,
         compAttackMs = 40f, compReleaseMs = 120f, compMakeupDb = null,
         reverbSendDb = -14f,
-        why = "kit: high-passed, a little air, a touch of room — comp late " +
-            "and gentle so the hit stays"),
+        why = "congas: low-mid and high-mid softened, a touch of room"),
     Role.VOCAL to Chain(
         hpfHz = 100f,
-        eq = listOf(EqBand(1, 300f, -3f, 1.5f)),
+        // Chest trimmed at 300; the high-mid eased for the clean-stage
+        // sound — gently (-2, not the full -2.5), because a lead vocal
+        // still has to carry.
+        eq = listOf(EqBand(1, 300f, -3f, 1.5f), EqBand(3, 3000f, -2f, 1.1f)),
         compThrDb = -20f, compRatio = 3f,
         compAttackMs = 20f, compReleaseMs = 150f, compMakeupDb = null,
         reverbSendDb = -10f,
-        why = "lead vocal: high-passed, chest trimmed, presence up, " +
+        why = "lead vocal: high-passed, chest trimmed, high-mid softened, " +
             "held level, real reverb"),
     Role.BACKING_VOCAL to Chain(
         hpfHz = 120f,
-        eq = listOf(EqBand(1, 300f, -3f, 1.5f)),
+        eq = listOf(EqBand(1, 300f, -3f, 1.5f), EqBand(3, 3000f, -2f, 1.1f)),
         compThrDb = -20f, compRatio = 3f,
         compAttackMs = 20f, compReleaseMs = 150f, compMakeupDb = null,
         reverbSendDb = -8f,
-        why = "backing vocal: further back, wetter, out of the lead's way"),
+        why = "backing vocal: further back, wetter, high-mid softened, " +
+            "out of the lead's way"),
     Role.KEYS to Chain(
-        // NO HIGH-PASS. A 60 Hz corner cut the piano's entire bass
-        // register — its low notes run below 60 Hz — and this band's
-        // pianist carries the bass line with the left hand when the bass
-        // players drop out, so those notes ARE the low end of the mix.
-        // The operator heard them go missing. Off: the piano keeps its
-        // full range. (Only subsonic rumble is lost, which a grand or a
-        // stage piano barely produces.)
+        // NO HIGH-PASS: the piano carries the bass line with the left hand
+        // when the bassists drop out, so its low notes are kept.
         hpfHz = null,
-        // SOFT AT ALL TIMES. A broad cut through the hardness/attack band
-        // (~4.5 kHz) keeps the piano mellow, so it sits as the warm
-        // harmonic bed and never turns bright or clangy. Then piano and
-        // guitar must not cancel: the piano keeps the low-mid BODY
-        // (200-400 Hz) — the guitar cedes it below — and in return cedes
-        // the PRESENCE band (~2.5 kHz) to the guitar's pick, so the two
-        // interlock. Band 2 also clears the vocal's low-mids as before.
-        // The 4.5 kHz roll-off was a touch heavy at -3 and read as dull
-        // ("a little meh" on a real night). Ease it to -2: still mellow,
-        // still soft, but with a little more life on top. The 300 Hz and
-        // 2.5 kHz cuts stay — they clear the vocal's low-mids and cede the
-        // presence band to the guitar so the two never cancel.
-        eq = listOf(
-            EqBand(2, 300f, -2f, 1.2f),
-            EqBand(3, 2500f, -1.5f, 1.4f),
-            EqBand(1, 4500f, -2f, 0.8f)),
+        // The house clean-stage low-mid and high-mid softening, plus the
+        // 4.5 kHz roll-off that keeps the piano mellow and soft.
+        eq = listOf(STAGE_LOWMID, STAGE_HIMID, EqBand(1, 4500f, -2f, 0.8f)),
         compThrDb = -22f, compRatio = 2f,
         compAttackMs = 30f, compReleaseMs = 200f, compMakeupDb = null,
         reverbSendDb = -16f,
-        why = "keys: a soft, wide bed — the brightness rolled off so it " +
-            "stays mellow, out of the vocal's low-mids, presence ceded to " +
-            "the guitar so the two never cancel"),
+        why = "keys: low-mid and high-mid softened and the top rolled off " +
+            "— mellow and clean, its bass register kept"),
     Role.COLOR to Chain(
         hpfHz = 120f,
-        eq = listOf(EqBand(3, 2500f, -2f, 1.5f)),
+        eq = listOf(STAGE_LOWMID, STAGE_HIMID),
         compThrDb = -18f, compRatio = 3f,
         compAttackMs = 20f, compReleaseMs = 150f, compMakeupDb = null,
         reverbSendDb = -12f,
-        why = "horn or harp: the honk taken off, sitting in some room"),
+        why = "sax / harmonica / flute: honk and edge softened, in some room"),
     Role.SOLO_GTR to Chain(
         hpfHz = 100f,
-        // Harshness trimmed at 2.5k as before; band 2 cedes the low-mid
-        // BODY (~350 Hz) to the piano so the guitar and piano interlock and
-        // never cancel in the frequencies they share.
-        eq = listOf(EqBand(3, 2500f, -2f, 1.5f), EqBand(2, 350f, -2f, 1.2f)),
+        eq = listOf(STAGE_LOWMID, STAGE_HIMID),
         compThrDb = -18f, compRatio = 3f,
         compAttackMs = 20f, compReleaseMs = 150f, compMakeupDb = null,
         reverbSendDb = -16f,
-        why = "lead guitar: harshness trimmed, low-mids ceded to the piano " +
-            "so the two never cancel, a little room behind it"),
+        why = "guitar amp: low-mid and high-mid softened for a clean " +
+            "stage, a little room behind it"),
     Role.RHYTHM_GTR to Chain(
         hpfHz = 120f,
-        eq = listOf(EqBand(2, 350f, -2f, 1.2f)),
+        eq = listOf(STAGE_LOWMID, STAGE_HIMID),
         compThrDb = -20f, compRatio = 3f,
         compAttackMs = 25f, compReleaseMs = 180f, compMakeupDb = null,
         reverbSendDb = null,
-        why = "rhythm guitar: out of the vocal's way, dry, in the bed"),
+        why = "rhythm guitar / DI: low-mid and high-mid softened, dry, " +
+            "in the bed"),
     // INSTRUMENT and TALK get nothing at all. An unclassified channel is
     // one the app does not understand, and a talkback mic is somebody
     // saying "two, two" into the wedges — neither is a thing to process
@@ -339,8 +349,13 @@ data class TreatmentSettings(
     val materialHoldSec: Float = 30f,
     /** never re-treat a channel more often than this */
     val minGapSec: Float = 120f,
-    /** treat reverb sends as writable at all */
-    val reverbEnabled: Boolean = true,
+    /**
+     * Whether the app may write reverb sends at all. OFF by rule: the
+     * band runs its own reverb and effects in Mixing Station, and the app
+     * must not touch them. The app shapes tone (EQ), controls dynamics
+     * (comp) and leads the faders — the effects stay the operator's.
+     */
+    val reverbEnabled: Boolean = false,
 )
 
 /**
@@ -382,14 +397,16 @@ class ChannelTreatment(
      * a band the desk was BOOSTING — a cut it leaves exactly alone.
      */
     private class Desk(val hpfHz: Float?, val hpfOn: Boolean,
-                       val eqDb: FloatArray?, val thrDb: Float?,
+                       val eqDb: FloatArray?, val eqOn: Boolean,
+                       val thrDb: Float?,
                        val compOn: Boolean, val reverbDb: Float?)
     private val desk = HashMap<Int, Desk>()
 
     fun snapshotDesk(ch: Int, hpfHz: Float?, hpfOn: Boolean,
-                     eqDb: FloatArray?, thrDb: Float? = null,
+                     eqDb: FloatArray?, eqOn: Boolean = false,
+                     thrDb: Float? = null,
                      compOn: Boolean = false, reverbDb: Float? = null) {
-        desk[ch] = Desk(hpfHz, hpfOn, eqDb, thrDb, compOn, reverbDb)
+        desk[ch] = Desk(hpfHz, hpfOn, eqDb, eqOn, thrDb, compOn, reverbDb)
     }
 
     /** what has been done to a channel, for the screen and the log */
@@ -435,8 +452,14 @@ class ChannelTreatment(
         spectrum: DoubleArray?,
         tSec: Double,
         shape: Shape? = null,
+        /**
+         * Force a specific chain instead of the role's book chain. Used to
+         * split the one FOUNDATION role: the kick stays flat, a bass gets
+         * BASS_CLEAN. Null means "use the role's chain".
+         */
+        chainOverride: Chain? = null,
     ): List<ParamWrite> {
-        val chain = STARTING_CHAINS[role] ?: return emptyList()
+        val chain = chainOverride ?: STARTING_CHAINS[role] ?: return emptyList()
         val prev = applied[ch]
 
         if (prev == null) {
@@ -546,19 +569,38 @@ class ChannelTreatment(
         val rHz = shape.resonanceHz
         if (rHz != null && shape.resonanceDb >= RESONANCE_MIN_DB) {
             val used = out.eq.map { it.band }.toSet()
-            val band = (2..3).firstOrNull {
+            val cut = -(shape.resonanceDb - 2f)
+                .coerceAtMost(RESONANCE_MAX_CUT_DB)
+            val q = shape.resonanceQ.coerceIn(1.5f, 8f)
+            val free = (2..3).firstOrNull {
                 it !in used && it != RingOut.RING_BAND }
-            if (band != null) {
-                val cut = -(shape.resonanceDb - 2f)
-                    .coerceAtMost(RESONANCE_MAX_CUT_DB)
-                val q = shape.resonanceQ.coerceIn(1.5f, 8f)
-                out = out.copy(eq = out.eq + EqBand(band, rHz, cut, q))
+            if (free != null) {
+                out = out.copy(eq = out.eq + EqBand(free, rHz, cut, q))
                 notes.append(
                     (". There is a %.0f dB lump at %.0f Hz that is not " +
                     "part of how this instrument is voiced — %.1f dB out " +
                     "of it, narrow")
                         .format(java.util.Locale.ROOT, shape.resonanceDb,
                             rHz, cut))
+            } else {
+                // No free parametric band — the clean-stage curve is using
+                // both. A MEASURED resonance is more specific than the
+                // generic dip, so move the nearest parametric band onto the
+                // lump, but only within an octave of it, so the high-mid
+                // soften is never traded for a low-mid lump or vice versa.
+                val cand = out.eq
+                    .filter { it.band in 2..3 && it.band != RingOut.RING_BAND }
+                    .minByOrNull { abs(it.hz - rHz) }
+                if (cand != null && rHz >= cand.hz / 2f && rHz <= cand.hz * 2f) {
+                    out = out.copy(eq = out.eq.map {
+                        if (it.band == cand.band)
+                            EqBand(cand.band, rHz, cut, q) else it })
+                    notes.append(
+                        (". A %.0f dB lump at %.0f Hz — the clean-stage dip " +
+                        "on band %d moves onto it, %.1f dB and narrow")
+                            .format(java.util.Locale.ROOT, shape.resonanceDb,
+                                rHz, cand.band, cut))
+                }
             }
         }
         return out to notes.toString()
@@ -612,49 +654,44 @@ class ChannelTreatment(
             }
         }
         if (chain.eq.isNotEmpty()) {
-            // SWITCHING THE EQ ON IS NOT A NEUTRAL ACT.
+            // AMPLIFY THE ENGINEER'S EQ, DON'T GO AGAINST IT.
             //
-            // The chain sets one or two bands and then writes eq/on=1,
-            // and the other bands are whatever is in the desk from the
-            // last time anybody touched it — a previous band's scene, a
-            // house engineer's ring-out, the settings from a soundcheck
-            // three months ago. Turning the EQ on over a stored +8 dB
-            // at 3 kHz is a boost on an open vocal microphone that
-            // isGainAdding never sees, because we never wrote it.
+            // When the desk EQ is ON, those bands are the engineer's own
+            // active idea — the app leaves them exactly as set, boosts and
+            // all, and only ADDS its clean-stage moves on bands they left
+            // flat. It does not fight or wipe a choice they made.
             //
-            // So every band this chain does not set, and that the desk
-            // is BOOSTING, is written flat first. A band the desk is
-            // CUTTING is left exactly alone — that is a house
-            // engineer's ring-out, and flattening it was +8 dB at the
-            // very frequency they had tamed. When the desk state is
-            // unknown, flat is the safe default (a stored boost we
-            // cannot see is the hazard), so an unsnapshotted channel
-            // still has every band written flat.
-            // Band 4 is RingOut's band (RING_BAND). It is mostly left for
-            // the ring-out to own — but "left alone" cannot mean leaving a
-            // stored BOOST on it in circuit: turning eq/on over a stored
-            // +8 dB at the ring frequency is a gain add on an open mic,
-            // the exact hazard this whole flatten exists to stop, and
-            // isGainAdding never sees it because we did not write it. So on
-            // band 4 we neutralise a boost, but leave a cut (a house
-            // ring-out) and a flat/unknown band untouched, so treatment
-            // never fights or wipes a live notch.
+            // It is only when the EQ is OFF, or the desk is unknown, that a
+            // stored boost is dormant scenery — an old scene, a soundcheck
+            // three months ago — rather than a choice, and switching eq/on
+            // over it would be a gain-add on an open mic. Those, and only
+            // those, are flattened first. A CUT is always kept (a house
+            // ring-out); the ring band (4) is the app's own and a boost
+            // there is always neutralised so a live notch is never fought.
             val mine = chain.eq.map { it.band }.toSet()
             val deskEq = desk[ch]?.eqDb
+            val eqLive = desk[ch]?.eqOn == true
             for (b in 1..4) if (b !in mine) {
                 val had = deskEq?.getOrNull(b - 1)
                 if (b == RingOut.RING_BAND) {
-                    // only a clear stored boost is flattened here
                     if (had != null && had > 0.3f)
                         put("/ch/$c/eq/$b/g", eqGainToFloat(0f))
-                } else {
-                    // known cut → theirs, keep it; boost/flat/unknown → flatten
+                } else if (!eqLive) {
+                    // EQ off or unknown: a stored boost is dormant, flatten
+                    // it; a stored cut is theirs and is kept.
                     if (had == null || had > -0.3f)
                         put("/ch/$c/eq/$b/g", eqGainToFloat(0f))
                 }
+                // eqLive and a non-ring band: the engineer's own EQ — left
+                // exactly as set.
             }
             put("/ch/$c/eq/on", 1f)
             for (b in chain.eq) {
+                // Don't overwrite a band the engineer is actively using —
+                // add the clean-stage move only where they left it flat, so
+                // the app cleans WITH their EQ rather than on top of it.
+                val had = deskEq?.getOrNull(b.band - 1)
+                if (eqLive && had != null && abs(had) > 0.3f) continue
                 put("/ch/$c/eq/${b.band}/f", freqToFloat(b.hz))
                 put("/ch/$c/eq/${b.band}/g", eqGainToFloat(b.gainDb))
                 put("/ch/$c/eq/${b.band}/q", qToFloat(b.q))
