@@ -818,7 +818,7 @@ class MixerService : Service() {
                     // the kick too hot in it. For every mic currently notched,
                     // log the wedges it is loudest in, so the log ties the
                     // howl to the physical monitor, not just the channel.
-                    logRingWedges(t)
+                    logRingWedges()
                     // a ring happened: fold it into the carried-forward
                     // feedback profile now, so it survives even if the
                     // tablet never gets a clean shutdown
@@ -1944,7 +1944,7 @@ class MixerService : Service() {
      * floor wedge with the kick and snare too hot in it" — the one thing a
      * monitor review needs and the log never had.
      */
-    private fun logRingWedges(t: Double) {
+    private fun logRingWedges() {
         val lg = show ?: return
         val floor = com.stagemix.engine.MonitorMap.MONITOR_FLOOR_DB
         val active = ringOut.active().filter { !it.guard }
@@ -1959,7 +1959,7 @@ class MixerService : Service() {
                     inWedges.joinToString("  ") { (w, db) ->
                         "%s%s %+.1f dB".format(java.util.Locale.ROOT,
                             (AppState.busNames.value[w.bus - 1] ?: w.name),
-                            if (w.inEars) "(iem)" else "(wedge)", db) }), t)
+                            if (w.inEars) "(iem)" else "(wedge)", db) }))
         }
     }
 
