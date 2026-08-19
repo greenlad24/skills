@@ -196,30 +196,26 @@ data class Chain(
  */
 val STARTING_CHAINS: Map<Role, Chain> = mapOf(
     Role.FOUNDATION to Chain(
-        // NO HIGH-PASS. This is where the low end lives, and the kick is
-        // often the ONLY thing carrying the bottom — on a real night the
-        // bass players dropped out and the kit and piano were all that was
-        // left, so any roll-off on the kick took the sub of the whole mix
-        // with it. A 30 Hz corner was cutting exactly the octave the kick
-        // has to hold when there is no bass in the room. Off. The 400 Hz
-        // dip stays — that is the one move right on nearly every kick and
-        // most basses: the box, the boxiness, not the bottom.
+        // HANDS OFF THE LOW END — completely flat.
+        //
+        // Operator's rule, from a real night: "don't touch the basses and
+        // sub basses — do not high-cut or low-cut them, it changes the
+        // stage a lot." And it does: the monitor sends are PRE-fader, so
+        // any EQ, high-pass or compression the app puts on the kick or
+        // bass goes straight into the wedges and changes what the band
+        // hears. A high-pass took the sub off; a 400 Hz dip changed the
+        // body; compression with no makeup thinned the punch — all of it
+        // reshaping the stage. So the kick and bass now pass EXACTLY as the
+        // band set them: no high-pass, no EQ, no compressor, no reverb. The
+        // only thing that may ever touch a low channel is a live feedback
+        // notch (RingOut) — narrow, temporary, and only on an actual howl.
         hpfHz = null,
-        eq = listOf(EqBand(2, 400f, -3f, 1.8f)),
-        // PRESERVE THE PUNCH. The book's makeup is forced to zero for
-        // ring-safety, so any compression here only ever LOSES level — and
-        // a fast attack (10 ms) on a kick catches the very transient that
-        // IS the oomph and squashes it. That is exactly the "the kick lost
-        // its punch" a real night reported. So the compressor now barely
-        // engages: a high threshold that only the loudest peaks reach, a
-        // gentle 2:1, and a SLOW attack that lets the beater transient
-        // through untouched before it acts on the sustain. Glue without
-        // flattening — and no makeup, so no ring risk.
-        compThrDb = -10f, compRatio = 2f,
-        compAttackMs = 45f, compReleaseMs = 150f, compMakeupDb = null,
+        eq = emptyList(),
+        compThrDb = null, compRatio = null,
+        compAttackMs = null, compReleaseMs = null, compMakeupDb = null,
         reverbSendDb = null,
-        why = "low end: keep the bottom, take out the box, hold it steady " +
-            "WITHOUT catching the transient — the punch stays"),
+        why = "low end: left flat by rule — the app does not high-cut, " +
+            "low-cut or compress the kick and bass; the stage stays as set"),
     Role.DRUMS to Chain(
         // Was 80 Hz, which took the weight and thud off the snare and the
         // kit. Down to 40: still clears subsonic stage rumble, but the

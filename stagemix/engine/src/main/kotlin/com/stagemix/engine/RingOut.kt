@@ -68,6 +68,19 @@ class RingOut(
      */
     val decisiveDb: Float = 6f,
     val minHeardChannels: Int = 12,
+    /**
+     * TWO MICS IN ONE LOOP. A wedge that rings is heard by every open mic
+     * pointed near it, and when two of them are close together — the kick
+     * and snare mics in the drum floor wedge, both howling at 129 Hz — the
+     * loop runs through BOTH. Cutting only the loudest leaves the other
+     * still feeding it. So when the top channels stand clearly above the
+     * rest of the stage AND are within [coRingDb] of each other, they are
+     * co-resonating in the same loop and get notched together. Bounded by
+     * [maxCoRing] so a bank of DIs reading similar noise can never all be
+     * cut — this only fires when a real ring stands above the field.
+     */
+    val coRingDb: Float = 3f,
+    val maxCoRing: Int = 3,
     /** silence at that frequency for this long and the cut is eased out */
     val releaseAfterSec: Double = 600.0,
     /** how much comes back at a time, so nothing snaps */
@@ -210,6 +223,30 @@ class RingOut(
      *        hand is on that channel — the hunt still runs, so the log
      *        says what it would have done.
      */
+    /**
+     * Place or deepen the one reserved notch on [ch] for the frequency
+     * being hunted. ONE RESERVED BAND MEANS ONE NOTCH PER CHANNEL, so when
+     * this mic rings at a genuinely different frequency than its band
+     * currently holds, the band MOVES rather than keeping the old hole and
+     * merely deepening it (that once grew a 9 dB hole at 196 Hz in a
+     * voice's fundamentals while a 3377 Hz howl went untouched all night).
+     */
+    private fun applyRing(ch: Int, tSec: Double): Notch {
+        val n = notches.getOrPut(ch) { Notch(ch, huntHz) }
+        if (!sameNote(n.hz, huntHz)) {
+            n.hz = huntHz
+            n.wanted = 0f
+            n.rings = 0
+            n.written = false
+        }
+        n.guard = false          // it howled: a live ring now
+        n.rings++
+        n.lastRingT = tSec
+        n.wanted = if (n.wanted <= 0f) firstCutDb
+                   else min(maxCutDb, n.wanted + deeperDb)
+        return n
+    }
+
     fun tick(tSec: Double, mayWrite: Boolean = true): List<ParamWrite> {
         // STOP LOOKING THE MOMENT THE ANSWER IS OBVIOUS.
         //
@@ -246,36 +283,41 @@ class RingOut(
             val best = if (heard.size >= minHeardChannels)
                 heard.maxByOrNull { it.value } else null
             if (best != null && best.value > -90f) {
-                val n = notches.getOrPut(best.key) { Notch(best.key, huntHz) }
-                // ONE RESERVED BAND MEANS ONE NOTCH PER CHANNEL, so when
-                // the same microphone rings at a genuinely different
-                // frequency the band has to MOVE. It used to keep the
-                // old frequency and merely deepen it, while the log
-                // said it had cut the new one: a 9 dB hole grew at
-                // 196 Hz in a voice's fundamentals and the 3377 Hz howl
-                // — the most piercing of the four this rig produces —
-                // was never touched at all, all night.
-                if (!sameNote(n.hz, huntHz)) {
-                    lastAction = ("ch%02d already had a cut at %.0f Hz; " +
-                        "it is ringing at %.0f now, so the cut moves " +
-                        "there — one microphone, one reserved band")
-                        .format(java.util.Locale.ROOT, n.ch + 1, n.hz, huntHz)
-                    n.hz = huntHz
-                    n.wanted = 0f
-                    n.rings = 0
-                    n.written = false
-                }
-                n.guard = false          // it howled: a live ring now
-                n.rings++
-                n.lastRingT = tSec
-                n.wanted = if (n.wanted <= 0f) firstCutDb
-                           else min(maxCutDb, n.wanted + deeperDb)
-                lastAction = ("%.0f Hz is loudest on ch%02d (%.0f dB, next " +
-                    "loudest %.0f) — cutting it %.1f dB there")
-                    .format(java.util.Locale.ROOT, huntHz, best.key + 1,
-                        best.value,
-                        heard.values.sortedDescending().getOrElse(1) { -128f },
-                        n.wanted)
+                // ONE LOOP CAN RUN THROUGH TWO MICS. Normally the mic in
+                // the loop is far louder than the rest and it alone is
+                // cut. But two close mics in front of the same wedge — the
+                // kick and snare in the drum floor wedge — both howl at
+                // once and read tied. Only when a real ring stands clearly
+                // above the whole stage (lead vs the field's median) do we
+                // treat the near-tied top as co-resonating and cut them
+                // together; otherwise it stays a single-mic cut, so an
+                // ambiguous field never gets a bank of channels notched.
+                val leadVal = best.value
+                val sorted = heard.values.sorted()
+                val median = sorted[sorted.size / 2]
+                val culprits: List<Int> =
+                    if (leadVal - median >= decisiveDb)
+                        heard.entries
+                            .filter { it.value >= leadVal - coRingDb &&
+                                      it.value > -90f }
+                            .sortedByDescending { it.value }
+                            .take(maxCoRing).map { it.key }
+                    else listOf(best.key)
+                for (ch in culprits) applyRing(ch, tSec)
+                val second = heard.values.sortedDescending()
+                    .getOrElse(1) { -128f }
+                lastAction = if (culprits.size > 1)
+                    ("%.0f Hz is ringing on %d mics at once (%s) — the same " +
+                     "wedge loop through both; cutting all of them to %.1f dB")
+                        .format(java.util.Locale.ROOT, huntHz, culprits.size,
+                            culprits.sorted().joinToString("+") {
+                                "ch%02d".format(java.util.Locale.ROOT, it + 1) },
+                            notches[best.key]?.wanted ?: firstCutDb)
+                else ("%.0f Hz is loudest on ch%02d (%.0f dB, next loudest " +
+                      "%.0f) — cutting it %.1f dB there")
+                        .format(java.util.Locale.ROOT, huntHz, best.key + 1,
+                            leadVal, second,
+                            notches[best.key]?.wanted ?: firstCutDb)
             } else {
                 lastAction = "the ring cleared before it could be traced"
             }

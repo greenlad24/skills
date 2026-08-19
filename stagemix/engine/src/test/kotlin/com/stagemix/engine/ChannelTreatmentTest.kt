@@ -90,12 +90,14 @@ class ChannelTreatmentTest {
         val t = ChannelTreatment()
         t.consider(0, Role.VOCAL, verdict(0.9f), 1f, spec(), 100.0)
         // too soon: even a new instrument waits out the minimum gap,
-        // because a role flapping back and forth must not flap the EQ
-        assertTrue(t.consider(0, Role.FOUNDATION, verdict(0.9f), 1f,
+        // because a role flapping back and forth must not flap the EQ.
+        // (DRUMS, not FOUNDATION — the foundation chain is deliberately
+        // flat now, so it never produces a write to assert on.)
+        assertTrue(t.consider(0, Role.DRUMS, verdict(0.9f), 1f,
             spec(), 150.0).isEmpty())
-        val w = t.consider(0, Role.FOUNDATION, verdict(0.9f), 1f, spec(), 400.0)
+        val w = t.consider(0, Role.DRUMS, verdict(0.9f), 1f, spec(), 400.0)
         assertTrue(w.isNotEmpty(), "a different instrument gets a new chain")
-        assertEquals(Role.FOUNDATION, t.treatedRole(0))
+        assertEquals(Role.DRUMS, t.treatedRole(0))
     }
 
     @Test fun `a passing change of sound is not a reason to re-EQ`() {
