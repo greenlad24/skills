@@ -812,6 +812,13 @@ class MixerService : Service() {
                 if (ringOut.lastAction != lastRingAction) {
                     lastRingAction = ringOut.lastAction
                     show?.mark("RING-OUT", ringOut.lastAction, t)
+                    // WHICH WEDGE IS DRIVING IT. A ring lives in a loop
+                    // through a wedge, and the review needs to know which
+                    // one — the 129 Hz night was the DRUMS floor wedge with
+                    // the kick too hot in it. For every mic currently notched,
+                    // log the wedges it is loudest in, so the log ties the
+                    // howl to the physical monitor, not just the channel.
+                    logRingWedges(t)
                     // a ring happened: fold it into the carried-forward
                     // feedback profile now, so it survives even if the
                     // tablet never gets a clean shutdown
@@ -1133,8 +1140,33 @@ class MixerService : Service() {
                                 val bus = mm.groupValues[2].toInt()
                                 val db = FaderLaw.floatToDb(v)
                                 if (!collecting) {
+                                    // EVERY WEDGE CHANGE, WRITTEN DOWN. The
+                                    // sends are re-read all night; when one
+                                    // has moved since we last saw it that is
+                                    // the band adjusting their own monitor,
+                                    // and it belongs in the log so the night
+                                    // can be reviewed wedge by wedge. Only a
+                                    // real move (>= 1 dB) is logged, so a
+                                    // static send is silent.
+                                    val prev = monitors.wedge(bus)?.sends?.get(ch)
                                     monitors.onSend(bus, ch, db)
                                     monBal.onSend(bus, ch, db, now())
+                                    if (prev != null &&
+                                        kotlin.math.abs(db - prev) >= 1.0f) {
+                                        val fl = com.stagemix.engine.MonitorMap
+                                            .MONITOR_FLOOR_DB
+                                        val wn = monitors.wedge(bus)?.name
+                                            ?: "bus $bus"
+                                        val act = when {
+                                            prev <= fl && db > fl -> "added to"
+                                            db <= fl && prev > fl -> "pulled from"
+                                            else -> "changed in"
+                                        }
+                                        show?.note("MON", ("%s %s %s: " +
+                                            "%+.1f -> %+.1f dB (by hand)")
+                                            .format(java.util.Locale.ROOT,
+                                                chName(ch), act, wn, prev, db))
+                                    }
                                 }
                             }
                     }
@@ -1905,6 +1937,62 @@ class MixerService : Service() {
         }
     }
 
+    /**
+     * When a ring is found, tie it to the wedge(s) it is living in: for
+     * each mic currently notched, the wedges it is loudest in, with the
+     * send level. This is what turns "129 Hz on ch01+ch02" into "the drum
+     * floor wedge with the kick and snare too hot in it" — the one thing a
+     * monitor review needs and the log never had.
+     */
+    private fun logRingWedges(t: Double) {
+        val lg = show ?: return
+        val floor = com.stagemix.engine.MonitorMap.MONITOR_FLOOR_DB
+        val active = ringOut.active().filter { !it.guard }
+        for (n in active) {
+            val inWedges = monitors.all()
+                .mapNotNull { w ->
+                    w.sends[n.ch]?.takeIf { it > floor }?.let { w to it } }
+                .sortedByDescending { it.second }
+            if (inWedges.isEmpty()) continue
+            lg.note("MON", ("ring at %.0f Hz on %s is in: %s")
+                .format(java.util.Locale.ROOT, n.hz, chName(n.ch),
+                    inWedges.joinToString("  ") { (w, db) ->
+                        "%s%s %+.1f dB".format(java.util.Locale.ROOT,
+                            (AppState.busNames.value[w.bus - 1] ?: w.name),
+                            if (w.inEars) "(iem)" else "(wedge)", db) }), t)
+        }
+    }
+
+    /**
+     * The wedges, at the end of the night, one block. Per bus: what it is,
+     * how many sources it carried, its loudest handful, and whether it rang
+     * — so a monitor review has a wrap-up the way the mains have the CARD.
+     */
+    private fun logMonitorFooter() {
+        val lg = show ?: return
+        val floor = com.stagemix.engine.MonitorMap.MONITOR_FLOOR_DB
+        val names = AppState.mixerChannelNames.value
+        fun nm(ch: Int) = (names[ch] ?: "ch%02d".format(ch + 1)).take(8)
+        val rungOn = ringOut.learnedProfile()
+            .groupBy { it.ch }
+        lg.note("MON", "── the wedges, end of night (read-only; no master " +
+            "or send was ever written by the app) ──")
+        for (w in monitors.all()) {
+            val busName = (AppState.busNames.value[w.bus - 1] ?: w.name).take(12)
+            val live = w.sends.entries.filter { it.value > floor }
+                .sortedByDescending { it.value }
+            lg.note("MON", "bus%02d %-12s [%s] — %d sources".format(
+                java.util.Locale.ROOT, w.bus, busName,
+                if (w.inEars) "in-ears" else "wedge", live.size))
+            live.take(6).forEach { (ch, db) ->
+                val rang = rungOn[ch]?.sumOf { it.rings } ?: 0
+                lg.note("MON", "    %-8s %+6.1f dB%s".format(
+                    java.util.Locale.ROOT, nm(ch), db,
+                    if (rang > 0) "   (rang ${rang}x)" else ""))
+            }
+        }
+    }
+
     private fun revert() {
         // UNDO pauses the autopilot whether or not there is an engine
         // to restore faders from — the flag flips first, so the key is
@@ -2148,6 +2236,7 @@ class MixerService : Service() {
             if (h.ticks > 600) AppState.saveNight(this, h)  // >10 min mixed
             show?.footer(e, AppState.mixerChannelNames.value)
         }
+        runCatching { logMonitorFooter() }
         show?.close()
         AppState.conn.value = AppState.Conn.DISCONNECTED
         // NOT `directing`. A service teardown rewriting the operator's
