@@ -25,14 +25,17 @@ jobs:
         run: ./scripts/build-app.sh
         working-directory: mac-mirror
 
-      - name: Zip the app
+      - name: Create DMG
         run: |
           cd mac-mirror/build
-          ditto -c -k --keepParent DroidMirror.app DroidMirror-macOS-Intel.zip
+          rm -rf dmg-root && mkdir dmg-root
+          cp -R DroidMirror.app dmg-root/
+          ln -s /Applications dmg-root/Applications
+          hdiutil create -volname "DroidMirror" -srcfolder dmg-root -ov -format UDZO DroidMirror.dmg
           ls -la
 
       - uses: actions/upload-artifact@v4
         with:
           name: DroidMirror-macOS-Intel
-          path: mac-mirror/build/DroidMirror-macOS-Intel.zip
+          path: mac-mirror/build/DroidMirror.dmg
           retention-days: 90
