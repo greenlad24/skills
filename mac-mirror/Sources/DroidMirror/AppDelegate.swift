@@ -294,8 +294,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, Scrc
         mirrorView.handleConfig(data)
     }
 
-    func session(_ session: ScrcpySession, videoFrame data: Data, keyframe: Bool) {
-        mirrorView.handleFrame(data, keyframe: keyframe)
+    func session(_ session: ScrcpySession, videoFrame data: Data, pts: UInt64, keyframe: Bool) {
+        mirrorView.handleFrame(data, pts: pts, keyframe: keyframe)
     }
 
     func session(_ session: ScrcpySession, audioPCM data: Data) {

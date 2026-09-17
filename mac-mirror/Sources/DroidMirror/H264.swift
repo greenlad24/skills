@@ -106,7 +106,7 @@ final class H264Assembler {
     /// Build a sample buffer for one access unit. Returns nil when the frame carried no slice data.
     /// If the frame embeds a new SPS/PPS the format description is updated first and
     /// `formatChanged` is set.
-    func makeSampleBuffer(frame: Data, formatChanged: inout Bool) throws -> CMSampleBuffer? {
+    func makeSampleBuffer(frame: Data, pts: UInt64, formatChanged: inout Bool) throws -> CMSampleBuffer? {
         var avcc = Data()
         avcc.reserveCapacity(frame.count + 16)
         var paramChanged = false
@@ -157,7 +157,9 @@ final class H264Assembler {
         }
         guard status == kCMBlockBufferNoErr else { throw H264Error.blockBuffer(status) }
 
-        var timing = CMSampleTimingInfo(duration: .invalid, presentationTimeStamp: .invalid, decodeTimeStamp: .invalid)
+        // scrcpy timestamps are microseconds; the display layer still shows each frame immediately.
+        let time = CMTime(value: CMTimeValue(pts & 0x3FFF_FFFF_FFFF_FFFF), timescale: 1_000_000)
+        var timing = CMSampleTimingInfo(duration: .invalid, presentationTimeStamp: time, decodeTimeStamp: .invalid)
         var sampleSize = length
         var sampleBuffer: CMSampleBuffer?
         status = CMSampleBufferCreateReady(

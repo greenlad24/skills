@@ -7,6 +7,9 @@ final class MirrorView: NSView {
     let displayLayer = AVSampleBufferDisplayLayer()
     private let assembler = H264Assembler()
     private var needsKeyframe = true
+    private var framesReceived = 0
+    private var framesEnqueued = 0
+    private var lastReport = Date()
 
     /// Set when the stream starts; updated if the SPS reports a different size.
     var videoSize: CGSize = .zero {
@@ -21,9 +24,10 @@ final class MirrorView: NSView {
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
+        let root = CALayer()
+        root.backgroundColor = NSColor.black.cgColor
+        layer = root
         wantsLayer = true
-        layer = CALayer()
-        layer?.backgroundColor = NSColor.black.cgColor
         displayLayer.videoGravity = .resizeAspect
         displayLayer.backgroundColor = NSColor.black.cgColor
         layer?.addSublayer(displayLayer)
@@ -46,6 +50,8 @@ final class MirrorView: NSView {
 
     func resetStream() {
         needsKeyframe = true
+        framesReceived = 0
+        framesEnqueued = 0
         displayLayer.flushAndRemoveImage()
     }
 
@@ -55,15 +61,22 @@ final class MirrorView: NSView {
                 displayLayer.flush()
                 needsKeyframe = true
                 updateSizeFromFormat()
+                if let d = assembler.dimensions {
+                    Log.write("Video config: \(data.count) bytes, SPS says \(d.width)×\(d.height)")
+                }
             }
         } catch {
-            NSLog("H264 config error: \(error)")
+            Log.write("H264 config error: \(error.localizedDescription) (\(data.count) bytes: \(data.prefix(16).map { String(format: "%02x", $0) }.joined(separator: " ")))")
         }
     }
 
-    func handleFrame(_ data: Data, keyframe: Bool) {
+    func handleFrame(_ data: Data, pts: UInt64, keyframe: Bool) {
+        framesReceived += 1
+        if framesReceived == 1 {
+            Log.write("First video frame: \(data.count) bytes, keyframe=\(keyframe), haveFormat=\(assembler.formatDescription != nil)")
+        }
         if displayLayer.status == .failed {
-            NSLog("Display layer failed: \(displayLayer.error?.localizedDescription ?? "?") — flushing")
+            Log.write("Display layer failed: \(displayLayer.error?.localizedDescription ?? "unknown error") — flushing and waiting for a keyframe")
             displayLayer.flush()
             needsKeyframe = true
         }
@@ -71,16 +84,30 @@ final class MirrorView: NSView {
         needsKeyframe = false
         do {
             var formatChanged = false
-            guard let sample = try assembler.makeSampleBuffer(frame: data, formatChanged: &formatChanged) else { return }
+            guard let sample = try assembler.makeSampleBuffer(frame: data, pts: pts, formatChanged: &formatChanged) else {
+                Log.write("Frame \(framesReceived) produced no sample (no slice data)")
+                return
+            }
             if formatChanged {
                 displayLayer.flush()
                 updateSizeFromFormat()
             }
             if displayLayer.isReadyForMoreMediaData {
                 displayLayer.enqueue(sample)
+                framesEnqueued += 1
+            }
+            if framesEnqueued == 1 || Date().timeIntervalSince(lastReport) > 5 {
+                lastReport = Date()
+                let status: String
+                switch displayLayer.status {
+                case .rendering: status = "rendering"
+                case .failed: status = "failed: \(displayLayer.error?.localizedDescription ?? "?")"
+                default: status = "unknown"
+                }
+                Log.write("Video: \(framesReceived) frames received, \(framesEnqueued) enqueued, layer \(status), layer frame \(NSStringFromRect(displayLayer.frame)), view \(NSStringFromRect(bounds))")
             }
         } catch {
-            NSLog("H264 frame error: \(error)")
+            Log.write("H264 frame error: \(error.localizedDescription)")
             needsKeyframe = true
         }
     }

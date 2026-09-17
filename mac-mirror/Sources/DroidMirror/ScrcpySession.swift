@@ -45,7 +45,7 @@ protocol ScrcpySessionDelegate: AnyObject {
     func session(_ session: ScrcpySession, connectedTo deviceName: String, controller: DeviceController)
     func session(_ session: ScrcpySession, videoStarted width: Int, height: Int)
     func session(_ session: ScrcpySession, videoConfig data: Data)
-    func session(_ session: ScrcpySession, videoFrame data: Data, keyframe: Bool)
+    func session(_ session: ScrcpySession, videoFrame data: Data, pts: UInt64, keyframe: Bool)
     func session(_ session: ScrcpySession, audioPCM data: Data)
     func session(_ session: ScrcpySession, audioUnavailable reason: String)
     func session(_ session: ScrcpySession, ended error: Error?)
@@ -234,7 +234,9 @@ final class ScrcpySession {
                 if ptsAndFlags & ScrcpySession.flagConfig != 0 {
                     delegate?.session(self, videoConfig: packet)
                 } else {
-                    delegate?.session(self, videoFrame: packet, keyframe: ptsAndFlags & ScrcpySession.flagKeyframe != 0)
+                    delegate?.session(self, videoFrame: packet,
+                                      pts: ptsAndFlags & ~(ScrcpySession.flagConfig | ScrcpySession.flagKeyframe),
+                                      keyframe: ptsAndFlags & ScrcpySession.flagKeyframe != 0)
                 }
             }
             teardown(error: nil)
