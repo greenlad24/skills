@@ -120,8 +120,10 @@ final class ScrcpySession {
             try adb.forward(localPort: config.localPort, abstractSocket: socketName, serial: device.serial)
 
             report("Starting server…")
+            Log.clearServerLines()
+            Log.write("Starting server: \(serverCommand())")
             let process = try adb.shell(serverCommand(), serial: device.serial) { line in
-                NSLog("[scrcpy-server] %@", line)
+                Log.server(line)
             }
             serverProcess = process
 
@@ -161,6 +163,10 @@ final class ScrcpySession {
             }
             readVideo(video)
         } catch {
+            if !stopped {
+                Log.write("Session failed: \(error.localizedDescription)")
+                for line in Log.lastServerLines() { Log.write("  server said: \(line)") }
+            }
             teardown(error: stopped ? nil : error)
         }
     }
@@ -170,7 +176,7 @@ final class ScrcpySession {
             "CLASSPATH=\(ScrcpySession.remoteServerPath)",
             "app_process", "/", "com.genymobile.scrcpy.Server", ScrcpySession.serverVersion,
             "scid=\(String(format: "%08x", scid))",
-            "log_level=info",
+            "log_level=debug",
             "tunnel_forward=true",
             "control=true",
             "video_codec=h264",
@@ -224,6 +230,7 @@ final class ScrcpySession {
             }
             teardown(error: nil)
         } catch {
+            if !stopped { Log.write("Video stream failed: \(error.localizedDescription)") }
             teardown(error: stopped ? nil : error)
         }
     }
@@ -291,6 +298,7 @@ final class ScrcpySession {
     }
 
     private func report(_ status: String) {
+        Log.write(status)
         delegate?.session(self, status: status)
     }
 }

@@ -191,6 +191,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, Scrc
         mainMenu.addItem(windowItem)
         NSApp.windowsMenu = windowMenu
 
+        let helpMenu = NSMenu(title: "Help")
+        helpMenu.addItem(withTitle: "Show Log in Finder", action: #selector(showLog), keyEquivalent: "l")
+        helpMenu.addItem(withTitle: "Copy Log to Clipboard", action: #selector(copyLog), keyEquivalent: "L")
+        let helpItem = NSMenuItem()
+        helpItem.submenu = helpMenu
+        mainMenu.addItem(helpItem)
+        NSApp.helpMenu = helpMenu
+
         NSApp.mainMenu = mainMenu
         refreshMenuState()
     }
@@ -300,7 +308,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, Scrc
             self.audioPlayer.stop()
             self.window.title = "DroidMirror"
             if let error = error {
-                self.setStatus("⚠︎ \(error.localizedDescription)")
+                var text = "⚠︎ \(error.localizedDescription)"
+                if let last = Log.lastServerLines(1).first { text += "  —  server: \(last)" }
+                self.setStatus(text + "  (Help → Show Log)")
             } else {
                 self.setStatus(self.userDisconnected ? "Disconnected" : "Device disconnected — waiting…")
             }
@@ -329,6 +339,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, Scrc
     @objc private func screenOff() { controller?.setScreenPower(on: false) }
     @objc private func screenOn() { controller?.setScreenPower(on: true) }
     @objc private func fitWindowClicked() { fitWindow(to: mirrorView.videoSize) }
+
+    @objc private func showLog() {
+        NSWorkspace.shared.activateFileViewerSelecting([Log.fileURL])
+    }
+
+    @objc private func copyLog() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(Log.contents(), forType: .string)
+        setStatus("Log copied to clipboard")
+    }
 
     @objc private func orientationSelected(_ sender: NSMenuItem) {
         guard let orientation = VideoOrientation(rawValue: sender.tag), orientation != config.orientation else { return }
