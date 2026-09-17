@@ -11,10 +11,19 @@ if [[ ! -x Tools/adb || ! -f Tools/scrcpy-server ]]; then
 fi
 
 ARCH="${ARCH:-x86_64}"
-echo "==> swift build (release, $ARCH)"
-swift build -c release --arch "$ARCH"
+mkdir -p "$ROOT/build"
+BIN="$ROOT/build/DroidMirror"
 
-BIN="$(swift build -c release --arch "$ARCH" --show-bin-path)/DroidMirror"
+# Compile with swiftc directly: this works with just the Command Line Tools installed
+# (SwiftPM's `swift build` needs full Xcode for xctest).
+echo "==> swiftc (release, $ARCH)"
+xcrun swiftc -O \
+  -target "$ARCH-apple-macos11.0" \
+  -module-name DroidMirror \
+  -framework AppKit -framework AVFoundation -framework CoreMedia -framework QuartzCore \
+  Sources/DroidMirror/*.swift \
+  -o "$BIN"
+
 APP="$ROOT/build/DroidMirror.app"
 
 rm -rf "$APP"
