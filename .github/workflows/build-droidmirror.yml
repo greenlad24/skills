@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-13   # Intel runner; the app targets macOS 11.0+
+    runs-on: macos-latest   # Apple-silicon runner; build-app.sh cross-compiles for x86_64 / macOS 11.0+
     steps:
       - uses: actions/checkout@v4
 
