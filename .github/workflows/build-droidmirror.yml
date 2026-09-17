@@ -1,0 +1,38 @@
+name: Build DroidMirror (macOS Intel)
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "mac-mirror/**"
+      - ".github/workflows/build-droidmirror.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-13   # Intel runner; the app targets macOS 11.0+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download adb + scrcpy-server
+        run: ./scripts/setup.sh
+        working-directory: mac-mirror
+
+      - name: Build DroidMirror.app
+        run: ./scripts/build-app.sh
+        working-directory: mac-mirror
+
+      - name: Zip the app
+        run: |
+          cd mac-mirror/build
+          ditto -c -k --keepParent DroidMirror.app DroidMirror-macOS-Intel.zip
+          ls -la
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DroidMirror-macOS-Intel
+          path: mac-mirror/build/DroidMirror-macOS-Intel.zip
+          retention-days: 90
