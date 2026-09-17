@@ -12,6 +12,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, Scrc
     private var userDisconnected = false
     private var reconnectTimer: Timer?
     private var deviceName = ""
+    /// Set once the phone's server has crashed with audio enabled, so we stop trying it.
+    private var audioFallbackNote: String?
 
     private var orientationItems: [NSMenuItem] = []
     private var audioItem: NSMenuItem!
@@ -258,6 +260,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, Scrc
         statusLabel.stringValue = text
     }
 
+    /// True when the last server output looks like a native crash rather than a clean exit.
+    private func serverCrashedNatively() -> Bool {
+        let lines = Log.lastServerLines(10).joined(separator: "\n").lowercased()
+        return lines.contains("stack corruption") || lines.contains("aborted") || lines.contains("segmentation fault")
+            || lines.contains("fatal signal")
+    }
+
     // MARK: - ScrcpySessionDelegate (called on background threads)
 
     func session(_ session: ScrcpySession, status: String) {
@@ -271,6 +280,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, Scrc
             self.mirrorView.controller = controller
             self.window.title = "DroidMirror — \(deviceName)"
             if self.config.audio { self.audioPlayer.start() }
+            if let note = self.audioFallbackNote { self.setStatus("Mirroring \(deviceName) — \(note)") }
         }
     }
 
@@ -307,6 +317,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, Scrc
             self.mirrorView.controller = nil
             self.audioPlayer.stop()
             self.window.title = "DroidMirror"
+
+            // Some vendor firmwares (e.g. certain Samsung Android 13 builds) crash the server
+            // natively when audio capture starts. Step down: output → playback → no audio.
+            if error != nil, self.config.audio, self.serverCrashedNatively() {
+                switch self.config.audioSource {
+                case .output:
+                    self.config.audioSource = .playback
+                    Log.write("Server crashed with audio_source=output; retrying with audio_source=playback")
+                    self.setStatus("Phone crashed starting audio — retrying with a different audio path…")
+                case .playback:
+                    self.config.audio = false
+                    self.audioFallbackNote = "audio off: this phone crashes when audio capture starts"
+                    Log.write("Server crashed with audio_source=playback; continuing without audio")
+                    self.setStatus("Phone crashes when audio starts — mirroring without audio.")
+                }
+                self.refreshMenuState()
+                self.scheduleReconnect()
+                return
+            }
+
             if let error = error {
                 var text = "⚠︎ \(error.localizedDescription)"
                 if let last = Log.lastServerLines(1).first { text += "  —  server: \(last)" }
@@ -359,6 +389,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, Scrc
 
     @objc private func toggleAudio() {
         config.audio.toggle()
+        audioFallbackNote = nil
+        config.audioSource = .output
         refreshMenuState()
         restart()
     }

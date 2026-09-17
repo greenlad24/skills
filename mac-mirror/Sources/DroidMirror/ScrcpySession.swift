@@ -19,6 +19,14 @@ enum VideoOrientation: Int {
     }
 }
 
+/// How the phone captures audio. `output` (REMOTE_SUBMIX) works on most devices; `playback`
+/// (AudioPlaybackCapture, Android 13+) takes a different code path that avoids native-level
+/// workarounds some vendor firmwares crash on.
+enum AudioSource: String {
+    case output
+    case playback
+}
+
 struct SessionConfig {
     /// 0 = native resolution.
     var maxSize: Int = 0
@@ -27,6 +35,7 @@ struct SessionConfig {
     var maxFps: Int = 0
     var orientation: VideoOrientation = .landscape
     var audio: Bool = true
+    var audioSource: AudioSource = .output
     var stayAwake: Bool = true
     var localPort: UInt16 = 27183
 }
@@ -190,7 +199,7 @@ final class ScrcpySession {
         ]
         if config.audio {
             // Raw PCM: nothing to decode on the Mac, which keeps audio latency minimal.
-            args += ["audio=true", "audio_codec=raw", "audio_source=output"]
+            args += ["audio=true", "audio_codec=raw", "audio_source=\(config.audioSource.rawValue)"]
         } else {
             args += ["audio=false"]
         }
