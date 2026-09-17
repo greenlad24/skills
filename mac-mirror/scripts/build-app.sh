@@ -28,7 +28,7 @@ compile_with_sdk() {
   xcrun swiftc -O \
     -target "$ARCH-apple-macos11.0" \
     -module-name DroidMirror \
-    "${sdk_args[@]}" \
+    ${sdk_args[@]+"${sdk_args[@]}"} \
     -framework AppKit -framework AVFoundation -framework CoreMedia -framework QuartzCore \
     Sources/DroidMirror/*.swift \
     -o "$BIN"
