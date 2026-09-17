@@ -129,14 +129,16 @@ final class ScrcpySession {
             let video = try connectWithRetry(process: process)
             videoSocket = video
 
-            let nameData = try video.readExactly(64)
-            let deviceName = String(decoding: nameData.prefix { $0 != 0 }, as: UTF8.self)
-
+            // The server accepts video, audio and control in that order and only then sends the
+            // device name, so every socket must be connected before reading anything else.
             if config.audio {
                 audioSocket = try TCPSocket(port: config.localPort)
             }
             let control = try TCPSocket(port: config.localPort)
             controlSocket = control
+
+            let nameData = try video.readExactly(64)
+            let deviceName = String(decoding: nameData.prefix { $0 != 0 }, as: UTF8.self)
 
             // Video codec meta: codec id, width, height.
             let codecID = try video.readUInt32BE()
