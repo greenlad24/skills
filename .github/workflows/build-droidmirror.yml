@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -39,3 +39,26 @@ jobs:
           name: DroidMirror-macOS-Intel
           path: mac-mirror/build/DroidMirror.dmg
           retention-days: 90
+
+      # Also publish the DMG on a dedicated branch so it has a stable direct download link:
+      # https://github.com/<owner>/<repo>/raw/droidmirror-releases/DroidMirror.dmg
+      - name: Push DMG to the droidmirror-releases branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          rm -rf /tmp/rel && mkdir /tmp/rel && cd /tmp/rel
+          git init -q
+          git checkout -q -b droidmirror-releases
+          cp "$GITHUB_WORKSPACE/mac-mirror/build/DroidMirror.dmg" .
+          {
+            echo "# DroidMirror — latest build"
+            echo
+            echo "Build ${{ github.run_number }} from commit ${{ github.sha }}."
+            echo
+            echo "Download: [DroidMirror.dmg](https://github.com/${{ github.repository }}/raw/droidmirror-releases/DroidMirror.dmg)"
+          } > README.md
+          git add .
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -qm "DroidMirror build ${{ github.run_number }} (${{ github.sha }})"
+          git push -f "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" HEAD:droidmirror-releases
