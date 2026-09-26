@@ -439,7 +439,7 @@ function updateFab() {
   const n = readyUploadCount();
   if (!n) { fab.classList.add('hidden'); return; }
   fab.classList.remove('hidden');
-  fab.textContent = `📅 Schedule ${n} post${n > 1 ? 's' : ''} → day before, 6pm`;
+  fab.textContent = `📅 Schedule ${n} post${n > 1 ? 's' : ''} → day before (3pm & 6pm)`;
 }
 
 $('#fab-schedule').onclick = async (e) => {
@@ -941,11 +941,12 @@ function renderSettings() {
 
     <hr class="settings-sep">
     <div class="grid3">
-      <div class="field"><label>Uploaded posters: announce at</label><input id="st-up-time" type="time" value="${esc(s.uploadPostTime)}"></div>
+      <div class="field"><label>Post time (single / 2nd poster)</label><input id="st-up-time" type="time" value="${esc(s.uploadPostTime)}"></div>
+      <div class="field"><label>1st of two posters at</label><input id="st-up-early" type="time" value="${esc(s.uploadEarlyPostTime || '15:00')}"></div>
       <div class="field"><label>Days before the show</label><input id="st-up-days" type="number" min="0" max="7" value="${esc(String(s.uploadDaysBefore ?? 1))}"></div>
-      <div class="field"><label>Bar's UTC offset</label><input id="st-tz" placeholder="+07:00 (Bangkok)" value="${esc(s.postTimezone)}"></div>
     </div>
     <div class="grid3">
+      <div class="field"><label>Bar's UTC offset</label><input id="st-tz" placeholder="+07:00 (Bangkok)" value="${esc(s.postTimezone)}"></div>
       <div class="field"><label>OpenAI poster quality</label>
         <select id="st-quality">
           <option value="medium" ${s.imageQuality === 'medium' ? 'selected' : ''}>medium — ~$0.06/poster, ~1–2 min</option>
@@ -1118,6 +1119,7 @@ function renderSettings() {
         imageQuality: $('#st-quality', body).value,
         postTimezone: $('#st-tz', body).value.trim(),
         uploadPostTime: $('#st-up-time', body).value || '18:00',
+        uploadEarlyPostTime: $('#st-up-early', body).value || '15:00',
         uploadDaysBefore: Math.max(0, parseInt($('#st-up-days', body).value, 10) || 0),
         defaultPostTime: $('#st-posttime', body).value || '17:00',
         venueName: $('#st-venue', body).value.trim() || 'Vibration',

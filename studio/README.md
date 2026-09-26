@@ -24,8 +24,9 @@ Every week you handle five show days (Tuesday → Saturday). **The main workflow
    specials) and writes Instagram + Facebook captions in your learned voice. Edit inline
    if you like.
 3. **Hit the schedule button** (fixed bottom-right) — every ready poster is scheduled via
-   Buffer to Instagram + Facebook for **the evening before its show, 6pm Bangkok time**
-   (a second same-day poster goes 15 minutes later; timing is adjustable in Settings).
+   Buffer to Instagram + Facebook for **the day before its show, Bangkok time**: a single
+   poster goes at **6pm**; when a day has two posters the first goes at **3pm** and the
+   second at **6pm** (all times adjustable in Settings).
 
 The full AI **poster designer** (performers → style → generate 3 variations → pick) still
 exists — collapsed under "✨ Design a poster with AI instead" on each day.

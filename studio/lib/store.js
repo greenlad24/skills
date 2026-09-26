@@ -42,9 +42,11 @@ const DEFAULT_SETTINGS = {
   facebookIdentifier: 'facebook',
   defaultPostTime: '17:00',
   postTimes: {}, // e.g. { friday: '15:30' }
-  // Uploaded-poster flow: each poster is announced the evening BEFORE the
-  // show, at this local time.
+  // Uploaded-poster flow: posters are announced the day BEFORE the show.
+  // A single poster (or the 2nd of two) goes at uploadPostTime; when a day
+  // has two posters the FIRST goes earlier, at uploadEarlyPostTime.
   uploadPostTime: '18:00',
+  uploadEarlyPostTime: '15:00',
   uploadDaysBefore: 1,
   // When hosted (Netlify runs in UTC), set the bar's UTC offset, e.g. "+07:00".
   postTimezone: '+07:00',

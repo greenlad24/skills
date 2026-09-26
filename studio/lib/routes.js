@@ -445,15 +445,16 @@ route('POST', /^\/api\/week\/([\d-]+)\/schedule$/, async (m, body) => {
 const MAX_UPLOADS_PER_DAY = 2;
 
 // Announcement time for an uploaded poster: uploadDaysBefore days before the
-// show, at uploadPostTime in the bar's timezone; the 2nd poster of the same
-// day is staggered by 15 minutes so the platforms accept both.
-function uploadScheduleIso(settings, dateStr, index = 0) {
+// show. A lone poster (or the 2nd of two) posts at uploadPostTime (6pm);
+// when the day has two posters, the FIRST posts at uploadEarlyPostTime (3pm).
+function uploadScheduleIso(settings, dateStr, index = 0, total = 1) {
   const [y, m, d] = dateStr.split('-').map(Number);
   const postDate = new Date(y, m - 1, d - (Number(settings.uploadDaysBefore ?? 1) || 0));
   const dstr = `${postDate.getFullYear()}-${String(postDate.getMonth() + 1).padStart(2, '0')}-${String(postDate.getDate()).padStart(2, '0')}`;
-  const base = new Date(localIso(settings, dstr, settings.uploadPostTime || '18:00'));
-  base.setMinutes(base.getMinutes() + index * 15);
-  return base.toISOString();
+  const time = total > 1 && index === 0
+    ? settings.uploadEarlyPostTime || '15:00'
+    : settings.uploadPostTime || '18:00';
+  return localIso(settings, dstr, time);
 }
 
 route('POST', /^\/api\/week\/([\d-]+)\/day\/(\w+)\/uploads$/, async (m, body) => {
@@ -529,7 +530,7 @@ route('POST', /^\/api\/week\/([\d-]+)\/schedule-uploads$/, async (m, body) => {
       const r = { label, ok: false, steps: [] };
       results.push(r);
       try {
-        const scheduledTime = uploadScheduleIso(db.settings, day.date, i);
+        const scheduledTime = uploadScheduleIso(db.settings, day.date, i, day.uploads.length);
         const file = await store.readFile(up.file);
 
         let postizMedia = null;
@@ -581,4 +582,4 @@ async function dispatch(method, pathname, body, query, ctx) {
   return null;
 }
 
-module.exports = { dispatch, localIso, redactedSettings, runGeneration };
+module.exports = { dispatch, localIso, redactedSettings, runGeneration, uploadScheduleIso };
