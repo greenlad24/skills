@@ -105,12 +105,19 @@ async function collectInputImages(ctx, db, day, preset) {
 
 route('GET', /^\/api\/bootstrap$/, async (m, body, query, ctx) => {
   const db = await store.load();
+  const now = new Date();
+  const diff = (2 - now.getDay() + 7) % 7;
+  const tue = new Date(now);
+  tue.setDate(now.getDate() + diff);
+  const upcomingWeek = store.ymd(tue);
   if (!db.activeWeek) {
-    const now = new Date();
-    const diff = (2 - now.getDay() + 7) % 7;
-    const tue = new Date(now);
-    tue.setDate(now.getDate() + diff);
-    db.activeWeek = store.ymd(tue);
+    db.activeWeek = upcomingWeek;
+  } else {
+    // Never reopen on a week that is already over — dates (and scheduled
+    // post times computed from them) must always be in the future.
+    const weekEnd = new Date(db.activeWeek + 'T00:00:00');
+    weekEnd.setDate(weekEnd.getDate() + 5); // the Sunday after Saturday's show
+    if (weekEnd < now) db.activeWeek = upcomingWeek;
   }
   store.getWeek(db, db.activeWeek);
   await store.save(db);
@@ -565,6 +572,12 @@ route('POST', /^\/api\/week\/([\d-]+)\/schedule-uploads$/, async (m, body) => {
       results.push(r);
       try {
         const scheduledTime = uploadScheduleIso(db.settings, day.date, i, day.uploads.length);
+        if (new Date(scheduledTime).getTime() < Date.now() + 5 * 60 * 1000) {
+          throw new Error(
+            `computed post time ${new Date(scheduledTime).toISOString().slice(0, 16)}Z is in the past — ` +
+            `you are on an old week; use the ‹ › arrows to move to the upcoming week and re-upload there.`
+          );
+        }
         const file = await store.readFile(up.file);
 
         let postizMedia = null;

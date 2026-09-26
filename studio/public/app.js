@@ -332,6 +332,22 @@ function fmtLocalDateTime(iso) {
   return new Date(iso).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
+// Where this poster WILL post: uploadDaysBefore days before the show, at
+// 15:00 (first of two) or 18:00, in the bar's timezone.
+function plannedPost(day, index, total) {
+  const s = S.settings;
+  const [y, m, d] = day.date.split('-').map(Number);
+  const dt = new Date(y, m - 1, d - (Number(s.uploadDaysBefore ?? 1) || 0));
+  const time = total > 1 && index === 0 ? (s.uploadEarlyPostTime || '15:00') : (s.uploadPostTime || '18:00');
+  const ymd = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+  const tz = /^[+-]\d{2}:\d{2}$/.test(s.postTimezone || '') ? s.postTimezone : '+07:00';
+  const when = new Date(`${ymd}T${time}:00${tz}`);
+  return {
+    label: `${dt.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} at ${time}`,
+    past: when.getTime() < Date.now() + 5 * 60 * 1000,
+  };
+}
+
 function renderUploads(el, key) {
   const day = S.week.days[key];
   el.innerHTML = `
@@ -346,6 +362,12 @@ function renderUploads(el, key) {
     card.className = 'upload-card';
     const busy = S.busyCaptions[up.id];
     const hasCaptions = !!(up.captions.instagram || up.captions.facebook);
+    const plan = plannedPost(day, day.uploads.indexOf(up), day.uploads.length);
+    const planLine = up.scheduled
+      ? ''
+      : plan.past
+        ? `<span class="up-label" style="color:var(--danger)">⚠ would post ${esc(plan.label)} — that's in the past! Switch to the upcoming week (‹ › up top).</span>`
+        : `<span class="up-label" style="color:var(--ok)">will post: ${esc(plan.label)} (day before the show)</span>`;
     card.innerHTML = `
       <div class="up-img">
         <img src="/files/${up.file}" alt="">
@@ -353,6 +375,7 @@ function renderUploads(el, key) {
         <button class="rm" title="delete this poster">✕</button>
       </div>
       <div class="up-body">
+        ${planLine}
         ${up.scheduled ? `<span class="up-label" style="color:var(--ink-faint)">Buffer post id: ${esc(up.scheduled.instagram?.postId || up.scheduled.facebook?.postId || '?')}</span>` : ''}
         ${busy
           ? `<span class="working"><span class="spinner"></span> reading the poster & writing captions…</span>`
