@@ -380,6 +380,14 @@ route('GET', /^\/api\/buffer\/account$/, async () => {
   return { account };
 });
 
+// Diagnostic: what does Buffer ACTUALLY have queued for our channels?
+route('GET', /^\/api\/buffer\/queue$/, async () => {
+  const db = await store.load();
+  const channelIds = [db.settings.instagramIntegrationId, db.settings.facebookIntegrationId].filter(Boolean);
+  const posts = await bufferApi.listPosts(db.settings.bufferApiKey || process.env.BUFFER_API_KEY, channelIds);
+  return { posts, channelIds };
+});
+
 route('GET', /^\/api\/channels$/, async () => {
   const db = await store.load();
   let channels;
@@ -509,6 +517,10 @@ route('PATCH', /^\/api\/week\/([\d-]+)\/day\/(\w+)\/uploads\/(\w+)$/, async (m, 
   const up = day.uploads.find((u) => u.id === m[3]);
   if (!up) throw new Error('Upload not found');
   if (body.captions) up.captions = { ...up.captions, ...body.captions };
+  // Forget the local "scheduled" state so the poster can be edited and
+  // re-scheduled. NOTE: this does not remove the already-created post from
+  // Buffer/Postiz — that copy must be deleted in their dashboard.
+  if (body.clearScheduled) up.scheduled = null;
   await store.save(db);
   return { day };
 });

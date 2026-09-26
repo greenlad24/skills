@@ -349,9 +349,11 @@ function renderUploads(el, key) {
     card.innerHTML = `
       <div class="up-img">
         <img src="/files/${up.file}" alt="">
-        ${up.scheduled ? `<span class="up-badge">✓ scheduled · ${fmtLocalDateTime(up.scheduled.at)}</span>` : '<button class="rm" title="remove">✕</button>'}
+        ${up.scheduled ? `<span class="up-badge">✓ scheduled · ${fmtLocalDateTime(up.scheduled.at)}</span>` : ''}
+        <button class="rm" title="delete this poster">✕</button>
       </div>
       <div class="up-body">
+        ${up.scheduled ? `<span class="up-label" style="color:var(--ink-faint)">Buffer post id: ${esc(up.scheduled.instagram?.postId || up.scheduled.facebook?.postId || '?')}</span>` : ''}
         ${busy
           ? `<span class="working"><span class="spinner"></span> reading the poster & writing captions…</span>`
           : `
@@ -359,16 +361,29 @@ function renderUploads(el, key) {
         <textarea data-cap="instagram" ${up.scheduled ? 'disabled' : ''}>${esc(up.captions.instagram)}</textarea>
         <span class="up-label">Facebook caption</span>
         <textarea data-cap="facebook" ${up.scheduled ? 'disabled' : ''}>${esc(up.captions.facebook)}</textarea>
-        ${up.scheduled ? '' : `<button data-act="caption" style="align-self:flex-start">${hasCaptions ? '↻ Rewrite captions' : '📝 Write captions'}</button>`}`}
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          ${up.scheduled
+            ? `<button data-act="unschedule">↺ Unschedule (edit again)</button>`
+            : `<button data-act="caption">${hasCaptions ? '↻ Rewrite captions' : '📝 Write captions'}</button>`}
+        </div>`}
       </div>`;
     $('img', card).onclick = () => openLightbox(`/files/${up.file}`);
     const rm = $('.rm', card);
     if (rm) rm.onclick = async () => {
+      if (up.scheduled && !confirm('This poster was already sent to the scheduler. Deleting it here does NOT remove it from Buffer — delete it in Buffer’s queue too. Delete here anyway?')) return;
       const out = await api('DELETE', `/api/week/${S.activeWeek}/day/${key}/uploads/${up.id}`);
       S.week.days[key] = out.day;
       renderUploads(el, key);
       renderTabs();
       updateFab();
+    };
+    const unBtn = $('button[data-act="unschedule"]', card);
+    if (unBtn) unBtn.onclick = async () => {
+      const out = await api('PATCH', `/api/week/${S.activeWeek}/day/${key}/uploads/${up.id}`, { clearScheduled: true });
+      S.week.days[key] = out.day;
+      renderUploads(el, key);
+      updateFab();
+      toast('Unscheduled here — note: if the post already exists in Buffer’s queue, delete it there before re-scheduling, or it will post twice.', false, 10000);
     };
     $$('textarea[data-cap]', card).forEach((t) => (t.onchange = () => {
       up.captions[t.dataset.cap] = t.value;
@@ -987,6 +1002,7 @@ function renderSettings() {
       <div class="field"><label>Buffer API key</label><input id="st-buffer" type="password" placeholder="Buffer → Settings → API" value="${esc(s.bufferApiKey)}"></div>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:-4px 0 14px">
         <button id="st-buffer-check">Check connection</button>
+        <button id="st-buffer-queue">🔍 Check Buffer queue</button>
         <button id="st-buffer-switch">🔄 Switch Buffer account</button>
         <span id="st-buffer-status" style="font-size:12.5px;color:var(--ink-faint)"></span>
       </div>
@@ -1073,6 +1089,28 @@ function renderSettings() {
         : 'key works, but no organizations found on that account';
     } catch (err) {
       st.innerHTML = `<span style="color:var(--danger)">${esc(err.message)}</span>`;
+    } finally {
+      e.target.disabled = false;
+    }
+  };
+
+  $('#st-buffer-queue', body).onclick = async (e) => {
+    e.target.disabled = true;
+    const box = $('#st-accts', body);
+    box.innerHTML = `<div class="acct-list"><span class="spinner"></span> asking Buffer what it has queued…</div>`;
+    try {
+      await saveSettings();
+      const out = await api('GET', '/api/buffer/queue');
+      if (!out.posts.length) {
+        box.innerHTML = `<div class="acct-list">Buffer reports <b>no posts</b> for the configured channel(s) ${esc(out.channelIds.join(', ') || '(none set!)')} on this account. If you scheduled before switching accounts, the posts live in the OLD account's queue.</div>`;
+      } else {
+        box.innerHTML = `<div class="acct-list"><b>Buffer's actual queue for your channels:</b>${out.posts.map((p) => `
+          <div style="margin:6px 0;border-top:1px solid var(--line);padding-top:6px">
+            <b>${esc(p.status || '?')}</b> · ${p.dueAt ? new Date(p.dueAt).toLocaleString() : 'no time'} · ch ${esc(p.channelId || '?')} · <span style="color:var(--ink-faint)">${esc((p.text || '').slice(0, 80))}</span>
+          </div>`).join('')}</div>`;
+      }
+    } catch (err) {
+      box.innerHTML = `<div class="acct-list" style="color:var(--danger)">${esc(err.message)}</div>`;
     } finally {
       e.target.disabled = false;
     }

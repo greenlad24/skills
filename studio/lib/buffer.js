@@ -89,4 +89,31 @@ async function createPost(apiKey, { channelId, text, imageUrl, dueAt }) {
   return result.post;
 }
 
-module.exports = { listChannels, createPost, accountInfo };
+/**
+ * What does Buffer actually have queued? Lists recent posts for the given
+ * channels (all organizations): id, status, dueAt, text. Used by the app's
+ * "Check Buffer queue" diagnostic.
+ */
+async function listPosts(apiKey, channelIds = []) {
+  const acct = await gql(apiKey, `query { account { organizations { id name } } }`);
+  const orgs = acct?.account?.organizations || [];
+  if (!orgs.length) throw new Error('Buffer: no organizations on this account.');
+  const chFilter = channelIds.length
+    ? `, filter: { channelIds: [${channelIds.map((c) => JSON.stringify(String(c))).join(', ')}] }`
+    : '';
+  const posts = [];
+  for (const org of orgs) {
+    const data = await gql(
+      apiKey,
+      `query { posts(first: 30, input: { organizationId: ${JSON.stringify(org.id)}${chFilter} }) {
+        edges { node { id status dueAt channelId text } }
+      } }`
+    );
+    for (const e of data?.posts?.edges || []) {
+      posts.push({ ...e.node, organization: org.name || org.id });
+    }
+  }
+  return posts;
+}
+
+module.exports = { listChannels, createPost, accountInfo, listPosts };
