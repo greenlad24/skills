@@ -440,6 +440,128 @@ route('POST', /^\/api\/week\/([\d-]+)\/schedule$/, async (m, body) => {
   return { results, week };
 });
 
+// ---------- uploaded-poster flow (the primary workflow) ----------
+
+const MAX_UPLOADS_PER_DAY = 2;
+
+// Announcement time for an uploaded poster: uploadDaysBefore days before the
+// show, at uploadPostTime in the bar's timezone; the 2nd poster of the same
+// day is staggered by 15 minutes so the platforms accept both.
+function uploadScheduleIso(settings, dateStr, index = 0) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const postDate = new Date(y, m - 1, d - (Number(settings.uploadDaysBefore ?? 1) || 0));
+  const dstr = `${postDate.getFullYear()}-${String(postDate.getMonth() + 1).padStart(2, '0')}-${String(postDate.getDate()).padStart(2, '0')}`;
+  const base = new Date(localIso(settings, dstr, settings.uploadPostTime || '18:00'));
+  base.setMinutes(base.getMinutes() + index * 15);
+  return base.toISOString();
+}
+
+route('POST', /^\/api\/week\/([\d-]+)\/day\/(\w+)\/uploads$/, async (m, body) => {
+  const db = await store.load();
+  const day = store.getDay(db, m[1], m[2]);
+  const room = MAX_UPLOADS_PER_DAY - day.uploads.length;
+  if (room <= 0) throw new Error(`This day already has ${MAX_UPLOADS_PER_DAY} posters — remove one first.`);
+  const added = [];
+  for (const img of (body.images || []).slice(0, room)) {
+    const file = await store.saveFileFromBase64(img.dataUrl);
+    const rec = { id: store.newId(), file, name: img.name || '', captions: { instagram: '', facebook: '' }, scheduled: null };
+    day.uploads.push(rec);
+    added.push(rec.id);
+  }
+  await store.save(db);
+  return { day, added };
+});
+
+route('DELETE', /^\/api\/week\/([\d-]+)\/day\/(\w+)\/uploads\/(\w+)$/, async (m) => {
+  const db = await store.load();
+  const day = store.getDay(db, m[1], m[2]);
+  day.uploads = day.uploads.filter((u) => u.id !== m[3]);
+  await store.save(db);
+  return { day };
+});
+
+route('PATCH', /^\/api\/week\/([\d-]+)\/day\/(\w+)\/uploads\/(\w+)$/, async (m, body) => {
+  const db = await store.load();
+  const day = store.getDay(db, m[1], m[2]);
+  const up = day.uploads.find((u) => u.id === m[3]);
+  if (!up) throw new Error('Upload not found');
+  if (body.captions) up.captions = { ...up.captions, ...body.captions };
+  await store.save(db);
+  return { day };
+});
+
+// Vision caption: the model reads the poster image and writes in the owner's voice.
+route('POST', /^\/api\/week\/([\d-]+)\/day\/(\w+)\/uploads\/(\w+)\/caption$/, async (m) => {
+  const db = await store.load();
+  const day = store.getDay(db, m[1], m[2]);
+  const up = day.uploads.find((u) => u.id === m[3]);
+  if (!up) throw new Error('Upload not found');
+  const image = await store.readFile(up.file);
+  const out = await captionsLib.generateCaptionsFromPoster(db.settings, {
+    voice: db.voice.profile,
+    examples: db.voice.examples,
+    day,
+    image,
+  });
+  const db2 = await store.load();
+  const day2 = store.getDay(db2, m[1], m[2]);
+  const up2 = day2.uploads.find((u) => u.id === m[3]);
+  if (up2) up2.captions = { instagram: out.instagram || '', facebook: out.facebook || '' };
+  await store.save(db2);
+  return { day: day2 };
+});
+
+// The fixed bottom-right button: schedule every uploaded poster of the week
+// that has captions and is not scheduled yet.
+route('POST', /^\/api\/week\/([\d-]+)\/schedule-uploads$/, async (m, body) => {
+  const db = await store.load();
+  const week = store.getWeek(db, m[1]);
+  const platforms = body.platforms || ['instagram', 'facebook'];
+  const results = [];
+
+  for (const dayKey of store.DAY_KEYS) {
+    const day = week.days[dayKey];
+    for (let i = 0; i < (day.uploads || []).length; i++) {
+      const up = day.uploads[i];
+      if (up.scheduled) continue;
+      if (!up.captions.instagram && !up.captions.facebook) continue;
+      const label = `${dayKey} · poster ${i + 1}`;
+      const r = { label, ok: false, steps: [] };
+      results.push(r);
+      try {
+        const scheduledTime = uploadScheduleIso(db.settings, day.date, i);
+        const file = await store.readFile(up.file);
+
+        let postizMedia = null;
+        let publicImageUrl = null;
+        if (db.settings.scheduler === 'postiz') {
+          postizMedia = await postiz.uploadMedia(db.settings.postizApiKey || process.env.POSTIZ_API_KEY, db.settings, file);
+        } else {
+          publicImageUrl = await imagehost.uploadPublicImage(db.settings, file);
+        }
+        r.steps.push('poster uploaded');
+        up.scheduled = { at: scheduledTime };
+
+        for (const platform of platforms) {
+          const text = platform === 'instagram'
+            ? up.captions.instagram || up.captions.facebook
+            : up.captions.facebook || up.captions.instagram;
+          const postId = await schedulePost(db.settings, { platform, text, postizMedia, publicImageUrl, scheduledTime });
+          up.scheduled[platform] = { postId };
+          r.steps.push(`${platform} scheduled`);
+        }
+        r.ok = true;
+        r.at = scheduledTime;
+      } catch (e) {
+        r.error = e.message;
+        if (up.scheduled && !up.scheduled.instagram && !up.scheduled.facebook) up.scheduled = null;
+      }
+      await store.save(db);
+    }
+  }
+  return { results, week };
+});
+
 // Binary: stored files (uploads + generated posters).
 route('GET', /^\/files\/([\w.-]+)$/, async (m) => {
   const file = await store.readFile(m[1]);

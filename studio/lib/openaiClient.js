@@ -69,8 +69,17 @@ async function generateImage({ apiKey, model = 'gpt-image-2', prompt, images = [
   return Buffer.from(json.data[0].b64_json, 'base64');
 }
 
-async function chatJson({ apiKey, model, system, user, temperature = 0.8 }) {
+async function chatJson({ apiKey, model, system, user, images = [], temperature = 0.8 }) {
   if (!apiKey) throw new Error('OpenAI API key is missing — add it in Settings.');
+  const userContent = images.length
+    ? [
+        { type: 'text', text: user },
+        ...images.map((img) => ({
+          type: 'image_url',
+          image_url: { url: `data:${img.mime};base64,${img.buffer.toString('base64')}` },
+        })),
+      ]
+    : user;
   const json = await openaiFetch(apiKey, `${API}/chat/completions`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
@@ -80,7 +89,7 @@ async function chatJson({ apiKey, model, system, user, temperature = 0.8 }) {
       response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: system },
-        { role: 'user', content: user },
+        { role: 'user', content: userContent },
       ],
     }),
   }, 120000);

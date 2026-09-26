@@ -42,9 +42,12 @@ const DEFAULT_SETTINGS = {
   facebookIdentifier: 'facebook',
   defaultPostTime: '17:00',
   postTimes: {}, // e.g. { friday: '15:30' }
+  // Uploaded-poster flow: each poster is announced the evening BEFORE the
+  // show, at this local time.
+  uploadPostTime: '18:00',
+  uploadDaysBefore: 1,
   // When hosted (Netlify runs in UTC), set the bar's UTC offset, e.g. "+07:00".
-  // Empty = use the machine's local timezone (fine for the local app).
-  postTimezone: '',
+  postTimezone: '+07:00',
   venueName: 'Vibration',
   venueBlurb: 'Live music bar — bands & singers five nights a week.',
   onboarded: false,
@@ -64,6 +67,7 @@ function emptyDay(dayKey) {
   return {
     day: dayKey,
     date: '',
+    uploads: [], // finished posters uploaded by the owner: [{id, file, captions, scheduled}]
     characters: [],
     keyword: '',
     references: [],
@@ -110,9 +114,17 @@ async function load() {
   if (!driver) throw new Error('storage driver not initialised');
   const db = (await driver.getJson('db.json')) || defaultDb();
   db.settings = { ...DEFAULT_SETTINGS, ...db.settings };
+  // The bar runs on Bangkok time; older installs stored '' (server-local),
+  // which on Netlify would mean UTC.
+  if (!db.settings.postTimezone) db.settings.postTimezone = '+07:00';
   if (!db.voice) db.voice = { profile: null, examples: [] };
   if (!db.brand) db.brand = { logoFile: '' };
   if (!db.weeks) db.weeks = {};
+  for (const week of Object.values(db.weeks)) {
+    for (const day of Object.values(week.days || {})) {
+      if (!day.uploads) day.uploads = [];
+    }
+  }
   return db;
 }
 

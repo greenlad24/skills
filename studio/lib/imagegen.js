@@ -53,14 +53,14 @@ async function generatePoster(settings, { prompt, images }) {
  * JSON text generation for captions/voice: OpenAI when a key is set,
  * otherwise the (free) Gemini key — so the whole tool can run without OpenAI.
  */
-async function chatJson(settings, { system, user, temperature }) {
+async function chatJson(settings, { system, user, images, temperature }) {
   const openaiKey = settings.openaiApiKey || process.env.OPENAI_API_KEY;
   if (openaiKey) {
-    return openai.chatJson({ apiKey: openaiKey, model: settings.captionModel, system, user, temperature });
+    return openai.chatJson({ apiKey: openaiKey, model: settings.captionModel, system, user, images, temperature });
   }
   const geminiKey = settings.geminiApiKey || process.env.GEMINI_API_KEY;
   if (geminiKey) {
-    return gemini.chatJson({ apiKey: geminiKey, system, user });
+    return gemini.chatJson({ apiKey: geminiKey, system, user, images });
   }
   throw new Error('No text model available — add a Gemini (free) or OpenAI API key in Settings.');
 }

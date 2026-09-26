@@ -39,4 +39,28 @@ async function generateCaptions(settings, { voice, examples, day }) {
   });
 }
 
-module.exports = { analyzeVoice, generateCaptions };
+/**
+ * Captions for a finished poster the owner uploaded: the model READS the
+ * poster image (artist, day, times, specials are on it) and writes in the
+ * learned voice. image: {buffer, mime}.
+ */
+async function generateCaptionsFromPoster(settings, { voice, examples, day, image }) {
+  const dayName = day.day.charAt(0).toUpperCase() + day.day.slice(1);
+  const profile = voice ? JSON.stringify(voice) : 'No profile yet — write warm, energetic, concise live-music-bar captions.';
+  const sampleBlock = examples && examples.length
+    ? `\n\nREAL PAST CAPTIONS (imitate this voice closely):\n${examples.slice(0, 6).map((c, i) => `--- example ${i + 1} ---\n${c}`).join('\n')}`
+    : '';
+  return chatJson(settings, {
+    system:
+      `You write social captions for "${settings.venueName || 'Vibration'}", a live music bar. ` +
+      `Match the owner's voice profile exactly: ${profile}${sampleBlock}\n\n` +
+      'Respond with JSON: {"instagram": str (caption INCLUDING hashtags at the end), "facebook": str (slightly longer, max 3 hashtags)}. ' +
+      'Base the caption ONLY on what is actually on the poster plus the date given — never invent prices, guests or details that are not there.',
+    user:
+      `Attached is the finished poster for ${dayName} ${day.date} (the post goes out the evening before the show). ` +
+      `Read everything on the poster — artist/event name, genre, times, any specials — and write the Instagram and Facebook captions announcing it.`,
+    images: [image],
+  });
+}
+
+module.exports = { analyzeVoice, generateCaptions, generateCaptionsFromPoster };

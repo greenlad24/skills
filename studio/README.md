@@ -17,7 +17,18 @@ Image generation is pluggable (verified against current pricing, Aug 2026):
 | Google Gemini "nano banana" | ~$0.04/image | Comparable class to GPT Image 2. Its free *image* API tier ended Dec 2025, but a free Gemini key still writes the **captions** at $0 when no OpenAI key is set. |
 | Segmind | ~$0.04/image | Aggregator; requires a $10 minimum top-up to start. |
 
-Every week you build five posters (Tuesday → Saturday):
+Every week you handle five show days (Tuesday → Saturday). **The main workflow:**
+
+1. **Upload posters** — up to 2 finished posters per day (photos/exports from anywhere).
+2. **Captions write themselves** — the model *reads each poster* (artist, genre, times,
+   specials) and writes Instagram + Facebook captions in your learned voice. Edit inline
+   if you like.
+3. **Hit the schedule button** (fixed bottom-right) — every ready poster is scheduled via
+   Buffer to Instagram + Facebook for **the evening before its show, 6pm Bangkok time**
+   (a second same-day poster goes 15 minutes later; timing is adjustable in Settings).
+
+The full AI **poster designer** (performers → style → generate 3 variations → pick) still
+exists — collapsed under "✨ Design a poster with AI instead" on each day.
 
 1. **Performers** — upload the photo(s) of the singer/band/objects for the day. Faces are
    preserved with high input fidelity.

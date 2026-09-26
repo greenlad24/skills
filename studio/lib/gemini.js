@@ -61,10 +61,14 @@ async function generateImage({ apiKey, model, prompt, images = [], aspectRatio =
 }
 
 /** JSON-mode text generation (used for captions/voice when there is no OpenAI key). */
-async function chatJson({ apiKey, system, user, model = 'gemini-2.5-flash' }) {
+async function chatJson({ apiKey, system, user, images = [], model = 'gemini-2.5-flash' }) {
+  const parts = [{ text: user }];
+  for (const img of images) {
+    parts.push({ inline_data: { mime_type: img.mime, data: img.buffer.toString('base64') } });
+  }
   const json = await call(apiKey, model, {
     system_instruction: { parts: [{ text: system }] },
-    contents: [{ parts: [{ text: user }] }],
+    contents: [{ parts }],
     generationConfig: { responseMimeType: 'application/json', temperature: 0.8 },
   }, 60000);
   const text = json?.candidates?.[0]?.content?.parts?.map((p) => p.text).join('') || '';

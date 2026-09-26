@@ -155,6 +155,7 @@ function renderAll() {
   renderWeekLabel();
   renderTabs();
   renderMain();
+  updateFab();
 }
 
 // ---------- header / week ----------
@@ -185,8 +186,9 @@ function shiftWeek(days) {
 
 // ---------- tabs ----------
 function dayStatus(day) {
-  if (day.scheduled && (day.scheduled.instagram || day.scheduled.facebook)) return 'scheduled';
-  if (day.winner) return 'winner';
+  const ups = day.uploads || [];
+  if (ups.some((u) => u.scheduled) || (day.scheduled && (day.scheduled.instagram || day.scheduled.facebook))) return 'scheduled';
+  if (ups.length || day.winner) return 'winner';
   return 'empty';
 }
 
@@ -226,18 +228,21 @@ function renderOverview(root) {
     const day = S.week.days[key];
     const card = document.createElement('div');
     card.className = 'ov-card';
-    const winnerImg = day.winner ? `<img src="/files/${day.winner}" alt="">` : 'no poster yet';
+    const ups = day.uploads || [];
+    const thumbFile = ups[0]?.file || day.winner;
+    const winnerImg = thumbFile ? `<img src="/files/${thumbFile}" alt="">` : 'no poster yet';
+    const scheduledUps = ups.filter((u) => u.scheduled).length;
+    const readyUps = ups.filter((u) => !u.scheduled && (u.captions.instagram || u.captions.facebook)).length;
     const sch = day.scheduled || {};
     card.innerHTML = `
       <div class="ov-thumb">${winnerImg}</div>
       <div class="ov-body">
         <div class="ov-day">${DAY_LABEL[key]} · ${fmtDate(day.date)}</div>
-        <div class="ov-artist">${esc(day.info.artistName) || '<span style="color:var(--ink-faint)">untitled</span>'}</div>
+        <div class="ov-artist">${esc(day.info.artistName) || (ups.length ? `${ups.length} poster${ups.length > 1 ? 's' : ''} uploaded` : '<span style="color:var(--ink-faint)">untitled</span>')}</div>
         <div class="ov-status">
-          <span class="${day.winner ? 'yes' : ''}">${day.winner ? '✓' : '·'} poster picked</span>
-          <span class="${day.captions.instagram ? 'yes' : ''}">${day.captions.instagram ? '✓' : '·'} captions</span>
-          <span class="${sch.instagram ? 'yes' : ''}">${sch.instagram ? '✓ IG scheduled' : '· instagram'}</span>
-          <span class="${sch.facebook ? 'yes' : ''}">${sch.facebook ? '✓ FB scheduled' : '· facebook'}</span>
+          <span class="${ups.length ? 'yes' : ''}">${ups.length ? '✓' : '·'} ${ups.length}/2 posters uploaded</span>
+          <span class="${readyUps ? 'yes' : ''}">${readyUps ? `✓ ${readyUps} ready to schedule` : '· captions'}</span>
+          <span class="${scheduledUps || sch.instagram ? 'yes' : ''}">${scheduledUps ? `✓ ${scheduledUps} scheduled` : sch.instagram ? '✓ scheduled (AI flow)' : '· not scheduled'}</span>
         </div>
       </div>`;
     card.onclick = () => { S.view = key; renderAll(); };
@@ -298,18 +303,169 @@ function renderDay(root, key) {
   const day = S.week.days[key];
   root.innerHTML = `
     <h2 style="margin:0 0 24px;font-size:26px">${DAY_LABEL[key]} <span style="color:var(--ink-faint);font-size:16px">· ${fmtDate(day.date)}</span></h2>
-    <div class="section" id="sec-characters"></div>
-    <div class="section" id="sec-style"></div>
-    <div class="section" id="sec-details"></div>
-    <div class="section" id="sec-generate"></div>
-    <div class="section" id="sec-caption"></div>
+    <div class="section" id="sec-uploads"></div>
+    <details class="design-details" id="design-collapse">
+      <summary>✨ Design a poster with AI instead (optional)</summary>
+      <div class="design-inner">
+        <div class="section" id="sec-characters"></div>
+        <div class="section" id="sec-style"></div>
+        <div class="section" id="sec-details"></div>
+        <div class="section" id="sec-generate"></div>
+        <div class="section" id="sec-caption"></div>
+      </div>
+    </details>
   `;
+  renderUploads($('#sec-uploads', root), key);
   renderCharacters($('#sec-characters', root), key);
   renderStyle($('#sec-style', root), key);
   renderDetails($('#sec-details', root), key);
   renderGenerate($('#sec-generate', root), key);
   renderCaption($('#sec-caption', root), key);
+  updateFab();
 }
+
+// ----- primary flow: upload finished posters -----
+const MAX_UPLOADS = 2;
+S.busyCaptions = S.busyCaptions || {};
+
+function fmtLocalDateTime(iso) {
+  return new Date(iso).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function renderUploads(el, key) {
+  const day = S.week.days[key];
+  el.innerHTML = `
+    <div class="section-head"><span class="step">★</span><h3>This day's posters</h3>
+      <span class="hint">upload up to ${MAX_UPLOADS} finished posters — captions are written automatically, then hit Schedule (bottom right)</span></div>
+    <div class="upload-grid" id="upload-grid"></div>
+  `;
+  const grid = $('#upload-grid', el);
+
+  for (const up of day.uploads) {
+    const card = document.createElement('div');
+    card.className = 'upload-card';
+    const busy = S.busyCaptions[up.id];
+    const hasCaptions = !!(up.captions.instagram || up.captions.facebook);
+    card.innerHTML = `
+      <div class="up-img">
+        <img src="/files/${up.file}" alt="">
+        ${up.scheduled ? `<span class="up-badge">✓ scheduled · ${fmtLocalDateTime(up.scheduled.at)}</span>` : '<button class="rm" title="remove">✕</button>'}
+      </div>
+      <div class="up-body">
+        ${busy
+          ? `<span class="working"><span class="spinner"></span> reading the poster & writing captions…</span>`
+          : `
+        <span class="up-label">Instagram caption</span>
+        <textarea data-cap="instagram" ${up.scheduled ? 'disabled' : ''}>${esc(up.captions.instagram)}</textarea>
+        <span class="up-label">Facebook caption</span>
+        <textarea data-cap="facebook" ${up.scheduled ? 'disabled' : ''}>${esc(up.captions.facebook)}</textarea>
+        ${up.scheduled ? '' : `<button data-act="caption" style="align-self:flex-start">${hasCaptions ? '↻ Rewrite captions' : '📝 Write captions'}</button>`}`}
+      </div>`;
+    $('img', card).onclick = () => openLightbox(`/files/${up.file}`);
+    const rm = $('.rm', card);
+    if (rm) rm.onclick = async () => {
+      const out = await api('DELETE', `/api/week/${S.activeWeek}/day/${key}/uploads/${up.id}`);
+      S.week.days[key] = out.day;
+      renderUploads(el, key);
+      renderTabs();
+      updateFab();
+    };
+    $$('textarea[data-cap]', card).forEach((t) => (t.onchange = () => {
+      up.captions[t.dataset.cap] = t.value;
+      api('PATCH', `/api/week/${S.activeWeek}/day/${key}/uploads/${up.id}`, { captions: { [t.dataset.cap]: t.value } })
+        .then(updateFab)
+        .catch((e) => toast(e.message, true));
+    }));
+    const capBtn = $('button[data-act="caption"]', card);
+    if (capBtn) capBtn.onclick = () => generateUploadCaption(el, key, up.id);
+    grid.appendChild(card);
+  }
+
+  if (day.uploads.length < MAX_UPLOADS) {
+    const slot = document.createElement('div');
+    slot.className = 'upload-slot';
+    slot.innerHTML = `<span>＋ upload poster${day.uploads.length ? '' : 's'} (${MAX_UPLOADS - day.uploads.length} left)</span>`;
+    slot.onclick = async () => {
+      const files = await pickFiles();
+      if (!files.length) return;
+      const images = await Promise.all(files.slice(0, MAX_UPLOADS - day.uploads.length).map(async (f) => ({
+        name: f.name,
+        dataUrl: await readFileAsDataUrl(f),
+      })));
+      try {
+        const out = await api('POST', `/api/week/${S.activeWeek}/day/${key}/uploads`, { images });
+        S.week.days[key] = out.day;
+        renderUploads(el, key);
+        renderTabs();
+        // Auto-write captions for each new poster.
+        for (const id of out.added) generateUploadCaption(el, key, id);
+      } catch (e) {
+        toast(e.message, true);
+      }
+    };
+    grid.appendChild(slot);
+  }
+}
+
+async function generateUploadCaption(el, key, uploadId) {
+  S.busyCaptions[uploadId] = true;
+  if (S.view === key) renderUploads($('#sec-uploads'), key);
+  try {
+    const out = await api('POST', `/api/week/${S.activeWeek}/day/${key}/uploads/${uploadId}/caption`);
+    S.week.days[key] = out.day;
+  } catch (e) {
+    toast(`Caption for ${DAY_LABEL[key]}: ${e.message}`, true, 8000);
+  } finally {
+    delete S.busyCaptions[uploadId];
+    if (S.view === key) renderUploads($('#sec-uploads'), key);
+    updateFab();
+  }
+}
+
+// ----- fixed bottom-right schedule button -----
+function readyUploadCount() {
+  if (!S.week) return 0;
+  let n = 0;
+  for (const key of DAY_KEYS) {
+    for (const up of S.week.days[key].uploads || []) {
+      if (!up.scheduled && (up.captions.instagram || up.captions.facebook)) n++;
+    }
+  }
+  return n;
+}
+
+function updateFab() {
+  const fab = $('#fab-schedule');
+  const n = readyUploadCount();
+  if (!n) { fab.classList.add('hidden'); return; }
+  fab.classList.remove('hidden');
+  fab.textContent = `📅 Schedule ${n} post${n > 1 ? 's' : ''} → day before, 6pm`;
+}
+
+$('#fab-schedule').onclick = async (e) => {
+  const btn = e.target;
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.textContent = 'Scheduling…';
+  try {
+    const out = await api('POST', `/api/week/${S.activeWeek}/schedule-uploads`, {});
+    S.week = out.week;
+    const ok = out.results.filter((r) => r.ok);
+    const failed = out.results.filter((r) => !r.ok);
+    if (failed.length) {
+      toast(`${ok.length} scheduled, ${failed.length} failed: ${failed.map((f) => `${f.label} — ${f.error}`).join(' | ')}`, true, 12000);
+    } else {
+      toast(`✓ ${ok.length} post${ok.length > 1 ? 's' : ''} scheduled — each goes out the evening before its show`);
+    }
+    renderAll();
+  } catch (err) {
+    toast(err.message, true, 10000);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = orig;
+    updateFab();
+  }
+};
 
 // ----- step 1: characters -----
 function renderCharacters(el, key) {
@@ -785,14 +941,18 @@ function renderSettings() {
 
     <hr class="settings-sep">
     <div class="grid3">
+      <div class="field"><label>Uploaded posters: announce at</label><input id="st-up-time" type="time" value="${esc(s.uploadPostTime)}"></div>
+      <div class="field"><label>Days before the show</label><input id="st-up-days" type="number" min="0" max="7" value="${esc(String(s.uploadDaysBefore ?? 1))}"></div>
+      <div class="field"><label>Bar's UTC offset</label><input id="st-tz" placeholder="+07:00 (Bangkok)" value="${esc(s.postTimezone)}"></div>
+    </div>
+    <div class="grid3">
       <div class="field"><label>OpenAI poster quality</label>
         <select id="st-quality">
           <option value="medium" ${s.imageQuality === 'medium' ? 'selected' : ''}>medium — ~$0.06/poster, ~1–2 min</option>
           <option value="high" ${s.imageQuality === 'high' ? 'selected' : ''}>high — ~$0.22/poster, 2–5 min</option>
           <option value="low" ${s.imageQuality === 'low' ? 'selected' : ''}>low — drafts only</option>
         </select></div>
-      <div class="field"><label>Default post time</label><input id="st-posttime" type="time" value="${esc(s.defaultPostTime)}"></div>
-      <div class="field"><label>Bar's UTC offset (hosted)</label><input id="st-tz" placeholder="e.g. +07:00 (blank = server local)" value="${esc(s.postTimezone)}"></div>
+      <div class="field"><label>Default post time (AI-designed flow)</label><input id="st-posttime" type="time" value="${esc(s.defaultPostTime)}"></div>
     </div>
     <div class="grid3">
       <div class="field"><label>Venue name</label><input id="st-venue" value="${esc(s.venueName)}"></div>
@@ -957,6 +1117,8 @@ function renderSettings() {
         postizBaseUrl: $('#st-postiz-url', body).value.trim() || 'https://api.postiz.com/public/v1',
         imageQuality: $('#st-quality', body).value,
         postTimezone: $('#st-tz', body).value.trim(),
+        uploadPostTime: $('#st-up-time', body).value || '18:00',
+        uploadDaysBefore: Math.max(0, parseInt($('#st-up-days', body).value, 10) || 0),
         defaultPostTime: $('#st-posttime', body).value || '17:00',
         venueName: $('#st-venue', body).value.trim() || 'Vibration',
         venueBlurb: $('#st-blurb', body).value,

@@ -289,7 +289,63 @@ main { max-width: 1280px; margin: 0 auto; padding: 0 26px 90px; }
 }
 .toast.error { border-color: var(--danger); }
 
+/* ---------- uploaded posters (primary flow) ---------- */
+.upload-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.upload-card {
+  border: 1px solid var(--line); border-radius: 12px; background: var(--bg-2);
+  overflow: hidden; display: flex; flex-direction: column;
+}
+.upload-card .up-img { position: relative; }
+.upload-card .up-img img { width: 100%; aspect-ratio: 3/4; object-fit: cover; display: block; cursor: zoom-in; }
+.upload-card .rm {
+  position: absolute; top: 8px; right: 8px; width: 24px; height: 24px;
+  border-radius: 50%; background: rgba(0,0,0,.65); border: none; color: #fff;
+  font-size: 12px; padding: 0; line-height: 24px;
+}
+.upload-card .rm:hover { background: var(--danger); }
+.upload-card .up-badge {
+  position: absolute; bottom: 8px; left: 8px; background: var(--ok); color: #10240f;
+  font-size: 11px; font-weight: 700; border-radius: 20px; padding: 4px 10px;
+}
+.upload-card .up-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.upload-card textarea {
+  width: 100%; background: var(--panel); border: 1px solid var(--line);
+  color: var(--ink); border-radius: 8px; padding: 8px 10px; font-family: inherit;
+  font-size: 13px; min-height: 84px; resize: vertical;
+}
+.upload-card textarea:focus { outline: none; border-color: var(--gold); }
+.upload-card .up-label { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-faint); }
+.upload-slot {
+  border: 1.5px dashed var(--ink-faint); border-radius: 12px; min-height: 260px;
+  display: grid; place-items: center; color: var(--ink-faint); background: transparent;
+  font-size: 14px; cursor: pointer;
+}
+.upload-slot:hover { border-color: var(--gold); color: var(--gold); }
+
+/* ---------- collapsible design studio ---------- */
+details.design-details { border: 1px solid var(--line); border-radius: 12px; background: var(--bg-2); margin-top: 26px; }
+details.design-details > summary {
+  cursor: pointer; padding: 14px 18px; font-family: 'Marcellus', serif; font-size: 16px;
+  color: var(--ink-dim); letter-spacing: .05em; list-style: none;
+}
+details.design-details > summary::-webkit-details-marker { display: none; }
+details.design-details > summary::before { content: '▸ '; color: var(--gold); }
+details.design-details[open] > summary::before { content: '▾ '; }
+details.design-details[open] > summary { color: var(--gold-soft); border-bottom: 1px solid var(--line); }
+details.design-details .design-inner { padding: 22px 18px 10px; }
+
+/* ---------- floating schedule button ---------- */
+.fab {
+  position: fixed; bottom: 26px; right: 26px; z-index: 90;
+  background: linear-gradient(160deg, #dabb50, #b5922c); border: none; color: #191509;
+  font-weight: 700; font-size: 14.5px; border-radius: 30px; padding: 15px 24px;
+  box-shadow: 0 8px 30px rgba(212, 175, 55, 0.4), 0 4px 12px rgba(0,0,0,.5);
+}
+.fab:hover { filter: brightness(1.08); color: #191509; }
+.fab:disabled { opacity: .6; }
+
 @media (max-width: 1000px) {
+  .upload-grid { grid-template-columns: 1fr; }
   .variants, .caption-grid, .grid3 { grid-template-columns: 1fr; }
   .grid2 { grid-template-columns: 1fr; }
   .overview-grid { grid-template-columns: repeat(2, 1fr); }
