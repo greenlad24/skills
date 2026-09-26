@@ -985,6 +985,11 @@ function renderSettings() {
         <b>Buffer → Settings → API</b> and paste it here.
       </div>
       <div class="field"><label>Buffer API key</label><input id="st-buffer" type="password" placeholder="Buffer → Settings → API" value="${esc(s.bufferApiKey)}"></div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:-4px 0 14px">
+        <button id="st-buffer-check">Check connection</button>
+        <button id="st-buffer-switch">🔄 Switch Buffer account</button>
+        <span id="st-buffer-status" style="font-size:12.5px;color:var(--ink-faint)"></span>
+      </div>
       <div class="settings-note">
         <b>Image hosting (free, required for Buffer):</b> Buffer downloads the poster from a URL,
         so the app publishes it via a free <a href="https://cloudinary.com" target="_blank">Cloudinary</a> account:
@@ -1054,6 +1059,36 @@ function renderSettings() {
   };
   $('#st-scheduler', body).onchange = syncSchedulerBlocks;
   syncSchedulerBlocks();
+
+  $('#st-buffer-check', body).onclick = async (e) => {
+    e.target.disabled = true;
+    const st = $('#st-buffer-status', body);
+    st.textContent = 'checking…';
+    try {
+      await saveSettings();
+      const out = await api('GET', '/api/buffer/account');
+      const orgs = (out.account.organizations || []).map((o) => o.name).filter(Boolean);
+      st.innerHTML = orgs.length
+        ? `<span style="color:var(--ok)">✓ connected to: ${esc(orgs.join(', '))}</span>`
+        : 'key works, but no organizations found on that account';
+    } catch (err) {
+      st.innerHTML = `<span style="color:var(--danger)">${esc(err.message)}</span>`;
+    } finally {
+      e.target.disabled = false;
+    }
+  };
+
+  $('#st-buffer-switch', body).onclick = () => {
+    $('#st-buffer', body).value = '';
+    $('#st-ig', body).value = '';
+    $('#st-fb', body).value = '';
+    $('#st-ig-ident', body).value = 'instagram';
+    $('#st-fb-ident', body).value = 'facebook';
+    $('#st-accts', body).innerHTML = '';
+    $('#st-buffer-status', body).textContent =
+      'Paste the NEW account’s API key (log into the new Buffer account → Settings → API), click Save settings, then "Load my channels" and reassign → Instagram / → Facebook.';
+    $('#st-buffer', body).focus();
+  };
 
   $('#st-load-accts', body).onclick = async (e) => {
     e.target.disabled = true;
@@ -1132,6 +1167,11 @@ function renderSettings() {
       },
     });
     S.settings = out.settings;
+    if (out.bufferChannelsCleared) {
+      $('#st-ig', body).value = '';
+      $('#st-fb', body).value = '';
+      toast('New Buffer account saved — the old channel assignments were reset. Click "Load my channels" and reassign → Instagram / → Facebook.', false, 10000);
+    }
   }
 
   $('#st-save', body).onclick = async () => {

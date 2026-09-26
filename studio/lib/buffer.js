@@ -25,6 +25,12 @@ async function gql(apiKey, query, variables) {
   return json.data;
 }
 
+/** Identify the account behind an API key (organization names). */
+async function accountInfo(apiKey) {
+  const acct = await gql(apiKey, `query { account { organizations { id name } } }`);
+  return acct?.account || { organizations: [] };
+}
+
 /** List every channel across the account's organizations. */
 async function listChannels(apiKey) {
   const acct = await gql(apiKey, `query { account { organizations { id name } } }`);
@@ -83,4 +89,4 @@ async function createPost(apiKey, { channelId, text, imageUrl, dueAt }) {
   return result.post;
 }
 
-module.exports = { listChannels, createPost };
+module.exports = { listChannels, createPost, accountInfo };

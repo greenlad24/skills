@@ -349,13 +349,35 @@ route('GET', /^\/api\/settings$/, async () => {
 route('PUT', /^\/api\/settings$/, async (m, body) => {
   const db = await store.load();
   const s = body.settings || {};
+  // A NEW Buffer key means a different Buffer account — its channel IDs are
+  // from the old account and would fail silently, so drop them for reassignment.
+  const bufferKeyChanged =
+    typeof s.bufferApiKey === 'string' &&
+    s.bufferApiKey &&
+    !/^set \(/.test(s.bufferApiKey) &&
+    s.bufferApiKey !== db.settings.bufferApiKey;
   for (const k of Object.keys(db.settings)) {
     if (!(k in s)) continue;
     if (store.SECRET_KEYS.includes(k) && /^set \(/.test(s[k])) continue; // masked round-trip
     db.settings[k] = s[k];
   }
+  let bufferChannelsCleared = false;
+  if (bufferKeyChanged && db.settings.scheduler === 'buffer') {
+    db.settings.instagramIntegrationId = '';
+    db.settings.facebookIntegrationId = '';
+    db.settings.instagramIdentifier = 'instagram';
+    db.settings.facebookIdentifier = 'facebook';
+    bufferChannelsCleared = true;
+  }
   await store.save(db);
-  return { settings: redactedSettings(db.settings) };
+  return { settings: redactedSettings(db.settings), bufferChannelsCleared };
+});
+
+// Which Buffer account does the stored key belong to?
+route('GET', /^\/api\/buffer\/account$/, async () => {
+  const db = await store.load();
+  const account = await bufferApi.accountInfo(db.settings.bufferApiKey || process.env.BUFFER_API_KEY);
+  return { account };
 });
 
 route('GET', /^\/api\/channels$/, async () => {
