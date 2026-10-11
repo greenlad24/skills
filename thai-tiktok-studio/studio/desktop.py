@@ -54,6 +54,8 @@ def main() -> None:
     config.ensure_dirs()
     from . import scheduler
     scheduler.start_worker(config.load_settings)        # hands posts to PostPeer while the app is open
+    from . import updater
+    updater.start()                                      # new versions install themselves
 
     from werkzeug.serving import make_server
     server = make_server("0.0.0.0", port, webapp.app, threaded=True)

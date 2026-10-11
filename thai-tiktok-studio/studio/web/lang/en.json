@@ -508,5 +508,10 @@
  "set.ccTest": "Test connection",
  "set.ccTesting": "Checking your Claude account…",
  "set.ccTestOk": "✅ Connected! Your Claude account is working.",
- "set.ccTestFail": "❌ Not connected yet"
+ "set.ccTestFail": "❌ Not connected yet",
+ "upd.ready": "A new version ({v}) is ready.",
+ "upd.restart": "Restart to update",
+ "upd.later": "Later",
+ "upd.restarting": "Restarting… the app will open again in a few seconds.",
+ "upd.manual": "Close the app and open it again to finish the update."
 }

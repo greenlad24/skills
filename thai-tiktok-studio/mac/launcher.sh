@@ -41,6 +41,25 @@ if [ -z "$PY" ]; then
   exit 0
 fi
 
+# Self-update: use the newest valid version downloaded by the in-app updater, if newer than this bundle
+BUNDLED="$APP_SRC"
+if [ -f "$SUPPORT/current.txt" ]; then
+  CAND="$SUPPORT/$(cat "$SUPPORT/current.txt")"
+  if [ -f "$CAND/studio/app.py" ] && [ -f "$CAND/VERSION" ] && "$PY" -c '
+import sys
+v = lambda s: tuple(int("".join(c for c in p if c.isdigit()) or 0) for p in s.strip().split("."))
+sys.exit(0 if v(open(sys.argv[1]).read()) > v(open(sys.argv[2]).read()) else 1)' "$CAND/VERSION" "$BUNDLED/VERSION" 2>/dev/null; then
+    APP_SRC="$CAND"
+    echo "using updated version $(cat "$CAND/VERSION")"
+  fi
+  # tidy up older downloaded versions
+  for d in "$SUPPORT"/app-*; do
+    [ -d "$d" ] && [ "$d" != "$APP_SRC" ] && rm -rf "$d"
+  done
+fi
+export TTS_STUDIO_BUNDLE="$(dirname "$CONTENTS")"
+export TTS_STUDIO_SUPPORT="$SUPPORT"
+
 VENV="$SUPPORT/venv"
 if [ ! -x "$VENV/bin/python" ]; then
   "$PY" -m venv "$VENV" || { say_alert "ตั้งค่าไม่สำเร็จ (venv)\nSetup failed."; exit 1; }

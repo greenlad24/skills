@@ -170,6 +170,20 @@ def health():
                     "claude_code": bool(exe), "claude_code_version": llm_claude_code.version(exe) if exe else ""})
 
 
+@app.get("/api/update")
+def update_status():
+    from . import updater
+    return jsonify(dict(updater.STATE, enabled=updater.enabled()))
+
+
+@app.post("/api/update/restart")
+def update_restart():
+    from . import updater
+    if not updater.restart():
+        return jsonify({"error": "Close the app and open it again to finish the update."}), 400
+    return jsonify({"ok": True})
+
+
 @app.get("/api/settings")
 def get_settings():
     return jsonify(config.public_settings(config.load_settings()))

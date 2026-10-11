@@ -13,6 +13,8 @@ import os
 import re
 import shutil
 import subprocess
+import threading
+import time
 from pathlib import Path
 
 from . import prompts
@@ -76,7 +78,8 @@ def _not_logged_in(msg: str) -> bool:
     return "not logged in" in low or "/login" in low or "please run /login" in low
 
 
-def _attempt(exe, prompt, settings, workdir, tools, schema, max_turns, isolated: bool, token: str):
+def _attempt(exe, prompt, settings, workdir, tools, schema, max_turns, isolated: bool, token: str,
+             log=lambda m: None):
     h = _help(exe)
     cmd = [exe, "-p", "Follow the instructions in the piped input exactly.", "--output-format", "json",
            "--max-turns", str(max_turns)]
@@ -95,17 +98,72 @@ def _attempt(exe, prompt, settings, workdir, tools, schema, max_turns, isolated:
             cmd += ["--permission-prompts", "none"]
     if schema is not None and "--json-schema" in h:
         cmd += ["--json-schema", json.dumps(schema, ensure_ascii=False)]
-    p = subprocess.run(cmd, input=prompt, capture_output=True, text=True, env=_env(token), cwd=str(workdir),
-                       timeout=TIMEOUT)
-    out = (p.stdout or "").strip()
+    streaming = "stream-json" in h
+    if streaming:   # live progress: every web search / page read shows up in the log
+        cmd[cmd.index("--output-format") + 1] = "stream-json"
+        cmd.append("--verbose")
+    data, raw_lines, err_lines = {}, [], []
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                            env=_env(token), cwd=str(workdir))
+    started = time.time()
+    done = threading.Event()
+
+    def heartbeat():
+        while not done.wait(30):
+            log(f"…still working ({int(time.time() - started)} s) — research usually takes 2–6 minutes")
+            if time.time() - started > TIMEOUT:
+                proc.kill()
+                return
+    threading.Thread(target=heartbeat, daemon=True).start()
+    threading.Thread(target=lambda: err_lines.extend(proc.stderr), daemon=True).start()
     try:
-        data = json.loads(out[out.find("{"):]) if out else {}
-    except ValueError:
-        data = {}
-    ok = p.returncode == 0 and not data.get("is_error")
-    msg = "" if ok else (data.get("result") or (p.stderr or out or "").strip()[-600:])
+        proc.stdin.write(prompt)
+        proc.stdin.close()
+    except (BrokenPipeError, OSError):
+        pass
+    for line in proc.stdout:
+        line = line.strip()
+        if not line:
+            continue
+        raw_lines.append(line)
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(ev, dict):
+            continue
+        if ev.get("type") == "result" or "result" in ev and "type" not in ev:
+            data = ev
+        elif ev.get("type") == "assistant":
+            _log_tool_uses(ev, log)
+    proc.wait()
+    done.set()
+    if not data and raw_lines:   # non-streaming JSON (older builds) or a single JSON blob
+        blob = "\n".join(raw_lines)
+        try:
+            data = json.loads(blob[blob.find("{"):])
+        except ValueError:
+            data = {}
+    ok = proc.returncode == 0 and bool(data) and not data.get("is_error")
+    msg = "" if ok else (data.get("result") or ("".join(err_lines) or "\n".join(raw_lines[-3:])).strip()[-600:]
+                         or f"Claude Code stopped (exit {proc.returncode}).")
     data["_structured"] = schema is not None and "--json-schema" in h
     return ok, data, msg
+
+
+def _log_tool_uses(ev: dict, log) -> None:
+    """Turn Claude Code's tool calls into friendly log lines."""
+    msg = ev.get("message") or {}
+    for block in msg.get("content") or []:
+        if not isinstance(block, dict) or block.get("type") != "tool_use":
+            continue
+        name, inp = block.get("name", ""), block.get("input") or {}
+        if name == "WebSearch":
+            log(f"🔎 Searching: {str(inp.get('query', ''))[:90]}")
+        elif name == "WebFetch":
+            log(f"📄 Reading: {str(inp.get('url', ''))[:90]}")
+        elif name == "Read":
+            log(f"🖼 Looking at: {str(inp.get('file_path', '')).rsplit('/', 1)[-1][:60]}")
 
 
 def _run(prompt: str, settings: dict, workdir: Path, tools: str, schema: dict | None, max_turns: int, log) -> dict:
@@ -118,10 +176,10 @@ def _run(prompt: str, settings: dict, workdir: Path, tools: str, schema: dict | 
     if not token:
         raise RuntimeError("No Claude setup-token. In Terminal run:  claude setup-token  — then paste the token in Settings.")
     isolated = _ISOLATION_OK is not False
-    ok, data, msg = _attempt(exe, prompt, settings, workdir, tools, schema, max_turns, isolated, token)
+    ok, data, msg = _attempt(exe, prompt, settings, workdir, tools, schema, max_turns, isolated, token, log)
     if not ok and isolated and _not_logged_in(msg):
         log("Retrying Claude Code with plain settings…")
-        ok, data, msg = _attempt(exe, prompt, settings, workdir, tools, schema, max_turns, False, token)
+        ok, data, msg = _attempt(exe, prompt, settings, workdir, tools, schema, max_turns, False, token, log)
         if ok:
             _ISOLATION_OK = False
     elif ok and isolated:

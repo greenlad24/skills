@@ -1,0 +1,2 @@
+1.1.0 — อัปเดตอัตโนมัติ · แสดงความคืบหน้าขณะค้นข้อมูล · แก้ปัญหาลิงก์ TikTok ที่ติดหน้า Security Check · ปุ่มทดสอบการเชื่อมต่อบัญชี Claude
+Auto-updates · live research progress · TikTok security-check links handled · Claude account Test connection button

@@ -120,3 +120,47 @@ def test_not_logged_in_message_is_clear(fake_claude, monkeypatch):
     monkeypatch.setattr(llm_claude_code, "_attempt", lambda *a, **k: (False, {}, "Not logged in · Please run /login"))
     with pytest.raises(RuntimeError, match="didn't pick up your token"):
         llm_claude_code.test_connection(_settings(exe), tmp)
+
+
+STREAM = r'''#!{py}
+import json, os, sys
+args = sys.argv[1:]
+if args == ["--help"]:
+    print("--tools --json-schema --safe-mode --output-format text|json|stream-json --verbose"); sys.exit(0)
+sys.stdin.read()
+assert "stream-json" in args and "--verbose" in args
+ev = lambda **k: print(json.dumps(k), flush=True)
+ev(type="system", subtype="init")
+ev(type="assistant", message={"content": [{"type": "tool_use", "name": "WebSearch", "input": {"query": "ที่นอน Solomon รีวิว"}}]})
+ev(type="assistant", message={"content": [{"type": "tool_use", "name": "WebFetch", "input": {"url": "https://example.com/p"}}]})
+ev(type="result", is_error=False, result="DOSSIER streamed")
+'''
+
+
+def test_streaming_progress_is_logged(tmp_path):
+    exe = tmp_path / "claude"
+    exe.write_text(STREAM.replace("{py}", sys.executable))
+    exe.chmod(exe.stat().st_mode | stat.S_IEXEC)
+    llm_claude_code._help.cache_clear()
+    llm_claude_code._ISOLATION_OK = None
+    logs = []
+    out = llm_claude_code.research({"input_text": "x"}, _settings(exe), log=logs.append, workdir=tmp_path)
+    assert out == "DOSSIER streamed"
+    assert any(l.startswith("🔎 Searching: ที่นอน") for l in logs) and any(l.startswith("📄 Reading:") for l in logs)
+
+
+def test_blocked_pages_are_not_trusted(monkeypatch):
+    from studio import scrape
+
+    class R:
+        status_code = 200
+        url = "https://www.tiktok.com/xx"
+        headers = {"content-type": "text/html"}
+        text = "<html><head><title>Security Check</title></head><body>Please verify you are human</body></html>"
+    monkeypatch.setattr(scrape, "_get", lambda url, timeout=15: R())
+    info = scrape.scrape_url("https://vt.tiktok.com/abc/")
+    assert info["ok"] is False and info.get("blocked")
+    searched = []
+    monkeypatch.setattr(scrape, "web_search", lambda q, limit=8: searched.append(q) or [])
+    scrape.gather("https://vt.tiktok.com/abc/", [], __import__("pathlib").Path("/tmp"), log=lambda m: None)
+    assert searched == []                                   # never searches for "Security Check"

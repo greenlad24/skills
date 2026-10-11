@@ -125,6 +125,7 @@ async function setLanguage(lang, persist) {
   applyLang(lang);
   renderChrome();
   renderView();
+  if (!$("#updBar").classList.contains("hidden")) checkUpdate();   // re-translate the update banner
   if (state.modalFn) state.modalFn();
   if (state.dialogFn) state.dialogFn();
   restore(snap);
@@ -149,6 +150,25 @@ async function boot() {
   window.addEventListener("hashchange", route);
   await route();
   if (!state.settings.onboarded) showOnboarding(0);
+  checkUpdate();
+  setInterval(checkUpdate, 10 * 60 * 1000);
+}
+
+/* ---------------- self-update banner (Mac app) ---------------- */
+async function checkUpdate() {
+  let u;
+  try { u = await api("/api/update"); } catch (e) { return; }
+  const bar = $("#updBar");
+  if (!u.enabled || !u.ready || bar.dataset.dismissed === u.ready) { bar.classList.add("hidden"); return; }
+  bar.innerHTML = `<span>🎉 ${t("upd.ready", { v: u.ready })}</span>
+    <button class="btn primary" id="updRestart">${t("upd.restart")}</button>
+    <button class="btn ghost" id="updLater">${t("upd.later")}</button>`;
+  bar.classList.remove("hidden");
+  $("#updLater").onclick = () => { bar.dataset.dismissed = u.ready; bar.classList.add("hidden"); };
+  $("#updRestart").onclick = async () => {
+    try { await api("/api/update/restart", { method: "POST" }); bar.innerHTML = `<span>${t("upd.restarting")}</span>`; }
+    catch (e) { bar.innerHTML = `<span>${t("upd.manual")}</span>`; }
+  };
 }
 $("#btnHelp").onclick = () => showOnboarding(0);
 $("#btnSettings").onclick = showSettings;

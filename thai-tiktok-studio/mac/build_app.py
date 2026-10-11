@@ -84,6 +84,7 @@ def build() -> Path:
     icon.save(app / "Contents/Resources/AppIcon.icns")
     icon.resize((512, 512)).save(app / "Contents/Resources/AppIcon.png")
     _copy_source(app / "Contents/Resources/app")
+    (app / "Contents/Resources/app/VERSION").write_text(__version__)
     (stage / "อ่านก่อน - Read me.txt").write_text(
         "Thai TikTok Studio\n\n"
         "1) ลาก \"Thai TikTok Studio\" ไปไว้ในโฟลเดอร์ Applications\n"
@@ -107,7 +108,25 @@ def build() -> Path:
             info.compress_type = zipfile.ZIP_DEFLATED
             z.writestr(info, p.read_bytes())
     shutil.rmtree(stage)
+    write_latest(out)
     return out
+
+
+ZIP_URL = ("https://raw.githubusercontent.com/greenlad24/skills/claude/wizardly-thompson-w6jjr8/"
+           "thai-tiktok-studio/releases/ThaiTikTokStudio-mac.zip")
+
+
+def write_latest(zip_path: Path) -> None:
+    """releases/latest.json — what installed apps check to update themselves."""
+    import hashlib
+    import json
+    notes = (ROOT / "releases" / "NOTES.txt")
+    (OUT_DIR / "latest.json").write_text(json.dumps({
+        "version": __version__,
+        "zip_url": ZIP_URL,
+        "sha256": hashlib.sha256(zip_path.read_bytes()).hexdigest(),
+        "notes": notes.read_text("utf-8").strip() if notes.exists() else "",
+    }, ensure_ascii=False, indent=1) + "\n", "utf-8")
 
 
 if __name__ == "__main__":

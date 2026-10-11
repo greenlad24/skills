@@ -58,6 +58,17 @@ def _jsonld_products(soup: BeautifulSoup) -> list:
     return out
 
 
+BLOCK_MARKERS = ("security check", "verify you are human", "verifying you are human", "just a moment",
+                 "access denied", "captcha", "are you a robot", "attention required", "please enable javascript",
+                 "unusual traffic", "ตรวจสอบความปลอดภัย", "ยืนยันว่าคุณเป็นมนุษย์")
+
+
+def is_blocked_page(title: str, text: str = "") -> bool:
+    """TikTok/Shopee/Lazada often answer bots with a captcha / security-check page."""
+    head = f"{title or ''} {(text or '')[:400]}".lower()
+    return any(m in head for m in BLOCK_MARKERS)
+
+
 def scrape_url(url: str) -> dict:
     """Return {url, final_url, title, description, price, currency, rating, images[], text}."""
     info = {"url": url, "final_url": url, "title": "", "description": "", "price": "",
@@ -110,7 +121,9 @@ def scrape_url(url: str) -> dict:
             if full not in seen:
                 seen.append(full)
     info["images"] = seen[:6]
-    info["ok"] = bool(info["title"] or info["text"])
+    info["ok"] = bool(info["title"] or info["text"]) and not is_blocked_page(info["title"], info["text"])
+    if not info["ok"]:
+        info["blocked"] = True
     return info
 
 
@@ -168,7 +181,7 @@ def gather(query_text: str, image_paths: list, project_dir: Path, log=print) -> 
         log(f"Fetching {url} …")
         page = scrape_url(url)
         log("Page read OK" if page.get("ok") else "Page blocked or JS-only (the AI will research it instead)")
-    search_q = page.get("title") or name
+    search_q = (page.get("title") if page.get("ok") else "") or name   # never search a captcha page title
     results = []
     if search_q:
         log(f"Web search: {search_q[:80]}")
