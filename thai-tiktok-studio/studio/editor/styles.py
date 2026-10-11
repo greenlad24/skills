@@ -33,7 +33,7 @@ ROLE = {
     "keyword_pop": "emph", "discount_badge": "emph", "reaction_text": "emph",
     "checklist": "list", "trust_badges": "list", "stars_rating": "list",
     "emoji_sticker": "sticker",
-    # arrow / circle_highlight / cta_basket keep their own purpose-built motion
+    # arrow / cta_basket keep their own purpose-built motion
 }
 
 

@@ -119,3 +119,11 @@ def test_prices_never_reach_graphics():
     assert o["items"] == ["นุ่มเด้ง", "ส่งฟรี"]
     assert normalize_overlay({**base, "type": "discount_badge", "text": "ลด 50%"})["text"] == "ลด 50%"
     assert strip_prices("ขายแล้ว 10k+") == "ขายแล้ว 10k+" and strip_prices("1,290.-") == ""
+
+
+def test_circle_highlight_is_retired():
+    from studio.plan_schema import OVERLAY_TYPES, normalize_overlay
+    assert "circle_highlight" not in OVERLAY_TYPES
+    assert normalize_overlay({"type": "circle_highlight", "text": "", "sub_text": "", "items": [], "emoji": "",
+                              "at": 0, "dur": 1, "position": "target", "color": "auto",
+                              "target_x": 0.4, "target_y": 0.4}) is None

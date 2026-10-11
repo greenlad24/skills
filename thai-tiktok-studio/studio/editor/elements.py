@@ -202,20 +202,6 @@ def arrow(o, s, e, ctx):
                     loop="bob", bob_dir=(ux, uy), z=6)]
 
 
-def circle_highlight(o, s, e, ctx):
-    tx, ty = o["target_x"] * W, o["target_y"] * H
-    col = rgba(ctx.color(o["color"], "primary"))
-    rx, ry = 170, 130
-
-    def draw(lt):
-        p = min(1.0, lt / 0.35)
-        img = Image.new("RGBA", (rx * 2 + 30, ry * 2 + 30), (0, 0, 0, 0))
-        d = ImageDraw.Draw(img)
-        d.arc([15, 15, 15 + rx * 2, 15 + ry * 2], start=-100, end=-100 + 380 * p, fill=col, width=13)
-        return img
-    return [Element(start=s, end=e, cx=tx, cy=ty, draw=draw, anim_in="none", in_dur=0.0, z=6)]
-
-
 def checklist(o, s, e, ctx):
     items = o["items"] or ([o["text"]] if o["text"] else [])
     cx, cy = _pos(o, "center_left")
@@ -418,7 +404,7 @@ def lower_third(o, s, e, ctx):
 BUILDERS = {
     "hook_title": hook_title, "keyword_pop": keyword_pop,
     "discount_badge": discount_badge, "cta_basket": cta_basket, "arrow": arrow,
-    "circle_highlight": circle_highlight, "checklist": checklist, "label": label,
+    "checklist": checklist, "label": label,
     "trust_badges": trust_badges, "stars_rating": stars_rating, "comment_reply": comment_reply,
     "emoji_sticker": emoji_sticker, "spec_card": spec_card, "number_badge": number_badge,
     "urgency_banner": urgency_banner, "before_after_labels": label, "vs_split": vs_split,
