@@ -149,5 +149,22 @@ def test_price_amounts_in_scripts_are_flagged():
     plan["videos"][0]["full_script_th"] = "ตอนนี้มีราคาพิเศษ"
     flags = compliance.check_plan(plan)["V1"]
     assert not any(f["word"].startswith("price") and f["where"] in ("beat 1 voice", "script") for f in flags)
-    # the sample's beat 3 still says "ราคาเหลือแค่ 2,990" → flagged
+    # the sample's beat 3 still says "ราคาเหลือแค่ 2,990" (a selling price) → flagged
     assert any(f["where"] == "beat 3 voice" for f in flags)
+    # a store-price anchor + "special price" is allowed in speech
+    plan["videos"][0]["timeline"][0]["vo_th"] = "ที่ห้างราคา 5,990 บาท แต่เจอตัวนี้ในราคาพิเศษ ที่หาจากที่ไหนไม่ได้เลย"
+    flags = compliance.check_plan(plan)["V1"]
+    assert not any(f["where"] == "beat 1 voice" and f["word"].startswith("price") for f in flags)
+    # …but never the selling price, even next to a store mention
+    plan["videos"][0]["timeline"][0]["vo_th"] = "ที่ห้างแพงมาก ในคลิปนี้เหลือแค่ 1,990 บาท"
+    flags = compliance.check_plan(plan)["V1"]
+    assert any(f["where"] == "beat 1 voice" and f["word"].startswith("price") for f in flags)
+
+
+def test_store_price_never_left_in_captions():
+    from studio.plan_schema import strip_caption_price
+    assert strip_caption_price("ที่ห้างราคา 5,990 บาท") == ""
+    assert strip_caption_price("ในห้างราคาเป็นหมื่น") == ""
+    assert strip_caption_price("นุ่มสุดๆ หลักพันบาท") == "นุ่มสุดๆ"
+    assert strip_caption_price("แต่เจอราคาพิเศษ") == "แต่เจอราคาพิเศษ"     # no amount → untouched
+    assert strip_caption_price("ทำเรียบร้อยแล้ว") == "ทำเรียบร้อยแล้ว"

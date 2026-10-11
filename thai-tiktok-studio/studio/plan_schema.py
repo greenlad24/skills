@@ -200,8 +200,11 @@ def canon_shot_id(s: str) -> str:
 
 
 # Prices are never shown in graphics (owner's rule): "฿199", "199 บาท", "1,290.-", "ราคา 990"…
+THAI_AMOUNT = r"(?:เป็น|หลัก)?\s*(?:หลาย|ไม่กี่)?\s*(?:แสน|หมื่น|พัน|ร้อย)(?:กว่า)?"
 PRICE_RE = re.compile(
-    r"(฿\s*\d[\d,.]*|\d[\d,.]*\s*(?:บาท|฿|thb|baht|\.-)|ราคา(?:พิเศษ|เต็ม|ปกติ)?\s*\d[\d,.]*|(?:ปกติ|เหลือ|แค่)\s*\d[\d,.]*)",
+    r"(฿\s*\d[\d,.]*|\d[\d,.]*\s*(?:บาท|฿|thb|baht|\.-)|ราคา(?:พิเศษ|เต็ม|ปกติ)?\s*\d[\d,.]*"
+    r"|(?:ปกติ|เหลือ|แค่)\s*\d[\d,.]*"
+    r"|ราคา\s*" + THAI_AMOUNT + r"(?:\s*บาท)?|" + THAI_AMOUNT + r"\s*บาท)",   # "ราคาเป็นหมื่น", "หลักพันบาท"
     re.I)
 NEEDS_TEXT = {"hook_title", "keyword_pop", "discount_badge", "label", "reaction_text", "speech_bubble",
               "lower_third", "urgency_banner", "before_after_labels", "comment_reply", "number_badge"}
@@ -214,7 +217,8 @@ def strip_prices(text: str) -> str:
 
 
 # words that only make sense in front of a price ("ราคาเหลือแค่ 2,990" → nothing left to show)
-PRICE_LEADIN_RE = re.compile(r"(ราคา|เหลือ|แค่|เพียง|ลดเหลือ|ปกติ|เต็ม|พิเศษ|เท่านั้น|ประมาณ|กว่า|\s)+$")
+PRICE_LEADIN_RE = re.compile(
+    r"(ราคา|เหลือ|แค่|เพียง|ลดเหลือ|ปกติ|เต็ม|พิเศษ|เท่านั้น|ประมาณ|กว่า|ขาย|ที่ห้าง|ในห้าง|ห้าง|หน้าร้าน|ที่ร้าน|ร้าน|\s)+$")
 
 
 def strip_caption_price(text: str) -> str:

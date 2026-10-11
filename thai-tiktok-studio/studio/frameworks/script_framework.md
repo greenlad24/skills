@@ -10,7 +10,7 @@ Built from three evidence sources:
 2. **Sound and motion start at frame 1.** The first spoken line is the hook: 10 or fewer Thai words.
 3. **Value proposition by second 6.** That window holds about 90% of ad recall (B).
 4. **Native, friend-to-friend tone, not an ad.** In the dataset's viewer notes, the most-cited reasons for liking a video were "natural / real usage", "sincere, not only selling", "tells me the deal so I don't have to search" (we do this with a "special price right now" mention, never an amount), and "focuses on the product". A flat, tired voice made viewers leave (A).
-5. **Never say or show a price amount** (no numbers with บาท/฿, no "ในห้าง 4–5,000"-style anchors, no "แค่ 2,000"). Owner's rule. You MAY mention that there is a special price right now: "ตอนนี้มีราคาพิเศษ" ("there's a special price right now"), "ราคาพิเศษเฉพาะช่วงนี้" ("special price for a limited time"), "กดดูราคาพิเศษในตะกร้า" ("tap the basket to see the special price"). Sell value with words: "คุ้มมาก" ("great value"), "คุ้มเกินราคา" ("worth more than it costs").
+5. **Store-price anchor, never the selling price.** You MAY say what it costs in a store or mall ("ที่ห้างราคาเป็นหมื่น", "หน้าร้านขาย 4,000 กว่าบาท", "it's ten thousand at the mall", "the shop sells it for over 4,000 baht"), then "แต่เจอตัวนี้ในราคาพิเศษ ที่หาจากที่ไหนไม่ได้เลย" ("but I found this one at a special price I couldn't find anywhere else"). **Never say the actual/selling price** (no "เหลือแค่ 2,990", "now only 2,990"; no "ในคลิปนี้ 1,990", "1,990 in this clip"). Close with the special price: "ตอนนี้มีราคาพิเศษ" ("there's a special price right now"), "กดดูราคาพิเศษในตะกร้า" ("tap the basket to see the special price"). No price ever appears on screen (captions/graphics). Store-price openers are among the dataset's top performers at 13.2M, 5.1M and 4.6M plays (A).
 6. **Length depends on the purchase type:**
    - Impulse items (gadgets, home organizers, sprays, ASMR): **15–30 s**.
    - Considered items (mattress, appliance, skincare, supplement): **35–55 s**. Dataset: videos with 3M+ plays have a median of 46.5 s; the overall median is 38 s.
@@ -26,7 +26,7 @@ Format ids in brackets are used in the plan.
 | id | Name | Beats (approx. seconds for a 30 s video) | Best for |
 |---|---|---|---|
 | problem_solution | ปัญหา→ทางออก (problem → solution) | 0–3 pain shown + spoken · 3–8 agitate ("ลองมาหมดแล้ว…", "I've tried everything…") · 8–20 product in use · 20–27 result · 27–32 CTA | skincare, cleaning, mattress, gadgets |
-| price_shock | ดีลพิเศษ / คุ้มเกินคาด (special-deal shock) | 0–3 "ทำไมคุ้มขนาดนี้?" ("why is this such good value?") or "ของดีขนาดนี้ ตอนนี้มีราคาพิเศษ" ("this good, and there's a special price right now") · 3–15 quality and features · 15–20 special-price mention ("ตอนนี้มีราคาพิเศษอยู่นะ", "there's a special price on right now"; on screen "คุ้มมาก!" keyword pop; NO amounts) · 20–28 why it's worth it · 28–32 CTA "กดดูราคาพิเศษในตะกร้า" ("tap the basket to see the special price") | anything with a strong deal |
+| price_shock | ห้างแพง vs ราคาพิเศษ (store price vs special price) | 0–3 "ที่ห้างราคาเป็นหมื่น…" ("at the mall it's ten thousand…") or "ทำไมคุ้มขนาดนี้?" ("why is this such good value?") · 3–15 quality and features · 15–20 "แต่เจอตัวนี้ในราคาพิเศษ ที่หาจากที่ไหนไม่ได้เลย" ("but I found this one at a special price I couldn't find anywhere else"; on screen "คุ้มมาก!" keyword pop; NO amounts) · 20–28 why it's worth it · 28–32 CTA "กดดูราคาพิเศษในตะกร้า" ("tap the basket to see the special price") | anything with a real store price to compare |
 | demo_proof | เทสต์พิสูจน์ (test / proof) | 0–2 the test itself (pour water, jump on mattress, drop) · 2–18 test · 18–25 outcome · 25–30 CTA | mattress, waterproof, cookware, cases |
 | unboxing_first_impression | แกะกล่อง (unboxing) | 0–3 parcel + "ของที่ติ๊กต๊อกป้ายมา มาถึงแล้ว!" ("the thing TikTok sold me on is here!") · 3–12 open, textures · 12–25 first try · 25–32 verdict + special-price mention + CTA | gadgets, beauty sets, big items (mattress-in-a-box!) |
 | before_after | ก่อน/หลัง (before/after) | 0–3 before or split screen · 3–15 use · 15–25 after (same angle and light) · 25–30 CTA | cleaning, home, hair styling (**never** for weight loss or supplements) |
@@ -53,6 +53,7 @@ Lines marked * are patterns from the dataset's top videos (A). The others come f
   - "ไม่มีใครบอกเรื่องนี้เลย…" — "Nobody tells you this…"
   - "ดูให้จบ แล้วจะรู้ว่าทำไมมันขายดี" — "Watch to the end and you'll see why it sells."
 - **Value / special deal (no amounts):**
+  - "ในห้างราคาเป็นหมื่น แต่ตัวนี้เจอในราคาพิเศษ…"* — "At the mall it's ten thousand, but I found this one at a special price…"
   - "ทำไมคุ้มขนาดนี้…" — "Why is this such good value…"
   - "ตอนนี้มีราคาพิเศษอยู่นะ รีบเลย" — "There's a special price on right now, hurry"
   - "ซื้อ 1 แถม 1 เอาไหมแม่ๆ"* — "Buy 1 get 1, want it, mums?"
@@ -114,7 +115,7 @@ Use one per video, spoken and shown on screen with the basket arrow.
 1. **hook_strength:** product or problem in frame 1, hook of 10 or fewer words, curiosity, pain or value surprise.
 2. **pain_or_desire:** a specific, relatable pain or desire for the target audience.
 3. **proof_demo:** the product is shown working (test, texture, real use). A talking head alone scores low.
-4. **offer_clarity:** value is clear; at most a "special price right now" mention (never an amount); one clear CTA.
+4. **offer_clarity:** value is clear; optional store-price anchor + "special price" (never the selling price); one clear CTA.
 5. **trend_fit:** matches what is working now in this niche (from research) and feels native.
 6. **filmability:** a solo creator with a phone can shoot it in under 1 hour at home.
 7. **compliance_safety:** 10 = no risky claims; any banned claim = 1. Rewrite until it reaches 10.
