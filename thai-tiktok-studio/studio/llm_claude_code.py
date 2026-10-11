@@ -236,3 +236,17 @@ def explain_error(e: Exception) -> str:
     if isinstance(e, subprocess.TimeoutExpired):
         return "Claude Code took too long (over 45 minutes). Try again, or fewer videos per product."
     return str(e)
+
+
+def make_edl(prompt: str, images: list, schema: dict, settings: dict, log=print, workdir: Path | None = None) -> dict:
+    """Video editor pass: Claude looks at each clip's frames, then returns the cut list (JSON)."""
+    text = prompt
+    if images:
+        text += ("\n\nFirst look at every clip's frames image with the Read tool:\n" + "\n".join(f"- {p}" for p in images))
+    text += ("\n\nReply with ONE JSON object only (no markdown fences) matching this JSON Schema:\n"
+             + json.dumps(schema, ensure_ascii=False))
+    data = _run(text, settings, workdir or Path.cwd(), "Read", schema, max(12, len(images) + 8), log)
+    if isinstance(data.get("structured_output"), dict):
+        return data["structured_output"]
+    out = data.get("result", "")
+    return json.loads(out[out.find("{"): out.rfind("}") + 1])

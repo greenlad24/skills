@@ -1,4 +1,4 @@
-"""Tool 2 orchestration: project files → rendered MP4s (no AI calls)."""
+"""Tool 2 orchestration: project files → rendered MP4s (Claude plans the cuts when available)."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 
 from .. import projects
-from . import matcher, media, render, timeline
+from . import matcher, media, render, smart_edit
 
 
 SUBS = ("footage", "narration")
@@ -79,13 +79,11 @@ def render_videos(job, pid: str, video_ids: list, settings: dict, draft: bool = 
     for i, v in enumerate(jobs_list):
         base = i / len(jobs_list)
         label = f"{v['id']} ({v['anim_style']})"
-        job.say(f"{label}: planning cuts…")
-        R = timeline.resolve(v, assign, d / "footage", product_images, st, d / "work" / v["id"], log=job.say,
-                             narration_dir=d / "narration")
+        job.say(f"{label}: planning the edit…")
+        R = smart_edit.resolve(v, assign, footage_files(pid), product_images, st, d / "work" / v["id"],
+                               log=lambda m, label=label: job.say(f"{label}: {m}"), narration_dir=d / "narration")
         for n in R.notes:
             job.say(f"{label}: {n}")
-        if R.missing:
-            job.say(f"{label}: missing footage for {', '.join(sorted(set(R.missing)))} (placeholder cards used)")
         out = d / "renders" / f"{v['id']}_{v['anim_style']}{'_draft' if draft else ''}_{time.strftime('%H%M%S')}.mp4"
         job.say(f"{label}: rendering {R.total:.1f}s video…")
 
@@ -95,7 +93,7 @@ def render_videos(job, pid: str, video_ids: list, settings: dict, draft: bool = 
                       settings=st, progress=prog, log=job.say)
         job.say(f"{label}: done → {out.name}")
         results.append({"video": v["id"], "style": v["anim_style"], "file": out.name, "duration": R.total,
-                        "missing": R.missing})
+                        "missing": []})
     return {"renders": results}
 
 

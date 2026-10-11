@@ -1,6 +1,6 @@
 {
- "version": "1.1.0",
+ "version": "1.2.0",
  "zip_url": "https://raw.githubusercontent.com/greenlad24/skills/claude/wizardly-thompson-w6jjr8/thai-tiktok-studio/releases/ThaiTikTokStudio-mac.zip",
- "sha256": "a0404ba5ec88bb1104afef13f0798b569bb1730894766a4d7d0ed21d30c370de",
- "notes": "1.1.0 — อัปเดตอัตโนมัติ · แสดงความคืบหน้าขณะค้นข้อมูล · แก้ปัญหาลิงก์ TikTok ที่ติดหน้า Security Check · ปุ่มทดสอบการเชื่อมต่อบัญชี Claude\nAuto-updates · live research progress · TikTok security-check links handled · Claude account Test connection button"
+ "sha256": "1eb69828b946b0619f3967f784b204de1d0e4988ac9657672f36eda958456b0b",
+ "notes": "1.2.0 — เสียงพากย์ต่อเนื่องไม่ถูกตัด · Claude Opus ดูคลิปของคุณแล้ววางแผนการตัดต่อเอง · ไม่มีซับไตเติล (แอนิเมชันเหมือนเดิม) · ไม่มีภาพสีเทาอีกแล้ว\nNarration plays as one uncut take · Claude Opus watches your clips and plans the edit · no subtitles (animations unchanged) · no more grey placeholders"
 }

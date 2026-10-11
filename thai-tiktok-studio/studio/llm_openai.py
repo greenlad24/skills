@@ -36,9 +36,9 @@ def _text(resp: dict) -> str:
     return "".join(out)
 
 
-def _content(text: str, images: list) -> list:
+def _content(text: str, images: list, limit: int = 6) -> list:
     content = []
-    for p in images[:6]:
+    for p in images[:limit]:
         path = Path(p)
         mt = mimetypes.guess_type(path.name)[0] or "image/jpeg"
         if path.exists() and mt.startswith("image/") and path.stat().st_size < 8_000_000:
@@ -84,5 +84,16 @@ def _plan(gathered, dossier, settings, n, structured: bool) -> dict:
     }
     if structured:
         body["text"] = {"format": {"type": "json_schema", "name": "video_plan", "schema": PLAN_SCHEMA, "strict": True}}
+    out = _text(_post(body, settings["openai_api_key"]))
+    return json.loads(out[out.find("{"): out.rfind("}") + 1])
+
+
+def make_edl(prompt: str, images: list, schema: dict, settings: dict, log=print, workdir=None) -> dict:
+    """Video editor pass: clip contact sheets + voice timing in, cut list (JSON) out."""
+    body = {
+        "model": settings["openai_model"],
+        "input": [{"role": "user", "content": _content(prompt, images, limit=20)}],
+        "text": {"format": {"type": "json_schema", "name": "edit_list", "schema": schema, "strict": True}},
+    }
     out = _text(_post(body, settings["openai_api_key"]))
     return json.loads(out[out.find("{"): out.rfind("}") + 1])

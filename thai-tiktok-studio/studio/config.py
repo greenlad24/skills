@@ -42,6 +42,8 @@ DEFAULTS = {
     "voice_source": "mine",     # "mine" = your recorded voice-over · "tts" = macOS Thai voice
     "tts_voice": "Kanya",       # macOS Thai voice (System Settings → Accessibility → Spoken Content)
     "tts_rate": 185,            # words-per-minute for `say`
+    "smart_edit": True,         # Claude watches your clips and plans the cuts (built-in editor if off/unavailable)
+    "subtitles": False,         # no subtitles — only the plan's animations
     "render_preset": "veryfast",
     "render_crf": 20,
     "music_volume": 0.14,

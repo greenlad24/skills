@@ -64,7 +64,7 @@ def test_timeline_resolution(footage, tmp_path):
     plan = normalize_plan(sample_plan())
     a = matcher.auto_match(plan, [str(p) for p in footage.iterdir() if p.name != "product_1.jpg"])
     v1, v2 = plan["videos"]
-    R = timeline.resolve(v1, a, footage, [], {}, tmp_path)
+    R = timeline.resolve(v1, a, footage, [], {"subtitles": True}, tmp_path)
     assert len(R.segments) == 5 and not R.missing
     assert R.total == pytest.approx(sum(s.dur for s in R.segments), abs=0.05)
     assert any(e.anim_in == "caption" for e in R.elements)

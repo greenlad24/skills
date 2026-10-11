@@ -81,7 +81,7 @@ def test_manual_flow_upload_and_render(client):
     r = c.post(f"/api/projects/{pid}/render", json={"videos": ["V1"], "draft": True, "versions": 2}).get_json()
     j = wait_job(c, r["job"]["id"])
     assert j["status"] == "done", j["log"]
-    assert any("Using your voice-over" in line for line in j["log"])
+    assert any("continuous take" in line for line in j["log"])
     p = c.get(f"/api/projects/{pid}").get_json()
     names = sorted(x["name"] for x in p["renders"])
     assert len(names) == 2 and names[0].startswith("V1_bouncy_draft") and names[1].startswith("V1_punchy_draft")

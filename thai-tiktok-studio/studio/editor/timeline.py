@@ -62,7 +62,9 @@ def _weight(s: str) -> int:
     return max(1, len(re.sub(r"[ัิ-ฺ็-๎\s]", "", s)))
 
 
-def _caption_elements(caps, start, length, ctx):
+def _caption_elements(caps, start, length, ctx, on=True):
+    if not on:
+        return []
     caps = [dict(c, text=strip_caption_price(c["text"])) for c in caps]   # also covers older plans
     caps = [c for c in caps if c["text"]]
     if not caps or length <= 0.2:
@@ -109,6 +111,7 @@ def resolve(video: dict, assign: dict, footage_dir: Path, product_images: list, 
             work_dir: Path, log=print, narration_dir: Path | None = None) -> Resolved:
     R = Resolved()
     ctx = E.Ctx(video)
+    subs = bool(settings.get("subtitles", False))
     shots = {s["id"]: s for s in video["shots"]}
     mode = video["audio_mode"]
     tts_voice, rate = settings.get("tts_voice", "Kanya"), int(settings.get("tts_rate", 185))
@@ -167,7 +170,7 @@ def resolve(video: dict, assign: dict, footage_dir: Path, product_images: list, 
                                           b["effect"] if k == 0 else ("punch_in" if k % 2 else "none")))
                 t += d
             beat_len = t - t0
-            R.elements += _caption_elements(caps, t0 + 0.05, beat_len - 0.1, ctx)
+            R.elements += _caption_elements(caps, t0 + 0.05, beat_len - 0.1, ctx, subs)
         else:
             speak_len = 0.0
             if b["vo_th"] and mode == "voiceover":
@@ -198,7 +201,7 @@ def resolve(video: dict, assign: dict, footage_dir: Path, product_images: list, 
             t += beat_len
             cap_start = t0 + 0.1 if speak_len else t0 + 0.05
             cap_len = speak_len if speak_len else beat_len - 0.1
-            R.elements += _caption_elements(caps, cap_start, cap_len, ctx)
+            R.elements += _caption_elements(caps, cap_start, cap_len, ctx, subs)
         R.beats.append((t0, t))
         if b["effect"] == "flash":
             R.elements.append(E.flash(t0))

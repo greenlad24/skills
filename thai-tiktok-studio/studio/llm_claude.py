@@ -127,3 +127,24 @@ def explain_error(e: Exception) -> str:
     if isinstance(e, anthropic.APIConnectionError):
         return "Can't reach Claude — check the internet connection."
     return str(e)
+
+
+def make_edl(prompt: str, images: list, schema: dict, settings: dict, log=print, workdir=None) -> dict:
+    """Video editor pass: clip contact sheets + voice timing in, cut list (JSON) out."""
+    client = _client(settings.get("anthropic_api_key", ""))
+    content = []
+    for p in images[:20]:
+        content += [{"type": "text", "text": f"Frames image {Path(p).name}:"}] + _image_blocks([p])
+    content.append({"type": "text", "text": prompt})
+    with client.beta.messages.stream(
+        model=settings["claude_model"],
+        max_tokens=16000,
+        output_config={"effort": settings.get("claude_effort", "high"),
+                       "format": {"type": "json_schema", "schema": schema}},
+        messages=[{"role": "user", "content": content}],
+        betas=["server-side-fallback-2026-07-01"],
+        fallbacks="default",
+    ) as stream:
+        msg = stream.get_final_message()
+    _check(msg)
+    return json.loads(_text(msg))

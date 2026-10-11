@@ -1,2 +1,2 @@
-1.1.0 — อัปเดตอัตโนมัติ · แสดงความคืบหน้าขณะค้นข้อมูล · แก้ปัญหาลิงก์ TikTok ที่ติดหน้า Security Check · ปุ่มทดสอบการเชื่อมต่อบัญชี Claude
-Auto-updates · live research progress · TikTok security-check links handled · Claude account Test connection button
+1.2.0 — เสียงพากย์ต่อเนื่องไม่ถูกตัด · Claude Opus ดูคลิปของคุณแล้ววางแผนการตัดต่อเอง · ไม่มีซับไตเติล (แอนิเมชันเหมือนเดิม) · ไม่มีภาพสีเทาอีกแล้ว
+Narration plays as one uncut take · Claude Opus watches your clips and plans the edit · no subtitles (animations unchanged) · no more grey placeholders
