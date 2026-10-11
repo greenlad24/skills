@@ -29,6 +29,7 @@ DEFAULTS = {
     "openai_model": "gpt-5",
     "videos_per_product": 5,
     "onboarded": False,         # Thai welcome guide shown once
+    "language": "th",           # UI language: "th" or "en" (the 🌐 switcher at the top of every screen)
     # Tool 3 — scheduler (PostPeer publishes to TikTok; Cloudinary hosts the final videos)
     "postpeer_key": "",
     "postpeer_account_id": "",

@@ -144,3 +144,16 @@ def test_cloudinary_signature():
     assert c == {"api_key": "123", "api_secret": "abc", "cloud": "my-cloud"}
     with pytest.raises(cloudinary_host.CloudinaryError):
         cloudinary_host.parse_url("nonsense")
+
+
+def test_deleting_product_cancels_its_posts(env, monkeypatch):
+    scheduler, projects, made = env
+    cancelled = []
+    monkeypatch.setattr(scheduler.postpeer, "cancel", lambda key, pid: cancelled.append(pid))
+    posts = scheduler.auto_schedule(per_day=1, start=datetime(2026, 10, 12, 9, 0, tzinfo=scheduler.BKK))
+    mine = [p for p in posts if p["project_id"] == made[0]]
+    scheduler._update(mine[0]["id"], status="queued", postpeer_id="pp1")
+    assert scheduler.cancel_project(made[0], {"postpeer_key": "k"}) == len(mine)
+    st = {p["id"]: p["status"] for p in scheduler.load()["posts"]}
+    assert all(st[p["id"]] == "cancelled" for p in mine) and cancelled == ["pp1"]
+    assert all(st[p["id"]] == "planned" for p in posts if p["project_id"] != made[0])

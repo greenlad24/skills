@@ -289,6 +289,19 @@ def cancel(post_id: str, settings: dict) -> dict | None:
     return _update(post_id, status="cancelled")
 
 
+def cancel_project(project_id: str, settings: dict) -> int:
+    """A product was deleted: cancel its not-yet-posted posts (also at PostPeer)."""
+    n = 0
+    for p in load()["posts"]:
+        if p["project_id"] == project_id and p["status"] in ("planned", "queued", "missed"):
+            try:
+                cancel(p["id"], settings)
+            except Exception:          # PostPeer unreachable: still stop it locally
+                _update(p["id"], status="cancelled")
+            n += 1
+    return n
+
+
 def edit(post_id: str, at: str | None = None, caption: str | None = None, hashtags: list | None = None,
          settings: dict | None = None) -> dict | None:
     """Change time/caption. A post already queued at PostPeer is cancelled there and re-queued."""

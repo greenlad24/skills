@@ -18,7 +18,7 @@ Everything runs on your Mac. Nothing is uploaded anywhere, except the product re
 3. The first time only: right-click the app → **Open** → **Open** (it isn't from the App Store).
 4. The first launch sets itself up in 2–5 minutes. It installs Python if needed, with Thai/English dialogs. After that it opens in seconds, in its own window.
 
-**Clips from an Android phone (or iPhone):** in tab 2, press **📱 ส่งไฟล์จากมือถือ** ("send files from phone") and scan the QR code with the phone. The phone must be on the same Wi‑Fi. Pick clips or narration from the gallery and they upload straight into the product at full original quality. The link is secret, works for 12 hours, and only reaches that one product's upload page.
+**Clips from an Android phone (or iPhone):** in the product's **📤 Upload** step, press **📱 ส่งไฟล์จากมือถือ** ("send files from my phone") and scan the QR code with the phone. The phone must be on the same Wi‑Fi. Pick clips or narration from the gallery and they upload straight into the product at full original quality. The link is secret, works for 12 hours, and only reaches that one product's upload page.
 
 Log file: `~/Library/Logs/ThaiTikTokStudio.log`. To rebuild the app after code changes, run `python mac/build_app.py`.
 
@@ -42,9 +42,20 @@ Log file: `~/Library/Logs/ThaiTikTokStudio.log`. To rebuild the app after code c
 | **ChatGPT** | API usage only | Paste an OpenAI API key (model configurable, default `gpt-5`). |
 | **Free copy/paste** | $0 | The app builds one big prompt. Paste it into chatgpt.com or claude.ai with web search on, then paste the JSON answer back. |
 
+## Using the app (ไทย / English)
+
+The whole app is in **Thai by default**. The **🌐 ไทย / English** switch sits at the top of every screen (also on the login page and the phone upload page) and changes the language instantly; the choice is remembered on this computer and in your settings.
+
+- **🏠 Home** shows what to do next for your latest product and lists all products.
+- Each product walks you through 5 steps: **📝 Scripts → 🎬 Film → 📤 Upload → ✨ Make videos → 📅 Post**. A "💡 Next step" bar always tells you what to do.
+- **📅 Post schedule** connects TikTok and plans your posts.
+- On phones the menu is a bottom bar; on a computer it's the left sidebar. **❓** reopens the welcome guide, **⚙️** opens settings (technical options are folded under *Advanced*).
+
+Only the app's buttons and labels are translated — your scripts, captions and research stay exactly as written.
+
 ## Workflow
 
-**Tab 1 · Scripts & shot lists**
+**Step 1 · Scripts & shot lists**
 - Research summary: features, pain points, objections, niche trends, competitor hooks, compliance notes, sources.
 - 5 videos, each with:
   - Rank and a virality score (7-criteria rubric)
@@ -59,7 +70,7 @@ Log file: `~/Library/Logs/ThaiTikTokStudio.log`. To rebuild the app after code c
 
 **Record your narration.** For each voice-over video, read its lines (listed in the filming pack under 🎙) in one take, with a short pause between lines. It can be a video or an audio recording, e.g. you filming yourself on the phone.
 
-**Tab 2 · Auto-edit videos**
+**Steps 3–4 · Upload and make videos**
 1. **Drop all clips.** They're matched to shots by recording time (taken from the files' own metadata) and by type: talking clips go to talking shots, B-roll to B-roll, photos to photo shots. Background music (any audio file) is detected automatically.
 2. **Drop your narration** in its own area. Its sound is extracted, split into lines at your pauses, and each line is placed exactly on its beat, with long pauses tightened. Narrations are assigned to videos in recording order, and you can change that.
 3. **Check the matching.** Change any clip if needed.
@@ -133,4 +144,6 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt pytest
 .venv/bin/python -m pytest -q        # 20+ tests incl. full renders
 .venv/bin/python -m studio.app       # dev server on :8765
 ```
+**Translations:** UI text lives in `studio/web/lang/th.json` and `studio/web/lang/en.json` (flat `"area.key": "text"`, may contain `<b>`, placeholders like `{n}`). To add a string, add the same key to both files and use `t("area.key", { n: 3 })` in `studio/web/app.js` (`tt()` gives plain text for attributes/toasts). The login and phone pages read the same files through `studio/ui_text.py`. `tests/test_i18n.py` checks both files have the same keys and placeholders, and that every key used in the code exists.
+
 Architecture: `studio/plan_schema.py` defines the edit-plan contract, which is the only thing Tool 1 and Tool 2 share. `studio/editor/` runs on ffmpeg (bundled via `imageio-ffmpeg`), with Pillow + libraqm for correct Thai text shaping and numpy for audio mixing.

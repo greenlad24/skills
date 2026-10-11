@@ -46,13 +46,46 @@ app.secret_key = _secret_key()
 app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
                   SESSION_COOKIE_SECURE=SERVER_MODE, PERMANENT_SESSION_LIFETIME=60 * 60 * 24 * 30)
 
-LOGIN_PAGE = """<!doctype html><html lang="th"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Thai TikTok Studio · Login</title><link rel="stylesheet" href="/static/style.css">
-<body style="display:flex;align-items:center;justify-content:center;min-height:100vh">
-<form method="post" action="/login" class="card" style="width:min(380px,92vw)">
-<h1>▶ Thai TikTok Studio</h1><p class="muted">ใส่รหัสผ่านเพื่อเข้าใช้งาน · Enter the password</p>
-<input type="password" name="password" autofocus placeholder="รหัสผ่าน / password">{err}
-<div class="row"><button class="primary wide">เข้าสู่ระบบ · Log in</button></div></form></body></html>"""
+LOGIN_PAGE = """<!doctype html><html lang="{lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Thai TikTok Studio · {title}</title><link rel="stylesheet" href="/static/style.css"></head>
+<body class="login-page">
+<header class="topbar"><span class="brand"><span class="logo" aria-hidden="true">▶</span><span class="brand-name">TikTok Studio</span></span>
+<div class="top-right"><label class="lang-wrap"><span aria-hidden="true">🌐</span>
+<select id="langSel" class="lang-sel" aria-label="ภาษา / Language"><option value="th"{th_sel}>ไทย</option><option value="en"{en_sel}>English</option></select></label></div></header>
+<div class="login-wrap"><form method="post" action="/login?lang={lang}" class="card login-card">
+<h1><span class="logo" aria-hidden="true">▶</span> {title}</h1><p class="muted">{sub}</p>
+<label for="pw">{password}</label><input id="pw" type="password" name="password" autofocus autocomplete="current-password" placeholder="{password}">{err}
+<div class="row"><button class="btn primary big wide">{button}</button></div></form></div>
+<script>
+document.getElementById("langSel").onchange = function (e) {
+  var l = e.target.value;
+  try { localStorage.setItem("tts_lang", l); } catch (x) {}
+  document.cookie = "tts_lang=" + l + ";path=/;max-age=31536000;samesite=lax";
+  location.href = "/login?lang=" + l;
+};
+(function () {  // follow the language picked earlier in this browser
+  try { var l = localStorage.getItem("tts_lang");
+    if (l && l !== "{lang}" && location.search.indexOf("lang=") < 0) location.replace("/login?lang=" + l); } catch (x) {}
+})();
+</script></body></html>"""
+
+
+def _ui_lang() -> str:
+    from . import ui_text
+    return ui_text.pick_lang(request.args.get("lang"), request.cookies.get("tts_lang"),
+                             config.load_settings().get("language"))
+
+
+def _login_page(err: bool = False) -> str:
+    from . import ui_text
+    lang = _ui_lang()
+    tx = ui_text.texts(lang, "login.")
+    html = LOGIN_PAGE
+    for k in ("title", "sub", "password", "button"):
+        html = html.replace("{" + k + "}", tx[k])
+    return (html.replace("{lang}", lang).replace("{th_sel}", " selected" if lang == "th" else "")
+            .replace("{en_sel}", " selected" if lang == "en" else "")
+            .replace("{err}", f'<p class="banner bad small" role="alert">{tx["wrong"]}</p>' if err else ""))
 
 
 LOCAL_ADDRS = ("127.0.0.1", "::1", "::ffff:127.0.0.1")
@@ -77,14 +110,13 @@ def require_login():
 def login():
     if not PASSWORD:
         return redirect("/")
-    err = ""
     if request.method == "POST":
         if hmac.compare_digest((request.form.get("password") or "").encode(), PASSWORD.encode()):
             session.permanent = True
             session["ok"] = True
             return redirect("/")
-        err = '<p class="bad">รหัสผ่านไม่ถูกต้อง · Wrong password</p>'
-    return LOGIN_PAGE.replace("{err}", err)
+        return _login_page(err=True)
+    return _login_page()
 
 
 def _safe_name(name: str) -> str:
@@ -239,6 +271,8 @@ def get_project(pid):
 
 @app.delete("/api/projects/<pid>")
 def delete_project(pid):
+    from . import scheduler
+    scheduler.cancel_project(pid, config.load_settings())   # don't leave posts for deleted videos
     projects.delete_project(pid)
     return jsonify({"ok": True})
 
@@ -284,9 +318,10 @@ def phone_link(pid):
 def phone_page(token):
     from . import phone
     pid = phone.project_for(token)
+    lang = _ui_lang()
     if not pid:
-        return "<h2 style='font-family:sans-serif'>ลิงก์หมดอายุ — สแกน QR ใหม่จาก Mac</h2>", 404
-    return phone.page(projects.meta(pid).get("name", ""))
+        return phone.expired_page(lang), 404
+    return phone.page(projects.meta(pid).get("name", ""), lang, website=SERVER_MODE)
 
 
 @app.post("/m/<token>/upload")
