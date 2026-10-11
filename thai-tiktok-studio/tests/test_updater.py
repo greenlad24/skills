@@ -19,6 +19,18 @@ class Resp:
     def json(self):
         return self._js
 
+    headers = {}
+
+    def iter_content(self, n):
+        for i in range(0, len(self.content), n):
+            yield self.content[i:i + n]
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
 
 def _zip(version: str, complete=True) -> bytes:
     buf = io.BytesIO()
