@@ -208,7 +208,22 @@ NEEDS_TEXT = {"hook_title", "keyword_pop", "discount_badge", "label", "reaction_
 
 
 def strip_prices(text: str) -> str:
-    return re.sub(r"\s{2,}", " ", PRICE_RE.sub("", text or "")).strip(" -–:·,")
+    out = PRICE_RE.sub("", text or "")
+    out = re.sub(r"(?<!\S)(บาท|฿|\.-)(?!\S)", "", out)   # currency left behind by "แค่ 990 บาท"
+    return re.sub(r"\s{2,}", " ", out).strip(" -–:·,")
+
+
+# words that only make sense in front of a price ("ราคาเหลือแค่ 2,990" → nothing left to show)
+PRICE_LEADIN_RE = re.compile(r"(ราคา|เหลือ|แค่|เพียง|ลดเหลือ|ปกติ|เต็ม|พิเศษ|เท่านั้น|ประมาณ|กว่า|\s)+$")
+
+
+def strip_caption_price(text: str) -> str:
+    """Caption text without money amounts (and without a dangling price lead-in)."""
+    if not PRICE_RE.search(text or ""):
+        return text
+    out = strip_prices(text)
+    out = PRICE_LEADIN_RE.sub("", out).strip(" -–:·,")
+    return out
 
 
 def strip_overlay_prices(o: dict) -> dict | None:
@@ -247,7 +262,9 @@ def normalize_beat(b: dict, vid: str) -> dict:
         if isinstance(c, str):
             c = {"text": c, "highlight": []}
         if isinstance(c, dict) and _str(c.get("text")):
-            t = _str(c["text"])
+            t = strip_caption_price(_str(c["text"]))   # never show prices, captions included
+            if not t:
+                continue
             caps.append({"text": t, "highlight": [h for h in _strs(c.get("highlight")) if h in t][:3]})
     return {
         "shot_id": canon_shot_id(_str(b.get("shot_id"))),

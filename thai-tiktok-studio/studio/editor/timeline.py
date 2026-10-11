@@ -14,6 +14,7 @@ from pathlib import Path
 
 import numpy as np
 
+from ..plan_schema import strip_caption_price
 from . import audio_io, elements as E, media, tts, voice
 
 FPS = 30
@@ -62,6 +63,8 @@ def _weight(s: str) -> int:
 
 
 def _caption_elements(caps, start, length, ctx):
+    caps = [dict(c, text=strip_caption_price(c["text"])) for c in caps]   # also covers older plans
+    caps = [c for c in caps if c["text"]]
     if not caps or length <= 0.2:
         return []
     weights = [_weight(c["text"]) for c in caps]

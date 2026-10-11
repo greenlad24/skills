@@ -127,3 +127,14 @@ def test_circle_highlight_is_retired():
     assert normalize_overlay({"type": "circle_highlight", "text": "", "sub_text": "", "items": [], "emoji": "",
                               "at": 0, "dur": 1, "position": "target", "color": "auto",
                               "target_x": 0.4, "target_y": 0.4}) is None
+
+
+def test_prices_removed_from_captions():
+    from studio.plan_schema import strip_caption_price
+    assert strip_caption_price("ราคาเหลือแค่ 2,990") == ""
+    assert strip_caption_price("นุ่มมาก ราคาแค่ 990 บาท") == "นุ่มมาก"
+    assert strip_caption_price("ไม่ปวดหลัง") == "ไม่ปวดหลัง"
+    raw = {"videos": [{"id": "V1", "shots": [{"id": "V1-S01"}], "timeline": [{"shot_id": "V1-S01",
+           "captions": [{"text": "ราคาเหลือแค่ 2,990", "highlight": []}, {"text": "คุ้มมาก ฿199", "highlight": []}]}]}]}
+    caps = normalize_plan(raw)["videos"][0]["timeline"][0]["captions"]
+    assert [c["text"] for c in caps] == ["คุ้มมาก"]
