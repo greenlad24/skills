@@ -177,6 +177,15 @@ def update_status():
     return jsonify(dict(updater.STATE, enabled=updater.enabled()))
 
 
+@app.post("/api/update/check")
+def update_check():
+    from . import updater
+    if updater.enabled():
+        with updater._LOCK:
+            updater.check_and_download()
+    return jsonify(dict(updater.STATE, enabled=updater.enabled()))
+
+
 @app.post("/api/update/restart")
 def update_restart():
     from . import updater

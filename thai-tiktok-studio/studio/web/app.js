@@ -855,12 +855,24 @@ function showSettings() {
         <div class="row"><input type="file" id="sCsv" accept=".csv,text/csv" hidden><button class="btn ghost" id="sCsvPick">📄 ${t("set.datasetChoose")}</button><span id="sCsvName" class="muted small"></span>
           <button class="btn" id="sCsvBtn">${t("set.datasetBtn")}</button><span id="sCsvSt" class="muted small"></span></div>
         <h3>🩺 ${t("set.status")}</h3>
-        <ul class="status-list"><li>${t("set.version")}: <b>v${esc(h.version || "?")}</b></li>
+        <ul class="status-list"><li>${t("set.version")}: <b>v${esc(h.version || "?")}</b>
+          <button class="btn ghost small" id="sUpd">🔄 ${t("set.updCheck")}</button> <span id="sUpdSt" class="small" aria-live="polite"></span></li>
           <li>${h.ffmpeg ? `<span class="ok">● ${t("set.editorOk")}</span>` : `<span class="bad">● ${t("set.editorMissing")}</span>`}</li>
           <li>${h.claude_code ? `<span class="ok">● ${t("set.ccOk")}</span>` : `<span class="muted">○ ${t("set.ccMissing")}</span>`}</li></ul></details>
       <p class="muted small">🔒 ${t("set.keysLocal")}</p>
       <div class="m-actions"><button class="btn ghost" id="sCancel">${t("common.cancel")}</button><button class="btn primary big" id="sSave">${t("common.save")}</button></div>`);
     $("#sLang").value = I18N.lang;
+    $("#sUpd").onclick = async () => {
+      const st = $("#sUpdSt"); st.className = "small muted"; st.textContent = tt("set.updChecking"); $("#sUpd").disabled = true;
+      try {
+        const u = await api("/api/update/check", { method: "POST" });
+        if (!u.enabled) { st.textContent = tt("set.updOff"); }
+        else if (u.error) { st.className = "small bad"; st.textContent = u.error; }
+        else if (u.ready) { st.className = "small ok"; st.textContent = tt("set.updReady", { v: u.ready }); checkUpdate(); }
+        else { st.className = "small ok"; st.textContent = tt("set.updLatest"); }
+      } catch (e) { st.className = "small bad"; st.textContent = e.message || ""; }
+      finally { $("#sUpd").disabled = false; }
+    };
     const showStyle = (p) => {
       $("#sStyleNow").innerHTML = t("set.styleNow", { src: esc(p.source), n: p.shots, avg: p.avg_shot });
       $("#sStyleReset").classList.toggle("hidden", /^built-in/.test(p.source));

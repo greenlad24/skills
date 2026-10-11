@@ -519,5 +519,10 @@
  "set.styleNow": "Now using: <b>{src}</b> · {n} shots, about {avg} s each",
  "set.styleUpload": "Upload a reference video",
  "set.styleReset": "Back to built-in style",
- "set.styleWorking": "Studying the video…"
+ "set.styleWorking": "Studying the video…",
+ "set.updCheck": "Check for updates now",
+ "set.updChecking": "Checking…",
+ "set.updOff": "Updates are only for the Mac app.",
+ "set.updReady": "Version {v} is ready — tap Restart in the bar at the top.",
+ "set.updLatest": "You have the newest version."
 }
