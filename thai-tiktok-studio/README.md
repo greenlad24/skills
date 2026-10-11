@@ -1,0 +1,97 @@
+# Thai TikTok Studio
+
+Two tools in one local Mac app, built for Thai TikTok Shop / affiliate product videos:
+
+1. **Planner (Tool 1)** — paste a product **name, link or screenshot**. It scrapes the product, researches the product and its niche on the web, and writes **5 ranked viral Thai scripts**. Each script comes with a **Thai shot list** (what to film, how, and how long) and an exact **edit plan** (cuts, timing, captions, motion graphics, sound effects).
+2. **Auto-editor (Tool 2)** — drop all your clips into it and it renders **finished 9:16 videos**. Every video gets burned-in Thai captions, animated stickers and text, a price stamp, a "กดตะกร้า" (tap the basket) arrow, zoom punch-ins, flashes, synthesized sound effects, a Thai voice-over and ducked background music.
+   **The editor never calls an AI.** It follows the edit plan from Tool 1, so editing is free and unlimited.
+
+Everything runs on your Mac. Nothing is uploaded anywhere, except the product research and script request sent to Claude or ChatGPT.
+
+---
+
+## Install & start (macOS 12+, Intel or Apple Silicon)
+
+1. Get this folder onto the Mac: `git clone` the repo, or download the ZIP from GitHub and unzip it.
+2. Double-click **`start.command`**.
+   - If macOS blocks it: right-click → **Open** → **Open**. Or run `bash start.command` in Terminal.
+   - First run: if Python 3.10+ is missing, the official installer downloads and opens. Finish it, then double-click `start.command` again.
+   - The first run then installs everything (a few minutes). Later starts take seconds.
+3. Your browser opens **http://127.0.0.1:8765**. Keep the Terminal window open while you work; close it to quit.
+
+**Free Thai voice-over (recommended):** go to System Settings → Accessibility → Spoken Content → System Voice → *Manage Voices…* → **Thai → Kanya**. Older macOS versions keep this in System Preferences instead of System Settings. If Kanya isn't installed, videos still render, with captions but no voice-over, unless you record your own.
+
+## Choose how scripts are written (⚙ Settings)
+
+| Mode | Cost | What you do |
+|---|---|---|
+| **Claude** (default) | API usage only (a few cents–~$1 per product) | Paste an Anthropic API key. Runs `claude-opus-5-5` with live web search. |
+| **ChatGPT** | API usage only | Paste an OpenAI API key (model configurable, default `gpt-5`). |
+| **Free copy/paste** | $0 | The app builds one big prompt. Paste it into chatgpt.com or claude.ai with web search on, then paste the JSON answer back. |
+
+## Workflow
+
+**Tab 1 · Scripts & shot lists**
+- Research summary: features, pain points, objections, niche trends, competitor hooks, compliance notes, sources.
+- 5 videos, each with:
+  - Rank and a virality score (7-criteria rubric)
+  - Format and hook type
+  - The full Thai script
+  - The shot list
+  - A compliance check that flags risky claims such as รักษา (treat), 100%, ดีที่สุด (the best), ถูกที่สุด (the cheapest) and การันตี (guarantee)
+- **🖨 Filming pack (Thai)** is a printable page for the person filming.
+- **Edit plan** lets you change any spoken line, caption, duration or graphic text, then save.
+
+**Film.** Shoot vertical (9:16). Name each file by its shot id, e.g. `V1-S01.mov`. `V1S01`, `v1_s1` and similar spellings also work. If you don't rename files, they are matched in the order you recorded them, and you can fix the matching in the app.
+- Voice-over you recorded yourself: `V1-VO.m4a` (optional).
+- Background music: any other audio file (optional; ducked automatically under the voice).
+
+**Tab 2 · Auto-edit videos.** Drop everything in, check the matching, then click **Render**. Finished MP4s (1080×1920, 30 fps, H.264/AAC) appear in the app and in the project's `renders` folder.
+
+### What the editor does automatically
+- **Cutting:** reframes any clip to 9:16, picks the part of the clip the plan asks for (start/middle/end), and adjusts speed. Short clips are stretched slightly, then frozen.
+- **Talking clips:** silences are detected and removed as jump cuts, with alternating punch-ins.
+- **Voice-over:** the Thai text-to-speech voice reads each line, and each beat is timed to the voice. If you recorded your own VO, the beats follow it instead.
+- **Motion graphics (21 types, ranked by how common they are in viral Thai TikTok Shop videos):**
+  - Text: hook titles, word-highlighted captions, keyword pops, reaction text, speech bubbles, lower thirds
+  - Price and urgency: price stamps with the old price struck through, discount starbursts, urgency banners
+  - Calls to action: the กดตะกร้า (tap the basket) pill, with an arrow pointing at the basket
+  - Pointers and lists: arrows, draw-on circles, ✅ checklists, numbered reasons, spec cards
+  - Trust and proof: trust badges, star ratings, TikTok-style comment-reply cards
+  - Comparisons: before/after labels, VS splits
+  - Emoji stickers
+  - Text stays inside TikTok's safe zone.
+- **Camera effects:** punch-in, shake, flash, slow zoom, progress bar.
+- **Sound effects:** 11 sounds synthesized in code, so there are no licensing issues: pop, whoosh, ding, ka-ching, boom, sparkle, tick, click, shutter, riser, boing.
+- **Missing shots** become labelled placeholder cards, so you can preview before you've filmed everything.
+
+**Import your own top-video dataset.** In ⚙ Settings, import a CSV of top performers, e.g. your *Products & inspiration* sheet exported as CSV. The top 25 Thai videos, with their openers, shot mix and viewer notes, become live examples for every script.
+
+## Where things are saved
+`~/ThaiTikTokStudio/`
+- `settings.json`
+- `custom_examples.md`
+- `projects/<product>/`
+  - `plan.json`: the edit plan
+  - `filming_pack.html`, `scripts.txt`, `research.md`
+  - `footage/`, `renders/`
+
+## Customize
+- **`studio/frameworks/script_framework.md`:** formats, hooks, CTAs, pacing, compliance and the scoring rubric that the AI follows.
+- **`studio/frameworks/motion_framework.md`:** the ranked motion-design elements and the density rules.
+- **`studio/frameworks/compliance_th.json`:** the words the claim check flags.
+
+Edit these text files and the next run uses them. No code changes needed.
+
+## Tips
+- iPhone: turn **HDR video off** (Settings → Camera → Record Video) or use *Most Compatible*. HDR clips can look washed out after export.
+- **Quick draft** renders fast at lower quality for checking timing. Use **Render** for the final version.
+- A 30-second video renders in roughly 1–3 minutes on a 2015 MacBook.
+
+## Development
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt pytest
+.venv/bin/python -m pytest -q        # 20+ tests incl. full renders
+.venv/bin/python -m studio.app       # dev server on :8765
+```
+Architecture: `studio/plan_schema.py` defines the edit-plan contract, which is the only thing Tool 1 and Tool 2 share. `studio/editor/` runs on ffmpeg (bundled via `imageio-ffmpeg`), with Pillow + libraqm for correct Thai text shaping and numpy for the sound effects and mixing.

@@ -1,0 +1,278 @@
+"""Local web app (Flask). Run:  python -m studio.app   → http://127.0.0.1:8765"""
+
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+import threading
+import webbrowser
+from pathlib import Path
+
+from flask import Flask, abort, jsonify, request, send_file, send_from_directory
+from werkzeug.utils import secure_filename
+
+from . import __version__, config, jobs, planner, projects
+from .editor import service
+from .plan_schema import normalize_plan, plan_problems
+
+app = Flask(__name__, static_folder=None)
+app.config["MAX_CONTENT_LENGTH"] = None  # big video uploads are fine (local only)
+PORT = int(os.environ.get("TTS_STUDIO_PORT", "8765"))
+
+
+def _safe_name(name: str) -> str:
+    # keep Thai letters; strip path parts and odd chars
+    base = Path(name).name
+    keep = "".join(c for c in base if c.isalnum() or c in "._- ()" or "฀" <= c <= "๿").strip()
+    return keep or secure_filename(base) or "file"
+
+
+def _unique(d: Path, name: str) -> Path:
+    p = d / name
+    stem, suf, i = p.stem, p.suffix, 2
+    while p.exists():
+        p = d / f"{stem} ({i}){suf}"
+        i += 1
+    return p
+
+
+@app.get("/")
+def index():
+    return send_from_directory(config.WEB_DIR, "index.html")
+
+
+@app.get("/static/<path:name>")
+def static_file(name):
+    return send_from_directory(config.WEB_DIR, name)
+
+
+@app.get("/api/health")
+def health():
+    from .editor import media, tts
+    st = config.load_settings()
+    try:
+        ff = media.ffmpeg_exe()
+    except RuntimeError:
+        ff = ""
+    return jsonify({"version": __version__, "ffmpeg": bool(ff), "tts": tts.available(st.get("tts_voice", "Kanya")),
+                    "home": str(config.HOME), "platform": sys.platform})
+
+
+@app.get("/api/settings")
+def get_settings():
+    return jsonify(config.public_settings(config.load_settings()))
+
+
+@app.post("/api/settings")
+def set_settings():
+    data = request.get_json(force=True) or {}
+    for k in ("anthropic_api_key", "openai_api_key"):  # masked values from the UI = unchanged
+        if str(data.get(k, "")).startswith("•"):
+            data.pop(k)
+    return jsonify(config.public_settings(config.save_settings(data)))
+
+
+@app.post("/api/inspiration")
+def import_inspiration():
+    from . import inspiration
+    f = request.files.get("file")
+    if not f:
+        return jsonify({"error": "Choose a CSV file."}), 400
+    raw = f.read()
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = raw.decode("cp874", "replace")  # Thai Windows encoding
+    n = inspiration.save_examples(text)
+    if not n:
+        return jsonify({"error": "No rows with Thai transcripts + play counts found."}), 400
+    return jsonify({"examples": n})
+
+
+@app.get("/api/inspiration")
+def inspiration_status():
+    from . import inspiration
+    p = inspiration.EXAMPLES_PATH
+    return jsonify({"exists": p.exists(), "preview": p.read_text("utf-8")[:1500] if p.exists() else ""})
+
+
+@app.get("/api/projects")
+def list_projects():
+    return jsonify(projects.list_projects())
+
+
+@app.post("/api/projects")
+def create_project():
+    text = (request.form.get("text") or "").strip()
+    notes = (request.form.get("notes") or "").strip()
+    files = request.files.getlist("images")
+    if not text and not files:
+        return jsonify({"error": "Paste a product name or link, or attach a screenshot."}), 400
+    meta = projects.new_project(text or "Screenshot product")
+    pid = meta["id"]
+    d = projects.pdir(pid)
+    paths = []
+    for f in files:
+        if f and f.filename:
+            p = _unique(d / "inputs", _safe_name(f.filename))
+            f.save(p)
+            paths.append(str(p))
+    projects.save_json(d / "input.json", {"text": text, "notes": notes, "images": paths})
+    job = jobs.start("plan", pid, planner.run_planning, pid, text, paths, notes, config.load_settings())
+    return jsonify({"project": meta, "job": job.to_dict()})
+
+
+@app.post("/api/projects/<pid>/replan")
+def replan(pid):
+    d = projects.pdir(pid)
+    inp = projects.load_json(d / "input.json", {})
+    job = jobs.start("plan", pid, planner.run_planning, pid, inp.get("text", ""), inp.get("images", []),
+                     inp.get("notes", ""), config.load_settings())
+    return jsonify({"job": job.to_dict()})
+
+
+@app.get("/api/projects/<pid>")
+def get_project(pid):
+    try:
+        d = projects.pdir(pid)
+    except (FileNotFoundError, ValueError):
+        abort(404)
+    plan = projects.load_json(d / "plan.json")
+    out = {
+        "meta": projects.meta(pid),
+        "input": projects.load_json(d / "input.json", {}),
+        "plan": plan,
+        "checks": projects.load_json(d / "checks.json", {}),
+        "research_md": (d / "research.md").read_text("utf-8") if (d / "research.md").exists() else "",
+        "manual_prompt": (d / "manual_prompt.txt").read_text("utf-8") if (d / "manual_prompt.txt").exists() else "",
+        "files": service.file_infos(pid),
+        "assign": service.refresh_assign(pid, plan) if plan else service.load_assign(pid),
+        "renders": service.list_renders(pid),
+        "product_images": [p.name for p in sorted((d / "product_images").glob("*"))],
+        "jobs": jobs.for_project(pid),
+        "folder": str(d),
+    }
+    return jsonify(out)
+
+
+@app.delete("/api/projects/<pid>")
+def delete_project(pid):
+    projects.delete_project(pid)
+    return jsonify({"ok": True})
+
+
+@app.post("/api/projects/<pid>/paste")
+def paste_plan(pid):
+    text = (request.get_json(force=True) or {}).get("text", "")
+    try:
+        res = planner.import_pasted(pid, text)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify(res)
+
+
+@app.post("/api/projects/<pid>/plan")
+def save_plan(pid):
+    """Save a plan edited in the UI (scripts, captions, durations…)."""
+    raw = (request.get_json(force=True) or {}).get("plan")
+    try:
+        plan = normalize_plan(raw)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    d = projects.pdir(pid)
+    projects.save_json(d / "plan.json", plan)
+    from . import compliance, exports
+    projects.save_json(d / "checks.json", {"warnings": plan_problems(plan), "compliance": compliance.check_plan(plan)})
+    exports.write_all(d, plan, projects.meta(pid))
+    return jsonify({"ok": True})
+
+
+@app.post("/api/projects/<pid>/upload")
+def upload(pid):
+    d = projects.pdir(pid) / "footage"
+    saved = []
+    for f in request.files.getlist("files"):
+        if f and f.filename:
+            p = _unique(d, _safe_name(f.filename))
+            f.save(p)
+            saved.append(p.name)
+    plan = projects.load_json(projects.pdir(pid) / "plan.json")
+    assign = service.refresh_assign(pid, plan) if plan else {}
+    return jsonify({"saved": saved, "assign": assign})
+
+
+@app.delete("/api/projects/<pid>/files/<name>")
+def delete_file(pid, name):
+    p = projects.pdir(pid) / "footage" / _safe_name(name)
+    if p.exists():
+        p.unlink()
+    return jsonify({"ok": True})
+
+
+@app.post("/api/projects/<pid>/assign")
+def set_assign(pid):
+    data = request.get_json(force=True) or {}
+    names = {i["name"] for i in service.file_infos(pid)}
+    assign = {
+        "shots": {k: v for k, v in (data.get("shots") or {}).items() if v in names},
+        "vo": {k: v for k, v in (data.get("vo") or {}).items() if v in names},
+        "music": [m for m in (data.get("music") or []) if m in names],
+    }
+    projects.save_json(projects.pdir(pid) / "assign.json", assign)
+    return jsonify(assign)
+
+
+@app.post("/api/projects/<pid>/render")
+def render_videos(pid):
+    data = request.get_json(force=True) or {}
+    running = [j for j in jobs.for_project(pid) if j["kind"] == "render" and j["status"] == "running"]
+    if running:
+        return jsonify({"error": "A render is already running for this product."}), 409
+    job = jobs.start("render", pid, service.render_videos, pid, data.get("videos") or [], config.load_settings(),
+                     bool(data.get("draft")))
+    return jsonify({"job": job.to_dict()})
+
+
+@app.get("/api/jobs/<jid>")
+def job_status(jid):
+    j = jobs.get(jid)
+    if not j:
+        abort(404)
+    return jsonify(j.to_dict())
+
+
+@app.post("/api/projects/<pid>/reveal")
+def reveal(pid):
+    d = projects.pdir(pid)
+    sub = (request.get_json(silent=True) or {}).get("sub", "")
+    target = d / sub if sub in ("footage", "renders") else d
+    opener = "open" if sys.platform == "darwin" else "xdg-open"
+    try:
+        subprocess.Popen([opener, str(target)])
+    except OSError:
+        return jsonify({"error": f"Open this folder manually: {target}"}), 400
+    return jsonify({"ok": True})
+
+
+@app.get("/files/<pid>/<path:rel>")
+def project_file(pid, rel):
+    d = projects.pdir(pid).resolve()
+    p = (d / rel).resolve()
+    if d not in p.parents or not p.is_file():
+        abort(404)
+    return send_file(p, conditional=True, download_name=p.name,
+                     as_attachment=request.args.get("download") == "1")
+
+
+def main():
+    config.ensure_dirs()
+    url = f"http://127.0.0.1:{PORT}"
+    if os.environ.get("TTS_STUDIO_NO_BROWSER") != "1":
+        threading.Timer(1.2, lambda: webbrowser.open(url)).start()
+    print(f"\n  Thai TikTok Studio is running → {url}\n  (keep this window open; close it to quit)\n")
+    app.run(host="127.0.0.1", port=PORT, threaded=True, debug=False)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,7 @@
+anthropic>=1.0
+flask>=3.0
+pillow>=10.3
+numpy>=1.26
+requests>=2.31
+beautifulsoup4>=4.12
+imageio-ffmpeg>=0.5
