@@ -26,16 +26,19 @@ POS = {
 }
 
 THEMES = {
-    "sale_red_yellow": {"primary": (230, 0, 18), "accent": (255, 224, 0), "ink": (17, 17, 17), "good": (34, 197, 94), "hl": (255, 230, 0)},
-    "hot_orange_gold": {"primary": (255, 106, 0), "accent": (255, 199, 0), "ink": (17, 17, 17), "good": (34, 197, 94), "hl": (255, 199, 0)},
-    "trust_green": {"primary": (22, 163, 74), "accent": (255, 224, 0), "ink": (15, 23, 42), "good": (34, 197, 94), "hl": (61, 255, 110)},
-    "beauty_pink": {"primary": (255, 95, 162), "accent": (255, 240, 246), "ink": (60, 20, 40), "good": (255, 95, 162), "hl": (255, 140, 200)},
-    "clean_black_white": {"primary": (17, 17, 17), "accent": (255, 255, 255), "ink": (17, 17, 17), "good": (34, 197, 94), "hl": (255, 230, 0)},
+    "sale_red_yellow": {"primary": (230, 0, 18), "accent": (255, 224, 0), "ink": (17, 17, 17), "good": (34, 197, 94), "hl": (255, 255, 255)},
+    "hot_orange_gold": {"primary": (255, 106, 0), "accent": (255, 199, 0), "ink": (17, 17, 17), "good": (34, 197, 94), "hl": (255, 255, 255)},
+    "trust_green": {"primary": (22, 163, 74), "accent": (255, 224, 0), "ink": (15, 23, 42), "good": (34, 197, 94), "hl": (255, 255, 255)},
+    "beauty_pink": {"primary": (255, 95, 162), "accent": (255, 240, 246), "ink": (60, 20, 40), "good": (255, 95, 162), "hl": (255, 255, 255)},
+    "clean_black_white": {"primary": (17, 17, 17), "accent": (255, 255, 255), "ink": (17, 17, 17), "good": (34, 197, 94), "hl": (255, 255, 255)},
 }
 NAMED = {
     "yellow": (255, 224, 0), "red": (230, 0, 18), "white": (255, 255, 255), "black": (17, 17, 17),
     "pink": (255, 95, 162), "green": (34, 197, 94), "orange": (255, 106, 0), "blue": (37, 99, 235),
 }
+
+
+WHITE = (255, 255, 255, 255)
 
 
 def rgba(c, a=255):
@@ -135,17 +138,19 @@ def _title(text, ctx, size=88, weight="black", max_w=MAX_W, fill=(255, 255, 255,
 
 # --------------------------------------------------------------------------- builders
 def hook_title(o, s, e, ctx):
-    bg = ctx.color(o["color"], "accent")
-    ink = ink_for(bg)
-    t = _title(o["text"], ctx, size=92, max_w=760, fill=rgba(ink), stroke=None, stroke_w=0, shadow=False)
-    spr = T.boxed(t, rgba(bg), pad_x=36, pad_y=14, radius=28)
+    if o["color"] in ("auto", "white", "black", "yellow"):
+        bg, ink = (0, 0, 0, 165), WHITE
+    else:
+        c = ctx.color(o["color"])
+        bg, ink = rgba(c), rgba(ink_for(c))
+    t = _title(o["text"], ctx, size=92, max_w=760, fill=ink, stroke=None, stroke_w=0, shadow=False)
+    spr = T.boxed(t, bg, pad_x=36, pad_y=14, radius=28)
     cx, cy = _pos(o, "top")
     return [_el(spr, cx, cy, s, e, anim_in="pop", in_dur=0.32, rot=-2, z=5)]
 
 
 def keyword_pop(o, s, e, ctx):
-    col = ctx.color(o["color"], "accent")
-    spr = _title(o["text"], ctx, size=150, max_w=840, fill=rgba(col), stroke=(0, 0, 0, 255), stroke_w=12)
+    spr = _title(o["text"], ctx, size=150, max_w=840, fill=WHITE, stroke=(0, 0, 0, 255), stroke_w=12)
     emo = T.emoji_sprite(o["emoji"], 150) if o["emoji"] else None
     if emo:
         spr = T.hstack([spr, emo], gap=10)
@@ -157,7 +162,7 @@ def price_tag(o, s, e, ctx):
     new = T.strip_emoji(o["text"]).replace("฿", "").replace("บาท", "").strip()
     old = T.strip_emoji(o["sub_text"]).replace("฿", "").replace("บาท", "").strip()
     big = _title(f"฿{new}" if new else "ราคาพิเศษ", ctx, size=150, weight="black", family="kanit",
-                 fill=rgba(ctx.theme["accent"]), stroke=(0, 0, 0, 255), stroke_w=10)
+                 fill=WHITE, stroke=(0, 0, 0, 255), stroke_w=10)
     parts = []
     if old:
         small = _title(f"ปกติ ฿{old}", ctx, size=58, weight="bold", family="kanit", fill=(255, 255, 255, 255),
@@ -177,7 +182,7 @@ def price_tag(o, s, e, ctx):
 
 def discount_badge(o, s, e, ctx):
     bg = ctx.color(o["color"], "primary")
-    t = _title(o["text"], ctx, size=70, weight="black", max_w=260, fill=rgba(ink_for(bg) if bg != (230, 0, 18) else ctx.theme["accent"]),
+    t = _title(o["text"], ctx, size=70, weight="black", max_w=260, fill=WHITE,
                stroke=(0, 0, 0, 255), stroke_w=5, shadow=False, max_lines=2)
     r = max(t.width, t.height) // 2 + 36
     b = starburst(r, 16, rgba(bg), outline=(255, 255, 255, 255))
@@ -260,7 +265,7 @@ def label(o, s, e, ctx, default_pos="top_left"):
     if o["type"] == "before_after_labels" and o["color"] == "auto":
         bg = (120, 120, 120) if "ก่อน" in txt or "before" in txt.lower() else ctx.theme["good"]
     else:
-        bg = ctx.color(o["color"], "accent")
+        bg = ctx.color(o["color"], "primary")
     t = _title(txt, ctx, size=76, weight="black", max_w=520, fill=rgba(ink_for(bg)), stroke=None, stroke_w=0,
                shadow=False, max_lines=1)
     spr = T.boxed(t, rgba(bg), pad_x=30, pad_y=10, radius=22)
@@ -334,7 +339,7 @@ def emoji_sticker(o, s, e, ctx):
 def spec_card(o, s, e, ctx):
     rows = []
     if o["text"]:
-        rows.append(_title(o["text"], ctx, size=58, weight="black", max_w=640, fill=rgba(ctx.theme["accent"]),
+        rows.append(_title(o["text"], ctx, size=58, weight="black", max_w=640, fill=WHITE,
                            stroke=None, stroke_w=0, shadow=False, max_lines=1))
     for it in o["items"][:6]:
         rows.append(T.text_block(it, family=ctx.family, weight="bold", size=46, max_w=640, max_lines=1,
@@ -350,9 +355,9 @@ def number_badge(o, s, e, ctx):
     num = T.strip_emoji(o["text"])[:3] or "1"
     r = 70
     circ = Image.new("RGBA", (r * 2 + 8, r * 2 + 8), (0, 0, 0, 0))
-    ImageDraw.Draw(circ).ellipse([4, 4, r * 2 + 4, r * 2 + 4], fill=rgba(ctx.theme["accent"]),
-                                 outline=(0, 0, 0, 255), width=6)
-    n = T.text_block(num, family="kanit", weight="black", size=100, max_w=200, max_lines=1, fill=rgba(ink_for(ctx.theme["accent"])),
+    ImageDraw.Draw(circ).ellipse([4, 4, r * 2 + 4, r * 2 + 4], fill=rgba(ctx.theme["primary"]),
+                                 outline=(255, 255, 255, 255), width=6)
+    n = T.text_block(num, family="kanit", weight="black", size=100, max_w=200, max_lines=1, fill=WHITE,
                      stroke=None, stroke_w=0, shadow=False)
     circ.alpha_composite(n, ((circ.width - n.width) // 2, (circ.height - n.height) // 2))
     parts = [circ]
@@ -367,7 +372,7 @@ def number_badge(o, s, e, ctx):
 
 def urgency_banner(o, s, e, ctx):
     bg = ctx.color(o["color"], "primary")
-    t = _title(o["text"], ctx, size=68, weight="black", max_w=780, fill=rgba(ctx.theme["accent"] if bg == ctx.theme["primary"] else ink_for(bg)),
+    t = _title(o["text"], ctx, size=68, weight="black", max_w=780, fill=WHITE if ink_for(bg)[0] > 128 else rgba(ink_for(bg)),
                stroke=None, stroke_w=0, shadow=False, max_lines=1)
     spr = T.boxed(t, rgba(bg), pad_x=34, pad_y=12, radius=10, outline=(255, 255, 255, 255), width=5)
     cx, cy = _pos(o, "upper")
@@ -382,8 +387,8 @@ def vs_split(o, s, e, ctx):
     els += label(right, s, e, ctx)
     r = 62
     c = Image.new("RGBA", (r * 2 + 8, r * 2 + 8), (0, 0, 0, 0))
-    ImageDraw.Draw(c).ellipse([4, 4, 2 * r + 4, 2 * r + 4], fill=(255, 224, 0, 255), outline=(0, 0, 0, 255), width=6)
-    vs = T.text_block("VS", family="kanit", weight="black", size=70, max_w=200, max_lines=1, fill=(17, 17, 17, 255),
+    ImageDraw.Draw(c).ellipse([4, 4, 2 * r + 4, 2 * r + 4], fill=(17, 17, 17, 255), outline=(255, 255, 255, 255), width=6)
+    vs = T.text_block("VS", family="kanit", weight="black", size=70, max_w=200, max_lines=1, fill=WHITE,
                       stroke=None, stroke_w=0, shadow=False)
     c.alpha_composite(vs, ((c.width - vs.width) // 2, (c.height - vs.height) // 2))
     els.append(_el(c, SAFE_CX, 330, s + 0.15, e, anim_in="stamp", in_dur=0.22, z=7))
@@ -391,8 +396,7 @@ def vs_split(o, s, e, ctx):
 
 
 def reaction_text(o, s, e, ctx):
-    col = ctx.color(o["color"], "accent")
-    spr = T.text_block(o["text"], family="mali", weight="any", size=96, max_w=700, max_lines=2, fill=rgba(col),
+    spr = T.text_block(o["text"], family="mali", weight="any", size=96, max_w=700, max_lines=2, fill=WHITE,
                        stroke=(0, 0, 0, 255), stroke_w=9)
     emo = T.emoji_sprite(o["emoji"], 96) if o["emoji"] else None
     if emo:
@@ -452,23 +456,16 @@ def build_overlay(o: dict, start: float, end: float, ctx: Ctx) -> list:
 
 # --------------------------------------------------------------------------- captions & globals
 def caption(text: str, highlight: list, start: float, end: float, ctx: Ctx) -> Element | None:
-    style = ctx.caption_style
+    style = {"stroke_yellow": "stroke_white", "box_yellow": "box_black"}.get(ctx.caption_style, ctx.caption_style)
     hl = rgba(ctx.theme["hl"])
     if style == "box_black":
         t = T.text_block(text, family=ctx.family, weight="bold", size=70, max_w=760, max_lines=2,
                          fill=(255, 255, 255, 255), stroke=None, stroke_w=0, highlight=highlight, hl_fill=hl,
                          shadow=False)
         spr = T.boxed(t, (0, 0, 0, 185), pad_x=24, pad_y=8, radius=18, shadow=False)
-    elif style == "box_yellow":
-        t = T.text_block(text, family=ctx.family, weight="bold", size=70, max_w=760, max_lines=2,
-                         fill=(17, 17, 17, 255), stroke=None, stroke_w=0, highlight=highlight,
-                         hl_fill=rgba(ctx.theme["primary"]), shadow=False)
-        spr = T.boxed(t, (255, 224, 0, 255), pad_x=24, pad_y=8, radius=18, shadow=False)
     else:
-        fill = (255, 224, 0, 255) if style == "stroke_yellow" else (255, 255, 255, 255)
-        hlc = (255, 255, 255, 255) if style == "stroke_yellow" else hl
         spr = T.text_block(text, family=ctx.family, weight="xbold", size=78, max_w=800, max_lines=2,
-                           fill=fill, stroke=(0, 0, 0, 255), highlight=highlight, hl_fill=hlc)
+                           fill=WHITE, stroke=(0, 0, 0, 255), highlight=highlight, hl_fill=hl)
     if spr.width <= 2:
         return None
     cx, cy = _clamp_center(SAFE_CX, CAPTION_Y, spr)
@@ -497,7 +494,7 @@ def progress_bar(total: float, color) -> Element:
 def missing_card(shot: dict, start: float, end: float) -> Element:
     lines = [f"📷 ยังไม่มีไฟล์ {shot.get('id', '')}", shot.get("what_to_film_th", "")[:80]]
     t = T.vstack([
-        T.text_block(lines[0], size=64, max_w=820, max_lines=1, fill=(255, 224, 0, 255)),
+        T.text_block(lines[0], size=64, max_w=820, max_lines=1, fill=WHITE),
         T.text_block(lines[1], size=44, weight="medium", max_w=820, max_lines=3) if lines[1] else None,
     ], gap=10)
     return Element(start=start, end=end, cx=W / 2, cy=760, sprite=t, anim_in="none", in_dur=0, out="none", z=0)
