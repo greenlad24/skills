@@ -60,7 +60,7 @@ LOCAL_ADDRS = ("127.0.0.1", "::1", "::ffff:127.0.0.1")
 
 @app.before_request
 def require_login():
-    if request.path.startswith("/m/"):          # phone upload pages: the secret link is the key
+    if request.path.startswith("/m/") or request.path.startswith("/pub/"):  # secret-link pages
         return None
     if not SERVER_MODE and request.remote_addr not in LOCAL_ADDRS:
         abort(403)                               # the full app is only for this computer
@@ -146,7 +146,8 @@ def get_settings():
 @app.post("/api/settings")
 def set_settings():
     data = request.get_json(force=True) or {}
-    for k in ("anthropic_api_key", "openai_api_key", "claude_code_token"):  # masked values = unchanged
+    for k in ("anthropic_api_key", "openai_api_key", "claude_code_token", "postpeer_key",
+              "cloudinary_url"):  # masked values from the UI = unchanged
         if str(data.get(k, "")).startswith("•"):
             data.pop(k)
     return jsonify(config.public_settings(config.save_settings(data)))
@@ -378,6 +379,124 @@ def reveal(pid):
     return jsonify({"ok": True})
 
 
+# ---------------------------------------------------------------- Tool 3: scheduler
+def _sched_settings():
+    return config.load_settings()
+
+
+@app.get("/api/schedule")
+def schedule_get():
+    from . import scheduler
+    data = scheduler.load()
+    posts = sorted(data["posts"], key=lambda p: p["at"])
+    taken = {(p["project_id"], p["render"]) for p in posts if p["status"] != "cancelled"}
+    ready = [v for v in scheduler.finished_videos() if (v["project_id"], v["render"]) not in taken]
+    st = _sched_settings()
+    return jsonify({"posts": [dict(p, text=scheduler.full_text(p)) for p in posts], "ready": ready,
+                    "slots": scheduler.SLOTS, "now": scheduler._fmt(scheduler.now_bkk()),
+                    "connected": bool(st.get("postpeer_key") and st.get("postpeer_account_id")),
+                    "hosting": "website" if st.get("public_base_url") else
+                               "cloudinary" if st.get("cloudinary_url") else "litterbox"})
+
+
+@app.post("/api/schedule/auto")
+def schedule_auto():
+    from . import scheduler
+    per_day = int((request.get_json(silent=True) or {}).get("per_day") or _sched_settings().get("posts_per_day", 1))
+    config.save_settings({"posts_per_day": per_day})
+    created = scheduler.auto_schedule(per_day)
+    threading.Thread(target=scheduler.tick, args=(_sched_settings(),), daemon=True).start()
+    return jsonify({"created": len(created)})
+
+
+@app.patch("/api/schedule/<post_id>")
+def schedule_edit(post_id):
+    from . import scheduler
+    d = request.get_json(force=True) or {}
+    p = scheduler.edit(post_id, d.get("at"), d.get("caption"), d.get("hashtags"), _sched_settings())
+    if not p:
+        abort(404)
+    return jsonify(p)
+
+
+@app.post("/api/schedule/<post_id>/caption")
+def schedule_caption(post_id):
+    from . import scheduler
+    p = next((x for x in scheduler.load()["posts"] if x["id"] == post_id), None)
+    if not p:
+        abort(404)
+    variant = int((request.get_json(silent=True) or {}).get("variant") or 1)
+    plan = projects.load_json(projects.pdir(p["project_id"]) / "plan.json") or {"videos": [], "research": {}}
+    video = next((v for v in plan["videos"] if v["id"] == p["video_id"]), {})
+    cap = scheduler.make_caption(video, plan.get("research", {}), variant)
+    return jsonify(scheduler.edit(post_id, caption=cap["caption"], hashtags=cap["hashtags"], settings=_sched_settings()))
+
+
+@app.post("/api/schedule/<post_id>/post-now")
+def schedule_post_now(post_id):
+    from . import scheduler
+    try:
+        return jsonify(scheduler.submit(post_id, _sched_settings(), now_=True))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.delete("/api/schedule/<post_id>")
+def schedule_cancel(post_id):
+    from . import scheduler
+    try:
+        return jsonify(scheduler.cancel(post_id, _sched_settings()) or {})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.post("/api/schedule/sync")
+def schedule_sync():
+    from . import scheduler
+    scheduler.tick(_sched_settings())
+    return jsonify({"ok": True})
+
+
+@app.post("/api/postpeer/connect")
+def postpeer_connect():
+    from . import postpeer
+    try:
+        return jsonify({"url": postpeer.connect_url(_sched_settings().get("postpeer_key", ""))})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.get("/api/postpeer/accounts")
+def postpeer_accounts():
+    from . import postpeer
+    try:
+        accts = postpeer.accounts(_sched_settings().get("postpeer_key", ""))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify({"accounts": [a for a in accts if not a["platform"] or "tiktok" in a["platform"]]})
+
+
+@app.post("/api/cloudinary/check")
+def cloudinary_check():
+    from . import cloudinary_host
+    try:
+        return jsonify(cloudinary_host.check(_sched_settings().get("cloudinary_url", "")))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.get("/pub/<token>/<name>")
+def public_video(token, name):
+    """Hosted website only: PostPeer fetches the final video from this secret link."""
+    from . import scheduler
+    for p in scheduler.load()["posts"]:
+        if p.get("pub_token") == token and p["render"] == name and p["status"] in ("planned", "queued", "posted"):
+            f = projects.pdir(p["project_id"]) / "renders" / p["render"]
+            if f.exists():
+                return send_file(f, mimetype="video/mp4", conditional=True)
+    abort(404)
+
+
 @app.get("/files/<pid>/<path:rel>")
 def project_file(pid, rel):
     d = projects.pdir(pid).resolve()
@@ -390,6 +509,8 @@ def project_file(pid, rel):
 
 def main():
     config.ensure_dirs()
+    from . import scheduler
+    scheduler.start_worker(config.load_settings)
     if SERVER_MODE:
         if not PASSWORD:
             sys.exit("Refusing to start in server mode without TTS_STUDIO_PASSWORD (it protects your token and videos).")

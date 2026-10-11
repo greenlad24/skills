@@ -52,6 +52,8 @@ def main() -> None:
     from . import app as webapp                      # reads the env above
     webapp.PORT = port
     config.ensure_dirs()
+    from . import scheduler
+    scheduler.start_worker(config.load_settings)        # hands posts to PostPeer while the app is open
 
     from werkzeug.serving import make_server
     server = make_server("0.0.0.0", port, webapp.app, threaded=True)

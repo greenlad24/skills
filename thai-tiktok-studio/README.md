@@ -66,6 +66,27 @@ Log file: `~/Library/Logs/ThaiTikTokStudio.log`. To rebuild the app after code c
 4. **Pick an animation style** per video (bouncy, punchy, smooth, playful, minimal). 🎲 *New variation* re-rolls the motion within a style. *Versions per video* renders 2–5 versions with different styles for A/B tests.
 5. **Render.** Finished MP4s (1080×1920, 30 fps, H.264/AAC) appear in the app and in the project's `renders` folder.
 
+### Tool 3 · 📅 TikTok post scheduler (PostPeer + Cloudinary)
+- **Best Thai posting times, automatically.**
+  - At least 1 post a day; 2–3 if you want.
+  - Default slots: Mon–Thu 20:00, Fri 20:30, Sat 19:00, Sun 20:00, plus 12:15 lunch for 2+/day. The evidence is in `studio/frameworks/posting_times.md`.
+  - Posts are at least 3 h apart.
+  - The best-scoring videos go first, products alternate, and A/B versions of the same video wait at least 2 days.
+- **Auto captions.**
+  - Hook first, then one call to action pointing to the basket (ตะกร้า).
+  - 3–5 hashtags, avoiding #นายหน้า (it reaches affiliates, not buyers).
+  - **Never a price.**
+  - Edit anything, or press 🔄 for a fresh caption.
+- **Posting via [PostPeer](https://www.postpeer.dev)** (free plan: 20 posts/month). Paste your PostPeer key, press *Connect TikTok*, and pick the account. Two modes:
+  - **TikTok inbox draft** (default, recommended for affiliates): at post time the video lands in your TikTok inbox. Open it, **add the product basket**, and tap post.
+  - **Fully automatic**: publishes on its own, but TikTok doesn't allow adding the product basket automatically.
+- **Video hosting via [Cloudinary](https://cloudinary.com)** (free plan: 25 credits/month, videos ≤ 100 MB).
+  - Only the **final rendered videos** are uploaded. Raw clips and narration never leave your computer.
+  - Copies are deleted 7 days after posting.
+  - With Cloudinary set up, the Mac doesn't need to be on at post time.
+  - Without it, a free 72-hour link is used and posts are handed over up to 48 h ahead (open the app at least once a day).
+- On the hosted website, videos are served from your own site. No Cloudinary needed.
+
 ### What the editor does automatically
 - **Cutting:** reframes any clip to 9:16, picks the part of the clip the plan asks for (start/middle/end), and adjusts speed. Short clips are stretched slightly, then frozen.
 - **Talking clips:** silences are detected and removed as jump cuts, with alternating punch-ins.

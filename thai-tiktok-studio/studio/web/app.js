@@ -32,12 +32,14 @@ async function boot() {
   state.settings = await api("/api/settings");
   await loadProjects();
   const pid = location.hash.slice(1);
-  if (pid) openProject(decodeURIComponent(pid)); else showNew();
+  if (pid === "schedule") showScheduler();
+  else if (pid) openProject(decodeURIComponent(pid)); else showNew();
   if (!state.settings.onboarded) showOnboarding(0);
 }
 $("#btnHelp").onclick = () => showOnboarding(0);
 $("#btnNew").onclick = () => { history.replaceState(null, "", "#"); showNew(); };
 $("#btnSettings").onclick = showSettings;
+$("#btnSched").onclick = () => { history.replaceState(null, "", "#schedule"); showScheduler(); };
 
 async function loadProjects() {
   const list = await api("/api/projects");
@@ -313,7 +315,8 @@ function renderEditTab() {
     <section class="card"><h2>Finished videos</h2>
       <div class="renders">${p.renders.map((r) => `<div><video src="${F("renders/" + r.name)}" controls preload="metadata"></video>
         <div class="row" style="margin-top:6px"><a href="${F("renders/" + r.name)}?download=1"><button>⬇ ${esc(r.name)}</button></a></div></div>`).join("") || '<span class="muted">Nothing rendered yet.</span>'}</div>
-      <div class="row"><button class="ghost" id="btnRendersFolder">Open renders folder</button></div>
+      <div class="row"><button class="ghost" id="btnRendersFolder">Open renders folder</button>
+        ${p.renders.length ? '<button class="primary" onclick="showScheduler()">📅 ตั้งเวลาโพสต์คลิปเหล่านี้</button>' : ""}</div>
     </section>`;
   const wire = (dropSel, inputSel, kind, prog) => {
     const drop = $(dropSel), input = $(inputSel);
@@ -424,10 +427,11 @@ boot();
 /* ---------------- Thai onboarding (shown once; ❓ วิธีใช้ reopens it) ---------------- */
 const OB_STEPS = [
   () => `<div class="big">👋</div><h2>ยินดีต้อนรับสู่ Thai TikTok Studio</h2>
-    <p>โปรแกรมนี้ช่วยให้คุณทำคลิปขายของบน TikTok ได้ง่ายมาก มี <b>2 เครื่องมือ</b>:</p>
+    <p>โปรแกรมนี้ช่วยให้คุณทำคลิปขายของบน TikTok ได้ง่ายมาก มี <b>3 เครื่องมือ</b>:</p>
     <ol><li><b>ผู้ช่วยเขียนสคริปต์</b> — ใส่ชื่อสินค้า ได้สคริปต์ไวรัล 5 แบบ พร้อมรายการช็อตที่ต้องถ่าย</li>
-      <li><b>โปรแกรมตัดต่ออัตโนมัติ</b> — ลากคลิปกับเสียงพากย์ใส่ ได้คลิปพร้อมโพสต์ มีซับไตเติลและแอนิเมชันให้เอง</li></ol>
-    <div class="flow"><span>📝 ใส่ชื่อสินค้า</span><b>→</b><span>📜 ได้ 5 สคริปต์</span><b>→</b><span>🎬 ถ่ายคลิป</span><b>→</b><span>🎙 อัดเสียง</span><b>→</b><span>📂 ลากไฟล์ใส่</span><b>→</b><span>✅ ได้คลิป</span></div>
+      <li><b>โปรแกรมตัดต่ออัตโนมัติ</b> — ลากคลิปกับเสียงพากย์ใส่ ได้คลิปพร้อมโพสต์ มีซับไตเติลและแอนิเมชันให้เอง</li>
+      <li><b>ตั้งเวลาโพสต์</b> — จัดตารางโพสต์ตามเวลาทอง เขียนแคปชันให้ และโพสต์ลง TikTok ผ่าน PostPeer</li></ol>
+    <div class="flow"><span>📝 ใส่ชื่อสินค้า</span><b>→</b><span>📜 ได้ 5 สคริปต์</span><b>→</b><span>🎬 ถ่ายคลิป</span><b>→</b><span>🎙 อัดเสียง</span><b>→</b><span>📂 ลากไฟล์ใส่</span><b>→</b><span>✅ ได้คลิป</span><b>→</b><span>📅 โพสต์อัตโนมัติ</span></div>
     <div class="tip">ใช้เวลาอ่านคู่มือนี้แค่ 1 นาที</div>`,
   () => {
     const p = state.settings.provider;
@@ -467,6 +471,12 @@ const OB_STEPS = [
       <li>เลือกสไตล์แอนิเมชัน แล้วกด <b>🎬 Render</b></li>
       <li>ดาวน์โหลด MP4 แล้ว <b>โพสต์ได้เลย</b></li></ol>
     <div class="tip">อยากทดสอบหลายแบบ? เลือก "Versions per video" = 2–5 จะได้หลายเวอร์ชันแอนิเมชันไว้ทำ A/B test</div>`,
+  () => `<div class="big">📅</div><h2>เครื่องมือ 3: ตั้งเวลาโพสต์</h2>
+    <ol><li>กด <b>📅 ตั้งเวลาโพสต์ TikTok</b> (ซ้ายบน)</li>
+      <li>ครั้งแรก: วางคีย์ <b>PostPeer</b> กด <b>เชื่อมบัญชี TikTok</b> และวาง <b>Cloudinary</b> (ฟรีทั้งคู่)</li>
+      <li>เลือกจำนวนโพสต์ต่อวัน แล้วกด <b>✨ จัดตารางให้</b> — ระบบเลือกเวลาทองและเขียนแคปชัน (ไม่มีราคา) ให้เอง</li>
+      <li>ถึงเวลา คลิปจะเข้า <b>กล่องร่างใน TikTok</b> → เปิดแอป → เพิ่มสินค้าในตะกร้า → กดโพสต์</li></ol>
+    <div class="tip">แก้เวลา แคปชัน หรือแฮชแท็กได้ทุกโพสต์ · กด 🔄 เพื่อให้เขียนแคปชันใหม่</div>`,
   () => `<div class="big">🎉</div><h2>พร้อมแล้ว!</h2>
     <p>ทุกหน้าจะมี <b>แถบ "ขั้นต่อไป"</b> ด้านบน บอกว่าต้องทำอะไรต่อ พร้อมปุ่มให้กด</p>
     <p>เปิดคู่มือนี้อีกครั้งได้ที่ปุ่ม <b>❓ วิธีใช้</b> มุมขวาบน</p>`,
@@ -525,7 +535,7 @@ function nextStep(p) {
   if (needVo.length) return { at: 2, text: `อัดเสียงพากย์สำหรับ <b>${needVo.map((v) => v.id).join(", ")}</b> (อ่านทุกบรรทัดในเทคเดียว) แล้วลากใส่ช่อง 🎙 ในแท็บ 2`, steps, act: "edit", btn: "ไปแท็บ 2" };
   if (have < shots.length) return { at: 3, text: `ยังขาดคลิป <b>${shots.length - have}</b> ช็อต — ถ่ายเพิ่มแล้วลากใส่ หรือกดเรนเดอร์ดูก่อนก็ได้ (ช็อตที่ขาดจะเป็นการ์ดสีเทา)`, steps, act: "edit", btn: "ไปแท็บ 2" };
   if (!p.renders.length) return { at: 4, text: "ทุกอย่างพร้อม! เลือกสไตล์แอนิเมชันแล้วกด <b>🎬 Render selected</b>", steps, act: "edit", btn: "ไปเรนเดอร์" };
-  return { at: 5, text: "🎉 คลิปเสร็จแล้ว! ดาวน์โหลดในแท็บ 2 แล้วโพสต์ได้เลย — อยากได้แบบอื่นกด 🎲 New variation แล้วเรนเดอร์ใหม่", steps, act: "edit", btn: "ดูคลิป" };
+  return { at: 5, text: "🎉 คลิปเสร็จแล้ว! กด <b>📅 ตั้งเวลาโพสต์</b> ให้ระบบโพสต์ลง TikTok ตามเวลาทองอัตโนมัติ (อยากได้แบบอื่นกด 🎲 New variation แล้วเรนเดอร์ใหม่)", steps, act: "sched", btn: "📅 ตั้งเวลาโพสต์" };
 }
 function coachHtml(p) {
   const n = nextStep(p);
@@ -535,6 +545,7 @@ function coachHtml(p) {
 function coachAction(act) {
   if (act === "pack") window.open(F("filming_pack.html"), "_blank");
   else if (act === "replan") $("#btnReplan").click();
+  else if (act === "sched") showScheduler();
   else if (act === "edit") { state.tab = "edit"; renderProject(); window.scrollTo(0, document.querySelector(".tabs").offsetTop - 70); }
 }
 
@@ -562,4 +573,131 @@ async function showPhoneLink() {
     } catch (e) { /* keep polling */ }
   }, 3000);
   $("#phoneDone").onclick = () => { clearInterval(timer); closeModal(); openProject(state.pid, true); };
+}
+
+
+/* ---------------- Tool 3: TikTok post scheduler (PostPeer + Cloudinary) ---------------- */
+const DAY_TH = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์"];
+const POST_ST = { planned: ["รอส่ง", ""], queued: ["ตั้งเวลาแล้ว ✓", "g"], posted: ["โพสต์แล้ว 🎉", "g"],
+  missed: ["พลาดเวลา", "r"], cancelled: ["ยกเลิกแล้ว", ""], failed: ["ไม่สำเร็จ", "r"] };
+async function showScheduler() {
+  state.pid = null; loadProjects();
+  history.replaceState(null, "", "#schedule");
+  let d;
+  try { d = await api("/api/schedule"); } catch (e) { return toast(e.message, 5000); }
+  const s = state.settings = await api("/api/settings");
+  const upcoming = d.posts.filter((p) => !["cancelled", "posted"].includes(p.status));
+  const done = d.posts.filter((p) => ["cancelled", "posted"].includes(p.status));
+  const groups = {};
+  upcoming.forEach((p) => (groups[p.at.slice(0, 10)] ||= []).push(p));
+  const dayLabel = (iso) => { const dt = new Date(iso + "T12:00:00"); return `วัน${DAY_TH[dt.getDay()]} ${dt.getDate()}/${dt.getMonth() + 1}`; };
+  const fileUrl = (p) => `/files/${encodeURIComponent(p.project_id)}/renders/${encodeURIComponent(p.render)}`;
+  const card = (p) => {
+    const [lbl, cls] = POST_ST[p.status] || [p.status, ""];
+    return `<div class="card" data-post="${p.id}" style="display:grid;grid-template-columns:120px 1fr;gap:14px">
+      <video src="${fileUrl(p)}" preload="metadata" muted style="width:120px;aspect-ratio:9/16;border-radius:10px;background:#000" controls></video>
+      <div><div class="vhead"><div><b>${esc(p.project_name)}</b> · ${esc(p.video_id)} ${p.style ? `<span class="pill">${esc(p.style)}</span>` : ""}
+          <span class="pill ${cls}">${lbl}</span></div>
+          <div><input type="datetime-local" data-f="at" value="${esc(p.at)}" style="width:auto"></div></div>
+        <label>แคปชัน (ไม่มีราคา · มีปุ่มกดตะกร้า)</label><textarea data-f="caption" rows="3">${esc(p.caption)}</textarea>
+        <label>แฮชแท็ก (3–5 อัน)</label><input data-f="hashtags" value="${esc(p.hashtags.join(" "))}">
+        ${p.error ? `<p class="bad">⚠ ${esc(p.error)}</p>` : ""}${p.post_url ? `<p><a href="${esc(p.post_url)}" target="_blank">ดูโพสต์บน TikTok</a></p>` : ""}
+        <div class="row"><button data-act="save">💾 บันทึก</button><button class="ghost" data-act="newcap">🔄 แคปชันใหม่</button>
+          <button class="ghost" data-act="copy">📋 คัดลอกแคปชัน</button><button class="secondary" data-act="now">🚀 โพสต์เลยตอนนี้</button>
+          <button class="ghost danger" data-act="cancel">🗑 ยกเลิก</button></div></div></div>`;
+  };
+  const hostNote = { website: "วิดีโอส่งจากเว็บไซต์ของคุณโดยตรง", cloudinary: "อัปโหลดเฉพาะคลิปที่ตัดต่อเสร็จไป Cloudinary (ฟรี) — ไม่ต้องเปิดแอปตอนถึงเวลาโพสต์",
+    litterbox: "ยังไม่ได้ตั้งค่า Cloudinary — ใช้ลิงก์ชั่วคราว 72 ชม. แทน (ต้องเปิดแอปไว้อย่างน้อยวันละครั้ง)" }[d.hosting];
+  $("#main").innerHTML = `
+    <section class="card"><h1>📅 ตั้งเวลาโพสต์ TikTok</h1>
+      <p class="muted">ระบบจัดตารางโพสต์ตาม <b>เวลาทองของคนไทย</b> (จ.–พฤ. 20:00 · ศ. 20:30 · ส. 19:00 · อา. 20:00 · มื้อกลางวัน 12:15) สร้างแคปชันให้อัตโนมัติ แล้วส่งให้ <b>PostPeer</b> โพสต์ลง TikTok ให้</p>
+      ${d.connected ? `<div class="coach"><span class="step">พร้อมแล้ว ✓</span><span class="what">เชื่อม TikTok แล้ว: <b>${esc(s.postpeer_account_name || s.postpeer_account_id)}</b> · โหมด: <b>${s.postpeer_mode === "direct" ? "โพสต์อัตโนมัติ" : "ส่งเข้ากล่องร่าง TikTok"}</b><br><span class="muted">${hostNote}</span></span><button class="ghost" id="schSetupBtn">⚙ ตั้งค่า</button></div>` : ""}
+      <div id="schSetup" class="${d.connected ? "hidden" : ""}">
+        <h3>1) PostPeer (ฟรี 20 โพสต์/เดือน)</h3>
+        <p class="muted">สมัครที่ <a href="https://www.postpeer.dev" target="_blank">postpeer.dev</a> → เมนู Access Keys → คัดลอกคีย์มาวาง</p>
+        <div class="row" style="margin-top:0"><input id="ppKey" placeholder="PostPeer API key" value="${esc(s.postpeer_key)}" style="flex:1"><button id="ppSave">บันทึกคีย์</button></div>
+        <div class="row"><button class="primary" id="ppConnect">🔗 เชื่อมบัญชี TikTok</button><button id="ppRefresh">↻ โหลดบัญชีที่เชื่อมแล้ว</button>
+          <select id="ppAcct" style="width:auto"><option value="">— เลือกบัญชี TikTok —</option></select></div>
+        <h3>2) Cloudinary (ฟรี · อัปโหลดเฉพาะคลิปที่เสร็จแล้ว)</h3>
+        <p class="muted">สมัครฟรีที่ <a href="https://cloudinary.com/users/register_free" target="_blank">cloudinary.com</a> → Dashboard → คัดลอก <b>API environment variable</b> (cloudinary://…) มาวาง · คลิปจะถูกลบจาก Cloudinary อัตโนมัติ 7 วันหลังโพสต์</p>
+        <div class="row" style="margin-top:0"><input id="cdUrl" placeholder="cloudinary://API_KEY:API_SECRET@CLOUD_NAME" value="${esc(s.cloudinary_url)}" style="flex:1"><button id="cdSave">บันทึก + ทดสอบ</button></div>
+        <h3>3) วิธีโพสต์</h3>
+        <label class="choice ${s.postpeer_mode !== "direct" ? "on" : ""}" style="display:block;border:1px solid var(--line);border-radius:12px;padding:10px;cursor:pointer">
+          <input type="radio" name="ppMode" value="inbox" ${s.postpeer_mode !== "direct" ? "checked" : ""} style="width:auto"> <b>ส่งเข้ากล่องร่าง TikTok (แนะนำสำหรับนายหน้า)</b><br>
+          <span class="muted">ถึงเวลาแล้วคลิปจะเข้าไปที่กล่องจดหมาย TikTok ของคุณ → เปิดแอป → <b>เพิ่มสินค้าในตะกร้า</b> → กดโพสต์ (ใช้เวลา 10 วินาที)</span></label>
+        <label style="display:block;border:1px solid var(--line);border-radius:12px;padding:10px;margin-top:8px;cursor:pointer">
+          <input type="radio" name="ppMode" value="direct" ${s.postpeer_mode === "direct" ? "checked" : ""} style="width:auto"> <b>โพสต์อัตโนมัติ 100%</b><br>
+          <span class="muted">โพสต์เองทันทีตามเวลา แต่ <b>ใส่ตะกร้าสินค้าให้ไม่ได้</b> (TikTok ไม่อนุญาตผ่านระบบอัตโนมัติ) — เพิ่มสินค้าภายหลังได้ใน TikTok Seller Center</span></label>
+      </div>
+    </section>
+    <section class="card"><h2>จัดตารางอัตโนมัติ</h2>
+      <p class="muted">มีคลิปที่เรนเดอร์เสร็จแล้วรอตั้งเวลา: <b>${d.ready.length}</b> คลิป · ระบบจะเรียงคลิปที่คะแนนสูงสุดก่อน สลับสินค้า และเว้นคลิป A/B ของวิดีโอเดียวกันอย่างน้อย 2 วัน</p>
+      <div class="row"><label style="margin:0">โพสต์ต่อวัน</label>
+        <select id="perDay" style="width:auto">${[1, 2, 3].map((n) => `<option ${+s.posts_per_day === n ? "selected" : ""} value="${n}">${n} คลิป/วัน${n === 1 ? " (ขั้นต่ำ)" : n === 2 ? " (12:15 + 20:00)" : ""}</option>`).join("")}</select>
+        <button class="primary" id="schAuto" ${d.ready.length ? "" : "disabled"}>✨ จัดตารางให้ ${d.ready.length} คลิป</button>
+        <button class="ghost" id="schSync">↻ ส่งให้ PostPeer ตอนนี้</button></div>
+    </section>
+    ${Object.keys(groups).sort().map((day) => `<h2 style="margin:18px 0 8px">${dayLabel(day)}</h2>${groups[day].map(card).join("")}`).join("") || '<section class="card muted">ยังไม่มีโพสต์ที่ตั้งเวลาไว้ — เรนเดอร์คลิปให้เสร็จ แล้วกด ✨ จัดตารางให้</section>'}
+    ${done.length ? `<details class="card"><summary>โพสต์แล้ว / ยกเลิก (${done.length})</summary>${done.map(card).join("")}</details>` : ""}`;
+
+  const saveSet = async (u) => { state.settings = await api("/api/settings", { method: "POST", json: u }); };
+  if ($("#schSetupBtn")) $("#schSetupBtn").onclick = () => $("#schSetup").classList.toggle("hidden");
+  $("#ppSave").onclick = async () => { await saveSet({ postpeer_key: $("#ppKey").value.trim() }); toast("บันทึกคีย์แล้ว"); };
+  $("#ppConnect").onclick = async () => {
+    await saveSet({ postpeer_key: $("#ppKey").value.trim() });
+    try { const r = await api("/api/postpeer/connect", { method: "POST" }); window.open(r.url, "_blank"); toast("ล็อกอิน TikTok ในหน้าที่เปิดขึ้น แล้วกลับมากด ↻ โหลดบัญชี", 6000); }
+    catch (e) { toast(e.message, 6000); }
+  };
+  const loadAccts = async () => {
+    try {
+      const r = await api("/api/postpeer/accounts");
+      $("#ppAcct").innerHTML = `<option value="">— เลือกบัญชี TikTok —</option>` + r.accounts.map((a) => `<option value="${esc(a.id)}" data-name="${esc(a.name)}" ${a.id === s.postpeer_account_id ? "selected" : ""}>${esc(a.name || a.id)}</option>`).join("");
+      if (r.accounts.length === 1 && !s.postpeer_account_id) { $("#ppAcct").value = r.accounts[0].id; $("#ppAcct").onchange(); }
+    } catch (e) { toast(e.message, 6000); }
+  };
+  $("#ppRefresh").onclick = loadAccts;
+  $("#ppAcct").onchange = async () => {
+    const o = $("#ppAcct").selectedOptions[0];
+    if (!o || !o.value) return;
+    await saveSet({ postpeer_account_id: o.value, postpeer_account_name: o.dataset.name || "" });
+    toast("เชื่อมบัญชี TikTok แล้ว ✓"); showScheduler();
+  };
+  if (s.postpeer_key && !d.connected) loadAccts();
+  $("#cdSave").onclick = async () => {
+    await saveSet({ cloudinary_url: $("#cdUrl").value.trim() });
+    try { const r = await api("/api/cloudinary/check", { method: "POST" }); toast(`Cloudinary ใช้ได้ ✓ (${r.cloud})`); showScheduler(); }
+    catch (e) { toast(e.message, 6000); }
+  };
+  document.querySelectorAll('[name="ppMode"]').forEach((r) => (r.onchange = () => saveSet({ postpeer_mode: r.value }).then(() => toast("บันทึกแล้ว"))));
+  $("#schAuto").onclick = async () => {
+    const r = await api("/api/schedule/auto", { method: "POST", json: { per_day: +$("#perDay").value } });
+    toast(`จัดตาราง ${r.created} โพสต์แล้ว ✓`); showScheduler();
+  };
+  $("#schSync").onclick = async () => { await api("/api/schedule/sync", { method: "POST" }); toast("ส่งแล้ว"); showScheduler(); };
+  document.querySelectorAll("[data-post]").forEach((el) => {
+    const id = el.dataset.post;
+    el.querySelectorAll("[data-act]").forEach((b) => (b.onclick = async () => {
+      try {
+        if (b.dataset.act === "save") {
+          await api(`/api/schedule/${id}`, { method: "PATCH", json: { at: el.querySelector('[data-f="at"]').value,
+            caption: el.querySelector('[data-f="caption"]').value,
+            hashtags: el.querySelector('[data-f="hashtags"]').value.split(/\s+/).filter(Boolean) } });
+          toast("บันทึกแล้ว");
+        } else if (b.dataset.act === "newcap") {
+          await api(`/api/schedule/${id}/caption`, { method: "POST", json: { variant: Math.floor(Math.random() * 1000) + 1 } });
+        } else if (b.dataset.act === "copy") {
+          const txt = el.querySelector('[data-f="caption"]').value + "\n\n" + el.querySelector('[data-f="hashtags"]').value;
+          try { await navigator.clipboard.writeText(txt); } catch (e) { const ta = document.createElement("textarea"); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); }
+          return toast("คัดลอกแล้ว");
+        } else if (b.dataset.act === "now") {
+          if (!confirm("โพสต์คลิปนี้ตอนนี้เลย?")) return;
+          await api(`/api/schedule/${id}/post-now`, { method: "POST" }); toast("ส่งให้ PostPeer แล้ว 🚀");
+        } else if (b.dataset.act === "cancel") {
+          if (!confirm("ยกเลิกโพสต์นี้?")) return;
+          await api(`/api/schedule/${id}`, { method: "DELETE" });
+        }
+        showScheduler();
+      } catch (e) { toast(e.message, 6000); }
+    }));
+  });
 }

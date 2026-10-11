@@ -29,6 +29,14 @@ DEFAULTS = {
     "openai_model": "gpt-5",
     "videos_per_product": 5,
     "onboarded": False,         # Thai welcome guide shown once
+    # Tool 3 — scheduler (PostPeer publishes to TikTok; Cloudinary hosts the final videos)
+    "postpeer_key": "",
+    "postpeer_account_id": "",
+    "postpeer_account_name": "",
+    "postpeer_mode": "inbox",   # "inbox" = TikTok inbox draft (add product basket, tap post) · "direct" = auto-publish
+    "posts_per_day": 1,
+    "cloudinary_url": "",
+    "public_base_url": "",      # set automatically when hosted as a website
     # Editor
     "voice_source": "mine",     # "mine" = your recorded voice-over · "tts" = macOS Thai voice
     "tts_voice": "Kanya",       # macOS Thai voice (System Settings → Accessibility → Spoken Content)
@@ -56,6 +64,8 @@ def load_settings() -> dict:
         data["anthropic_api_key"] = os.environ["ANTHROPIC_API_KEY"]
     if os.environ.get("OPENAI_API_KEY") and not data.get("openai_api_key"):
         data["openai_api_key"] = os.environ["OPENAI_API_KEY"]
+    if os.environ.get("TTS_STUDIO_PUBLIC_URL"):          # hosted website: permanent video links
+        data["public_base_url"] = os.environ["TTS_STUDIO_PUBLIC_URL"].rstrip("/")
     return data
 
 
@@ -76,7 +86,7 @@ def save_settings(update: dict) -> dict:
 def public_settings(data: dict) -> dict:
     """Settings safe to send to the browser (keys masked)."""
     out = dict(data)
-    for k in ("anthropic_api_key", "openai_api_key", "claude_code_token"):
+    for k in ("anthropic_api_key", "openai_api_key", "claude_code_token", "postpeer_key", "cloudinary_url"):
         v = out.get(k) or ""
         out[k] = ("•" * 8 + v[-4:]) if v else ""
     return out
