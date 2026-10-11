@@ -10,6 +10,7 @@ from __future__ import annotations
 import functools
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -60,33 +61,40 @@ def _env(token: str) -> dict:
     return env
 
 
-def _run(prompt: str, settings: dict, workdir: Path, tools: str, schema: dict | None, max_turns: int, log) -> dict:
-    exe = find_claude(settings.get("claude_code_path", ""))
-    if not exe:
-        raise RuntimeError("Claude Code isn't installed on this Mac. Re-run start.command to install it, "
-                           "or install it from https://code.claude.com/docs/en/setup")
-    token = (settings.get("claude_code_token") or "").strip()
-    if not token:
-        raise RuntimeError("No Claude setup-token. In Terminal run:  claude setup-token  — then paste the token in Settings.")
+# Some Claude Code builds ignore the token when isolation flags are passed ("Not logged in").
+# We try the isolated run first and fall back to plain flags, remembering what worked.
+_ISOLATION_OK: bool | None = None
+
+
+def clean_token(token: str) -> str:
+    """Remove spaces / line breaks that sneak in when copying a wrapped token from Terminal."""
+    return re.sub(r"\s+", "", token or "")
+
+
+def _not_logged_in(msg: str) -> bool:
+    low = msg.lower()
+    return "not logged in" in low or "/login" in low or "please run /login" in low
+
+
+def _attempt(exe, prompt, settings, workdir, tools, schema, max_turns, isolated: bool, token: str):
     h = _help(exe)
     cmd = [exe, "-p", "Follow the instructions in the piped input exactly.", "--output-format", "json",
            "--max-turns", str(max_turns)]
     if settings.get("claude_model"):
         cmd += ["--model", settings["claude_model"]]
     if tools:
-        if "--tools" in h:
+        if isolated and "--tools" in h:
             cmd += ["--tools", tools]
         cmd += ["--allowedTools", tools]
     cmd += ["--disallowedTools", "Edit,Write,Bash,NotebookEdit"]
-    for flag in ("--safe-mode", "--no-session-persistence"):
-        if flag in h:
-            cmd.append(flag)
-    if "--permission-prompts" in h:
-        cmd += ["--permission-prompts", "none"]
+    if isolated:
+        for flag in ("--safe-mode", "--no-session-persistence"):
+            if flag in h:
+                cmd.append(flag)
+        if "--permission-prompts" in h:
+            cmd += ["--permission-prompts", "none"]
     if schema is not None and "--json-schema" in h:
         cmd += ["--json-schema", json.dumps(schema, ensure_ascii=False)]
-    else:
-        schema = None
     p = subprocess.run(cmd, input=prompt, capture_output=True, text=True, env=_env(token), cwd=str(workdir),
                        timeout=TIMEOUT)
     out = (p.stdout or "").strip()
@@ -94,16 +102,47 @@ def _run(prompt: str, settings: dict, workdir: Path, tools: str, schema: dict | 
         data = json.loads(out[out.find("{"):]) if out else {}
     except ValueError:
         data = {}
-    if p.returncode != 0 or data.get("is_error"):
-        msg = data.get("result") or (p.stderr or out or "").strip()[-600:]
+    ok = p.returncode == 0 and not data.get("is_error")
+    msg = "" if ok else (data.get("result") or (p.stderr or out or "").strip()[-600:])
+    data["_structured"] = schema is not None and "--json-schema" in h
+    return ok, data, msg
+
+
+def _run(prompt: str, settings: dict, workdir: Path, tools: str, schema: dict | None, max_turns: int, log) -> dict:
+    global _ISOLATION_OK
+    exe = find_claude(settings.get("claude_code_path", ""))
+    if not exe:
+        raise RuntimeError("Claude Code isn't installed on this Mac. Re-run start.command to install it, "
+                           "or install it from https://code.claude.com/docs/en/setup")
+    token = clean_token(settings.get("claude_code_token"))
+    if not token:
+        raise RuntimeError("No Claude setup-token. In Terminal run:  claude setup-token  — then paste the token in Settings.")
+    isolated = _ISOLATION_OK is not False
+    ok, data, msg = _attempt(exe, prompt, settings, workdir, tools, schema, max_turns, isolated, token)
+    if not ok and isolated and _not_logged_in(msg):
+        log("Retrying Claude Code with plain settings…")
+        ok, data, msg = _attempt(exe, prompt, settings, workdir, tools, schema, max_turns, False, token)
+        if ok:
+            _ISOLATION_OK = False
+    elif ok and isolated:
+        _ISOLATION_OK = True
+    if not ok:
         low = msg.lower()
-        if "401" in low or "auth" in low or "token" in low or "login" in low:
+        if _not_logged_in(msg):
+            msg = ("Claude Code didn't pick up your token. Check it starts with sk-ant-oat01- and was copied in full, "
+                   "or create a fresh one with  claude setup-token . " + msg[:160])
+        elif "401" in low or "invalid" in low or "expired" in low or "unauthorized" in low:
             msg = "Your Claude setup-token was rejected (expired or wrong). Run  claude setup-token  again and paste the new token in Settings. " + msg[:200]
         elif "usage limit" in low or "rate limit" in low:
             msg = "Your Claude plan's usage limit is reached — try again later. " + msg[:200]
         raise RuntimeError(f"Claude Code: {msg}")
-    data["_structured"] = schema is not None
     return data
+
+
+def test_connection(settings: dict, workdir: Path) -> str:
+    """Tiny round-trip used by the Settings "Test connection" button."""
+    data = _run("Reply with exactly the word OK and nothing else.", settings, workdir, "", None, 2, lambda m: None)
+    return (data.get("result") or "").strip()[:200]
 
 
 def _with_images(text: str, gathered: dict, limit: int = 6) -> str:

@@ -504,5 +504,9 @@
  "phonepage.allDone": "🎉 All sent! You can go back to your computer.",
  "phonepage.expired": "This link has expired — scan a new QR code on your computer.",
  "job.pasteReady": "Ready! Follow the 3 steps below.",
- "set.datasetChoose": "Choose CSV file"
+ "set.datasetChoose": "Choose CSV file",
+ "set.ccTest": "Test connection",
+ "set.ccTesting": "Checking your Claude account…",
+ "set.ccTestOk": "✅ Connected! Your Claude account is working.",
+ "set.ccTestFail": "❌ Not connected yet"
 }

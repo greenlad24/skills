@@ -492,6 +492,21 @@ def schedule_sync():
     return jsonify({"ok": True})
 
 
+@app.post("/api/claude-code/test")
+def claude_code_test():
+    """Settings → "Test connection" for the Claude-account mode (can test a token before saving)."""
+    from . import llm_claude_code
+    st = dict(config.load_settings())
+    tok = ((request.get_json(silent=True) or {}).get("token") or "").strip()
+    if tok and not tok.startswith("•"):
+        st["claude_code_token"] = tok
+    try:
+        reply = llm_claude_code.test_connection(st, config.HOME)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify({"ok": True, "reply": reply})
+
+
 @app.post("/api/postpeer/connect")
 def postpeer_connect():
     from . import postpeer

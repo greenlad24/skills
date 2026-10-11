@@ -21,6 +21,8 @@ if args == ["--version"]:
 log = {"args": args, "stdin": sys.stdin.read(), "token": os.environ.get("CLAUDE_CODE_OAUTH_TOKEN"),
        "api_key": os.environ.get("ANTHROPIC_API_KEY"), "cwd": os.getcwd()}
 open(os.environ["FAKE_LOG"], "a").write(json.dumps(log) + "\n")
+if os.environ.get("FAKE_SAFE_BREAKS") and "--safe-mode" in args:
+    print(json.dumps({"type": "result", "is_error": True, "result": "Not logged in · Please run /login"})); sys.exit(1)
 if os.environ.get("CLAUDE_CODE_OAUTH_TOKEN") != "sk-ant-oat01-good":
     print(json.dumps({"type": "result", "is_error": True, "result": "Invalid API key · 401 authentication_error"})); sys.exit(1)
 if "--json-schema" in args:
@@ -40,6 +42,7 @@ def fake_claude(tmp_path, monkeypatch):
     monkeypatch.setenv("FAKE_PLAN", str(tmp_path / "plan.json"))
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-api-should-not-be-used")
     llm_claude_code._help.cache_clear()
+    llm_claude_code._ISOLATION_OK = None
     return exe, tmp_path
 
 
@@ -94,3 +97,26 @@ def test_planner_end_to_end_with_claude_code(fake_claude, monkeypatch):
     res = planner.run_planning(J(), pid, "ที่นอน", [], "", {**_settings(exe), "provider": "claude_code"})
     assert res == {"videos": 2}
     assert projects.meta(pid)["status"] == "planned"
+
+
+def test_not_logged_in_with_safe_mode_falls_back(fake_claude, monkeypatch):
+    """The real-world failure: this Claude Code build ignores the token under --safe-mode."""
+    exe, tmp = fake_claude
+    monkeypatch.setenv("FAKE_SAFE_BREAKS", "1")
+    st = _settings(exe, "sk-ant-oat01-\n  good")            # wrapped copy from Terminal
+    assert llm_claude_code.test_connection(st, tmp)          # works after the automatic retry
+    assert llm_claude_code._ISOLATION_OK is False
+    calls = [json.loads(l) for l in (tmp / "log.jsonl").read_text().splitlines()]
+    assert "--safe-mode" in calls[0]["args"] and "--safe-mode" not in calls[1]["args"]
+    assert calls[1]["token"] == "sk-ant-oat01-good"
+    llm_claude_code.research({"input_text": "x"}, st, log=lambda m: None, workdir=tmp)
+    calls = [json.loads(l) for l in (tmp / "log.jsonl").read_text().splitlines()]
+    assert len(calls) == 3 and "--safe-mode" not in calls[2]["args"]   # remembered: no wasted retry
+
+
+def test_not_logged_in_message_is_clear(fake_claude, monkeypatch):
+    exe, tmp = fake_claude
+    monkeypatch.setenv("FAKE_SAFE_BREAKS", "1")
+    monkeypatch.setattr(llm_claude_code, "_attempt", lambda *a, **k: (False, {}, "Not logged in · Please run /login"))
+    with pytest.raises(RuntimeError, match="didn't pick up your token"):
+        llm_claude_code.test_connection(_settings(exe), tmp)

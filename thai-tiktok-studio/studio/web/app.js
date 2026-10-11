@@ -812,7 +812,8 @@ function showSettings() {
         <div class="choices">${provChoices("sProv", prov)}</div>
         ${Object.keys(KEY_FIELD).map((pv) => { const kf = KEY_FIELD[pv]; return `<div class="keybox ${pv === prov ? "" : "hidden"}" data-keyfor="${pv}">
           <label for="sKey_${pv}">${t(kf[1])}</label><input id="sKey_${pv}" data-field="${kf[0]}" value="${esc(s[kf[0]])}" placeholder="${kf[2]}" autocomplete="off" spellcheck="false">
-          <p class="hint">${t(kf[1] + "Hint")}</p></div>`; }).join("")}</section>
+          <p class="hint">${t(kf[1] + "Hint")}</p>
+          ${pv === "claude_code" ? `<div class="row"><button class="btn ghost" id="ccTest">🔌 ${t("set.ccTest")}</button><span id="ccTestSt" class="small" aria-live="polite"></span></div>` : ""}</div>`; }).join("")}</section>
       <section class="m-sec"><h3>🎙 ${t("set.voice")}</h3><div class="choices">
         <label class="choice ${s.voice_source !== "tts" ? "on" : ""}"><input type="radio" name="sVsrc" id="sVsrc_mine" value="mine" ${s.voice_source !== "tts" ? "checked" : ""} data-sync="1"><span class="choice-txt"><b>${t("set.voiceMine")}</b><span class="muted">${t("set.voiceMineDesc")}</span></span></label>
         <label class="choice ${s.voice_source === "tts" ? "on" : ""}"><input type="radio" name="sVsrc" id="sVsrc_tts" value="tts" ${s.voice_source === "tts" ? "checked" : ""} data-sync="1"><span class="choice-txt"><b>${t("set.voiceTts")}</b><span class="muted">${t("set.voiceTtsDesc")}</span></span></label></div></section>
@@ -836,6 +837,16 @@ function showSettings() {
       <p class="muted small">🔒 ${t("set.keysLocal")}</p>
       <div class="m-actions"><button class="btn ghost" id="sCancel">${t("common.cancel")}</button><button class="btn primary big" id="sSave">${t("common.save")}</button></div>`);
     $("#sLang").value = I18N.lang;
+    if ($("#ccTest")) $("#ccTest").onclick = async () => {
+      const st = $("#ccTestSt"); st.className = "small muted"; st.textContent = tt("set.ccTesting");
+      $("#ccTest").disabled = true;
+      try {
+        await api("/api/claude-code/test", { method: "POST", json: { token: $("#sKey_claude_code").value.trim() } });
+        st.className = "small ok"; st.textContent = tt("set.ccTestOk");
+      } catch (e) {
+        st.className = "small bad"; st.textContent = tt("set.ccTestFail") + " — " + (e.message || "");
+      } finally { $("#ccTest").disabled = false; }
+    };
     $("#sLang").onchange = (e) => setLanguage(e.target.value, true);
     wireChoices($("#modal"));
     api("/api/inspiration").then((r) => { const el = $("#sCsvSt"); if (el) el.textContent = tt(r.exists ? "set.datasetLoaded" : "set.datasetNone"); }).catch(() => {});
