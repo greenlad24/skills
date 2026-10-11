@@ -31,7 +31,7 @@ OVERLAY_TYPES = [
     "arrow", "checklist", "label", "trust_badges",
     "stars_rating", "comment_reply", "emoji_sticker", "spec_card", "number_badge",
     "urgency_banner", "before_after_labels", "vs_split", "reaction_text",
-    "speech_bubble", "lower_third",
+    "speech_bubble", "lower_third", "text_card",
 ]
 POSITIONS = [
     "top", "upper", "center", "lower", "bottom",
@@ -76,7 +76,7 @@ OVERLAY = _obj({
     "type": _enum(OVERLAY_TYPES),
     "text": _s("Main Thai text (short!). NEVER a price or amount of money."),
     "sub_text": _s("Secondary text: @username for comment_reply, right label for vs_split, '' if unused. Never a price."),
-    "items": _arr(_s(), "List items for checklist/trust_badges/spec_card ('label: value'), else []."),
+    "items": _arr(_s(), "List items for checklist/trust_badges/spec_card ('label: value') or text_card lines (emoji first), else []."),
     "emoji": _s("One emoji for emoji_sticker/reaction_text/cta, else ''."),
     "at": _num("Seconds after the beat starts when it appears."),
     "dur": _num("Seconds it stays on screen."),

@@ -1,2 +1,2 @@
-1.2.0 — เสียงพากย์ต่อเนื่องไม่ถูกตัด · Claude Opus ดูคลิปของคุณแล้ววางแผนการตัดต่อเอง · ไม่มีซับไตเติล (แอนิเมชันเหมือนเดิม) · ไม่มีภาพสีเทาอีกแล้ว
-Narration plays as one uncut take · Claude Opus watches your clips and plans the edit · no subtitles (animations unchanged) · no more grey placeholders
+1.3.0 — ตัดต่อตามสไตล์คลิปของคุณ (ช็อตนิ่งสบายตา ตัวหนังสือเล็กสีแดงขอบขาวด้านบน ลูกศร ↓ ไปที่ตะกร้า) · อัปโหลดคลิปตัวอย่างใหม่ได้ในตั้งค่า · แจ้งอัปเดตทันทีที่พร้อม
+Edits follow your own posted style (calm shots, small red top text card, ↓ arrows to the basket) · upload a new style reference in Settings · update banner appears as soon as an update is ready

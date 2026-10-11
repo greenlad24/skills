@@ -43,7 +43,13 @@ EDITOR_RULES = """
   (vo_th / dialogue_th / full_script_th) you MAY state what it costs in a store/mall as an anchor
   ("ที่ห้างราคาเป็นหมื่น", "หน้าร้านขาย 4,000 กว่าบาท"), followed by "แต่เจอตัวนี้ในราคาพิเศษ ที่หาจากที่ไหนไม่ได้เลย"
   and "ตอนนี้มีราคาพิเศษ / กดดูราคาพิเศษในตะกร้า". Captions, overlays and post_caption_th contain NO amounts at all. Show value with words instead ("คุ้มมาก", "ลดแรง", "โปรดีมาก") or a discount_badge like "ลด 50%".
-- Put a hook_title in beat 1 of every video, and a cta_basket in the last beat.
+- GRAPHICS STYLE = the creator's proven style (see "The creator's own proven style" in the motion framework):
+  beat 1 starts a `text_card` headline (dur ~6-9 s, may span beats); from the middle a `text_card` with `items`
+  (3-5 emoji-first lines, last line = who it's for) lasting to the very end (it shows ↓ arrows to the basket).
+  At most 1 other graphic per video. Camera `effect` "none" on video beats (slow_zoom on product photos).
+  Only fast formats (reply_to_comment, comparisons, lists) may use hook_title / cta_basket / punch_in instead.
+- The editor shows NO subtitles; `captions` are still filled in (used for the script export), but put any
+  must-read words in the text_card.
 - Beat durations must add up to ≈ target_length_sec.
 - Shot lists in Thai: concrete, filmable at home with a phone, 9:16 vertical; say what to film, how, and how long.
   Always include at least one wide "real home/context" shot and several close-ups. Record each shot 2–3 s longer than needed.

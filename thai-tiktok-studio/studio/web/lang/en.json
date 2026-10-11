@@ -513,5 +513,11 @@
  "upd.restart": "Restart to update",
  "upd.later": "Later",
  "upd.restarting": "Restarting… the app will open again in a few seconds.",
- "upd.manual": "Close the app and open it again to finish the update."
+ "upd.manual": "Close the app and open it again to finish the update.",
+ "set.style": "My editing style",
+ "set.styleHint": "The editor copies the pacing and look of a video you posted and liked. Built in: your closet-rack video (calm shots, small text card at the top). Upload another video to change it.",
+ "set.styleNow": "Now using: <b>{src}</b> · {n} shots, about {avg} s each",
+ "set.styleUpload": "Upload a reference video",
+ "set.styleReset": "Back to built-in style",
+ "set.styleWorking": "Studying the video…"
 }

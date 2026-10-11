@@ -151,7 +151,7 @@ async function boot() {
   await route();
   if (!state.settings.onboarded) showOnboarding(0);
   checkUpdate();
-  setInterval(checkUpdate, 10 * 60 * 1000);
+  setInterval(checkUpdate, 60 * 1000);   // the update is downloaded in the background — show the banner as soon as it's ready
 }
 
 /* ---------------- self-update banner (Mac app) ---------------- */
@@ -837,6 +837,10 @@ function showSettings() {
       <section class="m-sec"><h3>🎙 ${t("set.voice")}</h3><div class="choices">
         <label class="choice ${s.voice_source !== "tts" ? "on" : ""}"><input type="radio" name="sVsrc" id="sVsrc_mine" value="mine" ${s.voice_source !== "tts" ? "checked" : ""} data-sync="1"><span class="choice-txt"><b>${t("set.voiceMine")}</b><span class="muted">${t("set.voiceMineDesc")}</span></span></label>
         <label class="choice ${s.voice_source === "tts" ? "on" : ""}"><input type="radio" name="sVsrc" id="sVsrc_tts" value="tts" ${s.voice_source === "tts" ? "checked" : ""} data-sync="1"><span class="choice-txt"><b>${t("set.voiceTts")}</b><span class="muted">${t("set.voiceTtsDesc")}</span></span></label></div></section>
+      <section class="m-sec"><h3>🎬 ${t("set.style")}</h3><p class="muted small">${t("set.styleHint")}</p>
+        <p class="small" id="sStyleNow">…</p>
+        <div class="row"><input type="file" id="sStyleFile" accept="video/*" hidden><button class="btn ghost" id="sStylePick">📤 ${t("set.styleUpload")}</button>
+          <button class="btn ghost hidden" id="sStyleReset">↺ ${t("set.styleReset")}</button><span id="sStyleSt" class="small" aria-live="polite"></span></div></section>
       <details class="m-sec adv" id="dAdv"><summary>🛠 ${t("set.advanced")}</summary><p class="muted small">${t("set.advancedHint")}</p>
         <div class="grid2">
           <div><label for="sN">${t("set.videosPer")}</label><input id="sN" type="number" min="1" max="8" value="${s.videos_per_product}"></div>
@@ -857,6 +861,20 @@ function showSettings() {
       <p class="muted small">🔒 ${t("set.keysLocal")}</p>
       <div class="m-actions"><button class="btn ghost" id="sCancel">${t("common.cancel")}</button><button class="btn primary big" id="sSave">${t("common.save")}</button></div>`);
     $("#sLang").value = I18N.lang;
+    const showStyle = (p) => {
+      $("#sStyleNow").innerHTML = t("set.styleNow", { src: esc(p.source), n: p.shots, avg: p.avg_shot });
+      $("#sStyleReset").classList.toggle("hidden", /^built-in/.test(p.source));
+    };
+    api("/api/style").then(showStyle).catch(() => { $("#sStyleNow").textContent = ""; });
+    $("#sStylePick").onclick = () => $("#sStyleFile").click();
+    $("#sStyleFile").onchange = async () => {
+      const f = $("#sStyleFile").files[0]; if (!f) return;
+      const st = $("#sStyleSt"); st.className = "small muted"; st.textContent = tt("set.styleWorking");
+      const fd = new FormData(); fd.append("file", f);
+      try { showStyle(await api("/api/style", { method: "POST", body: fd })); st.className = "small ok"; st.textContent = "✓"; }
+      catch (e) { st.className = "small bad"; st.textContent = e.message || ""; }
+    };
+    $("#sStyleReset").onclick = async () => { try { showStyle(await api("/api/style", { method: "DELETE" })); } catch (e) { errToast(e); } };
     if ($("#ccTest")) $("#ccTest").onclick = async () => {
       const st = $("#ccTestSt"); st.className = "small muted"; st.textContent = tt("set.ccTesting");
       $("#ccTest").disabled = true;

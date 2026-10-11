@@ -173,6 +173,7 @@ def health():
 @app.get("/api/update")
 def update_status():
     from . import updater
+    updater.check_soon()
     return jsonify(dict(updater.STATE, enabled=updater.enabled()))
 
 
@@ -182,6 +183,38 @@ def update_restart():
     if not updater.restart():
         return jsonify({"error": "Close the app and open it again to finish the update."}), 400
     return jsonify({"ok": True})
+
+
+@app.get("/api/style")
+def style_get():
+    from .editor import reference
+    return jsonify(dict(reference.load(), has_frames=bool(reference.sheet_path())))
+
+
+@app.post("/api/style")
+def style_upload():
+    """Upload a reference video you liked — its pacing becomes the editor's style."""
+    from .editor import media, reference
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"error": "Choose a video file."}), 400
+    ext = Path(f.filename).suffix.lower()
+    if ext not in media.VIDEO_EXT:
+        return jsonify({"error": "That file is not a video."}), 400
+    dest = reference.style_dir() / f"reference{ext}"
+    f.save(dest)
+    try:
+        prof = reference.save_reference(dest)
+    except Exception as e:  # unreadable video
+        dest.unlink(missing_ok=True)
+        return jsonify({"error": f"Couldn't read that video ({e})."}), 400
+    return jsonify(dict(prof, has_frames=bool(reference.sheet_path())))
+
+
+@app.delete("/api/style")
+def style_reset():
+    from .editor import reference
+    return jsonify(dict(reference.reset(), has_frames=False))
 
 
 @app.get("/api/settings")

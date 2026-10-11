@@ -401,6 +401,83 @@ def lower_third(o, s, e, ctx):
     return [_el(spr, cx, cy, s, e, anim_in="slide_right", in_dur=0.3, z=5)]
 
 
+# --------------------------------------------------------------------------- text card (soft "aesthetic" style)
+CARD_TOP = 200       # top edge of the card (just under TikTok's top tabs)
+
+
+def _sparks(h: int, side: str) -> Image.Image:
+    """Three short white strokes fanning out beside a headline ( = ‐ ‑ ) — the hand-made sparkle look."""
+    w = int(h * 0.55)
+    img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    lw = max(3, h // 14)
+    for k, dy in enumerate((-0.28, 0.0, 0.28)):
+        y0 = h / 2 + dy * h
+        tilt = -dy * h * 0.6
+        a, b = (w * 0.15, y0 + tilt), (w * 0.85, y0 - tilt * 0.2)
+        if side == "right":
+            a, b = (w - a[0], a[1]), (w - b[0], b[1])
+        d.line([a, b], fill=(0, 0, 0, 90), width=lw + 3)
+        d.line([a, b], fill=(255, 255, 255, 255), width=lw)
+    return img
+
+
+def _down_arrows(size: int = 54) -> Image.Image:
+    """↘ ↓ ↙ — points the viewer down at the product basket."""
+    img = Image.new("RGBA", (size * 3, size), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    lw = max(3, size // 12)
+    for i, ang in enumerate((-35, 0, 35)):
+        cx = size * (i + 0.5)
+        dx = math.tan(math.radians(ang)) * size * 0.35
+        top, tip = (cx - dx, size * 0.12), (cx + dx, size * 0.85)
+        ux, uy = tip[0] - top[0], tip[1] - top[1]
+        L = math.hypot(ux, uy) or 1
+        ux, uy = ux / L, uy / L
+        hx, hy = -uy, ux
+        h1 = (tip[0] - ux * size * 0.28 + hx * size * 0.18, tip[1] - uy * size * 0.28 + hy * size * 0.18)
+        h2 = (tip[0] - ux * size * 0.28 - hx * size * 0.18, tip[1] - uy * size * 0.28 - hy * size * 0.18)
+        for col, wd in (((0, 0, 0, 90), lw + 3), ((255, 255, 255, 255), lw)):
+            d.line([top, tip], fill=col, width=wd)
+            d.line([h1, tip, h2], fill=col, width=wd, joint="curve")
+    return img
+
+
+def text_card(o, s, e, ctx):
+    """Soft text card at the top: a short headline and/or a list of lines, each may start with an emoji.
+
+    Coloured text with a white outline, no box — calm and readable over real-life footage.
+    """
+    col = rgba(ctx.color(o["color"], "primary")) if o["color"] != "auto" else \
+        rgba(ctx.theme["primary"] if ctx.theme["primary"] != (17, 17, 17) else (226, 36, 48))
+    rows = []
+    head = T.strip_emoji(o["text"]).strip()
+    if head:
+        t = _title(head, ctx, size=54, weight="medium", max_w=720, fill=col, stroke=WHITE, stroke_w=7,
+                   max_lines=2, shadow=False)
+        if not o["items"]:
+            t = T.hstack([_sparks(min(t.height, 70), "left"), t, _sparks(min(t.height, 70), "right")], gap=4)
+        rows.append(t)
+    for it in o["items"][:6]:
+        emo = T.first_emoji(it)
+        line = T.strip_emoji(it).strip()
+        if not line:
+            continue
+        t = _title(line, ctx, size=45, weight="medium", max_w=740, fill=col, stroke=WHITE, stroke_w=6,
+                   max_lines=1, shadow=False)
+        es = T.emoji_sprite(emo, 50) if emo else None
+        rows.append(T.hstack([es, t], gap=12) if es else t)
+    if not rows:
+        return []
+    card = T.vstack(rows, gap=4)
+    els = [_el(card, SAFE_CX + 20, CARD_TOP + card.height / 2, s, e, anim_in="fade_up", in_dur=0.35, z=5)]
+    if o["items"] or "↓" in (o["emoji"] or ""):
+        arr = _down_arrows()
+        y = CARD_TOP + card.height + 18 + arr.height / 2
+        els.append(_el(arr, SAFE_CX + 20, y, s + 0.2, e, anim_in="fade", in_dur=0.3, loop="bob", z=5))
+    return els
+
+
 BUILDERS = {
     "hook_title": hook_title, "keyword_pop": keyword_pop,
     "discount_badge": discount_badge, "cta_basket": cta_basket, "arrow": arrow,
@@ -409,6 +486,7 @@ BUILDERS = {
     "emoji_sticker": emoji_sticker, "spec_card": spec_card, "number_badge": number_badge,
     "urgency_banner": urgency_banner, "before_after_labels": label, "vs_split": vs_split,
     "reaction_text": reaction_text, "speech_bubble": speech_bubble, "lower_third": lower_third,
+    "text_card": text_card,
 }
 
 

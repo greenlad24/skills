@@ -10,7 +10,9 @@
 3. Without AI (copy/paste mode, or if the AI call fails) a built-in editor does the same
    job: phrase-based cuts, the shot the script asked for when it was filmed, otherwise
    the next best clip you uploaded.
-4. Graphics are exactly the plan's animations (re-timed to when their words are spoken).
+4. Pacing and look follow YOUR style reference (built in from your best posted edit, or a
+   reference video uploaded in Settings): calm 2.5-6 s shots, no zoom punches or flashes.
+5. Graphics are exactly the plan's animations (re-timed to when their words are spoken).
    Subtitles are not shown. Prices never appear.
 """
 
@@ -27,7 +29,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from ..plan_schema import EFFECTS
-from . import audio_io, elements as E, matcher, media, tts, voice
+from . import audio_io, elements as E, matcher, media, reference, tts, voice
 from .timeline import FPS, SR, Resolved, Segment, _weight
 
 LEAD = 0.15          # silence before the first word
@@ -297,6 +299,21 @@ def _gap_near(phrases: list, a: float, b: float, target: float, none: float) -> 
     return min(ok, key=lambda g: abs(g - target)) if ok else none
 
 
+# --------------------------------------------------------------------------- pace (from the style reference)
+CALM_DROP = {"punch_in": "none", "punch_shake": "none", "shake": "none", "flash": "none"}
+
+
+def pace(prof: dict) -> dict:
+    if prof.get("calm"):
+        return {"calm": True, "max": min(6.5, max(3.0, prof.get("max_shot", 5.0))),
+                "target": min(4.5, max(2.2, prof.get("avg_shot", 3.0)))}
+    return {"calm": False, "max": MAX_SEG, "target": 2.0}
+
+
+def _calm_effect(eff: str, p: dict) -> str:
+    return CALM_DROP.get(eff, eff) if p["calm"] else eff
+
+
 # --------------------------------------------------------------------------- built-in editor (no AI)
 class _Picker:
     def __init__(self, clips: list):
@@ -325,7 +342,8 @@ class _Picker:
         return start, ln
 
 
-def fallback_edl(video: dict, clips: list, sp: Spine, windows: list) -> dict:
+def fallback_edl(video: dict, clips: list, sp: Spine, windows: list, p: dict | None = None) -> dict:
+    p = p or pace(reference.DEFAULT_PROFILE)
     by_shot = {}
     for c in clips:
         for sid in c.shots:
@@ -343,10 +361,10 @@ def fallback_edl(video: dict, clips: list, sp: Spine, windows: list) -> dict:
             else:
                 c = pk.pick([own] if first and own else [], avoid=last)
             remain = t1 - t
-            want = remain if remain <= MAX_SEG else _split_at(t, t1, phrase_ends)
+            want = remain if remain <= p["max"] else _split_at(t, t1, phrase_ends, p)
             if c is None:   # talking beat: show the speaker in sync
                 segs.append({"start": t, "end": t + remain, "clip": AROLL, "in": 0.0,
-                             "effect": b["effect"] if first else "none"})
+                             "effect": _calm_effect(b["effect"], p) if first else "none"})
                 t += remain
                 break
             src_in, ln = pk.take(c, want)
@@ -355,7 +373,7 @@ def fallback_edl(video: dict, clips: list, sp: Spine, windows: list) -> dict:
             if remain - ln < MIN_SEG:   # don't leave a sliver — let this shot run to the end of the beat
                 ln = remain
             segs.append({"start": t, "end": t + ln, "clip": c.id, "in": src_in,
-                         "effect": b["effect"] if first else ("punch_in" if len(segs) % 3 == 0 else "none")})
+                         "effect": _calm_effect(b["effect"] if first else ("punch_in" if len(segs) % 3 == 0 else "none"), p)})
             t += ln
             last, first = c.id, False
     overlays = []
@@ -368,12 +386,12 @@ def fallback_edl(video: dict, clips: list, sp: Spine, windows: list) -> dict:
     return {"segments": segs, "overlays": overlays, "notes": "built-in editor"}
 
 
-def _split_at(t: float, t1: float, phrase_ends: list) -> float:
-    """Length of the next shot inside a long beat: end on a phrase end ~2-3.5 s ahead."""
-    ok = [p - t for p in phrase_ends if 1.6 <= p - t <= MAX_SEG and t1 - p >= MIN_SEG]
+def _split_at(t: float, t1: float, phrase_ends: list, p: dict) -> float:
+    """Length of the next shot inside a long beat: end on a phrase end near the reference's shot length."""
+    ok = [e - t for e in phrase_ends if 1.2 <= e - t <= p["max"] and t1 - e >= MIN_SEG]
     if ok:
-        return max(ok)
-    return min(MAX_SEG, (t1 - t) / 2 if t1 - t < 2 * MAX_SEG else 2.6)
+        return min(ok, key=lambda d: abs(d - p["target"]))
+    return min(p["max"], (t1 - t) / 2 if t1 - t < 2 * p["max"] else p["target"])
 
 
 # --------------------------------------------------------------------------- AI editor
@@ -394,7 +412,10 @@ EDL_SCHEMA = {
 }
 
 
-def edl_prompt(video: dict, clips: list, sp: Spine, windows: list, draft: dict, sheet_names: dict) -> str:
+def edl_prompt(video: dict, clips: list, sp: Spine, windows: list, draft: dict, sheet_names: dict,
+               prof: dict | None = None, ref_sheet: str = "") -> str:
+    prof = prof or reference.DEFAULT_PROFILE
+    p = pace(prof)
     beats = []
     for i, (b, (t0, t1)) in enumerate(zip(video["timeline"], windows)):
         beats.append({"beat": i + 1, "time": [round(t0, 2), round(t1, 2)], "role": b["role"],
@@ -422,13 +443,18 @@ what it really shows — the matching to planned shots was automatic and may be 
 
 RULES
 - segments must cover 0 → {sp.total:.2f} exactly: sorted, contiguous (each start = previous end), no gaps.
-- Cut on phrase boundaries or between words — never in the middle of a word. Typical shot 1–3.5 s; hook shots fast.
+- Cut on phrase boundaries or between words — never in the middle of a word.
+- PACING: copy the creator's own style reference below — typical shot {p["target"]:.1f} s, up to {p["max"]:.1f} s.
 - Show what is being said: when the voice talks about a feature/result, pick the clip that shows it.
 - Use only clip ids listed above. A clip may be reused with a different "in" point. Video clips:
   in + (end - start) must be <= the clip's seconds. Photos ("seconds": null) at most ~2.5 s each.
 - Never use a clip that looks broken, black, or a retake fumble if a better one exists.
 - First 1.5 s must be the most eye-catching footage.
-- effect: punch_in / punch_shake on emphasis, slow_zoom on photos, flash at most once, otherwise none.
+- effect: {"none on video clips (the clips' own smooth camera movement is the motion); slow_zoom on photos" if p["calm"] else "punch_in / punch_shake on emphasis, slow_zoom on photos, flash at most once, otherwise none"}.
+
+THE CREATOR'S STYLE REFERENCE (their best-performing posted edit — match its rhythm and feel):
+{reference.describe(prof)}
+{("Frames of the reference video: " + ref_sheet) if ref_sheet else ""}
 
 The plan's animated graphics will appear at these times (keep the footage under them relevant):
 {json.dumps(graphics, ensure_ascii=False)}
@@ -439,7 +465,7 @@ Draft cut list from the built-in editor (improve it; you may change every segmen
 Reply with ONE JSON object: {{"segments":[...], "notes":"..."}}"""
 
 
-def ai_edl(video, clips, sp, windows, draft, settings, work_dir: Path, log) -> dict | None:
+def ai_edl(video, clips, sp, windows, draft, settings, work_dir: Path, log, prof: dict | None = None) -> dict | None:
     provider = settings.get("provider", "claude_code")
     key = {"claude": "anthropic_api_key", "openai": "openai_api_key", "claude_code": "claude_code_token"}.get(provider)
     if not key or not settings.get(key):
@@ -449,11 +475,14 @@ def ai_edl(video, clips, sp, windows, draft, settings, work_dir: Path, log) -> d
         p = contact_sheet(c, work_dir / "sheets" / f"{c.id}_{_short_hash(c.path)}.jpg")
         if p:
             sheets[c.id] = str(p.resolve())
-    prompt = edl_prompt(video, clips, sp, windows, draft, {k: Path(v).name for k, v in sheets.items()})
+    ref = reference.sheet_path()
+    prompt = edl_prompt(video, clips, sp, windows, draft, {k: Path(v).name for k, v in sheets.items()}, prof,
+                        ref.name if ref else "")
     from ..planner import _provider
     mod = _provider(provider)
     log("Claude is watching your clips and planning the edit…")
-    return mod.make_edl(prompt, list(sheets.values()), EDL_SCHEMA, settings, log=log, workdir=work_dir)
+    images = list(sheets.values()) + ([str(ref.resolve())] if ref else [])
+    return mod.make_edl(prompt, images, EDL_SCHEMA, settings, log=log, workdir=work_dir)
 
 
 def _short_hash(s: str) -> str:
@@ -463,7 +492,7 @@ def _short_hash(s: str) -> str:
 
 
 # --------------------------------------------------------------------------- validation
-def validate_edl(edl: dict, clips: list, sp: Spine, fallback: dict) -> dict:
+def validate_edl(edl: dict, clips: list, sp: Spine, fallback: dict, p: dict | None = None) -> dict:
     """Make any EDL safe: full coverage, real clips, in-points inside the clip, no slivers."""
     ids = {c.id: c for c in clips}
     total = sp.total
@@ -480,6 +509,8 @@ def validate_edl(edl: dict, clips: list, sp: Spine, fallback: dict) -> dict:
         if b - a < 0.05:
             continue
         eff = s.get("effect") if s.get("effect") in EFFECTS else "none"
+        if p:
+            eff = _calm_effect(eff, p)
         try:
             src_in = max(0.0, float(s.get("in", 0)))
         except (TypeError, ValueError):
@@ -529,6 +560,10 @@ def validate_edl(edl: dict, clips: list, sp: Spine, fallback: dict) -> dict:
                 break
             if ln <= usable:
                 s["in"] = max(0.0, usable - ln)
+                fixed.append(s)
+                break
+            if ln - usable < 0.6:   # a hair too short: hold its last frame briefly rather than flash another clip
+                s["in"] = 0.0
                 fixed.append(s)
                 break
             cut = s["start"] + usable
@@ -645,14 +680,16 @@ def resolve(video: dict, assign: dict, footage_files: list, product_images: list
     if not clips:
         notes.append("No clips or photos uploaded yet — the video has a plain background. Upload your clips and render again.")
     windows = beat_windows(video, sp)
-    draft = fallback_edl(video, clips, sp, windows) if clips else \
+    prof = reference.load()
+    pc = pace(prof)
+    draft = fallback_edl(video, clips, sp, windows, pc) if clips else \
         {"segments": [{"start": 0.0, "end": sp.total, "clip": "", "in": 0.0, "effect": "none"}],
          "overlays": [], "notes": ""}
     if not clips:
         draft["overlays"] = _overlays_only(video, sp, windows)
     edl = draft
     if clips and use_ai and settings.get("smart_edit", True) and settings.get("provider") != "manual":
-        key = _cache_key(video, clips, sp, settings)
+        key = _cache_key(video, clips, sp, settings, prof)
         cache = work_dir / f"edl_{key}.json"
         got = None
         if cache.exists():
@@ -663,7 +700,7 @@ def resolve(video: dict, assign: dict, footage_files: list, product_images: list
                 got = None
         if got is None:
             try:
-                got = ai_edl(video, clips, sp, windows, _round(draft), settings, work_dir, log)
+                got = ai_edl(video, clips, sp, windows, _round(draft), settings, work_dir, log, prof)
                 if got:
                     cache.write_text(json.dumps(got, ensure_ascii=False, indent=1), "utf-8")
             except Exception as e:   # the built-in editor always works
@@ -671,12 +708,14 @@ def resolve(video: dict, assign: dict, footage_files: list, product_images: list
                 log(f"AI edit unavailable ({msg[:160]}) — using the built-in editor.")
                 got = None
         if got:
-            edl = validate_edl(got, clips, sp, draft)
+            edl = validate_edl(got, clips, sp, draft, pc)
             if edl.get("notes"):
                 notes.append("Edit idea: " + edl["notes"])
     elif clips:
-        edl = validate_edl(draft, clips, sp, draft)
+        edl = validate_edl(draft, clips, sp, draft, pc)
     R = to_resolved(video, edl, clips, sp)
+    if pc["calm"]:
+        R.progress_color = None   # the creator's style has no progress bar
     R.notes = notes
     return R
 
@@ -697,10 +736,10 @@ def _round(edl: dict) -> dict:
             "overlays": edl["overlays"]}
 
 
-def _cache_key(video: dict, clips: list, sp: Spine, settings: dict) -> str:
+def _cache_key(video: dict, clips: list, sp: Spine, settings: dict, prof: dict | None = None) -> str:
     """Same clips + same voice + same script → same edit (extra animation versions re-use it)."""
     script = [(b["shot_id"], b["vo_th"], b["overlays"]) for b in video["timeline"]]
     blob = json.dumps({"clips": [(c.id, _short_hash(c.path)) for c in clips], "total": round(sp.total, 2),
                        "phrases": [(round(a, 2), round(b, 2)) for a, b in sp.phrases], "script": script,
-                       "provider": settings.get("provider"), "v": 1}, ensure_ascii=False, sort_keys=True)
+                       "provider": settings.get("provider"), "style": prof, "v": 2}, ensure_ascii=False, sort_keys=True)
     return hashlib.sha1(blob.encode()).hexdigest()[:16]

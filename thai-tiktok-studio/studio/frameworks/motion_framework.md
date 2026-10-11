@@ -2,6 +2,25 @@
 
 **What the editor does.** It renders every element below itself, in code, using CapCut-like timings. The plan only says WHICH element, WHEN, WHERE, and WHAT TEXT. Keep all text inside the safe box: x 60–900, y 150–1400 of 1080x1920. TikTok's UI covers the right rail and the bottom 520 px.
 
+## The creator's own proven style (DEFAULT — use it for most videos)
+Taken from the creator's best-performing posted edit (22 s, 7 shots):
+- **Calm, real-home footage.** Shots held 2.5–6 s with one quick 1–2 s insert between longer shots. Motion comes from the
+  smooth handheld camera moves in the clips. Camera `effect` is "none" (slow_zoom only on product photos). No punch-ins, shakes or flashes.
+- **No subtitles.** Spoken lines are not shown as text.
+- **One small text card at the top (`text_card`), no box: red text with a white outline.**
+  - First `text_card`: a short headline (≤ 2 lines, e.g. "ชั้นเดียว จัดของได้เป็นระเบียบขึ้นเยอะมาก", roughly "one rack, and everything is so much tidier").
+    It runs from beat 1 for about 6–9 s, across beats (`dur` may be longer than the beat).
+  - Second `text_card` until the very end of the video: `text` "" plus 3–5 `items`.
+    - Each item is a short benefit that starts with an emoji, e.g. "🧺 พับผ้าเก็บได้" ("you can store folded clothes"), "📦 วางของใช้ได้" ("you can put everyday things on it").
+    - The last item is who the product is for, e.g. "ใครของเยอะเหมือนเรา น่าจะชอบมาก" ("if you have lots of stuff like me, you'll love it").
+    - This card automatically shows ↓ arrows pointing to the basket, so no cta_basket is needed.
+- **Structure.**
+  - Hook: the product moves toward the lens, and the creator is seen with it.
+  - Then the empty product, then the product in use and full of things, then close details.
+  - It ends on the creator presenting the product in its place.
+- Use 0–1 other graphics per video (for example a discount_badge if a real discount exists). The faster
+  graphics below are for formats that clearly need them (comparisons, reply-to-comment, list videos).
+
 ## Ranked elements (rank = how common they are in viral Thai TikTok Shop videos)
 | rank | overlay `type` | use it for | timing rule | notes |
 |---|---|---|---|---|
@@ -27,6 +46,7 @@
 | 19 | lower_third | product name or model | 2–3 s at first reveal | lower_left |
 | 20 | *(progress_bar)* | retention cue on long videos (40 s+) | whole video | `progress_bar: true` |
 | 21 | vs_split | comparisons: `text` = left label, `sub_text` = right label | the comparison beat | |
+| 0 | text_card | the creator's default: soft top card, headline or emoji list (see above) | headline ~6–9 s from 0; list until the end | `text` headline or `items` (emoji first) |
 | 22 | spec_card | dimensions and specs: `items` like "สูง: 150 ซม." ("height: 150 cm") | 3–5 s | furniture and appliances (specs did well in the dataset) |
 
 ## Density rules
@@ -34,7 +54,7 @@
 - At most **2 overlays at once**, captions excluded. Never cover the product with text.
 - **No sound effects** — the editor never adds any.
 - **Never show a price or money amount in any graphic.** The price is only spoken. On a price beat use keyword_pop with words ("คุ้มมาก!", "ลดแรง") or a discount_badge ("ลด 50%"), plus `punch_shake`.
-- Hook beat: hook_title + punch_in or flash. Last beat: cta_basket.
+- Default (creator's style): text_card headline, then text_card list with ↓ arrows to the end, effects none. Fast formats: hook_title + punch_in, last beat cta_basket.
 - Theme by category:
   - Sale or price: sale_red_yellow
   - Beauty: beauty_pink

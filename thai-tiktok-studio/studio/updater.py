@@ -29,7 +29,8 @@ LATEST_URL = os.environ.get(
     "https://raw.githubusercontent.com/greenlad24/skills/claude/wizardly-thompson-w6jjr8/"
     "thai-tiktok-studio/releases/latest.json")
 APP_PREFIX = "Thai TikTok Studio.app/Contents/Resources/app/"
-CHECK_EVERY = 6 * 3600
+CHECK_EVERY = 30 * 60          # background check interval
+STALE = 10 * 60               # a UI poll re-checks if the last check is older than this
 STATE = {"current": __version__, "latest": "", "ready": "", "error": "", "checked": 0, "notes": ""}
 
 
@@ -98,6 +99,22 @@ def check_and_download() -> dict:
     return STATE
 
 
+_LOCK = threading.Lock()
+
+
+def check_soon() -> None:
+    """Called by the UI's poll: re-check in the background when the last check is stale."""
+    if not enabled() or time.time() - STATE["checked"] < STALE or not _LOCK.acquire(blocking=False):
+        return
+
+    def run():
+        try:
+            check_and_download()
+        finally:
+            _LOCK.release()
+    threading.Thread(target=run, daemon=True).start()
+
+
 def _point_to(target: Path) -> None:
     ptr = target.parent / "current.txt"
     tmp = ptr.with_suffix(".tmp")
@@ -110,9 +127,10 @@ def start() -> None:
         return
 
     def loop():
-        time.sleep(5)
+        time.sleep(3)
         while True:
-            check_and_download()
+            with _LOCK:
+                check_and_download()
             time.sleep(CHECK_EVERY)
     threading.Thread(target=loop, daemon=True).start()
 

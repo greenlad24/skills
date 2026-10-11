@@ -1,6 +1,6 @@
 {
- "version": "1.2.0",
+ "version": "1.3.0",
  "zip_url": "https://raw.githubusercontent.com/greenlad24/skills/claude/wizardly-thompson-w6jjr8/thai-tiktok-studio/releases/ThaiTikTokStudio-mac.zip",
- "sha256": "1eb69828b946b0619f3967f784b204de1d0e4988ac9657672f36eda958456b0b",
- "notes": "1.2.0 — เสียงพากย์ต่อเนื่องไม่ถูกตัด · Claude Opus ดูคลิปของคุณแล้ววางแผนการตัดต่อเอง · ไม่มีซับไตเติล (แอนิเมชันเหมือนเดิม) · ไม่มีภาพสีเทาอีกแล้ว\nNarration plays as one uncut take · Claude Opus watches your clips and plans the edit · no subtitles (animations unchanged) · no more grey placeholders"
+ "sha256": "e0c07b2da46ca8417d966983c094f9921db345900f76720e8ce7c3e136758809",
+ "notes": "1.3.0 — ตัดต่อตามสไตล์คลิปของคุณ (ช็อตนิ่งสบายตา ตัวหนังสือเล็กสีแดงขอบขาวด้านบน ลูกศร ↓ ไปที่ตะกร้า) · อัปโหลดคลิปตัวอย่างใหม่ได้ในตั้งค่า · แจ้งอัปเดตทันทีที่พร้อม\nEdits follow your own posted style (calm shots, small red top text card, ↓ arrows to the basket) · upload a new style reference in Settings · update banner appears as soon as an update is ready"
 }
