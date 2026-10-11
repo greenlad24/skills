@@ -56,8 +56,11 @@ def health():
         ff = media.ffmpeg_exe()
     except RuntimeError:
         ff = ""
+    from . import llm_claude_code
+    exe = llm_claude_code.find_claude(st.get("claude_code_path", ""))
     return jsonify({"version": __version__, "ffmpeg": bool(ff), "tts": tts.available(st.get("tts_voice", "Kanya")),
-                    "home": str(config.HOME), "platform": sys.platform})
+                    "home": str(config.HOME), "platform": sys.platform,
+                    "claude_code": bool(exe), "claude_code_version": llm_claude_code.version(exe) if exe else ""})
 
 
 @app.get("/api/settings")
@@ -68,7 +71,7 @@ def get_settings():
 @app.post("/api/settings")
 def set_settings():
     data = request.get_json(force=True) or {}
-    for k in ("anthropic_api_key", "openai_api_key"):  # masked values from the UI = unchanged
+    for k in ("anthropic_api_key", "openai_api_key", "claude_code_token"):  # masked values = unchanged
         if str(data.get(k, "")).startswith("•"):
             data.pop(k)
     return jsonify(config.public_settings(config.save_settings(data)))

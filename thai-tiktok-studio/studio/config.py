@@ -17,14 +17,18 @@ PROJECTS_DIR = HOME / "projects"
 SETTINGS_PATH = HOME / "settings.json"
 
 DEFAULTS = {
-    # "claude" | "openai" | "manual" (copy/paste into ChatGPT or Claude chat — free)
-    "provider": "claude",
+    # "claude_code" = your Claude subscription via `claude setup-token` (default)
+    # "claude" = Anthropic API key · "openai" = ChatGPT API key · "manual" = free copy/paste into a chat app
+    "provider": "claude_code",
+    "claude_code_token": "",
+    "claude_code_path": "",
     "anthropic_api_key": "",
     "claude_model": "claude-opus-5-5",
     "claude_effort": "high",
     "openai_api_key": "",
     "openai_model": "gpt-5",
     "videos_per_product": 5,
+    "onboarded": False,         # Thai welcome guide shown once
     # Editor
     "voice_source": "mine",     # "mine" = your recorded voice-over · "tts" = macOS Thai voice
     "tts_voice": "Kanya",       # macOS Thai voice (System Settings → Accessibility → Spoken Content)
@@ -72,7 +76,7 @@ def save_settings(update: dict) -> dict:
 def public_settings(data: dict) -> dict:
     """Settings safe to send to the browser (keys masked)."""
     out = dict(data)
-    for k in ("anthropic_api_key", "openai_api_key"):
+    for k in ("anthropic_api_key", "openai_api_key", "claude_code_token"):
         v = out.get(k) or ""
         out[k] = ("•" * 8 + v[-4:]) if v else ""
     return out

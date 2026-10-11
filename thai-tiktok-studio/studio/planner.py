@@ -9,6 +9,9 @@ from .plan_schema import normalize_plan, plan_problems
 
 
 def _provider(name: str):
+    if name == "claude_code":
+        from . import llm_claude_code
+        return llm_claude_code
     if name == "openai":
         from . import llm_openai
         return llm_openai
@@ -41,16 +44,19 @@ def run_planning(job, pid: str, text: str, image_paths: list, notes: str, settin
         return {"manual": True}
 
     mod = _provider(provider)
-    key = settings.get("anthropic_api_key" if provider == "claude" else "openai_api_key")
-    if not key:
-        raise RuntimeError(f"No API key for {provider}. Add it in Settings, or switch to the free copy/paste mode.")
+    key_name = {"claude": "anthropic_api_key", "openai": "openai_api_key", "claude_code": "claude_code_token"}[provider]
+    if not settings.get(key_name):
+        raise RuntimeError("No Claude setup-token yet — in Terminal run  claude setup-token  and paste it in Settings."
+                           if provider == "claude_code" else
+                           f"No API key for {provider}. Add it in Settings, or switch to the free copy/paste mode.")
+    extra = {"workdir": d} if provider == "claude_code" else {}
     try:
-        dossier = mod.research(gathered, settings, log=job.say)
+        dossier = mod.research(gathered, settings, log=job.say, **extra)
         (d / "research.md").write_text(dossier or "", "utf-8")
         job.say("Research done.")
         job.progress = 0.45
         projects.update_meta(pid, status="writing")
-        raw = mod.make_plan(gathered, dossier, settings, log=job.say)
+        raw = mod.make_plan(gathered, dossier, settings, log=job.say, **extra)
     except Exception as e:
         msg = mod.explain_error(e) if hasattr(mod, "explain_error") else str(e)
         projects.update_meta(pid, status="error")

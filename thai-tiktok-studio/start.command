@@ -41,6 +41,21 @@ if [ ! -f "$STAMP" ] || ! cmp -s requirements.txt "$STAMP"; then
   cp requirements.txt "$STAMP"
 fi
 
+# Claude Code powers the "your Claude account" mode (claude setup-token). Install it once if missing.
+if ! command -v claude >/dev/null && [ ! -x "$HOME/.local/bin/claude" ]; then
+  MACOS_MAJOR=$(sw_vers -productVersion 2>/dev/null | cut -d. -f1)
+  if [ "${MACOS_MAJOR:-0}" -lt 13 ]; then
+    echo "Note: Claude Code officially needs macOS 13+. This Mac runs $(sw_vers -productVersion)."
+    echo "      Trying the install anyway — if it fails, use the free copy/paste mode or an API key."
+  fi
+  echo "Installing Claude Code (for using your Claude account)…"
+  curl -fsSL https://claude.ai/install.sh | bash || echo "Claude Code install failed — the other AI modes still work."
+fi
+if command -v claude >/dev/null || [ -x "$HOME/.local/bin/claude" ]; then
+  echo "To connect your Claude account: open a new Terminal and run   claude setup-token"
+  echo "then paste the token into the app (⚙ Settings)."
+fi
+
 if command -v say >/dev/null && ! say -v '?' | grep -q '^Kanya '; then
   echo ""
   echo "Optional: to use the computer Thai voice instead of your own, install 'Kanya':"

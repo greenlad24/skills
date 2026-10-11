@@ -23,13 +23,16 @@ async function boot() {
   try {
     const h = await api("/api/health");
     $("#ver").textContent = "v" + h.version;
-    $("#health").innerHTML = h.ffmpeg ? '<span class="ok">● editor ready</span>' : '<span class="bad">● ffmpeg missing</span>';
+    $("#health").innerHTML = (h.ffmpeg ? '<span class="ok">● editor ready</span>' : '<span class="bad">● ffmpeg missing</span>')
+      + (h.claude_code ? ' · <span class="ok">Claude Code ✓</span>' : ' · <span class="muted" title="Needed only for the \'Your Claude account\' mode">Claude Code ✗</span>');
   } catch (e) { $("#health").textContent = "server offline"; }
   state.settings = await api("/api/settings");
   await loadProjects();
   const pid = location.hash.slice(1);
   if (pid) openProject(decodeURIComponent(pid)); else showNew();
+  if (!state.settings.onboarded) showOnboarding(0);
 }
+$("#btnHelp").onclick = () => showOnboarding(0);
 $("#btnNew").onclick = () => { history.replaceState(null, "", "#"); showNew(); };
 $("#btnSettings").onclick = showSettings;
 
@@ -44,13 +47,17 @@ function showNew() {
   state.pid = null; state.project = null; state.newFiles = [];
   $("#main").innerHTML = ""; $("#main").appendChild($("#tplNew").content.cloneNode(true));
   const prov = state.settings.provider;
-  $("#providerNote").innerHTML = prov === "manual" ? "Mode: <b>free copy/paste</b> into ChatGPT or Claude chat"
+  $("#providerNote").innerHTML = prov === "claude_code" ? "AI: <b>your Claude account</b> (setup-token) · change in Settings"
+    : prov === "manual" ? "Mode: <b>free copy/paste</b> into ChatGPT or Claude chat"
     : `AI: <b>${prov === "openai" ? "ChatGPT (" + esc(state.settings.openai_model) + ")" : "Claude (" + esc(state.settings.claude_model) + ")"}</b> · change in Settings`;
   const drop = $("#newDrop"), input = $("#newFiles");
   drop.onclick = () => input.click();
   input.onchange = () => addNewFiles([...input.files]);
   dnd(drop, (files) => addNewFiles(files.filter((f) => f.type.startsWith("image/"))));
   $("#btnGenerate").onclick = generate;
+  $("#main").insertAdjacentHTML("afterbegin", `<div class="coach"><span class="step">ขั้นที่ 1</span>
+    <span class="what">พิมพ์ชื่อสินค้า หรือวางลิงก์ หรือวางรูปหน้าจอสินค้า (กด ⌘V ได้เลย) แล้วกด <b>Generate videos</b> — ระบบจะค้นข้อมูลและเขียนสคริปต์ให้ 5 แบบ</span>
+    <button class="ghost" onclick="showOnboarding(0)">ดูวิธีใช้</button></div>`);
   loadProjects();
 }
 function addNewFiles(files) {
@@ -107,6 +114,7 @@ function renderProject() {
         </div></div>
       <div id="jobBox">${jobs.map(jobHtml).join("")}</div>
     </section>
+    ${coachHtml(p)}
     <div class="tabs"><button class="tab ${state.tab === "plan" ? "active" : ""}" data-tab="plan">1 · Scripts & shot lists</button>
       <button class="tab ${state.tab === "edit" ? "active" : ""}" data-tab="edit">2 · Auto-edit videos</button></div>
     <div id="tabBody"></div>`;
@@ -114,6 +122,8 @@ function renderProject() {
   $("#lnkFolder").onclick = (e) => { e.preventDefault(); api(P() + "/reveal", { method: "POST", json: {} }).catch((er) => toast(er.message, 6000)); };
   $("#btnReplan").onclick = async () => { if (!confirm("Run research + script writing again? (Your edits to this plan will be replaced.)")) return; const r = await api(P() + "/replan", { method: "POST" }); pollJob(r.job.id); };
   $("#btnDelete").onclick = async () => { if (!confirm("Delete this product and all its files?")) return; await api(P(), { method: "DELETE" }); showNew(); };
+  const cb = $("#coachBtn");
+  if (cb) cb.onclick = () => coachAction(cb.dataset.act);
   if (state.tab === "plan") renderPlanTab(); else renderEditTab();
 }
 
@@ -356,7 +366,9 @@ function showSettings() {
   const s = state.settings;
   modal(`<h2>Settings</h2>
     <label>AI for research + scripts (Tool 1 only — the editor never uses AI)</label>
-    <select id="sProvider"><option value="claude">Claude (API key)</option><option value="openai">ChatGPT (API key)</option><option value="manual">Free: copy/paste into ChatGPT or Claude chat</option></select>
+    <select id="sProvider"><option value="claude_code">Your Claude account (claude setup-token) — recommended</option><option value="claude">Claude (API key)</option><option value="openai">ChatGPT (API key)</option><option value="manual">Free: copy/paste into ChatGPT or Claude chat</option></select>
+    <label>Claude setup-token <span class="muted">(Terminal: <code>claude setup-token</code>)</span></label>
+    <input id="sCct" value="${esc(s.claude_code_token)}" placeholder="sk-ant-oat01-...">
     <div class="grid2"><div><label>Claude API key</label><input id="sAk" value="${esc(s.anthropic_api_key)}" placeholder="sk-ant-..."></div>
       <div><label>Claude model</label><input id="sCm" value="${esc(s.claude_model)}"></div></div>
     <div class="grid2"><div><label>OpenAI API key</label><input id="sOk" value="${esc(s.openai_api_key)}" placeholder="sk-..."></div>
@@ -385,7 +397,7 @@ function showSettings() {
   };
   $("#sSave").onclick = async () => {
     state.settings = await api("/api/settings", { method: "POST", json: {
-      provider: $("#sProvider").value, anthropic_api_key: $("#sAk").value.trim(), claude_model: $("#sCm").value.trim(),
+      provider: $("#sProvider").value, claude_code_token: $("#sCct").value.trim(), anthropic_api_key: $("#sAk").value.trim(), claude_model: $("#sCm").value.trim(),
       openai_api_key: $("#sOk").value.trim(), openai_model: $("#sOm").value.trim(), videos_per_product: +$("#sN").value || 5,
       claude_effort: $("#sEff").value, voice_source: $("#sVsrc").value, tts_voice: $("#sVoice").value.trim(), tts_rate: +$("#sRate").value || 185,
       music_volume: +$("#sMv").value || 0.14, render_crf: +$("#sCrf").value || 20 } });
@@ -394,3 +406,122 @@ function showSettings() {
 }
 
 boot();
+
+
+/* ---------------- Thai onboarding (shown once; ❓ วิธีใช้ reopens it) ---------------- */
+const OB_STEPS = [
+  () => `<div class="big">👋</div><h2>ยินดีต้อนรับสู่ Thai TikTok Studio</h2>
+    <p>โปรแกรมนี้ช่วยให้คุณทำคลิปขายของบน TikTok ได้ง่ายมาก มี <b>2 เครื่องมือ</b>:</p>
+    <ol><li><b>ผู้ช่วยเขียนสคริปต์</b> — ใส่ชื่อสินค้า ได้สคริปต์ไวรัล 5 แบบ พร้อมรายการช็อตที่ต้องถ่าย</li>
+      <li><b>โปรแกรมตัดต่ออัตโนมัติ</b> — ลากคลิปกับเสียงพากย์ใส่ ได้คลิปพร้อมโพสต์ มีซับไตเติลและแอนิเมชันให้เอง</li></ol>
+    <div class="flow"><span>📝 ใส่ชื่อสินค้า</span><b>→</b><span>📜 ได้ 5 สคริปต์</span><b>→</b><span>🎬 ถ่ายคลิป</span><b>→</b><span>🎙 อัดเสียง</span><b>→</b><span>📂 ลากไฟล์ใส่</span><b>→</b><span>✅ ได้คลิป</span></div>
+    <div class="tip">ใช้เวลาอ่านคู่มือนี้แค่ 1 นาที</div>`,
+  () => {
+    const p = state.settings.provider;
+    const c = (v, t, d) => `<label class="choice ${p === v ? "on" : ""}" data-prov="${v}"><b>${t}</b><br><span class="muted">${d}</span></label>`;
+    return `<div class="big">⚙️</div><h2>ตั้งค่า AI (ทำครั้งเดียว)</h2>
+    <p>เลือกวิธีให้ AI เขียนสคริปต์:</p>
+    ${c("claude_code", "🔑 บัญชี Claude ของคุณ (แนะนำ)", "ใช้แพ็กเกจ Claude ที่คุณมีอยู่ (Pro/Max) ไม่เสียเงินเพิ่ม — เปิด Terminal พิมพ์ <code>claude setup-token</code> แล้ววางโทเค็นด้านล่าง")}
+    ${c("manual", "🆓 ฟรี — คัดลอกไปวางใน ChatGPT / Claude เอง", "ไม่ต้องมีคีย์ เหมาะสำหรับเริ่มต้น โปรแกรมจะเตรียมข้อความให้ คุณแค่คัดลอก-วาง")}
+    ${c("claude", "⚡ Claude (อัตโนมัติ)", "ใส่ API key ครั้งเดียว ระบบทำทุกอย่างเอง ค่าใช้จ่ายประมาณไม่กี่บาทถึง ~30 บาทต่อสินค้า")}
+    ${c("openai", "⚡ ChatGPT (อัตโนมัติ)", "ใส่ OpenAI API key ครั้งเดียว ระบบทำทุกอย่างเอง")}
+    <div id="obKeyBox" class="${p === "manual" ? "hidden" : ""}"><label>โทเค็น / API key</label><input id="obKey" placeholder="วางโทเค็นหรือ API key ที่นี่ (เก็บไว้ในเครื่องนี้เท่านั้น)"></div>
+    <div class="tip">เปลี่ยนได้ทุกเมื่อที่ปุ่ม ⚙ Settings มุมขวาบน</div>`;
+  },
+  () => `<div class="big">📜</div><h2>เครื่องมือ 1: สร้างสคริปต์</h2>
+    <ol><li>กด <b>＋ New product</b> (ซ้ายบน)</li>
+      <li>พิมพ์ชื่อสินค้า หรือวางลิงก์ TikTok Shop / Shopee / Lazada หรือวางรูปหน้าจอ</li>
+      <li>กด <b>Generate videos</b> แล้วรอ 2–6 นาที</li></ol>
+    <p>คุณจะได้: ข้อมูลสินค้า · <b>สคริปต์ 5 แบบ</b> เรียงจากโอกาสไวรัลมากสุด · รายการช็อตที่ต้องถ่าย · ปุ่ม <b>🖨 Filming pack</b> สำหรับพิมพ์ไปให้คนถ่าย</p>
+    <div class="tip">💡 สคริปต์จะไม่บอกราคาขายจริง — พูดได้แค่ "ที่ห้างราคา…" แล้วตามด้วย "แต่เจอตัวนี้ในราคาพิเศษ" และบนจอจะไม่มีตัวเลขราคาเลย</div>`,
+  () => `<div class="big">🎬</div><h2>ถ่ายคลิป</h2>
+    <ul><li>ถ่าย <b>แนวตั้ง</b> 9:16</li>
+      <li>ถ่าย <b>ตามลำดับ</b> ในรายการช็อต (V1-S01, V1-S02 …)</li>
+      <li><b>ไม่ต้องตั้งชื่อไฟล์</b> — ระบบจับคู่ให้เองจากเวลาที่ถ่าย</li>
+      <li>ถ่ายเผื่อหัว-ท้ายช็อตละ 2–3 วินาที</li>
+      <li>ถ่ายซ้ำได้ ระบบจะใช้ <b>เทคสุดท้าย</b></li>
+      <li>iPhone: ปิด HDR (ตั้งค่า → กล้อง → บันทึกวิดีโอ) สีจะไม่ซีด</li></ul>`,
+  () => `<div class="big">🎙</div><h2>อัดเสียงพากย์ด้วยเสียงของคุณ</h2>
+    <ul><li>เปิด Filming pack ดูหัวข้อ <b>🎙 อัดเสียงพากย์</b> ของแต่ละคลิป</li>
+      <li>อ่าน <b>ทุกบรรทัดต่อกันในเทคเดียว</b> เว้นจังหวะสั้นๆ (ครึ่งวินาที) ระหว่างบรรทัด</li>
+      <li>อัดเป็น <b>วิดีโอหรือไฟล์เสียง</b> ก็ได้ — ระบบดึงเฉพาะเสียงมาใช้</li>
+      <li>อัดในห้องเงียบ ถือมือถือห่างปากประมาณ 1 คืบ</li></ul>
+    <div class="tip">ระบบจะตัดเสียงเป็นประโยคและวางให้ตรงกับภาพและซับไตเติลอัตโนมัติ</div>`,
+  () => `<div class="big">✂️</div><h2>เครื่องมือ 2: ตัดต่ออัตโนมัติ</h2>
+    <ol><li>เปิดสินค้า แล้วกดแท็บ <b>2 · Auto-edit videos</b></li>
+      <li><b>ลากคลิปทั้งหมด</b> ใส่ช่องที่ 1 (ใส่เพลงประกอบด้วยก็ได้)</li>
+      <li><b>ลากเสียงพากย์</b> ใส่ช่อง 🎙 แยกต่างหาก</li>
+      <li>ตรวจการจับคู่ (เปลี่ยนได้ถ้าไม่ตรง)</li>
+      <li>เลือกสไตล์แอนิเมชัน แล้วกด <b>🎬 Render</b></li>
+      <li>ดาวน์โหลด MP4 แล้ว <b>โพสต์ได้เลย</b></li></ol>
+    <div class="tip">อยากทดสอบหลายแบบ? เลือก "Versions per video" = 2–5 จะได้หลายเวอร์ชันแอนิเมชันไว้ทำ A/B test</div>`,
+  () => `<div class="big">🎉</div><h2>พร้อมแล้ว!</h2>
+    <p>ทุกหน้าจะมี <b>แถบ "ขั้นต่อไป"</b> ด้านบน บอกว่าต้องทำอะไรต่อ พร้อมปุ่มให้กด</p>
+    <p>เปิดคู่มือนี้อีกครั้งได้ที่ปุ่ม <b>❓ วิธีใช้</b> มุมขวาบน</p>`,
+];
+let obStep = 0;
+function showOnboarding(i) {
+  obStep = i;
+  const last = OB_STEPS.length - 1;
+  modal(`<div class="ob">${OB_STEPS[i]()}
+    <div class="dots">${OB_STEPS.map((_, k) => `<i class="${k === i ? "on" : ""}"></i>`).join("")}</div>
+    <div class="row" style="justify-content:space-between">
+      <button class="ghost" id="obSkip">${i === last ? "" : "ข้าม"}</button>
+      <div class="row" style="margin:0">${i > 0 ? '<button id="obBack">← ย้อนกลับ</button>' : ""}
+        <button class="primary" id="obNext">${i === last ? "เริ่มสินค้าแรก 🚀" : "ถัดไป →"}</button></div></div></div>`);
+  $("#modal .modal-box").style.width = "min(640px,94vw)";
+  document.querySelectorAll("[data-prov]").forEach((el) => (el.onclick = () => {
+    document.querySelectorAll("[data-prov]").forEach((x) => x.classList.remove("on"));
+    el.classList.add("on");
+    $("#obKeyBox").classList.toggle("hidden", el.dataset.prov === "manual");
+  }));
+  const finish = async () => {
+    state.settings = await api("/api/settings", { method: "POST", json: { onboarded: true } });
+    closeModal();
+    if (!state.pid) showNew();
+  };
+  $("#obSkip").onclick = finish;
+  if ($("#obBack")) $("#obBack").onclick = () => showOnboarding(i - 1);
+  $("#obNext").onclick = async () => {
+    const sel = document.querySelector("[data-prov].on");
+    if (sel) {  // AI setup step
+      const upd = { provider: sel.dataset.prov };
+      const key = ($("#obKey")?.value || "").trim();
+      const field = { openai: "openai_api_key", claude: "anthropic_api_key", claude_code: "claude_code_token" }[sel.dataset.prov];
+      if (key && field) upd[field] = key;
+      if (field && !key && !state.settings[field]) return toast("กรุณาวางโทเค็น/API key หรือเลือกแบบฟรี");
+      state.settings = await api("/api/settings", { method: "POST", json: upd });
+    }
+    if (i === last) return finish();
+    showOnboarding(i + 1);
+  };
+}
+
+/* ---------------- "next step" coach (Thai) ---------------- */
+function nextStep(p) {
+  const running = (p.jobs || []).find((j) => j.status === "running");
+  const plan = p.plan, a = p.assign || {};
+  const steps = ["สคริปต์", "ถ่ายคลิป", "อัดเสียง", "อัปโหลด", "เรนเดอร์", "โพสต์"];
+  if (running && running.kind === "plan") return { at: 0, text: "⏳ กำลังค้นข้อมูลและเขียนสคริปต์… ใช้เวลา 2–6 นาที รอได้เลย ไม่ต้องทำอะไร", steps };
+  if (running && running.kind === "render") return { at: 4, text: "⏳ กำลังตัดต่อ… ดูความคืบหน้าด้านบน เสร็จแล้วคลิปจะขึ้นในแท็บ 2", steps };
+  if (!plan && p.meta.status === "waiting_for_paste") return { at: 0, text: "กด <b>Copy prompt</b> → วางใน ChatGPT หรือ Claude → คัดลอกคำตอบทั้งหมดกลับมาวางในช่องด้านล่าง แล้วกด <b>Import plan</b>", steps };
+  if (!plan) return { at: 0, text: "ยังไม่มีสคริปต์ — กด <b>↻ Regenerate</b> เพื่อลองใหม่", steps, act: "replan", btn: "↻ ลองใหม่" };
+  const shots = plan.videos.flatMap((v) => v.shots.map((s) => s.id));
+  const have = shots.filter((id) => a.shots && a.shots[id]).length;
+  const needVo = plan.videos.filter((v) => v.audio_mode === "voiceover" && !(a.narration || {})[v.id] && !(a.vo || {})[v.id]);
+  if (!p.files.length) return { at: 1, text: "อ่านสคริปต์ด้านล่าง แล้วเปิด <b>🖨 Filming pack</b> ถ่ายคลิปตามรายการ (ไม่ต้องตั้งชื่อไฟล์) เสร็จแล้วไปแท็บ 2 ลากไฟล์ใส่", steps, act: "pack", btn: "🖨 เปิด Filming pack" };
+  if (needVo.length) return { at: 2, text: `อัดเสียงพากย์สำหรับ <b>${needVo.map((v) => v.id).join(", ")}</b> (อ่านทุกบรรทัดในเทคเดียว) แล้วลากใส่ช่อง 🎙 ในแท็บ 2`, steps, act: "edit", btn: "ไปแท็บ 2" };
+  if (have < shots.length) return { at: 3, text: `ยังขาดคลิป <b>${shots.length - have}</b> ช็อต — ถ่ายเพิ่มแล้วลากใส่ หรือกดเรนเดอร์ดูก่อนก็ได้ (ช็อตที่ขาดจะเป็นการ์ดสีเทา)`, steps, act: "edit", btn: "ไปแท็บ 2" };
+  if (!p.renders.length) return { at: 4, text: "ทุกอย่างพร้อม! เลือกสไตล์แอนิเมชันแล้วกด <b>🎬 Render selected</b>", steps, act: "edit", btn: "ไปเรนเดอร์" };
+  return { at: 5, text: "🎉 คลิปเสร็จแล้ว! ดาวน์โหลดในแท็บ 2 แล้วโพสต์ได้เลย — อยากได้แบบอื่นกด 🎲 New variation แล้วเรนเดอร์ใหม่", steps, act: "edit", btn: "ดูคลิป" };
+}
+function coachHtml(p) {
+  const n = nextStep(p);
+  return `<div class="track">${n.steps.map((s, k) => `<span class="${k < n.at ? "done" : k === n.at ? "now" : ""}">${k < n.at ? "✓ " : ""}${s}</span>`).join("")}</div>
+    <div class="coach"><span class="step">ขั้นต่อไป</span><span class="what">${n.text}</span>${n.act ? `<button class="primary" id="coachBtn" data-act="${n.act}">${n.btn}</button>` : ""}</div>`;
+}
+function coachAction(act) {
+  if (act === "pack") window.open(F("filming_pack.html"), "_blank");
+  else if (act === "replan") $("#btnReplan").click();
+  else if (act === "edit") { state.tab = "edit"; renderProject(); window.scrollTo(0, document.querySelector(".tabs").offsetTop - 70); }
+}
