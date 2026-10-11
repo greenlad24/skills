@@ -12,9 +12,10 @@ say_note() { osascript -e "display notification \"$1\" with title \"Thai TikTok 
 say_alert() { osascript -e "display dialog \"$1\" with title \"Thai TikTok Studio\" buttons {\"OK\"} default button 1 with icon caution" >/dev/null 2>&1; }
 
 find_python() {
-  for c in python3.13 python3.12 python3.11 python3.10 \
-           /Library/Frameworks/Python.framework/Versions/3.1[0-9]/bin/python3 \
-           /usr/local/bin/python3 /opt/homebrew/bin/python3 /usr/bin/python3; do
+  CANDS="python3.13 python3.12 python3.11 python3.10 /Library/Frameworks/Python.framework/Versions/3.1[0-9]/bin/python3 /usr/local/bin/python3 /opt/homebrew/bin/python3"
+  # Apple's /usr/bin/python3 is a stub that pops up "install developer tools" — only try it if those exist
+  if xcode-select -p >/dev/null 2>&1; then CANDS="$CANDS /usr/bin/python3"; fi
+  for c in $CANDS; do
     p=$(command -v "$c" 2>/dev/null) || continue
     if "$p" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' 2>/dev/null; then
       echo "$p"; return 0
@@ -47,11 +48,28 @@ fi
 
 REQ="$APP_SRC/requirements-mac.txt"
 if ! cmp -s "$REQ" "$SUPPORT/.deps_stamp"; then
-  say_note "กำลังติดตั้งครั้งแรก… ใช้เวลาไม่กี่นาที (First-time setup, a few minutes)"
-  "$VENV/bin/python" -m pip install -q --upgrade pip
-  if "$VENV/bin/python" -m pip install -q -r "$REQ"; then
+  # One setup at a time (a second click while the icon bounces must not start another install)
+  LOCK="$SUPPORT/.setup.lock"
+  if ! mkdir "$LOCK" 2>/dev/null; then
+    if [ -n "$(find "$LOCK" -maxdepth 0 -mmin -20 2>/dev/null)" ]; then
+      say_alert "แอปกำลังติดตั้งครั้งแรกอยู่ กรุณารอสักครู่ (ประมาณ 3–5 นาที)\n\nThe app is still setting up — please wait a few minutes."
+      exit 0
+    fi
+    rm -rf "$LOCK"; mkdir "$LOCK"
+  fi
+  trap 'rm -rf "$LOCK"' EXIT
+  # Visible "setting up" window (closes itself when setup finishes)
+  osascript -e 'display dialog "⏳ กำลังเตรียมแอปครั้งแรก… ประมาณ 3–5 นาที (ต้องต่ออินเทอร์เน็ต)\nหน้าต่างนี้จะปิดเองเมื่อเสร็จ ไม่ต้องกดอะไร\n\nSetting up for the first time — about 3–5 minutes (internet needed).\nThis window closes by itself when it is ready." with title "Thai TikTok Studio" buttons {"OK"} default button 1 giving up after 1200' >/dev/null 2>&1 &
+  DIALOG_PID=$!
+  echo "first-run setup: installing components…"
+  "$VENV/bin/python" -m pip install --upgrade pip
+  if "$VENV/bin/python" -m pip install --prefer-binary -r "$REQ"; then
     cp "$REQ" "$SUPPORT/.deps_stamp"
+    kill "$DIALOG_PID" 2>/dev/null
+    rm -rf "$LOCK"; trap - EXIT
+    echo "first-run setup: done"
   else
+    kill "$DIALOG_PID" 2>/dev/null
     say_alert "ติดตั้งไม่สำเร็จ — ตรวจสอบอินเทอร์เน็ตแล้วเปิดแอปอีกครั้ง\n\nInstall failed — check the internet and open the app again.\nLog: ~/Library/Logs/ThaiTikTokStudio.log"
     exit 1
   fi
