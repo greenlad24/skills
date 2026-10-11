@@ -44,7 +44,7 @@ def sample_plan() -> dict:
                   ov("arrow", at=0.5, dur=1.5, position="target", target_x=0.62, target_y=0.55)],
                  [{"type": "tick", "at": 0.2}], effect="flash", role="demo"),
             beat("V1-S03", 2.6, "ราคาเหลือแค่ 2,990", [],
-                 [ov("price_tag", "2,990", 0, 2.6, sub_text="5,990"), ov("circle_highlight", at=0.2, dur=1.6, position="target", target_x=0.35, target_y=0.4)],
+                 [ov("keyword_pop", "คุ้มมาก!", 0, 2.6), ov("circle_highlight", at=0.2, dur=1.6, position="target", target_x=0.35, target_y=0.4)],
                  [{"type": "cash", "at": 0}], effect="punch_shake", role="price"),
             beat("V1-S04", 2.4, "", [], [ov("stars_rating", "4.9", 0, 2.4, sub_text="ขายแล้ว 10k+"), ov("discount_badge", "ลด 50%", 0.3, 2)],
                  [{"type": "sparkle", "at": 0}], effect="slow_zoom", role="proof"),
@@ -91,3 +91,38 @@ def make_footage(d: Path) -> dict:
                     str(d / "product_1.jpg")], check=True)
     subprocess.run([ff, "-y", "-v", "error", "-f", "lavfi", "-i", "sine=f=330:d=20", str(d / "music_track.mp3")], check=True)
     return {"dir": d}
+
+
+def make_unnamed_footage(d: Path) -> dict:
+    """Camera-style names whose name order ≠ recording order, an extra take, a photo,
+    a voice recording and a song. Returns the expected shot → file mapping."""
+    from PIL import Image
+    d.mkdir(parents=True, exist_ok=True)
+    ff = ffmpeg_exe()
+    talk = "if(between(t,0.3,1.6)+between(t,2.0,3.4),0.5*sin(2*PI*220*t),0)"
+    clips = [  # name, minute recorded, talking?
+        ("IMG_0105.MOV", 0, False), ("IMG_0103.MOV", 1, False), ("IMG_0110.MOV", 2, False),
+        ("IMG_0111.MOV", 3, False), ("IMG_0120.MOV", 10, True), ("IMG_0121.MOV", 11, True),
+        ("IMG_0122.MOV", 12, False),
+    ]
+    for name, minute, talking in clips:
+        ct = f"2026-03-01T10:{minute:02d}:00Z"
+        audio = (["-f", "lavfi", "-i", f"aevalsrc='{talk}':s=48000:d=4"] if talking
+                 else ["-f", "lavfi", "-i", "anoisesrc=a=0.002:d=4"])
+        subprocess.run([ff, "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=540x960:r=30:d=4", *audio,
+                        "-shortest", "-metadata", f"creation_time={ct}", "-pix_fmt", "yuv420p", "-c:v", "libx264",
+                        "-preset", "ultrafast", "-c:a", "aac", str(d / name)], check=True)
+    img = Image.new("RGB", (600, 600), (255, 140, 0))
+    exif = Image.Exif()
+    exif[306] = "2026:03:01 10:13:00"
+    img.save(d / "IMG_0099.JPG", exif=exif)   # lowest name, but recorded last
+    vo = "if(between(t,0.2,1.5)+between(t,2.0,3.3)+between(t,3.9,5.0),0.5*sin(2*PI*180*t),0)"
+    subprocess.run([ff, "-y", "-v", "error", "-f", "lavfi", "-i", f"aevalsrc='{vo}':s=48000:d=5.5",
+                    str(d / "New Recording 3.m4a")], check=True)
+    subprocess.run([ff, "-y", "-v", "error", "-f", "lavfi", "-i", "sine=f=330:d=20", "-af", "volume=0.5",
+                    str(d / "song.mp3")], check=True)
+    expected = {"V1-S01": "IMG_0105.MOV", "V1-S02": "IMG_0103.MOV", "V1-S03": "IMG_0110.MOV",
+                "V1-S04": "IMG_0111.MOV", "V2-S01": "IMG_0121.MOV", "V2-S02": "IMG_0122.MOV",
+                "V2-S03": "IMG_0099.JPG"}
+    return {"shots": expected, "vo": {"V1": "New Recording 3.m4a"}, "music": ["song.mp3"],
+            "unmatched": ["IMG_0120.MOV"]}

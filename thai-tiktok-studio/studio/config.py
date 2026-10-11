@@ -26,6 +26,7 @@ DEFAULTS = {
     "openai_model": "gpt-5",
     "videos_per_product": 5,
     # Editor
+    "voice_source": "mine",     # "mine" = your recorded voice-over · "tts" = macOS Thai voice
     "tts_voice": "Kanya",       # macOS Thai voice (System Settings → Accessibility → Spoken Content)
     "tts_rate": 185,            # words-per-minute for `say`
     "render_preset": "veryfast",

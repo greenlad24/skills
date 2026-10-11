@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -147,6 +148,7 @@ def get_project(pid):
         "research_md": (d / "research.md").read_text("utf-8") if (d / "research.md").exists() else "",
         "manual_prompt": (d / "manual_prompt.txt").read_text("utf-8") if (d / "manual_prompt.txt").exists() else "",
         "files": service.file_infos(pid),
+        "narration": service.file_infos(pid, "narration"),
         "assign": service.refresh_assign(pid, plan) if plan else service.load_assign(pid),
         "renders": service.list_renders(pid),
         "product_images": [p.name for p in sorted((d / "product_images").glob("*"))],
@@ -190,12 +192,20 @@ def save_plan(pid):
 
 @app.post("/api/projects/<pid>/upload")
 def upload(pid):
-    d = projects.pdir(pid) / "footage"
+    sub = "narration" if request.form.get("kind") == "narration" else "footage"
+    d = projects.pdir(pid) / sub
+    d.mkdir(exist_ok=True)
+    try:  # original "last modified" times from the browser (uploads otherwise get "now")
+        mtimes = json.loads(request.form.get("mtimes") or "[]")
+    except ValueError:
+        mtimes = []
     saved = []
-    for f in request.files.getlist("files"):
+    for i, f in enumerate(request.files.getlist("files")):
         if f and f.filename:
             p = _unique(d, _safe_name(f.filename))
             f.save(p)
+            if i < len(mtimes) and isinstance(mtimes[i], (int, float)) and mtimes[i] > 0:
+                os.utime(p, (mtimes[i] / 1000, mtimes[i] / 1000))
             saved.append(p.name)
     plan = projects.load_json(projects.pdir(pid) / "plan.json")
     assign = service.refresh_assign(pid, plan) if plan else {}
@@ -204,7 +214,8 @@ def upload(pid):
 
 @app.delete("/api/projects/<pid>/files/<name>")
 def delete_file(pid, name):
-    p = projects.pdir(pid) / "footage" / _safe_name(name)
+    sub = "narration" if request.args.get("kind") == "narration" else "footage"
+    p = projects.pdir(pid) / sub / _safe_name(name)
     if p.exists():
         p.unlink()
     return jsonify({"ok": True})
@@ -214,7 +225,9 @@ def delete_file(pid, name):
 def set_assign(pid):
     data = request.get_json(force=True) or {}
     names = {i["name"] for i in service.file_infos(pid)}
+    nar_names = {i["name"] for i in service.file_infos(pid, "narration")}
     assign = {
+        "narration": {k: v for k, v in (data.get("narration") or {}).items() if v in nar_names},
         "shots": {k: v for k, v in (data.get("shots") or {}).items() if v in names},
         "vo": {k: v for k, v in (data.get("vo") or {}).items() if v in names},
         "music": [m for m in (data.get("music") or []) if m in names],
@@ -230,7 +243,7 @@ def render_videos(pid):
     if running:
         return jsonify({"error": "A render is already running for this product."}), 409
     job = jobs.start("render", pid, service.render_videos, pid, data.get("videos") or [], config.load_settings(),
-                     bool(data.get("draft")))
+                     bool(data.get("draft")), int(data.get("versions") or 1))
     return jsonify({"job": job.to_dict()})
 
 
@@ -246,7 +259,8 @@ def job_status(jid):
 def reveal(pid):
     d = projects.pdir(pid)
     sub = (request.get_json(silent=True) or {}).get("sub", "")
-    target = d / sub if sub in ("footage", "renders") else d
+    target = d / sub if sub in ("footage", "narration", "renders") else d
+    target.mkdir(exist_ok=True)
     opener = "open" if sys.platform == "darwin" else "xdg-open"
     try:
         subprocess.Popen([opener, str(target)])

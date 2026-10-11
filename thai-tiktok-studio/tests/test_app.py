@@ -66,11 +66,25 @@ def test_manual_flow_upload_and_render(client):
     up = c.post(f"/api/projects/{pid}/upload", data={"files": files}, content_type="multipart/form-data").get_json()
     assert up["assign"]["shots"]["V1-S01"] == "V1-S01.mp4"
 
-    r = c.post(f"/api/projects/{pid}/render", json={"videos": ["V1"], "draft": True}).get_json()
+    nar = tmp / "nar"
+    nar.mkdir()
+    import subprocess
+    from studio.editor.media import ffmpeg_exe
+    subprocess.run([ffmpeg_exe(), "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=320x568:r=30:d=4",
+                    "-f", "lavfi", "-i", "aevalsrc='if(between(t,0.3,1.5)+between(t,2,3.5),0.4*sin(2*PI*190*t),0)':s=48000:d=4",
+                    "-shortest", "-pix_fmt", "yuv420p", "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac",
+                    str(nar / "narration.mov")], check=True)
+    up = c.post(f"/api/projects/{pid}/upload", data={"kind": "narration", "files": [(open(nar / "narration.mov", "rb"), "narration.mov")]},
+                content_type="multipart/form-data").get_json()
+    assert up["assign"]["narration"] == {"V1": "narration.mov"}
+
+    r = c.post(f"/api/projects/{pid}/render", json={"videos": ["V1"], "draft": True, "versions": 2}).get_json()
     j = wait_job(c, r["job"]["id"])
     assert j["status"] == "done", j["log"]
+    assert any("Using your voice-over" in line for line in j["log"])
     p = c.get(f"/api/projects/{pid}").get_json()
-    assert p["renders"] and p["renders"][0]["name"].startswith("V1_draft")
+    names = sorted(x["name"] for x in p["renders"])
+    assert len(names) == 2 and names[0].startswith("V1_bouncy_draft") and names[1].startswith("V1_punchy_draft")
 
     plan = p["plan"]
     plan["videos"][0]["timeline"][0]["vo_th"] = "แก้บทแล้ว"

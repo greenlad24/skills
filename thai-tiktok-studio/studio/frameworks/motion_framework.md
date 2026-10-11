@@ -10,7 +10,6 @@
 | 3 | *(effect: punch_in)* | emphasis on key words and cuts | about every 2–4 s | use `punch_in` / `punch_shake` on price or shock beats |
 | 4 | keyword_pop | a single shock word or phrase: "ถูกมาก!!" ("so cheap!!"), "นุ่มเด้ง" ("soft and bouncy"), "ปัง" ("wow") | 0.8–1.5 s | center or upper; pair with `boom` or `pop` sfx |
 | 5 | cta_basket | the call to action pointing at the yellow basket (bottom-left) | final 2.5–4 s; optionally a 2 s flash mid-video | text like "กดตะกร้าเลย" ("tap the basket"); pair with `ding`/`cash` |
-| 6 | price_tag | price reveal: `text` = new price digits, `sub_text` = old price digits | 2–4 s when the price is spoken | stamp animation; pair with `cash` + `punch_shake` |
 | 6 | discount_badge | "ลด 50%" ("50% off"), "1 แถม 1" ("buy 1 get 1"), "ส่งฟรี" ("free shipping") starburst | 2–3 s | upper right; only if true |
 | 7 | emoji_sticker | emotion: 😱🔥💯✨👍❤️ | 0.8–1.5 s | near the face or product, using the corner positions |
 | 8 | arrow / circle_highlight | point at a product detail (`target_x`, `target_y` 0–1) | 1–2 s | `position: target` |
@@ -34,13 +33,20 @@
 - Something new on screen every **1.5–3 s**: a cut, punch-in, sticker or text.
 - At most **2 overlays at once**, captions excluded. Never cover the product with text.
 - About **1 sfx every 2–3 s**, synced to overlay entrances (`at` equal to the overlay's `at`).
-- Hook beat: hook_title + punch_in or flash + `whoosh`/`ding`. Price beat: price_tag or discount_badge + `cash` + `punch_shake`. Last beat: cta_basket + `ding`.
+- **Never show a price or money amount in any graphic.** The price is only spoken. On a price beat use keyword_pop with words ("คุ้มมาก!", "ลดแรง") or a discount_badge ("ลด 50%"), plus `cash` + `punch_shake`.
+- Hook beat: hook_title + punch_in or flash + `whoosh`/`ding`. Last beat: cta_basket + `ding`.
 - Theme by category:
   - Sale or price: sale_red_yellow
   - Beauty: beauty_pink
   - Health or supplements: trust_green
   - Gadgets: hot_orange_gold
   - Premium: clean_black_white
+- Animation style (`anim_style`), one different style per video:
+  - bouncy: pops and drop-bounces; the friendly default
+  - punchy: stamps, zoom-outs and hard caption punches; price and deal videos
+  - smooth: fade-ups and wipe reveals; premium, beauty and skincare
+  - playful: swings, spins and drops; cute, kids and snack products
+  - minimal: soft fades; honest-review and ASMR
 - Fonts:
   - kanit: the default punchy look
   - prompt: wide, clean

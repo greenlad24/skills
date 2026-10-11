@@ -30,14 +30,17 @@ EDITOR_RULES = """
   - "talking": the creator speaks on camera. Shots with dialogue have audio "sync", and the beat's `vo_th`
     must equal what is said in that clip. The editor trims silences automatically; beat duration ≈ speech length.
     B-roll beats inside a talking video use mute shots (vo_th "").
-  - "voiceover": all footage is B-roll (audio "mute"); `vo_th` is read by a Thai text-to-speech voice
-    (or the creator's own recorded VO). Beat duration ≈ time to speak vo_th (Thai TTS ≈ 7 syllables/second);
+  - "voiceover": all footage is B-roll (audio "mute"); the creator records ALL the `vo_th` lines of the video
+    in ONE take in their own voice, in order, with a short pause between lines. Write vo_th as natural spoken
+    Thai that is easy to read aloud. Beat duration ≈ time to speak vo_th (≈ 7 Thai syllables/second);
     silent beats still need a duration.
   - "music_only": no speech; captions/overlays carry the message (ASMR, satisfying). Use on-screen text heavily.
 - `captions` = vo_th split into readable chunks IN ORDER that together contain the whole vo_th
   (≤18 Thai characters each, break only between words). Mark 0–2 keyword `highlight`s per chunk (prices, numbers, benefits).
 - Overlay `at`/`dur` are in seconds relative to the beat start. Text must be SHORT (hook ≤ 8 words, labels ≤ 4 words).
 - sfx `at` is relative to the beat start; align with overlay entrances and effects.
+- NEVER put a price or any amount of money in overlays/graphics (no ฿, บาท, "199.-"). Prices may only be
+  spoken (vo_th). Show value with words instead ("คุ้มมาก", "ลดแรง", "โปรดีมาก") or a discount_badge like "ลด 50%".
 - Put a hook_title in beat 1 of every video, and a cta_basket in the last beat.
 - Beat durations must add up to ≈ target_length_sec.
 - Shot lists in Thai: concrete, filmable at home with a phone, 9:16 vertical; say what to film, how, and how long.

@@ -43,7 +43,7 @@ fi
 
 if command -v say >/dev/null && ! say -v '?' | grep -q '^Kanya '; then
   echo ""
-  echo "Tip: for the free Thai voice-over, install the Thai voice 'Kanya':"
+  echo "Optional: to use the computer Thai voice instead of your own, install 'Kanya':"
   echo "  System Settings (or System Preferences) → Accessibility → Spoken Content →"
   echo "  System Voice → Manage Voices… → Thai → Kanya"
   echo ""

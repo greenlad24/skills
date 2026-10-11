@@ -9,13 +9,20 @@ from .. import projects
 from . import matcher, media, render, timeline
 
 
-def footage_files(pid: str) -> list:
-    d = projects.pdir(pid) / "footage"
+SUBS = ("footage", "narration")
+
+
+def footage_files(pid: str, sub: str = "footage") -> list:
+    d = projects.pdir(pid) / sub
+    d.mkdir(exist_ok=True)
     return sorted(str(p) for p in d.iterdir() if p.is_file() and not p.name.startswith("."))
 
 
 def load_assign(pid: str) -> dict:
-    return projects.load_json(projects.pdir(pid) / "assign.json", {"shots": {}, "vo": {}, "music": []})
+    a = projects.load_json(projects.pdir(pid) / "assign.json", {})
+    for k, dflt in (("shots", {}), ("vo", {}), ("music", []), ("narration", {})):
+        a.setdefault(k, dflt)
+    return a
 
 
 def refresh_assign(pid: str, plan: dict) -> dict:
@@ -27,13 +34,14 @@ def refresh_assign(pid: str, plan: dict) -> dict:
     cur["vo"] = {k: v for k, v in cur.get("vo", {}).items() if v in names}
     cur["music"] = [m for m in cur.get("music", []) if m in names]
     out = matcher.auto_match(plan, footage_files(pid), cur)
+    out["narration"] = matcher.match_narration(plan, footage_files(pid, "narration"), cur.get("narration"))
     projects.save_json(projects.pdir(pid) / "assign.json", out)
     return out
 
 
-def file_infos(pid: str) -> list:
+def file_infos(pid: str, sub: str = "footage") -> list:
     out = []
-    for f in footage_files(pid):
+    for f in footage_files(pid, sub):
         p = Path(f)
         k = media.kind(p)
         info = {"name": p.name, "kind": k, "size": p.stat().st_size, "duration": 0}
@@ -46,37 +54,48 @@ def file_infos(pid: str) -> list:
     return out
 
 
-def render_videos(job, pid: str, video_ids: list, settings: dict, draft: bool = False) -> dict:
+def render_videos(job, pid: str, video_ids: list, settings: dict, draft: bool = False, versions: int = 1) -> dict:
+    from .styles import STYLES
     d = projects.pdir(pid)
     plan = projects.load_json(d / "plan.json")
     if not plan:
         raise RuntimeError("This project has no plan yet.")
     assign = refresh_assign(pid, plan)
     vids = [v for v in plan["videos"] if not video_ids or v["id"] in video_ids]
+    versions = max(1, min(5, int(versions or 1)))
     product_images = sorted(str(p) for p in (d / "product_images").glob("*") if media.kind(p) == "image")
     music_name = (assign.get("music") or [None])[0]
     music = d / "footage" / music_name if music_name else None
     st = dict(settings)
     if draft:
         st["render_preset"], st["render_crf"] = "ultrafast", 28
+    jobs_list = []
+    for v in vids:
+        base_style = v.get("anim_style") if v.get("anim_style") in STYLES else STYLES[0]
+        for k in range(versions):   # each extra version = next animation style + new random picks
+            style = STYLES[(STYLES.index(base_style) + k) % len(STYLES)]
+            jobs_list.append(dict(v, anim_style=style, variation=int(v.get("variation", 0)) + k))
     results = []
-    for i, v in enumerate(vids):
-        base = i / len(vids)
-        job.say(f"{v['id']}: planning cuts…")
-        R = timeline.resolve(v, assign, d / "footage", product_images, st, d / "work" / v["id"], log=job.say)
+    for i, v in enumerate(jobs_list):
+        base = i / len(jobs_list)
+        label = f"{v['id']} ({v['anim_style']})"
+        job.say(f"{label}: planning cuts…")
+        R = timeline.resolve(v, assign, d / "footage", product_images, st, d / "work" / v["id"], log=job.say,
+                             narration_dir=d / "narration")
         for n in R.notes:
-            job.say(f"{v['id']}: {n}")
+            job.say(f"{label}: {n}")
         if R.missing:
-            job.say(f"{v['id']}: missing footage for {', '.join(sorted(set(R.missing)))} (placeholder cards used)")
-        out = d / "renders" / f"{v['id']}{'_draft' if draft else ''}_{time.strftime('%H%M%S')}.mp4"
-        job.say(f"{v['id']}: rendering {R.total:.1f}s video…")
+            job.say(f"{label}: missing footage for {', '.join(sorted(set(R.missing)))} (placeholder cards used)")
+        out = d / "renders" / f"{v['id']}_{v['anim_style']}{'_draft' if draft else ''}_{time.strftime('%H%M%S')}.mp4"
+        job.say(f"{label}: rendering {R.total:.1f}s video…")
 
         def prog(p, base=base):
-            job.progress = base + p / len(vids)
+            job.progress = base + p / len(jobs_list)
         render.render(R, out, d / "work" / v["id"], music=music if music and music.exists() else None,
                       settings=st, progress=prog, log=job.say)
-        job.say(f"{v['id']}: done → {out.name}")
-        results.append({"video": v["id"], "file": out.name, "duration": R.total, "missing": R.missing})
+        job.say(f"{label}: done → {out.name}")
+        results.append({"video": v["id"], "style": v["anim_style"], "file": out.name, "duration": R.total,
+                        "missing": R.missing})
     return {"renders": results}
 
 

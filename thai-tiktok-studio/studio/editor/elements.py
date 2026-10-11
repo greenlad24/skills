@@ -11,7 +11,9 @@ import math
 from PIL import Image, ImageDraw, ImageFilter
 
 from . import text as T
-from .anim import Element
+from ..plan_schema import strip_overlay_prices
+from . import styles
+from .anim import IN_DUR, Element
 
 W, H = 1080, 1920
 SAFE_CX = 480          # centre of the safe box (right rail is covered by TikTok buttons)
@@ -52,6 +54,8 @@ def ink_for(bg) -> tuple:
 
 class Ctx:
     def __init__(self, video: dict):
+        self.style = video.get("anim_style") or "bouncy"
+        self.rng = styles.rng_for(video)
         self.theme = THEMES.get(video.get("theme"), THEMES["sale_red_yellow"])
         self.family = video.get("font", "kanit")
         self.caption_style = video.get("caption_style", "stroke_white")
@@ -156,28 +160,6 @@ def keyword_pop(o, s, e, ctx):
         spr = T.hstack([spr, emo], gap=10)
     cx, cy = _pos(o, "center")
     return [_el(spr, cx, cy, s, e, anim_in="stamp", in_dur=0.22, z=6)]
-
-
-def price_tag(o, s, e, ctx):
-    new = T.strip_emoji(o["text"]).replace("฿", "").replace("บาท", "").strip()
-    old = T.strip_emoji(o["sub_text"]).replace("฿", "").replace("บาท", "").strip()
-    big = _title(f"฿{new}" if new else "ราคาพิเศษ", ctx, size=150, weight="black", family="kanit",
-                 fill=WHITE, stroke=(0, 0, 0, 255), stroke_w=10)
-    parts = []
-    if old:
-        small = _title(f"ปกติ ฿{old}", ctx, size=58, weight="bold", family="kanit", fill=(255, 255, 255, 255),
-                       stroke=(0, 0, 0, 255), stroke_w=5, shadow=False)
-        d = ImageDraw.Draw(small)
-        y = small.height // 2 + 4
-        d.line([(small.width * 0.42, y), (small.width - 8, y)], fill=rgba(ctx.theme["primary"]), width=8)
-        parts.append(small)
-    parts.append(big)
-    content = T.vstack(parts, gap=0)
-    r = max(content.width, content.height) // 2 + 40
-    burst = starburst(r, 18, rgba(ctx.color(o["color"], "primary")), outline=(255, 255, 255, 255))
-    burst.alpha_composite(content, ((burst.width - content.width) // 2, (burst.height - content.height) // 2))
-    cx, cy = _pos(o, "center_right")
-    return [_el(burst, cx, cy, s, e, anim_in="stamp", in_dur=0.22, rot=-6, z=7)]
 
 
 def discount_badge(o, s, e, ctx):
@@ -434,7 +416,7 @@ def lower_third(o, s, e, ctx):
 
 
 BUILDERS = {
-    "hook_title": hook_title, "keyword_pop": keyword_pop, "price_tag": price_tag,
+    "hook_title": hook_title, "keyword_pop": keyword_pop,
     "discount_badge": discount_badge, "cta_basket": cta_basket, "arrow": arrow,
     "circle_highlight": circle_highlight, "checklist": checklist, "label": label,
     "trust_badges": trust_badges, "stars_rating": stars_rating, "comment_reply": comment_reply,
@@ -448,8 +430,11 @@ def build_overlay(o: dict, start: float, end: float, ctx: Ctx) -> list:
     fn = BUILDERS.get(o["type"])
     if not fn or end - start < 0.1:
         return []
+    o = strip_overlay_prices(o)  # never show prices in graphics
+    if o is None:
+        return []
     try:
-        return fn(o, start, end, ctx)
+        return styles.apply(fn(o, start, end, ctx), o["type"], ctx.style, ctx.rng)
     except Exception:  # one bad overlay must never kill a render
         return []
 
@@ -469,7 +454,9 @@ def caption(text: str, highlight: list, start: float, end: float, ctx: Ctx) -> E
     if spr.width <= 2:
         return None
     cx, cy = _clamp_center(SAFE_CX, CAPTION_Y, spr)
-    return Element(start=start, end=end, cx=cx, cy=cy, sprite=spr, anim_in="caption", in_dur=0.14, out="none", z=4)
+    anim = styles.caption_anim(ctx.style)
+    return Element(start=start, end=end, cx=cx, cy=cy, sprite=spr, anim_in=anim, in_dur=IN_DUR.get(anim, 0.14),
+                   out="none", z=4)
 
 
 def flash(at: float) -> Element:

@@ -27,7 +27,7 @@ BEAT_ROLES = ["hook", "problem", "demo", "proof", "feature", "price", "offer", "
 TRIMS = ["start", "middle", "end"]
 EFFECTS = ["none", "punch_in", "shake", "flash", "slow_zoom", "punch_shake"]
 OVERLAY_TYPES = [
-    "hook_title", "keyword_pop", "price_tag", "discount_badge", "cta_basket",
+    "hook_title", "keyword_pop", "discount_badge", "cta_basket",
     "arrow", "circle_highlight", "checklist", "label", "trust_badges",
     "stars_rating", "comment_reply", "emoji_sticker", "spec_card", "number_badge",
     "urgency_banner", "before_after_labels", "vs_split", "reaction_text",
@@ -44,6 +44,7 @@ CAPTION_STYLES = ["stroke_white", "box_black", "box_yellow", "stroke_yellow"]
 FONTS = ["kanit", "prompt", "mitr", "chakra", "mali", "itim"]
 THEMES = ["sale_red_yellow", "hot_orange_gold", "trust_green", "beauty_pink", "clean_black_white"]
 MUSIC_MOODS = ["upbeat", "chill", "dramatic", "cute", "none"]
+ANIM_STYLES = ["bouncy", "punchy", "smooth", "playful", "minimal"]
 
 
 def _s(desc: str = "") -> dict:
@@ -74,8 +75,8 @@ def _arr(items: dict, desc: str = "") -> dict:
 
 OVERLAY = _obj({
     "type": _enum(OVERLAY_TYPES),
-    "text": _s("Main Thai text (short!). For price_tag: the NEW price digits only e.g. '199'."),
-    "sub_text": _s("Secondary text: old price for price_tag, @username for comment_reply, '' if unused."),
+    "text": _s("Main Thai text (short!). NEVER a price or amount of money."),
+    "sub_text": _s("Secondary text: @username for comment_reply, right label for vs_split, '' if unused. Never a price."),
     "items": _arr(_s(), "List items for checklist/trust_badges/spec_card ('label: value'), else []."),
     "emoji": _s("One emoji for emoji_sticker/reaction_text/cta, else ''."),
     "at": _num("Seconds after the beat starts when it appears."),
@@ -140,6 +141,7 @@ VIDEO = _obj({
     "font": _enum(FONTS),
     "theme": _enum(THEMES),
     "caption_style": _enum(CAPTION_STYLES),
+    "anim_style": _enum(ANIM_STYLES, "Motion feel of all graphics; use a different one for each video."),
     "music_mood": _enum(MUSIC_MOODS),
     "progress_bar": {"type": "boolean"},
     "full_script_th": _s("The complete Thai script as one readable block (what is said, in order)."),
@@ -201,10 +203,34 @@ def canon_shot_id(s: str) -> str:
     return f"V{int(m.group(1))}-S{int(m.group(2)):02d}" if m else _str(s)
 
 
+# Prices are never shown in graphics (owner's rule): "฿199", "199 บาท", "1,290.-", "ราคา 990"…
+PRICE_RE = re.compile(
+    r"(฿\s*\d[\d,.]*|\d[\d,.]*\s*(?:บาท|฿|thb|baht|\.-)|ราคา(?:พิเศษ|เต็ม|ปกติ)?\s*\d[\d,.]*|(?:ปกติ|เหลือ|แค่)\s*\d[\d,.]*)",
+    re.I)
+NEEDS_TEXT = {"hook_title", "keyword_pop", "discount_badge", "label", "reaction_text", "speech_bubble",
+              "lower_third", "urgency_banner", "before_after_labels", "comment_reply", "number_badge"}
+
+
+def strip_prices(text: str) -> str:
+    return re.sub(r"\s{2,}", " ", PRICE_RE.sub("", text or "")).strip(" -–:·,")
+
+
+def strip_overlay_prices(o: dict) -> dict | None:
+    """Remove money amounts from an overlay; drop it if nothing meaningful is left."""
+    had = any(PRICE_RE.search(x or "") for x in [o.get("text", ""), o.get("sub_text", "")] + list(o.get("items", [])))
+    o = dict(o, text=strip_prices(o.get("text", "")), sub_text=strip_prices(o.get("sub_text", "")),
+             items=[i for i in (strip_prices(x) for x in o.get("items", [])) if i])
+    if had and o["type"] in NEEDS_TEXT and not o["text"]:
+        return None
+    if had and o["type"] in ("checklist", "trust_badges", "spec_card") and not (o["items"] or o["text"]):
+        return None
+    return o
+
+
 def normalize_overlay(o: dict) -> dict | None:
     if not isinstance(o, dict) or o.get("type") not in OVERLAY_TYPES:
-        return None
-    return {
+        return None  # includes the retired "price_tag"
+    return strip_overlay_prices({
         "type": o["type"],
         "text": _str(o.get("text")),
         "sub_text": _str(o.get("sub_text")),
@@ -216,7 +242,7 @@ def normalize_overlay(o: dict) -> dict | None:
         "color": _pick(o.get("color"), COLORS, "auto"),
         "target_x": _clamp(o.get("target_x"), 0, 1, 0.5),
         "target_y": _clamp(o.get("target_y"), 0, 1, 0.5),
-    }
+    })
 
 
 def normalize_beat(b: dict, vid: str) -> dict:
@@ -291,6 +317,8 @@ def normalize_video(v: dict, idx: int) -> dict:
         "font": _pick(v.get("font"), FONTS, "kanit"),
         "theme": _pick(v.get("theme"), THEMES, "sale_red_yellow"),
         "caption_style": _pick(v.get("caption_style"), CAPTION_STYLES, "stroke_white"),
+        "anim_style": _pick(v.get("anim_style"), ANIM_STYLES, ANIM_STYLES[idx % len(ANIM_STYLES)]),
+        "variation": int(_clamp(v.get("variation"), 0, 10_000, 0)),
         "music_mood": _pick(v.get("music_mood"), MUSIC_MOODS, "upbeat"),
         "progress_bar": bool(v.get("progress_bar", False)),
         "full_script_th": _str(v.get("full_script_th")),

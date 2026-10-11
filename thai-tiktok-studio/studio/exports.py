@@ -35,8 +35,8 @@ def filming_pack_html(plan: dict, meta: dict) -> str:
            f"<h1>🎬 แพ็กถ่ายทำ: {_e(r.get('product_name') or meta.get('name'))}</h1>",
            "<div class='meta'>" + " · ".join(_e(x) for x in (r.get("brand"), r.get("category"),
                                                               f"ราคา {r['price_thb']} บาท" if r.get("price_thb") else "") if x) + "</div>",
-           "<div class='box'><b>วิธีตั้งชื่อไฟล์:</b> ตั้งชื่อไฟล์ตามรหัสช็อต เช่น <code>V1-S01.mov</code> "
-           "(หรือ V1S01, v1-s1) แล้วลากไฟล์ทั้งหมดใส่โปรแกรมตัดต่อ — ระบบจะจับคู่ให้อัตโนมัติ. "
+           "<div class='box'><b>ไม่ต้องตั้งชื่อไฟล์:</b> ถ่ายตามลำดับในรายการช็อต แล้วลากไฟล์ทั้งหมดใส่โปรแกรมตัดต่อ — "
+           "ระบบจะจับคู่ให้อัตโนมัติตามเวลาที่ถ่ายและประเภทช็อต (ถ่ายซ้ำได้ เทคเกินจะถูกข้าม). "
            "ถ่ายแนวตั้ง 9:16 · ถ่ายเผื่อหัว-ท้ายช็อตละ 2–3 วินาที · แสงหน้าต่างหรือไฟวงแหวน · เช็ดเลนส์ก่อนถ่าย</div>"]
     for v in plan["videos"]:
         sc = v["score"]
@@ -48,6 +48,12 @@ def filming_pack_html(plan: dict, meta: dict) -> str:
                    f"<span class='pill'>คะแนน {sc['total']:.0f}/100</span></div>")
         out.append(f"<p><b>Angle:</b> {_e(v['angle_en'])}<br><b>Why it works:</b> {_e(v['why_it_works_en'])}</p>")
         out.append(f"<h3>สคริปต์</h3><div class='script'>{_e(v['full_script_th'])}</div>")
+        lines = [b["vo_th"] for b in v["timeline"] if b["vo_th"]]
+        if v["audio_mode"] == "voiceover" and lines:
+            out.append("<h3>🎙 อัดเสียงพากย์ (เสียงของคุณ)</h3><div class='box'>อ่านทุกบรรทัดต่อกันในเทคเดียว "
+                       "เว้นจังหวะสั้นๆ (ประมาณครึ่งวินาที) ระหว่างบรรทัด · อัดในห้องเงียบ ถือมือถือห่างปากประมาณ 1 คืบ · "
+                       "ไม่ต้องตั้งชื่อไฟล์ ระบบจะตัดแบ่งและวางเสียงให้ตรงภาพเอง<ol>"
+                       + "".join(f"<li>{_e(l)}</li>" for l in lines) + "</ol></div>")
         out.append("<h3>รายการช็อตที่ต้องถ่าย</h3><table><tr><th>รหัส</th><th>ขนาดภาพ</th><th>ถ่ายอะไร</th>"
                    "<th>ถ่ายยังไง</th><th>บทพูด</th><th>ความยาว</th></tr>")
         for s in v["shots"]:

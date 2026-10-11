@@ -21,7 +21,7 @@ def new_project(name: str) -> dict:
     ensure_dirs()
     pid = time.strftime("%Y%m%d-%H%M%S") + "-" + slugify(name)
     d = PROJECTS_DIR / pid
-    for sub in ("inputs", "footage", "renders", "product_images", "work"):
+    for sub in ("inputs", "footage", "narration", "renders", "product_images", "work"):
         (d / sub).mkdir(parents=True, exist_ok=True)
     meta = {"id": pid, "name": name[:120] or "Product", "created": time.time(), "status": "new"}
     save_json(d / "project.json", meta)

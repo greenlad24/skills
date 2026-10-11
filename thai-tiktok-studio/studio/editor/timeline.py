@@ -15,7 +15,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import audio_io, elements as E, media, tts
+from . import audio_io, elements as E, media, tts, voice
 
 FPS = 30
 SR = audio_io.SR
@@ -105,44 +105,45 @@ def _talking_pieces(path, max_gap=0.3):
 
 
 def resolve(video: dict, assign: dict, footage_dir: Path, product_images: list, settings: dict,
-            work_dir: Path, log=print) -> Resolved:
+            work_dir: Path, log=print, narration_dir: Path | None = None) -> Resolved:
     R = Resolved()
     ctx = E.Ctx(video)
     shots = {s["id"]: s for s in video["shots"]}
     mode = video["audio_mode"]
-    voice, rate = settings.get("tts_voice", "Kanya"), int(settings.get("tts_rate", 185))
-    vo_name = (assign.get("vo") or {}).get(video["id"])
-    vo_file = footage_dir / vo_name if vo_name and (footage_dir / vo_name).exists() else None
-    use_tts = mode == "voiceover" and not vo_file
-    tts_ok = use_tts and tts.available(voice)
-    if use_tts and not tts_ok:
-        R.notes.append(f"Thai TTS voice '{voice}' not found — rendering without voice-over (captions still show). "
+    tts_voice, rate = settings.get("tts_voice", "Kanya"), int(settings.get("tts_rate", 185))
+    vo_file = None
+    nar = (assign.get("narration") or {}).get(video["id"])
+    if nar and narration_dir and (narration_dir / nar).exists():
+        vo_file = narration_dir / nar      # your narration (video or audio) — its audio is used
+        mode = "voiceover"                 # narration replaces on-camera sound for this video
+    else:
+        vo_name = (assign.get("vo") or {}).get(video["id"])
+        if vo_name and (footage_dir / vo_name).exists():
+            vo_file = footage_dir / vo_name
+    wants_tts = settings.get("voice_source", "mine") == "tts"
+    use_tts = mode == "voiceover" and not vo_file and wants_tts
+    tts_ok = use_tts and tts.available(tts_voice)
+    if mode == "voiceover" and not vo_file and not wants_tts:
+        R.notes.append("No voice-over recording found for this video — rendering with captions only. "
+                       "Record the script in one take (any filename) and drop it in.")
+    elif use_tts and not tts_ok:
+        R.notes.append(f"Thai TTS voice '{tts_voice}' not found — rendering without voice-over (captions still show). "
                        "On a Mac: System Settings → Accessibility → Spoken Content → System voice → Manage Voices → Thai → Kanya.")
     speech_chunks = []   # (t, np.ndarray)
     work_dir.mkdir(parents=True, exist_ok=True)
 
-    # --- plan beat lengths for a provided whole-video VO recording -------------
-    vo_beat_len = {}
+    # --- your own recorded voice-over: one take per video, split into lines ------
+    vo_chunks = {}
     if vo_file and mode == "voiceover":
-        y = audio_io.decode(vo_file)
-        if y is not None and len(y):
-            idx = np.where(np.abs(y) > 0.01)[0]
-            y = y[max(0, idx[0] - 800): idx[-1] + 2400] if len(idx) else y
-            L = len(y) / SR
-            vo_beats = [i for i, b in enumerate(video["timeline"]) if b["vo_th"]]
-            tot_w = sum(_weight(video["timeline"][i]["vo_th"]) for i in vo_beats) or 1
-            for i in vo_beats:
-                vo_beat_len[i] = L * _weight(video["timeline"][i]["vo_th"]) / tot_w
-            R.notes.append(f"Using your recorded voice-over '{vo_file.name}' ({L:.1f}s).")
-            vo_track = y
+        vo_beats = [i for i, b in enumerate(video["timeline"]) if b["vo_th"]]
+        chunks = voice.split_recording(vo_file, [_weight(video["timeline"][i]["vo_th"]) for i in vo_beats])
+        if chunks:
+            vo_chunks = dict(zip(vo_beats, chunks))
+            R.notes.append(f"Using your voice-over '{vo_file.name}' (split into {len(chunks)} lines).")
         else:
-            vo_track = None
             vo_file = None
-    else:
-        vo_track = None
 
     t = 0.0
-    first_vo_t = None
     product_images = [p for p in product_images if Path(p).exists()]
     for bi, b in enumerate(video["timeline"]):
         shot = shots.get(b["shot_id"], {"id": b["shot_id"], "audio": "mute", "shot_size": "medium"})
@@ -169,15 +170,12 @@ def resolve(video: dict, assign: dict, footage_dir: Path, product_images: list, 
         else:
             speak_len = 0.0
             if b["vo_th"] and mode == "voiceover":
-                if vo_file:
-                    speak_len = vo_beat_len.get(bi, 0.0)
-                    if first_vo_t is None:
-                        first_vo_t = t0 + 0.1
-                elif tts_ok:
-                    y = tts.synth(b["vo_th"], work_dir / f"{video['id']}_b{bi:02d}.wav", voice, rate)
-                    if y is not None and len(y):
-                        speak_len = len(y) / SR
-                        speech_chunks.append((t0 + 0.1, y))
+                y = vo_chunks.get(bi)
+                if y is None and tts_ok:
+                    y = tts.synth(b["vo_th"], work_dir / f"{video['id']}_b{bi:02d}.wav", tts_voice, rate)
+                if y is not None and len(y):
+                    speak_len = len(y) / SR
+                    speech_chunks.append((t0 + 0.1, y))
                 if not speak_len:
                     speak_len = tts.estimate_seconds(b["vo_th"])
                 beat_len = max(speak_len + 0.25, min(b["duration"], speak_len + 0.9))
@@ -223,10 +221,6 @@ def resolve(video: dict, assign: dict, footage_dir: Path, product_images: list, 
     # --- speech track ---------------------------------------------------------
     n = int(R.total * SR) + SR
     speech = np.zeros(n, dtype=np.float32)
-    if vo_track is not None:
-        i = int((first_vo_t or 0.1) * SR)
-        seg = vo_track[: max(0, n - i)]
-        speech[i:i + len(seg)] += seg
     for at, y in speech_chunks:
         i = int(at * SR)
         seg = y[: max(0, n - i)]

@@ -105,3 +105,17 @@ def test_inspiration_csv_to_examples():
     md, n = inspiration.build_examples(csv_text)
     assert n == 2
     assert md.index("13,200,000") < md.index("4,600,000") and "ราคาชัด" in md and "English only" not in md
+
+
+def test_prices_never_reach_graphics():
+    from studio.plan_schema import normalize_overlay, strip_prices
+    base = {"sub_text": "", "items": [], "emoji": "", "at": 0, "dur": 2, "position": "auto", "color": "auto",
+            "target_x": 0.5, "target_y": 0.5}
+    assert normalize_overlay({**base, "type": "price_tag", "text": "199"}) is None
+    assert normalize_overlay({**base, "type": "keyword_pop", "text": "฿2,990"}) is None
+    o = normalize_overlay({**base, "type": "hook_title", "text": "ในห้างเป็นหมื่น แต่ในคลิปนี้เหลือ 2,990 บาท"})
+    assert "2,990" not in o["text"] and o["text"].startswith("ในห้างเป็นหมื่น")
+    o = normalize_overlay({**base, "type": "checklist", "text": "", "items": ["นุ่มเด้ง", "ราคา 990", "ส่งฟรี"]})
+    assert o["items"] == ["นุ่มเด้ง", "ส่งฟรี"]
+    assert normalize_overlay({**base, "type": "discount_badge", "text": "ลด 50%"})["text"] == "ลด 50%"
+    assert strip_prices("ขายแล้ว 10k+") == "ขายแล้ว 10k+" and strip_prices("1,290.-") == ""

@@ -23,7 +23,7 @@ async function boot() {
   try {
     const h = await api("/api/health");
     $("#ver").textContent = "v" + h.version;
-    $("#health").innerHTML = `${h.ffmpeg ? '<span class="ok">● editor ready</span>' : '<span class="bad">● ffmpeg missing</span>'} · ${h.tts ? '<span class="ok">Thai voice ✓</span>' : '<span class="warn" title="Install the Thai voice Kanya in System Settings → Accessibility → Spoken Content">Thai voice ✗</span>'}`;
+    $("#health").innerHTML = h.ffmpeg ? '<span class="ok">● editor ready</span>' : '<span class="bad">● ffmpeg missing</span>';
   } catch (e) { $("#health").textContent = "server offline"; }
   state.settings = await api("/api/settings");
   await loadProjects();
@@ -235,36 +235,56 @@ function renderManual(body) {
 }
 
 /* ---------------- tab 2: edit ---------------- */
+const STYLES = { bouncy: "Bouncy — pops & drop-bounces", punchy: "Punchy — stamps & hard hits", smooth: "Smooth — fades & wipe reveals", playful: "Playful — swings & spins", minimal: "Minimal — soft fades" };
+function fileCards(list, kind) {
+  return list.map((f) => `<div class="file"><div><b>${esc(f.name)}</b><br><span class="muted">${f.kind} · ${fmtSize(f.size)}${f.duration ? " · " + f.duration + "s" : ""}</span></div><button class="ghost danger" data-del="${esc(f.name)}" data-kind="${kind}">✕</button></div>`).join("");
+}
 function renderEditTab() {
   const p = state.project, body = $("#tabBody");
   if (!p.plan) { body.innerHTML = `<section class="card muted">Create the plan first (tab 1).</section>`; return; }
-  const a = p.assign || { shots: {}, vo: {}, music: [] };
+  const a = p.assign || { shots: {}, vo: {}, music: [], narration: {} };
   const vids = p.files.filter((f) => f.kind === "video" || f.kind === "image");
   const auds = p.files.filter((f) => f.kind === "audio");
+  const nars = p.narration || [];
   const opt = (list, sel) => `<option value="">— none —</option>` + list.map((f) => `<option ${f.name === sel ? "selected" : ""} value="${esc(f.name)}">${esc(f.name)}${f.duration ? ` (${f.duration}s)` : ""}</option>`).join("");
   const running = (p.jobs || []).some((j) => j.kind === "render" && j.status === "running");
   body.innerHTML = `
-    <section class="card"><h2>1. Drop all your footage</h2>
-      <p class="muted">Videos, photos, your voice-over (name it <code>V1-VO.m4a</code>) and optional background music — all at once.
-      Name clips by shot id (<code>V1-S01.mov</code>) for perfect matching; unnamed clips are matched in recording order and you can fix them below.</p>
-      <div class="drop" id="footDrop">Drop files here or <u>browse</u><input type="file" id="footFiles" multiple hidden accept="video/*,image/*,audio/*"></div>
+    <section class="card"><h2>1. Drop all your clips</h2>
+      <p class="muted">Videos, photos and optional background music — any filenames. Clips are matched to the shot list by recording time and type (talking vs. B-roll).
+      Film the shots in list order for the best match; for retakes the last take is used. You can change any match below.</p>
+      <div class="drop" id="footDrop">Drop clips here or <u>browse</u><input type="file" id="footFiles" multiple hidden accept="video/*,image/*,audio/*"></div>
       <div id="upProg"></div>
-      <div class="row"><button class="ghost" id="btnFolder">Open footage folder</button><button class="ghost" id="btnRescan">↻ Rescan folder</button>
-        <span class="muted">Huge files? Copy them into the footage folder in Finder, then Rescan.</span></div>
-      <div class="files" style="margin-top:10px">${p.files.map((f) => `<div class="file"><div><b>${esc(f.name)}</b><br><span class="muted">${f.kind} · ${fmtSize(f.size)}${f.duration ? " · " + f.duration + "s" : ""}</span></div><button class="ghost danger" data-del="${esc(f.name)}">✕</button></div>`).join("") || '<span class="muted">No files yet.</span>'}</div>
+      <div class="row"><button class="ghost" id="btnFolder">Open clips folder</button><button class="ghost" id="btnRescan">↻ Rescan</button>
+        <span class="muted">Huge files? Copy them into the folder in Finder, then Rescan.</span></div>
+      <div class="files" style="margin-top:10px">${fileCards(p.files, "footage") || '<span class="muted">No clips yet.</span>'}</div>
     </section>
-    <section class="card"><h2>2. Check the matching</h2>
+    <section class="card"><h2>2. Your narration 🎙</h2>
+      <p class="muted">Upload your narration — a video or audio of you reading the script (one take per video). The sound is taken from it,
+      split into lines at your pauses and placed exactly on each beat. The picture of the narration video is not used.</p>
+      <div class="drop" id="narDrop">Drop narration here or <u>browse</u><input type="file" id="narFiles" multiple hidden accept="video/*,audio/*"></div>
+      <div id="narProg"></div>
+      <div class="files" style="margin-top:10px">${fileCards(nars, "narration") || '<span class="muted">No narration yet.</span>'}</div>
+      ${nars.length ? `<table style="margin-top:10px"><tr><th>Video</th><th>Narration</th></tr>${p.plan.videos.map((v) => `<tr><td class="id">${esc(v.id)} · ${esc(v.title_th)}</td><td><select data-nar="${esc(v.id)}">${opt(nars, a.narration[v.id])}</select></td></tr>`).join("")}</table>` : ""}
+    </section>
+    <section class="card"><h2>3. Check the matching</h2>
       <label>Background music (optional, auto-ducked under the voice)</label>
       <select id="musicSel">${opt(auds, (a.music || [])[0])}</select>
-      ${p.plan.videos.map((v) => `<h3>${esc(v.id)} · ${esc(v.title_th)} <span class="pill">${esc(v.audio_mode)}</span></h3>
+      ${p.plan.videos.map((v) => `<h3>${esc(v.id)} · ${esc(v.title_th)} <span class="pill">${a.narration[v.id] ? "narration" : esc(v.audio_mode)}</span></h3>
         <table><tr><th>Shot</th><th>What it should show</th><th>File</th></tr>
         ${v.shots.map((sh) => `<tr><td class="id">${esc(sh.id)}</td><td>${esc(sh.what_to_film_th)}</td><td><select data-shot="${esc(sh.id)}">${opt(vids, a.shots[sh.id])}</select>${a.shots[sh.id] ? "" : (sh.shot_size === "product_photo" && p.product_images.length ? ' <span class="muted">uses product photo</span>' : ' <span class="warn">missing</span>')}</td></tr>`).join("")}
-        ${v.audio_mode === "voiceover" ? `<tr><td class="id">${esc(v.id)} voice</td><td>Your recorded voice-over (optional — otherwise the Thai TTS voice reads it)</td><td><select data-vo="${esc(v.id)}">${opt(auds, a.vo[v.id])}</select></td></tr>` : ""}
         </table>`).join("")}
+      ${(a.unmatched || []).length ? `<p class="muted">Not used (earlier retakes / extras): ${a.unmatched.map(esc).join(", ")}</p>` : ""}
       <div class="row"><button id="btnSaveAssign">Save matching</button></div>
     </section>
-    <section class="card"><h2>3. Render</h2>
-      <div class="row">${p.plan.videos.map((v) => `<label style="margin:0;font-weight:400"><input type="checkbox" class="vchk" value="${esc(v.id)}" checked style="width:auto"> ${esc(v.id)}</label>`).join(" ")}</div>
+    <section class="card"><h2>4. Animation & render</h2>
+      <table><tr><th></th><th>Video</th><th>Animation style</th><th></th></tr>
+      ${p.plan.videos.map((v, vi) => `<tr><td><input type="checkbox" class="vchk" value="${esc(v.id)}" checked style="width:auto"></td>
+        <td class="id">${esc(v.id)} · ${esc(v.title_th)}</td>
+        <td><select data-style="${vi}">${Object.entries(STYLES).map(([k, lbl]) => `<option value="${k}" ${k === v.anim_style ? "selected" : ""}>${lbl}</option>`).join("")}</select></td>
+        <td><button class="ghost" data-shuffle="${vi}" title="Same style, different random picks">🎲 New variation</button> <span class="muted">#${v.variation || 0}</span></td></tr>`).join("")}</table>
+      <div class="row"><label style="margin:0">Versions per video</label>
+        <select id="versions" style="width:auto"><option value="1">1</option><option value="2">2 (A/B test)</option><option value="3">3</option><option value="5">5 — every style</option></select>
+        <span class="muted">Each extra version uses the next animation style.</span></div>
       <div class="row"><button class="primary" id="btnRender" ${running ? "disabled" : ""}>🎬 Render selected</button>
         <button id="btnDraft" ${running ? "disabled" : ""}>Quick draft (fast, lower quality)</button></div>
     </section>
@@ -273,41 +293,59 @@ function renderEditTab() {
         <div class="row" style="margin-top:6px"><a href="${F("renders/" + r.name)}?download=1"><button>⬇ ${esc(r.name)}</button></a></div></div>`).join("") || '<span class="muted">Nothing rendered yet.</span>'}</div>
       <div class="row"><button class="ghost" id="btnRendersFolder">Open renders folder</button></div>
     </section>`;
-  const drop = $("#footDrop"), input = $("#footFiles");
-  drop.onclick = () => input.click();
-  input.onchange = () => upload([...input.files]);
-  dnd(drop, upload);
+  const wire = (dropSel, inputSel, kind, prog) => {
+    const drop = $(dropSel), input = $(inputSel);
+    drop.onclick = () => input.click();
+    input.onchange = () => upload([...input.files], kind, prog);
+    dnd(drop, (files) => upload(files, kind, prog));
+  };
+  wire("#footDrop", "#footFiles", "footage", "#upProg");
+  wire("#narDrop", "#narFiles", "narration", "#narProg");
   $("#btnFolder").onclick = () => api(P() + "/reveal", { method: "POST", json: { sub: "footage" } }).catch((e) => toast(e.message, 6000));
   $("#btnRendersFolder").onclick = () => api(P() + "/reveal", { method: "POST", json: { sub: "renders" } }).catch((e) => toast(e.message, 6000));
   $("#btnRescan").onclick = () => openProject(state.pid, true);
   body.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => {
     if (!confirm(`Delete ${b.dataset.del}?`)) return;
-    await api(`${P()}/files/${encodeURIComponent(b.dataset.del)}`, { method: "DELETE" }); openProject(state.pid, true);
+    await api(`${P()}/files/${encodeURIComponent(b.dataset.del)}?kind=${b.dataset.kind}`, { method: "DELETE" }); openProject(state.pid, true);
+  }));
+  body.querySelectorAll("[data-style]").forEach((sel) => (sel.onchange = () => updateVideo(+sel.dataset.style, { anim_style: sel.value })));
+  body.querySelectorAll("[data-shuffle]").forEach((b) => (b.onclick = () => {
+    const v = state.project.plan.videos[+b.dataset.shuffle];
+    updateVideo(+b.dataset.shuffle, { variation: (v.variation || 0) + 1 });
   }));
   $("#btnSaveAssign").onclick = async () => { await saveAssign(); toast("Matching saved"); openProject(state.pid, true); };
   $("#btnRender").onclick = () => startRender(false);
   $("#btnDraft").onclick = () => startRender(true);
 }
+async function updateVideo(vi, patch) {
+  const plan = structuredClone(state.project.plan);
+  Object.assign(plan.videos[vi], patch);
+  try { await api(P() + "/plan", { method: "POST", json: { plan } }); state.project.plan = plan; toast(patch.anim_style ? "Style saved" : "New variation — render to see it"); renderEditTab(); }
+  catch (e) { toast(e.message, 5000); }
+}
 async function saveAssign() {
-  const shots = {}, vo = {};
+  const shots = {}, narration = {};
   document.querySelectorAll("[data-shot]").forEach((s) => { if (s.value) shots[s.dataset.shot] = s.value; });
-  document.querySelectorAll("[data-vo]").forEach((s) => { if (s.value) vo[s.dataset.vo] = s.value; });
+  document.querySelectorAll("[data-nar]").forEach((s) => { if (s.value) narration[s.dataset.nar] = s.value; });
   const m = $("#musicSel").value;
-  await api(P() + "/assign", { method: "POST", json: { shots, vo, music: m ? [m] : [] } });
+  await api(P() + "/assign", { method: "POST", json: { shots, vo: state.project.assign?.vo || {}, narration, music: m ? [m] : [] } });
 }
 async function startRender(draft) {
   await saveAssign();
   const videos = [...document.querySelectorAll(".vchk:checked")].map((c) => c.value);
   if (!videos.length) return toast("Select at least one video");
-  try { const r = await api(P() + "/render", { method: "POST", json: { videos, draft } }); window.scrollTo(0, 0); pollJob(r.job.id); $("#jobBox").innerHTML = jobHtml(r.job); }
+  const versions = +$("#versions").value || 1;
+  try { const r = await api(P() + "/render", { method: "POST", json: { videos, draft, versions } }); window.scrollTo(0, 0); pollJob(r.job.id); $("#jobBox").innerHTML = jobHtml(r.job); }
   catch (e) { toast(e.message, 5000); }
 }
-function upload(files) {
+function upload(files, kind = "footage", progSel = "#upProg") {
   if (!files.length) return;
   const fd = new FormData(); files.forEach((f) => fd.append("files", f, f.name));
+  fd.append("mtimes", JSON.stringify(files.map((f) => f.lastModified || 0)));
+  fd.append("kind", kind);
   const xhr = new XMLHttpRequest();
   xhr.open("POST", P() + "/upload");
-  xhr.upload.onprogress = (e) => { if (e.lengthComputable) $("#upProg").innerHTML = `<div class="progress"><i style="width:${(e.loaded / e.total) * 100}%"></i></div><span class="muted">Uploading ${files.length} file(s)… ${Math.round((e.loaded / e.total) * 100)}%</span>`; };
+  xhr.upload.onprogress = (e) => { if (e.lengthComputable) $(progSel).innerHTML = `<div class="progress"><i style="width:${(e.loaded / e.total) * 100}%"></i></div><span class="muted">Uploading ${files.length} file(s)… ${Math.round((e.loaded / e.total) * 100)}%</span>`; };
   xhr.onload = () => { toast(xhr.status < 400 ? `Added ${files.length} file(s)` : "Upload failed"); openProject(state.pid, true); };
   xhr.onerror = () => toast("Upload failed");
   xhr.send(fd);
@@ -325,6 +363,8 @@ function showSettings() {
       <div><label>OpenAI model</label><input id="sOm" value="${esc(s.openai_model)}"></div></div>
     <div class="grid2"><div><label>Videos per product</label><input id="sN" type="number" min="1" max="8" value="${s.videos_per_product}"></div>
       <div><label>Claude effort</label><select id="sEff">${["medium", "high", "xhigh"].map((x) => `<option ${x === s.claude_effort ? "selected" : ""}>${x}</option>`).join("")}</select></div></div>
+    <label>Voice-over</label>
+    <select id="sVsrc"><option value="mine">My own voice (record each script in one take)</option><option value="tts">Computer Thai voice (macOS Kanya)</option></select>
     <div class="grid2"><div><label>Thai TTS voice (macOS)</label><input id="sVoice" value="${esc(s.tts_voice)}"></div>
       <div><label>Voice speed (words/min)</label><input id="sRate" type="number" value="${s.tts_rate}"></div></div>
     <div class="grid2"><div><label>Music volume (0–1)</label><input id="sMv" type="number" step="0.02" value="${s.music_volume}"></div>
@@ -335,6 +375,7 @@ function showSettings() {
     <p class="muted">Keys are stored only on this Mac in ~/ThaiTikTokStudio/settings.json.</p>
     <div class="row"><button class="primary" id="sSave">Save</button><button class="ghost" onclick="closeModal()">Cancel</button></div>`);
   $("#sProvider").value = s.provider;
+  $("#sVsrc").value = s.voice_source || "mine";
   api("/api/inspiration").then((r) => { $("#sCsvSt").textContent = r.exists ? "✓ dataset loaded" : "none loaded"; });
   $("#sCsvBtn").onclick = async () => {
     const f = $("#sCsv").files[0]; if (!f) return toast("Choose a CSV first");
@@ -346,7 +387,7 @@ function showSettings() {
     state.settings = await api("/api/settings", { method: "POST", json: {
       provider: $("#sProvider").value, anthropic_api_key: $("#sAk").value.trim(), claude_model: $("#sCm").value.trim(),
       openai_api_key: $("#sOk").value.trim(), openai_model: $("#sOm").value.trim(), videos_per_product: +$("#sN").value || 5,
-      claude_effort: $("#sEff").value, tts_voice: $("#sVoice").value.trim(), tts_rate: +$("#sRate").value || 185,
+      claude_effort: $("#sEff").value, voice_source: $("#sVsrc").value, tts_voice: $("#sVoice").value.trim(), tts_rate: +$("#sRate").value || 185,
       music_volume: +$("#sMv").value || 0.14, render_crf: +$("#sCrf").value || 20 } });
     closeModal(); toast("Settings saved"); if (!state.pid) showNew();
   };

@@ -94,3 +94,95 @@ def test_full_render(footage, tmp_path):
     info = media.probe(out)
     assert info["width"] == 1080 and info["height"] == 1920 and info["has_audio"]
     assert abs(info["duration"] - R.total) < 0.15
+
+
+def test_matching_without_special_filenames(tmp_path):
+    from fixtures import make_unnamed_footage
+    expected = make_unnamed_footage(tmp_path)
+    plan = normalize_plan(sample_plan())
+    files = [str(p) for p in tmp_path.iterdir()]
+    a = matcher.auto_match(plan, files)
+    assert a["shots"] == expected["shots"]          # recording order + talk/b-roll/photo types
+    assert a["vo"] == expected["vo"]                # speech-with-pauses → voice-over
+    assert a["music"] == expected["music"]          # continuous → music
+    assert a["unmatched"] == expected["unmatched"]  # earlier retake skipped, nothing shifted
+    # manual choices survive re-matching
+    a2 = matcher.auto_match(plan, files, {"shots": {"V1-S01": "IMG_0120.MOV"}, "vo": {}, "music": []})
+    assert a2["shots"]["V1-S01"] == "IMG_0120.MOV"
+
+
+def _take(path, spans, dur):
+    expr = "+".join(f"between(t,{a},{b})" for a, b in spans)
+    subprocess.run([media.ffmpeg_exe(), "-y", "-v", "error", "-f", "lavfi",
+                    "-i", f"aevalsrc='if({expr},0.4*sin(2*PI*200*t),0)':s=48000:d={dur}", str(path)], check=True)
+
+
+def test_own_voice_split_into_lines(tmp_path):
+    from studio.editor import voice
+    # 4 lines; line 2 has a tiny breath inside it; a 1.5 s pause before line 3
+    spans = [(0.5, 1.7), (2.2, 3.0), (3.1, 4.0), (5.5, 6.3), (6.9, 8.4)]
+    _take(tmp_path / "take.m4a", spans, 9)
+    chunks = voice.split_recording(tmp_path / "take.m4a", [12, 17, 8, 15])
+    assert chunks and len(chunks) == 4
+    lens = [len(c) / 48000 for c in chunks]
+    assert abs(lens[0] - 1.32) < 0.2          # 1.2 s speech + edges
+    assert 1.6 < lens[1] < 2.2               # the 0.1 s inner breath stays inside line 2
+    assert lens[2] < 1.2 and lens[3] < 1.8   # long pauses are not carried into lines
+
+
+def test_own_voice_drives_beats(footage, tmp_path):
+    plan = normalize_plan(sample_plan())
+    v1 = plan["videos"][0]                    # voiceover video with 4 spoken beats
+    spans = [(0.4, 1.9), (2.4, 3.6), (4.2, 5.3), (6.0, 7.2)]
+    _take(footage / "voice_take.m4a", spans, 8)
+    a = matcher.auto_match(plan, [str(p) for p in footage.iterdir()])
+    assert a["vo"].get("V1") == "voice_take.m4a"
+    R = timeline.resolve(v1, a, footage, [], {}, tmp_path)
+    assert any("Using your voice-over" in n for n in R.notes)
+    # each spoken beat lasts at least as long as its voice line → no drift between voice and picture
+    spoken = [i for i, b in enumerate(v1["timeline"]) if b["vo_th"]]
+    for i in spoken:
+        t0, t1 = R.beats[i]
+        assert t1 - t0 >= 0.9
+    assert float(np.abs(R.speech).max()) > 0.3
+    (footage / "voice_take.m4a").unlink()
+
+
+def test_narration_video_audio_is_used(footage, tmp_path):
+    nar_dir = tmp_path / "narration"
+    nar_dir.mkdir()
+    expr = "+".join(f"between(t,{a},{b})" for a, b in [(0.3, 1.5), (2.0, 3.2), (3.8, 5.0)])
+    subprocess.run([media.ffmpeg_exe(), "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=320x568:r=30:d=6",
+                    "-f", "lavfi", "-i", f"aevalsrc='if({expr},0.4*sin(2*PI*190*t),0)':s=48000:d=6", "-shortest",
+                    "-pix_fmt", "yuv420p", "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac",
+                    str(nar_dir / "IMG_0300.MOV")], check=True)
+    plan = normalize_plan(sample_plan())
+    a = matcher.auto_match(plan, [str(p) for p in footage.iterdir()])
+    a["narration"] = matcher.match_narration(plan, [str(nar_dir / "IMG_0300.MOV")])
+    assert a["narration"] == {"V1": "IMG_0300.MOV"}      # voice-over video gets it first
+    a["narration"] = {"V2": "IMG_0300.MOV"}              # put it on the talking video instead
+    R = timeline.resolve(plan["videos"][1], a, footage, [], {}, tmp_path / "w", narration_dir=nar_dir)
+    assert any("Using your voice-over" in n for n in R.notes)
+    assert not any(s.use_audio for s in R.segments)      # on-camera sound replaced by narration
+    assert float(np.abs(R.speech).max()) > 0.3
+
+
+def test_style_packs_change_motion():
+    from studio.editor import styles
+    plan = normalize_plan(sample_plan())
+    o = plan["videos"][0]["timeline"][0]["overlays"][0]
+    seen = set()
+    for st in styles.STYLES:
+        ctx = E.Ctx(dict(plan["videos"][0], anim_style=st))
+        seen.add(E.build_overlay(o, 0, 2, ctx)[0].anim_in)
+        cap = E.caption("ทดสอบ", [], 0, 1, ctx)
+        assert cap.anim_in == styles.caption_anim(st)
+    assert len(seen) >= 4
+    # every new entrance renders mid-animation without errors
+    from studio.editor.anim import IN_DUR, render_element
+    spr = T.text_block("ทดสอบ")
+    for name in IN_DUR:
+        el = E.Element(start=0, end=2, cx=500, cy=900, sprite=spr, anim_in=name, in_dur=IN_DUR[name] or 0.1,
+                       loop="float", out="pop_out")
+        for t in (0.05, 0.2, 1.0, 1.95):
+            render_element(el, t)

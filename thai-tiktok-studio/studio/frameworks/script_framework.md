@@ -10,7 +10,7 @@ Built from three evidence sources:
 2. **Sound and motion start at frame 1.** The first spoken line is the hook: 10 or fewer Thai words.
 3. **Value proposition by second 6.** That window holds about 90% of ad recall (B).
 4. **Native, friend-to-friend tone, not an ad.** In the dataset's viewer notes, the most-cited reasons for liking a video were "natural / real usage", "sincere, not only selling", "states the price clearly so I don't have to search", and "focuses on the product". A flat, tired voice made viewers leave (A).
-5. **Say the price, anchored against a higher reference price.** The anchor can be "ในห้าง 4–5,000", "ราคาเต็ม", or "ปกติ" ("4–5,000 at the mall", "full price", "usually"). Price-anchor openers are among the dataset's top performers at 13.2M, 5.1M and 4.6M plays (A).
+5. **Say the price out loud, anchored against a higher reference price. Never show it in graphics; on screen use words like "คุ้มมาก" ("great value").** The anchor can be "ในห้าง 4–5,000", "ราคาเต็ม", or "ปกติ" ("4–5,000 at the mall", "full price", "usually"). Price-anchor openers are among the dataset's top performers at 13.2M, 5.1M and 4.6M plays (A).
 6. **Length depends on the purchase type:**
    - Impulse items (gadgets, home organizers, sprays, ASMR): **15–30 s**.
    - Considered items (mattress, appliance, skincare, supplement): **35–55 s**. Dataset: videos with 3M+ plays have a median of 46.5 s; the overall median is 38 s.
@@ -26,7 +26,7 @@ Format ids in brackets are used in the plan.
 | id | Name | Beats (approx. seconds for a 30 s video) | Best for |
 |---|---|---|---|
 | problem_solution | ปัญหา→ทางออก (problem → solution) | 0–3 pain shown + spoken · 3–8 agitate ("ลองมาหมดแล้ว…", "I've tried everything…") · 8–20 product in use · 20–27 result · 27–32 CTA | skincare, cleaning, mattress, gadgets |
-| price_shock | ราคาช็อก / ทายราคา (price shock / guess the price) | 0–3 "ทายสิราคาเท่าไหร่?" ("guess the price?") or "ทำไมถูกจัง" ("why is it so cheap?") · 3–15 quality and features · 15–20 PRICE REVEAL (stamp + ka-ching) · 20–28 compare with mall price · 28–32 CTA | anything with a strong discount |
+| price_shock | ราคาช็อก / ทายราคา (price shock / guess the price) | 0–3 "ทายสิราคาเท่าไหร่?" ("guess the price?") or "ทำไมถูกจัง" ("why is it so cheap?") · 3–15 quality and features · 15–20 PRICE REVEAL spoken (on screen: "คุ้มมาก!" keyword pop + ka-ching, no numbers) · 20–28 compare with mall price · 28–32 CTA | anything with a strong discount |
 | demo_proof | เทสต์พิสูจน์ (test / proof) | 0–2 the test itself (pour water, jump on mattress, drop) · 2–18 test · 18–25 outcome · 25–30 CTA | mattress, waterproof, cookware, cases |
 | unboxing_first_impression | แกะกล่อง (unboxing) | 0–3 parcel + "ของที่ติ๊กต๊อกป้ายมา มาถึงแล้ว!" ("the thing TikTok sold me on is here!") · 3–12 open, textures · 12–25 first try · 25–32 verdict + price + CTA | gadgets, beauty sets, big items (mattress-in-a-box!) |
 | before_after | ก่อน/หลัง (before/after) | 0–3 before or split screen · 3–15 use · 15–25 after (same angle and light) · 25–30 CTA | cleaning, home, hair styling (**never** for weight loss or supplements) |

@@ -70,6 +70,48 @@ def probe(path) -> dict:
     return dict(_probe_cached(str(p), p.stat().st_mtime))
 
 
+_TIME_RE = re.compile(r"(com\.apple\.quicktime\.creationdate|creation_time)\s*:\s*(\S+)")
+
+
+@functools.lru_cache(maxsize=512)
+def _capture_cached(path: str, mtime: float):
+    from datetime import datetime
+    p = Path(path)
+    stamp = None
+    if kind(p) == "image":
+        try:
+            from PIL import Image
+            exif = Image.open(p).getexif()
+            raw = exif.get_ifd(0x8769).get(36867) or exif.get(306)  # DateTimeOriginal / DateTime
+            if raw:
+                stamp = datetime.strptime(str(raw)[:19], "%Y:%m:%d %H:%M:%S").timestamp()
+        except Exception:
+            pass
+    else:
+        err = subprocess.run([ffmpeg_exe(), "-hide_banner", "-i", path], capture_output=True, text=True,
+                             errors="replace").stderr
+        found = {k: v for k, v in _TIME_RE.findall(err)}
+        raw = found.get("com.apple.quicktime.creationdate") or found.get("creation_time")
+        m = re.match(r"(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.\d+)?(Z|[+-]\d\d:?\d\d)?", raw or "")
+        if m:
+            tz = (m.group(2) or "Z").replace("Z", "+00:00")
+            if len(tz) == 5:  # +0700 → +07:00
+                tz = tz[:3] + ":" + tz[3:]
+            try:
+                stamp = datetime.fromisoformat(m.group(1) + tz).timestamp()
+            except ValueError:
+                pass
+    if stamp and stamp < 946684800:  # before 2000 → camera clock not set
+        stamp = None
+    return stamp
+
+
+def capture_time(path):
+    """When the clip/photo was actually recorded (metadata), or None."""
+    p = Path(path)
+    return _capture_cached(str(p), p.stat().st_mtime)
+
+
 def speech_islands(path, min_silence: float = 0.4, noise_db: int = -32) -> list:
     """[(start, end)] of non-silent audio. Used to trim talking clips and remove pauses."""
     info = probe(path)
