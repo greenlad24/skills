@@ -80,3 +80,5 @@ details>summary{cursor:pointer;color:var(--muted);margin:8px 0}
 .track{display:flex;gap:4px;margin:0 0 14px;flex-wrap:wrap}
 .track span{font-size:12px;padding:4px 10px;border-radius:99px;background:#22222a;color:var(--muted)}
 .track span.done{background:#0f3020;color:#6ee7a0}.track span.now{background:var(--pink);color:#fff;font-weight:700}
+
+body.server #lnkFolder,body.server #btnFolder,body.server #btnRendersFolder,body.server #btnRescan,body.server .localonly{display:none}

@@ -10,7 +10,10 @@ import threading
 import webbrowser
 from pathlib import Path
 
-from flask import Flask, abort, jsonify, request, send_file, send_from_directory
+import hmac
+import secrets
+
+from flask import Flask, abort, jsonify, redirect, request, send_file, send_from_directory, session
 from werkzeug.utils import secure_filename
 
 from . import __version__, config, jobs, planner, projects
@@ -18,8 +21,61 @@ from .editor import service
 from .plan_schema import normalize_plan, plan_problems
 
 app = Flask(__name__, static_folder=None)
-app.config["MAX_CONTENT_LENGTH"] = None  # big video uploads are fine (local only)
+app.config["MAX_CONTENT_LENGTH"] = None  # big video uploads are fine
 PORT = int(os.environ.get("TTS_STUDIO_PORT", "8765"))
+HOST = os.environ.get("TTS_STUDIO_HOST", "127.0.0.1")
+SERVER_MODE = os.environ.get("TTS_STUDIO_SERVER") == "1"      # hosted on a website (no Finder, no auto-browser)
+PASSWORD = os.environ.get("TTS_STUDIO_PASSWORD", "")          # required when hosted
+
+
+def _secret_key() -> bytes:
+    p = config.HOME / "secret.key"
+    try:
+        return p.read_bytes()
+    except OSError:
+        config.HOME.mkdir(parents=True, exist_ok=True)
+        key = secrets.token_bytes(32)
+        p.write_bytes(key)
+        os.chmod(p, 0o600)
+        return key
+
+
+app.secret_key = _secret_key()
+app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
+                  SESSION_COOKIE_SECURE=SERVER_MODE, PERMANENT_SESSION_LIFETIME=60 * 60 * 24 * 30)
+
+LOGIN_PAGE = """<!doctype html><html lang="th"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Thai TikTok Studio · Login</title><link rel="stylesheet" href="/static/style.css">
+<body style="display:flex;align-items:center;justify-content:center;min-height:100vh">
+<form method="post" action="/login" class="card" style="width:min(380px,92vw)">
+<h1>▶ Thai TikTok Studio</h1><p class="muted">ใส่รหัสผ่านเพื่อเข้าใช้งาน · Enter the password</p>
+<input type="password" name="password" autofocus placeholder="รหัสผ่าน / password">{err}
+<div class="row"><button class="primary wide">เข้าสู่ระบบ · Log in</button></div></form></body></html>"""
+
+
+@app.before_request
+def require_login():
+    if not PASSWORD or request.path in ("/login",) or request.path.startswith("/static/"):
+        return None
+    if session.get("ok"):
+        return None
+    if request.path.startswith("/api/") or request.path.startswith("/files/"):
+        return jsonify({"error": "Please log in again."}), 401
+    return redirect("/login")
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if not PASSWORD:
+        return redirect("/")
+    err = ""
+    if request.method == "POST":
+        if hmac.compare_digest((request.form.get("password") or "").encode(), PASSWORD.encode()):
+            session.permanent = True
+            session["ok"] = True
+            return redirect("/")
+        err = '<p class="bad">รหัสผ่านไม่ถูกต้อง · Wrong password</p>'
+    return LOGIN_PAGE.replace("{err}", err)
 
 
 def _safe_name(name: str) -> str:
@@ -36,6 +92,16 @@ def _unique(d: Path, name: str) -> Path:
         p = d / f"{stem} ({i}){suf}"
         i += 1
     return p
+
+
+@app.errorhandler(FileNotFoundError)
+def _not_found(e):
+    return jsonify({"error": "Not found — it may have been deleted."}), 404
+
+
+@app.errorhandler(ValueError)
+def _bad_request(e):
+    return jsonify({"error": str(e) or "Bad request"}), 400
 
 
 @app.get("/")
@@ -59,7 +125,7 @@ def health():
     from . import llm_claude_code
     exe = llm_claude_code.find_claude(st.get("claude_code_path", ""))
     return jsonify({"version": __version__, "ffmpeg": bool(ff), "tts": tts.available(st.get("tts_voice", "Kanya")),
-                    "home": str(config.HOME), "platform": sys.platform,
+                    "home": str(config.HOME), "platform": sys.platform, "server": SERVER_MODE,
                     "claude_code": bool(exe), "claude_code_version": llm_claude_code.version(exe) if exe else ""})
 
 
@@ -260,6 +326,8 @@ def job_status(jid):
 
 @app.post("/api/projects/<pid>/reveal")
 def reveal(pid):
+    if SERVER_MODE:
+        return jsonify({"error": "Folders open only when the app runs on your own computer."}), 400
     d = projects.pdir(pid)
     sub = (request.get_json(silent=True) or {}).get("sub", "")
     target = d / sub if sub in ("footage", "narration", "renders") else d
@@ -284,11 +352,22 @@ def project_file(pid, rel):
 
 def main():
     config.ensure_dirs()
+    if SERVER_MODE:
+        if not PASSWORD:
+            sys.exit("Refusing to start in server mode without TTS_STUDIO_PASSWORD (it protects your token and videos).")
+        try:
+            from waitress import serve
+        except ImportError:
+            sys.exit("Server mode needs waitress:  pip install waitress")
+        print(f"Thai TikTok Studio (server mode) listening on {HOST}:{PORT}")
+        serve(app, host=HOST, port=PORT, threads=8, max_request_body_size=50 * 1024 ** 3,
+              channel_timeout=3600, cleanup_interval=60)
+        return
     url = f"http://127.0.0.1:{PORT}"
     if os.environ.get("TTS_STUDIO_NO_BROWSER") != "1":
         threading.Timer(1.2, lambda: webbrowser.open(url)).start()
     print(f"\n  Thai TikTok Studio is running → {url}\n  (keep this window open; close it to quit)\n")
-    app.run(host="127.0.0.1", port=PORT, threaded=True, debug=False)
+    app.run(host=HOST, port=PORT, threaded=True, debug=False)
 
 
 if __name__ == "__main__":

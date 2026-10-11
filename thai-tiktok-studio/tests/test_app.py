@@ -98,3 +98,29 @@ def test_settings_masks_keys(client):
     assert s["anthropic_api_key"].endswith("1234") and "secret" not in s["anthropic_api_key"]
     s2 = c.post("/api/settings", json={"anthropic_api_key": s["anthropic_api_key"]}).get_json()
     assert s2["anthropic_api_key"] == s["anthropic_api_key"]  # masked value doesn't overwrite
+
+
+def test_password_login(tmp_path, monkeypatch):
+    monkeypatch.setenv("TTS_STUDIO_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("TTS_STUDIO_PASSWORD", "s3cret")
+    import importlib
+
+    import studio.config as config
+    importlib.reload(config)
+    import studio.app as appmod
+    importlib.reload(appmod)
+    c = appmod.app.test_client()
+    assert c.get("/").status_code == 302 and c.get("/api/projects").status_code == 401
+    assert c.get("/static/style.css").status_code == 200          # login page can load its styles
+    assert "รหัสผ่านไม่ถูกต้อง" in c.post("/login", data={"password": "nope"}).get_data(as_text=True)
+    assert c.post("/login", data={"password": "s3cret"}).status_code == 302
+    assert c.get("/api/projects").status_code == 200
+    monkeypatch.delenv("TTS_STUDIO_PASSWORD")
+    importlib.reload(appmod)
+
+
+def test_missing_project_is_404(client):
+    c, _ = client
+    assert c.get("/api/projects/20990101-000000-nope").status_code == 404
+    r = c.post("/api/projects/20990101-000000-nope/upload", data={}, content_type="multipart/form-data")
+    assert r.status_code == 404 and "error" in r.get_json()

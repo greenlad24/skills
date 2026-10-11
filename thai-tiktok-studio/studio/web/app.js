@@ -8,6 +8,7 @@ async function api(path, opts = {}) {
   if (o.json !== undefined) { o.body = JSON.stringify(o.json); o.headers = { "Content-Type": "application/json" }; delete o.json; }
   const r = await fetch(path, o);
   const data = await r.json().catch(() => ({}));
+  if (r.status === 401) { location.href = "/login"; throw new Error("Please log in"); }
   if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
   return data;
 }
@@ -22,6 +23,8 @@ const STATUS = { new: "new", researching: "researching…", writing: "writing sc
 async function boot() {
   try {
     const h = await api("/api/health");
+    state.server = !!h.server;
+    if (h.server) document.body.classList.add("server");
     $("#ver").textContent = "v" + h.version;
     $("#health").innerHTML = (h.ffmpeg ? '<span class="ok">● editor ready</span>' : '<span class="bad">● ffmpeg missing</span>')
       + (h.claude_code ? ' · <span class="ok">Claude Code ✓</span>' : ' · <span class="muted" title="Needed only for the \'Your Claude account\' mode">Claude Code ✗</span>');
@@ -265,7 +268,7 @@ function renderEditTab() {
       <div class="drop" id="footDrop">Drop clips here or <u>browse</u><input type="file" id="footFiles" multiple hidden accept="video/*,image/*,audio/*"></div>
       <div id="upProg"></div>
       <div class="row"><button class="ghost" id="btnFolder">Open clips folder</button><button class="ghost" id="btnRescan">↻ Rescan</button>
-        <span class="muted">Huge files? Copy them into the folder in Finder, then Rescan.</span></div>
+        <span class="muted localonly">Huge files? Copy them into the folder in Finder, then Rescan.</span></div>
       <div class="files" style="margin-top:10px">${fileCards(p.files, "footage") || '<span class="muted">No clips yet.</span>'}</div>
     </section>
     <section class="card"><h2>2. Your narration 🎙</h2>

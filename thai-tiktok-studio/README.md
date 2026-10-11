@@ -8,6 +8,8 @@ Two tools in one local Mac app, built for Thai TikTok Shop / affiliate product v
 
 Everything runs on your Mac. Nothing is uploaded anywhere, except the product research and script request sent to Claude or ChatGPT.
 
+**Want it as a website instead (free)?** See **[DEPLOY.md](DEPLOY.md)**: a free Oracle Cloud server with 200 GB of storage, password-protected, usable from any phone or computer.
+
 ---
 
 ## Install & start (macOS 12+, Intel or Apple Silicon)
@@ -25,7 +27,8 @@ Everything runs on your Mac. Nothing is uploaded anywhere, except the product re
 
 | Mode | Cost | What you do |
 |---|---|---|
-| **Claude** (default) | API usage only (a few cents–~$1 per product) | Paste an Anthropic API key. Runs `claude-opus-5-5` with live web search. |
+| **Your Claude account** (default) | Included in your Claude plan (Pro/Max/Team) | Run `claude setup-token` in Terminal and paste the token. Uses Claude Code in headless mode (needs macOS 13+, or use the website version). |
+| **Claude API** | API usage only (a few cents–~$1 per product) | Paste an Anthropic API key. Runs `claude-opus-5-5` with live web search. |
 | **ChatGPT** | API usage only | Paste an OpenAI API key (model configurable, default `gpt-5`). |
 | **Free copy/paste** | $0 | The app builds one big prompt. Paste it into chatgpt.com or claude.ai with web search on, then paste the JSON answer back. |
 
