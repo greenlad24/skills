@@ -39,8 +39,9 @@ EDITOR_RULES = """
   (≤18 Thai characters each, break only between words). Mark 0–2 keyword `highlight`s per chunk (prices, numbers, benefits).
 - Overlay `at`/`dur` are in seconds relative to the beat start. Text must be SHORT (hook ≤ 8 words, labels ≤ 4 words).
 - Do not plan any sound effects (the editor has none); leave `sfx` out.
-- NEVER put a price or any amount of money in overlays/graphics OR captions (no ฿, บาท, "199.-"). Prices may
-  only be spoken (vo_th); leave the price out of that beat's caption chunks. Show value with words instead ("คุ้มมาก", "ลดแรง", "โปรดีมาก") or a discount_badge like "ลด 50%".
+- NEVER include a price or any amount of money anywhere: not in vo_th, dialogue_th, full_script_th,
+  post_caption_th, captions or overlays (no ฿, บาท, "199.-", "แค่ 2,000", "ในห้างเป็นหมื่น"). You MAY say there
+  is a special price right now ("ตอนนี้มีราคาพิเศษ", "กดดูราคาพิเศษในตะกร้า"). Show value with words instead ("คุ้มมาก", "ลดแรง", "โปรดีมาก") or a discount_badge like "ลด 50%".
 - Put a hook_title in beat 1 of every video, and a cta_basket in the last beat.
 - Beat durations must add up to ≈ target_length_sec.
 - Shot lists in Thai: concrete, filmable at home with a phone, 9:16 vertical; say what to film, how, and how long.

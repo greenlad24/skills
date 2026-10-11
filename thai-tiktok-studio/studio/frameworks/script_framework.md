@@ -9,13 +9,13 @@ Built from three evidence sources:
 1. **Product or problem on screen in frame 1.** 63% of TikTok's highest-CTR ads show the key message or product in the first 3 s (B). Never open with a logo, a greeting or silence; BigSeller TH warns against quiet openings (C).
 2. **Sound and motion start at frame 1.** The first spoken line is the hook: 10 or fewer Thai words.
 3. **Value proposition by second 6.** That window holds about 90% of ad recall (B).
-4. **Native, friend-to-friend tone, not an ad.** In the dataset's viewer notes, the most-cited reasons for liking a video were "natural / real usage", "sincere, not only selling", "states the price clearly so I don't have to search", and "focuses on the product". A flat, tired voice made viewers leave (A).
-5. **Say the price out loud, anchored against a higher reference price. Never show it in graphics; on screen use words like "คุ้มมาก" ("great value").** The anchor can be "ในห้าง 4–5,000", "ราคาเต็ม", or "ปกติ" ("4–5,000 at the mall", "full price", "usually"). Price-anchor openers are among the dataset's top performers at 13.2M, 5.1M and 4.6M plays (A).
+4. **Native, friend-to-friend tone, not an ad.** In the dataset's viewer notes, the most-cited reasons for liking a video were "natural / real usage", "sincere, not only selling", "tells me the deal so I don't have to search" (we do this with a "special price right now" mention, never an amount), and "focuses on the product". A flat, tired voice made viewers leave (A).
+5. **Never say or show a price amount** (no numbers with บาท/฿, no "ในห้าง 4–5,000"-style anchors, no "แค่ 2,000"). Owner's rule. You MAY mention that there is a special price right now: "ตอนนี้มีราคาพิเศษ" ("there's a special price right now"), "ราคาพิเศษเฉพาะช่วงนี้" ("special price for a limited time"), "กดดูราคาพิเศษในตะกร้า" ("tap the basket to see the special price"). Sell value with words: "คุ้มมาก" ("great value"), "คุ้มเกินราคา" ("worth more than it costs").
 6. **Length depends on the purchase type:**
    - Impulse items (gadgets, home organizers, sprays, ASMR): **15–30 s**.
    - Considered items (mattress, appliance, skincare, supplement): **35–55 s**. Dataset: videos with 3M+ plays have a median of 46.5 s; the overall median is 38 s.
    - The paid-ad guidance of 21–34 s (B) is for paid ads; organic affiliate videos in this niche run longer.
-7. **Cut rhythm:** a new visual every 1.5–3 s in the hook and price sections, every 3–5 s in demos. Remove every pause and filler (เอ่อ/อ่า, "uh/um").
+7. **Cut rhythm:** a new visual every 1.5–3 s in the hook and offer sections, every 3–5 s in demos. Remove every pause and filler (เอ่อ/อ่า, "uh/um").
 8. **Shot mix (dataset):** close-ups dominate (about 40% of shots), then wide, medium, extreme close-up, and extreme-wide establishing shots. A typical winner uses 3–5 distinct shot sizes and **returns to a wide "real home" shot**, which shows real-life context.
 9. **One CTA, on screen and spoken, in the last 3–5 s,** with an arrow pointing at the basket. A soft "check the basket" CTA beats a hard sell.
 10. **Loop ending:** the last line flows back into the hook, or the last frame matches the first.
@@ -26,9 +26,9 @@ Format ids in brackets are used in the plan.
 | id | Name | Beats (approx. seconds for a 30 s video) | Best for |
 |---|---|---|---|
 | problem_solution | ปัญหา→ทางออก (problem → solution) | 0–3 pain shown + spoken · 3–8 agitate ("ลองมาหมดแล้ว…", "I've tried everything…") · 8–20 product in use · 20–27 result · 27–32 CTA | skincare, cleaning, mattress, gadgets |
-| price_shock | ราคาช็อก / ทายราคา (price shock / guess the price) | 0–3 "ทายสิราคาเท่าไหร่?" ("guess the price?") or "ทำไมถูกจัง" ("why is it so cheap?") · 3–15 quality and features · 15–20 PRICE REVEAL spoken (on screen: "คุ้มมาก!" keyword pop, no numbers) · 20–28 compare with mall price · 28–32 CTA | anything with a strong discount |
+| price_shock | ดีลพิเศษ / คุ้มเกินคาด (special-deal shock) | 0–3 "ทำไมคุ้มขนาดนี้?" ("why is this such good value?") or "ของดีขนาดนี้ ตอนนี้มีราคาพิเศษ" ("this good, and there's a special price right now") · 3–15 quality and features · 15–20 special-price mention ("ตอนนี้มีราคาพิเศษอยู่นะ", "there's a special price on right now"; on screen "คุ้มมาก!" keyword pop; NO amounts) · 20–28 why it's worth it · 28–32 CTA "กดดูราคาพิเศษในตะกร้า" ("tap the basket to see the special price") | anything with a strong deal |
 | demo_proof | เทสต์พิสูจน์ (test / proof) | 0–2 the test itself (pour water, jump on mattress, drop) · 2–18 test · 18–25 outcome · 25–30 CTA | mattress, waterproof, cookware, cases |
-| unboxing_first_impression | แกะกล่อง (unboxing) | 0–3 parcel + "ของที่ติ๊กต๊อกป้ายมา มาถึงแล้ว!" ("the thing TikTok sold me on is here!") · 3–12 open, textures · 12–25 first try · 25–32 verdict + price + CTA | gadgets, beauty sets, big items (mattress-in-a-box!) |
+| unboxing_first_impression | แกะกล่อง (unboxing) | 0–3 parcel + "ของที่ติ๊กต๊อกป้ายมา มาถึงแล้ว!" ("the thing TikTok sold me on is here!") · 3–12 open, textures · 12–25 first try · 25–32 verdict + special-price mention + CTA | gadgets, beauty sets, big items (mattress-in-a-box!) |
 | before_after | ก่อน/หลัง (before/after) | 0–3 before or split screen · 3–15 use · 15–25 after (same angle and light) · 25–30 CTA | cleaning, home, hair styling (**never** for weight loss or supplements) |
 | storytime_pov | Storytime / POV | 0–3 "POV: …" or dramatic line · 3–20 story with the product as the turning point · 20–28 payoff · 28–32 soft CTA | sleep, lifestyle, gifts |
 | comparison | เปรียบเทียบ (comparison) | 0–3 "แพง vs ถูก ต่างกันไหม?" ("expensive vs cheap: any difference?") · 3–22 2–3 head-to-head tests · 22–28 verdict · 28–32 CTA | dupes, mattresses, appliances (never name or disparage a competitor brand) |
@@ -52,12 +52,11 @@ Lines marked * are patterns from the dataset's top videos (A). The others come f
   - "ทำไมเพิ่งรู้ว่ามีของแบบนี้!" — "Why am I only now learning this exists!"
   - "ไม่มีใครบอกเรื่องนี้เลย…" — "Nobody tells you this…"
   - "ดูให้จบ แล้วจะรู้ว่าทำไมมันขายดี" — "Watch to the end and you'll see why it sells."
-- **Price:**
-  - "ทำไมถูกจัง… แค่ 2,000 บาท"* — "Why is it so cheap… only 2,000 baht"
-  - "ในห้างราคาเป็นหมื่น แต่ในคลิปนี้เหลือ…"* — "At the mall it's ten thousand, but in this clip it's down to…"
+- **Value / special deal (no amounts):**
+  - "ทำไมคุ้มขนาดนี้…" — "Why is this such good value…"
+  - "ตอนนี้มีราคาพิเศษอยู่นะ รีบเลย" — "There's a special price on right now, hurry"
   - "ซื้อ 1 แถม 1 เอาไหมแม่ๆ"* — "Buy 1 get 1, want it, mums?"
-  - "หลักร้อย แต่ฟีลหลักพัน" — "Costs hundreds, feels like thousands."
-  - "ทายสิราคาเท่าไหร่?" — "Guess the price?"
+  - "ของดีแบบนี้ มีราคาพิเศษให้ด้วย" — "Something this good, and there's a special price too"
 - **Social proof:**
   - "ทั้งติ๊กต๊อกป้ายยาอันนี้ เลยลองซื้อมาพิสูจน์" — "All of TikTok is pushing this, so I bought it to test."
   - "เปิดตัวไม่กี่วัน 10 ล้านวิวแล้ว"* — "Launched a few days ago and already at 10 million views." Use only real numbers.
@@ -112,10 +111,10 @@ Use one per video, spoken and shown on screen with the basket arrow.
 - **Furniture and home:** you may state real specs (size, weight capacity, materials). Specs read aloud did well in the dataset.
 
 ## 6. Scoring rubric (score every script 1–10 per criterion)
-1. **hook_strength:** product or problem in frame 1, hook of 10 or fewer words, curiosity, pain or price gap.
+1. **hook_strength:** product or problem in frame 1, hook of 10 or fewer words, curiosity, pain or value surprise.
 2. **pain_or_desire:** a specific, relatable pain or desire for the target audience.
 3. **proof_demo:** the product is shown working (test, texture, real use). A talking head alone scores low.
-4. **offer_clarity:** price or value is clear and anchored; one clear CTA.
+4. **offer_clarity:** value is clear; at most a "special price right now" mention (never an amount); one clear CTA.
 5. **trend_fit:** matches what is working now in this niche (from research) and feels native.
 6. **filmability:** a solo creator with a phone can shoot it in under 1 hour at home.
 7. **compliance_safety:** 10 = no risky claims; any banned claim = 1. Rewrite until it reaches 10.

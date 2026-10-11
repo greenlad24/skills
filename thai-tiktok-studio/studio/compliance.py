@@ -25,11 +25,14 @@ def _texts(video: dict):
 
 def check_plan(plan: dict) -> dict:
     """→ {video_id: [{level, word, where}]}"""
+    from .plan_schema import PRICE_RE
     hard, soft = _lists()
     out = {}
     for v in plan.get("videos", []):
         found = []
         for where, text in _texts(v):
+            for m in PRICE_RE.finditer(text or ""):   # owner's rule: no price amounts in scripts
+                found.append({"level": "hard", "word": f"price {m.group(0).strip()}", "where": where})
             for level, words in (("hard", hard), ("soft", soft)):
                 for w in words:
                     if w and w in (text or ""):

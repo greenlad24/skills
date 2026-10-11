@@ -138,3 +138,16 @@ def test_prices_removed_from_captions():
            "captions": [{"text": "ราคาเหลือแค่ 2,990", "highlight": []}, {"text": "คุ้มมาก ฿199", "highlight": []}]}]}]}
     caps = normalize_plan(raw)["videos"][0]["timeline"][0]["captions"]
     assert [c["text"] for c in caps] == ["คุ้มมาก"]
+
+
+def test_price_amounts_in_scripts_are_flagged():
+    plan = normalize_plan(sample_plan())
+    plan["videos"][0]["timeline"][0]["vo_th"] = "ตอนนี้มีราคาพิเศษ แค่ 2,990 บาท"
+    flags = compliance.check_plan(plan)["V1"]
+    assert any(f["word"].startswith("price") and f["level"] == "hard" for f in flags)
+    plan["videos"][0]["timeline"][0]["vo_th"] = "ตอนนี้มีราคาพิเศษ กดดูในตะกร้าเลย"
+    plan["videos"][0]["full_script_th"] = "ตอนนี้มีราคาพิเศษ"
+    flags = compliance.check_plan(plan)["V1"]
+    assert not any(f["word"].startswith("price") and f["where"] in ("beat 1 voice", "script") for f in flags)
+    # the sample's beat 3 still says "ราคาเหลือแค่ 2,990" → flagged
+    assert any(f["where"] == "beat 3 voice" for f in flags)
