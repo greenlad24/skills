@@ -159,6 +159,12 @@ async function checkUpdate() {
   let u;
   try { u = await api("/api/update"); } catch (e) { return; }
   const bar = $("#updBar");
+  if (u.enabled && u.downloading && !u.ready) {   // show the download while it happens, then the Restart button
+    bar.innerHTML = `<span>⬇️ ${t("upd.downloading", { v: u.downloading, p: Math.round((u.progress || 0) * 100) })}</span>`;
+    bar.classList.remove("hidden");
+    clearTimeout(checkUpdate._t); checkUpdate._t = setTimeout(checkUpdate, 1500);
+    return;
+  }
   if (!u.enabled || !u.ready || bar.dataset.dismissed === u.ready) { bar.classList.add("hidden"); return; }
   bar.innerHTML = `<span>🎉 ${t("upd.ready", { v: u.ready })}</span>
     <button class="btn primary" id="updRestart">${t("upd.restart")}</button>
@@ -865,7 +871,9 @@ function showSettings() {
     $("#sUpd").onclick = async () => {
       const st = $("#sUpdSt"); st.className = "small muted"; st.textContent = tt("set.updChecking"); $("#sUpd").disabled = true;
       try {
-        const u = await api("/api/update/check", { method: "POST" });
+        const pending = api("/api/update/check", { method: "POST" });
+        setTimeout(checkUpdate, 700);   // shows the download progress bar meanwhile
+        const u = await pending;
         if (!u.enabled) { st.textContent = tt("set.updOff"); }
         else if (u.error) { st.className = "small bad"; st.textContent = u.error; }
         else if (u.ready) { st.className = "small ok"; st.textContent = tt("set.updReady", { v: u.ready }); checkUpdate(); }

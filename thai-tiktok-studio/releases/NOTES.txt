@@ -1,2 +1,2 @@
-1.3.1 — ปุ่ม ตรวจหาอัปเดตตอนนี้ ในตั้งค่า · ตัดต่อตามสไตล์คลิปของคุณ (ช็อตนิ่งสบายตา ตัวหนังสือเล็กสีแดงขอบขาวด้านบน ลูกศร ↓ ไปที่ตะกร้า) · อัปโหลดคลิปตัวอย่างใหม่ได้ในตั้งค่า · แจ้งอัปเดตทันทีที่พร้อม
-Edits follow your own posted style (calm shots, small red top text card, ↓ arrows to the basket) · upload a new style reference in Settings · update banner appears as soon as an update is ready
+1.3.2 — แสดงความคืบหน้าการดาวน์โหลดอัปเดต · ปุ่ม ตรวจหาอัปเดตตอนนี้ ในตั้งค่า · ตัดต่อตามสไตล์คลิปของคุณ (ช็อตนิ่งสบายตา ตัวหนังสือเล็กสีแดงขอบขาวด้านบน ลูกศร ↓ ไปที่ตะกร้า) · อัปโหลดคลิปตัวอย่างใหม่ได้ในตั้งค่า · แจ้งอัปเดตทันทีที่พร้อม
+Update download progress shown · Check for updates button · Edits follow your own posted style (calm shots, small red top text card, ↓ arrows to the basket) · upload a new style reference in Settings · update banner appears as soon as an update is ready

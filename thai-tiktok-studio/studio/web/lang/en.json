@@ -524,5 +524,6 @@
  "set.updChecking": "Checking…",
  "set.updOff": "Updates are only for the Mac app.",
  "set.updReady": "Version {v} is ready — tap Restart in the bar at the top.",
- "set.updLatest": "You have the newest version."
+ "set.updLatest": "You have the newest version.",
+ "upd.downloading": "Downloading update {v}… {p}%"
 }

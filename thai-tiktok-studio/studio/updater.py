@@ -31,7 +31,8 @@ LATEST_URL = os.environ.get(
 APP_PREFIX = "Thai TikTok Studio.app/Contents/Resources/app/"
 CHECK_EVERY = 30 * 60          # background check interval
 STALE = 10 * 60               # a UI poll re-checks if the last check is older than this
-STATE = {"current": __version__, "latest": "", "ready": "", "error": "", "checked": 0, "notes": ""}
+STATE = {"current": __version__, "latest": "", "ready": "", "error": "", "checked": 0, "notes": "",
+         "downloading": "", "progress": 0.0}
 
 
 def _support() -> Path:
@@ -72,11 +73,18 @@ def check_and_download() -> dict:
         STATE["ready"] = latest
         return STATE
     try:
-        z = requests.get(info["zip_url"], timeout=600)
-        z.raise_for_status()
+        STATE["downloading"], STATE["progress"] = latest, 0.0
+        buf = io.BytesIO()
+        with requests.get(info["zip_url"], timeout=600, stream=True) as z:
+            z.raise_for_status()
+            total = int(z.headers.get("Content-Length") or 0)
+            for chunk in z.iter_content(64 * 1024):
+                buf.write(chunk)
+                if total:
+                    STATE["progress"] = round(min(0.99, buf.tell() / total), 3)
         tmp = support / f".app-{latest}.tmp"
         shutil.rmtree(tmp, ignore_errors=True)
-        with zipfile.ZipFile(io.BytesIO(z.content)) as zf:
+        with zipfile.ZipFile(buf) as zf:
             for name in zf.namelist():
                 if not name.startswith(APP_PREFIX) or name.endswith("/"):
                     continue
@@ -96,6 +104,8 @@ def check_and_download() -> dict:
         STATE["ready"], STATE["error"] = latest, ""
     except Exception as e:
         STATE["error"] = f"download failed: {e}"
+    finally:
+        STATE["downloading"], STATE["progress"] = "", 0.0
     return STATE
 
 
