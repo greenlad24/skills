@@ -38,7 +38,7 @@ EDITOR_RULES = """
 - `captions` = vo_th split into readable chunks IN ORDER that together contain the whole vo_th
   (≤18 Thai characters each, break only between words). Mark 0–2 keyword `highlight`s per chunk (prices, numbers, benefits).
 - Overlay `at`/`dur` are in seconds relative to the beat start. Text must be SHORT (hook ≤ 8 words, labels ≤ 4 words).
-- sfx `at` is relative to the beat start; align with overlay entrances and effects.
+- Do not plan any sound effects (the editor has none); leave `sfx` out.
 - NEVER put a price or any amount of money in overlays/graphics (no ฿, บาท, "199.-"). Prices may only be
   spoken (vo_th). Show value with words instead ("คุ้มมาก", "ลดแรง", "โปรดีมาก") or a discount_badge like "ลด 50%".
 - Put a hook_title in beat 1 of every video, and a cta_basket in the last beat.

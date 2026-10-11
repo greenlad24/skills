@@ -2,7 +2,7 @@
 
 Video: every segment is trimmed/scaled/cropped/zoomed in ffmpeg, concatenated, then the
 motion-graphics layer (rendered here frame by frame with Pillow) is streamed in as raw
-RGBA over stdin and composited on top. Audio: clip sound + voice + SFX + ducked music.
+RGBA over stdin and composited on top. Audio: clip sound + voice + ducked music (no sound effects).
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from . import audio_io, sfx as SFX
+from . import audio_io
 from .anim import render_element
 from .media import ffmpeg_exe, probe
 from .timeline import FPS, Resolved
@@ -120,23 +120,14 @@ def overlay_frames(R: Resolved):
 
 
 def build_audio(R: Resolved, out_wav: Path) -> None:
-    n = len(R.speech)
-    mix = R.speech.copy()
-    for name, at in R.sfx:
-        y = SFX.get(name)
-        i = int(at * audio_io.SR)
-        if i >= n:
-            continue
-        seg = y[: n - i]
-        mix[i:i + len(seg)] += seg
-    audio_io.write_wav(out_wav, mix)
+    audio_io.write_wav(out_wav, R.speech)
 
 
 def render(R: Resolved, out_path: Path, work_dir: Path, music: Path | None = None, settings: dict | None = None,
            progress=None, log=print) -> Path:
     settings = settings or {}
     work_dir.mkdir(parents=True, exist_ok=True)
-    fx_wav = work_dir / (out_path.stem + "_voice_fx.wav")
+    fx_wav = work_dir / (out_path.stem + "_voice.wav")
     build_audio(R, fx_wav)
 
     cmd = [ffmpeg_exe(), "-y", "-hide_banner", "-loglevel", "error", "-nostats", "-progress", "pipe:2"]

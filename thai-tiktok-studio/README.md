@@ -2,8 +2,8 @@
 
 Two tools in one local Mac app, built for Thai TikTok Shop / affiliate product videos:
 
-1. **Planner (Tool 1)** — paste a product **name, link or screenshot**. It scrapes the product, researches the product and its niche on the web, and writes **5 ranked viral Thai scripts**. Each script comes with a **Thai shot list** (what to film, how, and how long) and an exact **edit plan** (cuts, timing, captions, motion graphics, sound effects).
-2. **Auto-editor (Tool 2)** — drop all your clips and **your narration** into it and it renders **finished 9:16 videos**. Every video gets your own voice synced line by line, burned-in white Thai captions, animated stickers and text in 5 animation styles, a "กดตะกร้า" (tap the basket) arrow, zoom punch-ins, flashes, synthesized sound effects and ducked background music. Prices are never shown in graphics.
+1. **Planner (Tool 1)** — paste a product **name, link or screenshot**. It scrapes the product, researches the product and its niche on the web, and writes **5 ranked viral Thai scripts**. Each script comes with a **Thai shot list** (what to film, how, and how long) and an exact **edit plan** (cuts, timing, captions, motion graphics).
+2. **Auto-editor (Tool 2)** — drop all your clips and **your narration** into it and it renders **finished 9:16 videos**. Every video gets your own voice synced line by line, burned-in white Thai captions, animated stickers and text in 5 animation styles, a "กดตะกร้า" (tap the basket) arrow, zoom punch-ins, flashes and ducked background music. No sound effects. Prices are never shown in graphics.
    **The editor never calls an AI.** It follows the edit plan from Tool 1, so editing is free and unlimited.
 
 Everything runs on your Mac. Nothing is uploaded anywhere, except the product research and script request sent to Claude or ChatGPT.
@@ -57,18 +57,17 @@ Everything runs on your Mac. Nothing is uploaded anywhere, except the product re
 - **Cutting:** reframes any clip to 9:16, picks the part of the clip the plan asks for (start/middle/end), and adjusts speed. Short clips are stretched slightly, then frozen.
 - **Talking clips:** silences are detected and removed as jump cuts, with alternating punch-ins.
 - **Voice-over:** your narration is split into lines and each beat is timed to your voice, so captions and picture never drift. Optional: a computer Thai voice instead.
-- **Motion graphics (20 types, ranked by how common they are in viral Thai TikTok Shop videos):**
+- **Motion graphics (19 types, ranked by how common they are in viral Thai TikTok Shop videos):**
   - Text: hook titles, word-highlighted captions, keyword pops, reaction text, speech bubbles, lower thirds
   - Deals and urgency: discount starbursts ("ลด 50%"), urgency banners. Prices are never shown in graphics; amounts like ฿199 or "199 บาท" are removed automatically.
   - Calls to action: the กดตะกร้า (tap the basket) pill, with an arrow pointing at the basket
-  - Pointers and lists: arrows, draw-on circles, ✅ checklists, numbered reasons, spec cards
+  - Pointers and lists: arrows, ✅ checklists, numbered reasons, spec cards
   - Trust and proof: trust badges, star ratings, TikTok-style comment-reply cards
   - Comparisons: before/after labels, VS splits
   - Emoji stickers
   - All text is white and stays inside TikTok's safe zone.
 - **5 animation styles** with different entrances (pop, drop-bounce, stamp, zoom-out, wipe, fade-up, swing, spin), exits and loops.
 - **Camera effects:** punch-in, shake, flash, slow zoom, progress bar.
-- **Sound effects:** 11 sounds synthesized in code, so there are no licensing issues: pop, whoosh, ding, ka-ching, boom, sparkle, tick, click, shutter, riser, boing.
 - **Missing shots** become labelled placeholder cards, so you can preview before you've filmed everything.
 
 **Import your own top-video dataset.** In ⚙ Settings, import a CSV of top performers, e.g. your *Products & inspiration* sheet exported as CSV. The top 25 Thai videos, with their openers, shot mix and viewer notes, become live examples for every script.
@@ -100,4 +99,4 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt pytest
 .venv/bin/python -m pytest -q        # 20+ tests incl. full renders
 .venv/bin/python -m studio.app       # dev server on :8765
 ```
-Architecture: `studio/plan_schema.py` defines the edit-plan contract, which is the only thing Tool 1 and Tool 2 share. `studio/editor/` runs on ffmpeg (bundled via `imageio-ffmpeg`), with Pillow + libraqm for correct Thai text shaping and numpy for the sound effects and mixing.
+Architecture: `studio/plan_schema.py` defines the edit-plan contract, which is the only thing Tool 1 and Tool 2 share. `studio/editor/` runs on ffmpeg (bundled via `imageio-ffmpeg`), with Pillow + libraqm for correct Thai text shaping and numpy for audio mixing.

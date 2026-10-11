@@ -17,7 +17,7 @@ def test_normalize_fills_and_clamps():
                        "timeline": [{"shot_id": "nope", "duration": 99, "speed": 9, "effect": "explode",
                                      "captions": ["ก", {"text": "ข", "highlight": ["zz"]}],
                                      "overlays": [{"type": "hook_title", "text": "x", "at": -3}, {"type": "bogus"}],
-                                     "sfx": [{"type": "pop", "at": 1}, {"type": "laser"}]}]}]}
+                                     "sfx": [{"type": "pop", "at": 1}]}]}]}
     plan = normalize_plan(raw)
     v = plan["videos"][0]
     assert v["id"] == "V3" and v["shots"][0]["id"] == "V3-S01" and v["shots"][0]["shot_size"] == "medium"
@@ -26,7 +26,7 @@ def test_normalize_fills_and_clamps():
     assert b["duration"] == 15 and b["speed"] == 2.0 and b["effect"] == "none"
     assert [c["text"] for c in b["captions"]] == ["ก", "ข"] and b["captions"][1]["highlight"] == []
     assert len(b["overlays"]) == 1 and b["overlays"][0]["at"] == 0
-    assert [s["type"] for s in b["sfx"]] == ["pop"]
+    assert "sfx" not in b            # sound effects are never kept
     assert set(plan["research"]) >= {"product_name", "sources"}
 
 

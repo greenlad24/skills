@@ -26,7 +26,7 @@ Format ids in brackets are used in the plan.
 | id | Name | Beats (approx. seconds for a 30 s video) | Best for |
 |---|---|---|---|
 | problem_solution | ปัญหา→ทางออก (problem → solution) | 0–3 pain shown + spoken · 3–8 agitate ("ลองมาหมดแล้ว…", "I've tried everything…") · 8–20 product in use · 20–27 result · 27–32 CTA | skincare, cleaning, mattress, gadgets |
-| price_shock | ราคาช็อก / ทายราคา (price shock / guess the price) | 0–3 "ทายสิราคาเท่าไหร่?" ("guess the price?") or "ทำไมถูกจัง" ("why is it so cheap?") · 3–15 quality and features · 15–20 PRICE REVEAL spoken (on screen: "คุ้มมาก!" keyword pop + ka-ching, no numbers) · 20–28 compare with mall price · 28–32 CTA | anything with a strong discount |
+| price_shock | ราคาช็อก / ทายราคา (price shock / guess the price) | 0–3 "ทายสิราคาเท่าไหร่?" ("guess the price?") or "ทำไมถูกจัง" ("why is it so cheap?") · 3–15 quality and features · 15–20 PRICE REVEAL spoken (on screen: "คุ้มมาก!" keyword pop, no numbers) · 20–28 compare with mall price · 28–32 CTA | anything with a strong discount |
 | demo_proof | เทสต์พิสูจน์ (test / proof) | 0–2 the test itself (pour water, jump on mattress, drop) · 2–18 test · 18–25 outcome · 25–30 CTA | mattress, waterproof, cookware, cases |
 | unboxing_first_impression | แกะกล่อง (unboxing) | 0–3 parcel + "ของที่ติ๊กต๊อกป้ายมา มาถึงแล้ว!" ("the thing TikTok sold me on is here!") · 3–12 open, textures · 12–25 first try · 25–32 verdict + price + CTA | gadgets, beauty sets, big items (mattress-in-a-box!) |
 | before_after | ก่อน/หลัง (before/after) | 0–3 before or split screen · 3–15 use · 15–25 after (same angle and light) · 25–30 CTA | cleaning, home, hair styling (**never** for weight loss or supplements) |

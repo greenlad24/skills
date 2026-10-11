@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 from fixtures import make_footage, sample_plan
 
-from studio.editor import elements as E, matcher, media, render, sfx, text as T, timeline
+from studio.editor import elements as E, matcher, media, render, text as T, timeline
 from studio.plan_schema import OVERLAY_TYPES, normalize_plan
 
 
@@ -77,12 +77,6 @@ def test_timeline_resolution(footage, tmp_path):
     assert sum(s.dur for s in talking[:2]) < 3.0  # 4.5s clip minus silences
     assert any(s.kind == "image" for s in R2.segments)  # product_photo shot uses the product image
     assert "V2-S02" in R2.missing                 # no file → placeholder card
-
-
-def test_sfx_bank_is_normalized():
-    for name in sfx.BANK:
-        y = sfx.get(name)
-        assert len(y) > 100 and 0.2 < float(np.max(np.abs(y))) <= 0.56
 
 
 def test_full_render(footage, tmp_path):

@@ -2,7 +2,7 @@
 
 Tool 1 asks an LLM ONCE to fill this schema. Tool 2 renders it deterministically —
 no AI calls — so editing is free and repeatable. Everything the editor needs (cut
-points, durations, captions, motion graphics, sound effects) lives in the plan.
+points, durations, captions, motion graphics) lives in the plan. There are no sound effects.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ TRIMS = ["start", "middle", "end"]
 EFFECTS = ["none", "punch_in", "shake", "flash", "slow_zoom", "punch_shake"]
 OVERLAY_TYPES = [
     "hook_title", "keyword_pop", "discount_badge", "cta_basket",
-    "arrow", "circle_highlight", "checklist", "label", "trust_badges",
+    "arrow", "checklist", "label", "trust_badges",
     "stars_rating", "comment_reply", "emoji_sticker", "spec_card", "number_badge",
     "urgency_banner", "before_after_labels", "vs_split", "reaction_text",
     "speech_bubble", "lower_third",
@@ -39,7 +39,6 @@ POSITIONS = [
     "target",
 ]
 COLORS = ["auto", "yellow", "red", "white", "black", "pink", "green", "orange", "blue"]
-SFX = ["pop", "whoosh", "ding", "cash", "click", "boom", "sparkle", "tick", "shutter", "riser", "boing"]
 CAPTION_STYLES = ["stroke_white", "box_black", "box_yellow", "stroke_yellow"]
 FONTS = ["kanit", "prompt", "mitr", "chakra", "mali", "itim"]
 THEMES = ["sale_red_yellow", "hot_orange_gold", "trust_green", "beauty_pink", "clean_black_white"]
@@ -83,16 +82,14 @@ OVERLAY = _obj({
     "dur": _num("Seconds it stays on screen."),
     "position": _enum(POSITIONS),
     "color": _enum(COLORS),
-    "target_x": _num("0-1 horizontal point an arrow/circle points at (0.5 if unused)."),
-    "target_y": _num("0-1 vertical point an arrow/circle points at (0.5 if unused)."),
+    "target_x": _num("0-1 horizontal point an arrow points at (0.5 if unused)."),
+    "target_y": _num("0-1 vertical point an arrow points at (0.5 if unused)."),
 })
 
 CAPTION = _obj({
     "text": _s("One caption chunk: max ~18 Thai characters, a natural phrase, never split a word."),
     "highlight": _arr(_s(), "Exact substrings of text to color as keywords (0-2)."),
 })
-
-SFX_CUE = _obj({"type": _enum(SFX), "at": _num("Seconds after beat start.")})
 
 BEAT = _obj({
     "shot_id": _s("Which shot's footage to use, e.g. 'V1-S02'. Shots may be reused."),
@@ -104,7 +101,6 @@ BEAT = _obj({
     "vo_th": _s("Exactly what is SPOKEN during this beat in Thai (voice-over or on-camera line). '' if silent."),
     "captions": _arr(CAPTION, "vo_th split into on-screen chunks in order (empty if silent)."),
     "overlays": _arr(OVERLAY),
-    "sfx": _arr(SFX_CUE),
 })
 
 SHOT = _obj({
@@ -229,7 +225,7 @@ def strip_overlay_prices(o: dict) -> dict | None:
 
 def normalize_overlay(o: dict) -> dict | None:
     if not isinstance(o, dict) or o.get("type") not in OVERLAY_TYPES:
-        return None  # includes the retired "price_tag"
+        return None  # includes the retired "price_tag" and "circle_highlight"
     return strip_overlay_prices({
         "type": o["type"],
         "text": _str(o.get("text")),
@@ -263,10 +259,6 @@ def normalize_beat(b: dict, vid: str) -> dict:
         "vo_th": _str(b.get("vo_th")),
         "captions": caps,
         "overlays": [x for x in (normalize_overlay(o) for o in b.get("overlays") or []) if x],
-        "sfx": [
-            {"type": s["type"], "at": _clamp(s.get("at"), 0, 30, 0.0)}
-            for s in (b.get("sfx") or []) if isinstance(s, dict) and s.get("type") in SFX
-        ],
     }
 
 

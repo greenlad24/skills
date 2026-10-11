@@ -15,9 +15,9 @@ def ov(type_, text="", at=0.0, dur=2.0, **kw):
     return o
 
 
-def beat(shot, dur, vo="", caps=None, overlays=None, sfx=None, effect="none", role="other", trim="start"):
+def beat(shot, dur, vo="", caps=None, overlays=None, effect="none", role="other", trim="start"):
     return {"shot_id": shot, "role": role, "duration": dur, "trim": trim, "speed": 1.0, "effect": effect,
-            "vo_th": vo, "captions": caps or [], "overlays": overlays or [], "sfx": sfx or []}
+            "vo_th": vo, "captions": caps or [], "overlays": overlays or []}
 
 
 def shot(id_, size="close_up", audio="mute", dialogue=""):
@@ -37,19 +37,14 @@ def sample_plan() -> dict:
         "timeline": [
             beat("V1-S01", 2.4, "ทำไมถูกจัง ที่นอนห้าฟุต แค่สองพันกว่าบาท",
                  [{"text": "ทำไมถูกจัง", "highlight": ["ถูกจัง"]}, {"text": "ที่นอน 5 ฟุต แค่ 2,000", "highlight": ["2,000"]}],
-                 [ov("hook_title", "ในห้างเป็นหมื่น แต่ในคลิปนี้…", 0, 2.4), ov("emoji_sticker", emoji="😱", at=0.6, dur=1.2)],
-                 [{"type": "whoosh", "at": 0}], effect="punch_in", role="hook"),
+                 [ov("hook_title", "ในห้างเป็นหมื่น แต่ในคลิปนี้…", 0, 2.4), ov("emoji_sticker", emoji="😱", at=0.6, dur=1.2)], effect="punch_in", role="hook"),
             beat("V1-S02", 3.0, "นุ่มเด้ง ไม่ปวดหลัง", [{"text": "นุ่มเด้ง ไม่ปวดหลัง", "highlight": ["นุ่มเด้ง"]}],
                  [ov("checklist", items=["นุ่มเด้ง", "ไม่ปวดหลัง", "ส่งฟรี"], at=0.2, dur=2.8),
-                  ov("arrow", at=0.5, dur=1.5, position="target", target_x=0.62, target_y=0.55)],
-                 [{"type": "tick", "at": 0.2}], effect="flash", role="demo"),
+                  ov("arrow", at=0.5, dur=1.5, position="target", target_x=0.62, target_y=0.55)], effect="flash", role="demo"),
             beat("V1-S03", 2.6, "ราคาเหลือแค่ 2,990", [],
-                 [ov("keyword_pop", "คุ้มมาก!", 0, 2.6), ov("circle_highlight", at=0.2, dur=1.6, position="target", target_x=0.35, target_y=0.4)],
-                 [{"type": "cash", "at": 0}], effect="punch_shake", role="price"),
-            beat("V1-S04", 2.4, "", [], [ov("stars_rating", "4.9", 0, 2.4, sub_text="ขายแล้ว 10k+"), ov("discount_badge", "ลด 50%", 0.3, 2)],
-                 [{"type": "sparkle", "at": 0}], effect="slow_zoom", role="proof"),
-            beat("V1-S02", 3.0, "กดตะกร้าเหลืองได้เลย", [], [ov("cta_basket", "กดตะกร้าเลย", 0, 3, emoji="🛒")],
-                 [{"type": "ding", "at": 0}], role="cta", trim="end"),
+                 [ov("keyword_pop", "คุ้มมาก!", 0, 2.6)], effect="punch_shake", role="price"),
+            beat("V1-S04", 2.4, "", [], [ov("stars_rating", "4.9", 0, 2.4, sub_text="ขายแล้ว 10k+"), ov("discount_badge", "ลด 50%", 0.3, 2)], effect="slow_zoom", role="proof"),
+            beat("V1-S02", 3.0, "กดตะกร้าเหลืองได้เลย", [], [ov("cta_basket", "กดตะกร้าเลย", 0, 3, emoji="🛒")], role="cta", trim="end"),
         ],
     }
     v2 = {
@@ -58,8 +53,7 @@ def sample_plan() -> dict:
         "shots": [shot("V2-S01", "selfie_talking", "sync", "ใช่ค่ะ นุ่มจริง"), shot("V2-S02"), shot("V2-S03", "product_photo")],
         "timeline": [
             beat("V2-S01", 3, "ใช่ค่ะ นุ่มจริง", [{"text": "ใช่ค่ะ นุ่มจริง", "highlight": ["นุ่มจริง"]}],
-                 [ov("comment_reply", "นุ่มจริงไหมคะ?", 0, 3, sub_text="@mee"), ov("reaction_text", "จริงดิ?!", 1, 1.2, emoji="🤔")],
-                 [{"type": "pop", "at": 0}], role="hook"),
+                 [ov("comment_reply", "นุ่มจริงไหมคะ?", 0, 3, sub_text="@mee"), ov("reaction_text", "จริงดิ?!", 1, 1.2, emoji="🤔")], role="hook"),
             beat("V2-S02", 2.5, "", [], [ov("vs_split", "ก่อน", 0, 2.5, sub_text="หลัง"), ov("spec_card", "สเปก", 0.3, 2, items=["หนา: 10 นิ้ว", "ขนาด: 5 ฟุต"])]),
             beat("V2-S03", 2.5, "", [], [ov("number_badge", "1", 0, 2.5, sub_text="นุ่มเด้ง"), ov("trust_badges", items=["ของแท้", "ส่งฟรี"], at=0.2, dur=2),
                                           ov("lower_third", "Solomon Pyla Plus", 0.2, 2, sub_text="ที่นอนสปริง"), ov("urgency_banner", "โปรวันนี้วันเดียว", 0.5, 2),

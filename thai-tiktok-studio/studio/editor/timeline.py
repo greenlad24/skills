@@ -4,7 +4,6 @@ Pure planning step — no rendering. Produces:
   segments  (what source to show, from where, how long, with which camera effect)
   elements  (captions + motion graphics with absolute times)
   speech    (voice-over audio track, numpy, full length)
-  sfx cues  (absolute times)
 """
 
 from __future__ import annotations
@@ -37,7 +36,6 @@ class Segment:
 class Resolved:
     segments: list = field(default_factory=list)
     elements: list = field(default_factory=list)
-    sfx: list = field(default_factory=list)          # (name, t)
     speech: np.ndarray | None = None                 # mono float32 @48k
     total: float = 0.0
     beats: list = field(default_factory=list)        # [(t0, t1)]
@@ -203,7 +201,7 @@ def resolve(video: dict, assign: dict, footage_dir: Path, product_images: list, 
             R.elements.append(E.flash(t0))
 
     R.total = round(t * FPS) / FPS
-    # --- overlays + sfx (absolute times) ------------------------------------
+    # --- overlays (absolute times) -------------------------------------------
     for bi, b in enumerate(video["timeline"]):
         t0, t1 = R.beats[bi]
         for o in b["overlays"]:
@@ -212,8 +210,6 @@ def resolve(video: dict, assign: dict, footage_dir: Path, product_images: list, 
             if o["type"] == "cta_basket" and bi == len(video["timeline"]) - 1:
                 e = R.total
             R.elements += E.build_overlay(o, s, e, ctx)
-        for c in b["sfx"]:
-            R.sfx.append((c["type"], min(R.total - 0.05, t0 + c["at"])))
     if video.get("progress_bar"):
         R.progress_color = ctx.theme["accent"]
     R.elements.sort(key=lambda el: el.z)
