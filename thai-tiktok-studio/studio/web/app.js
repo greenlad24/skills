@@ -240,7 +240,14 @@ function renderManual(body) {
     <div class="row"><button class="primary" id="btnCopy">Copy prompt</button><span class="muted">${Math.round(p.manual_prompt.length / 1000)}k characters</span></div>
     <label>Paste the JSON answer</label><textarea id="pasteBox" rows="10" placeholder='{"research": {...}, "videos": [...]}'></textarea>
     <div class="row"><button class="primary" id="btnImport">Import plan</button></div></section>`;
-  $("#btnCopy").onclick = async () => { await navigator.clipboard.writeText(p.manual_prompt); toast("Prompt copied"); };
+  $("#btnCopy").onclick = async () => {
+    try { await navigator.clipboard.writeText(p.manual_prompt); }
+    catch (e) {  // some app windows block the clipboard API — fall back to a hidden textarea
+      const ta = document.createElement("textarea"); ta.value = p.manual_prompt; document.body.appendChild(ta);
+      ta.select(); document.execCommand("copy"); ta.remove();
+    }
+    toast("Prompt copied");
+  };
   $("#btnImport").onclick = async () => {
     try { await api(P() + "/paste", { method: "POST", json: { text: $("#pasteBox").value } }); toast("Plan imported ✓"); openProject(state.pid, true); }
     catch (e) { toast(e.message, 6000); }
@@ -267,6 +274,7 @@ function renderEditTab() {
       Film the shots in list order for the best match; for retakes the last take is used. You can change any match below.</p>
       <div class="drop" id="footDrop">Drop clips here or <u>browse</u><input type="file" id="footFiles" multiple hidden accept="video/*,image/*,audio/*"></div>
       <div id="upProg"></div>
+      <div class="row"><button class="primary" data-phone="1">📱 ส่งไฟล์จากมือถือ (Android / iPhone)</button></div>
       <div class="row"><button class="ghost" id="btnFolder">Open clips folder</button><button class="ghost" id="btnRescan">↻ Rescan</button>
         <span class="muted localonly">Huge files? Copy them into the folder in Finder, then Rescan.</span></div>
       <div class="files" style="margin-top:10px">${fileCards(p.files, "footage") || '<span class="muted">No clips yet.</span>'}</div>
@@ -275,6 +283,7 @@ function renderEditTab() {
       <p class="muted">Upload your narration — a video or audio of you reading the script (one take per video). The sound is taken from it,
       split into lines at your pauses and placed exactly on each beat. The picture of the narration video is not used.</p>
       <div class="drop" id="narDrop">Drop narration here or <u>browse</u><input type="file" id="narFiles" multiple hidden accept="video/*,audio/*"></div>
+      <div class="row" style="margin-top:8px"><button class="secondary" data-phone="1">📱 ส่งเสียงพากย์จากมือถือ</button></div>
       <div id="narProg"></div>
       <div class="files" style="margin-top:10px">${fileCards(nars, "narration") || '<span class="muted">No narration yet.</span>'}</div>
       ${nars.length ? `<table style="margin-top:10px"><tr><th>Video</th><th>Narration</th></tr>${p.plan.videos.map((v) => `<tr><td class="id">${esc(v.id)} · ${esc(v.title_th)}</td><td><select data-nar="${esc(v.id)}">${opt(nars, a.narration[v.id])}</select></td></tr>`).join("")}</table>` : ""}
@@ -327,6 +336,7 @@ function renderEditTab() {
     updateVideo(+b.dataset.shuffle, { variation: (v.variation || 0) + 1 });
   }));
   $("#btnSaveAssign").onclick = async () => { await saveAssign(); toast("Matching saved"); openProject(state.pid, true); };
+  body.querySelectorAll("[data-phone]").forEach((b) => (b.onclick = showPhoneLink));
   $("#btnRender").onclick = () => startRender(false);
   $("#btnDraft").onclick = () => startRender(true);
 }
@@ -452,8 +462,7 @@ const OB_STEPS = [
     <div class="tip">ระบบจะตัดเสียงเป็นประโยคและวางให้ตรงกับภาพและซับไตเติลอัตโนมัติ</div>`,
   () => `<div class="big">✂️</div><h2>เครื่องมือ 2: ตัดต่ออัตโนมัติ</h2>
     <ol><li>เปิดสินค้า แล้วกดแท็บ <b>2 · Auto-edit videos</b></li>
-      <li><b>ลากคลิปทั้งหมด</b> ใส่ช่องที่ 1 (ใส่เพลงประกอบด้วยก็ได้)</li>
-      <li><b>ลากเสียงพากย์</b> ใส่ช่อง 🎙 แยกต่างหาก</li>
+      <li>กด <b>📱 ส่งไฟล์จากมือถือ</b> แล้วสแกน QR ด้วยมือถือ (ต่อ Wi‑Fi เดียวกัน) — ส่งคลิปและเสียงพากย์จากแกลเลอรีได้เลย<br><span class="muted">หรือลากไฟล์จาก Mac ใส่ช่องที่ 1 และช่อง 🎙</span></li>
       <li>ตรวจการจับคู่ (เปลี่ยนได้ถ้าไม่ตรง)</li>
       <li>เลือกสไตล์แอนิเมชัน แล้วกด <b>🎬 Render</b></li>
       <li>ดาวน์โหลด MP4 แล้ว <b>โพสต์ได้เลย</b></li></ol>
@@ -512,7 +521,7 @@ function nextStep(p) {
   const shots = plan.videos.flatMap((v) => v.shots.map((s) => s.id));
   const have = shots.filter((id) => a.shots && a.shots[id]).length;
   const needVo = plan.videos.filter((v) => v.audio_mode === "voiceover" && !(a.narration || {})[v.id] && !(a.vo || {})[v.id]);
-  if (!p.files.length) return { at: 1, text: "อ่านสคริปต์ด้านล่าง แล้วเปิด <b>🖨 Filming pack</b> ถ่ายคลิปตามรายการ (ไม่ต้องตั้งชื่อไฟล์) เสร็จแล้วไปแท็บ 2 ลากไฟล์ใส่", steps, act: "pack", btn: "🖨 เปิด Filming pack" };
+  if (!p.files.length) return { at: 1, text: "อ่านสคริปต์ด้านล่าง แล้วเปิด <b>🖨 Filming pack</b> ถ่ายคลิปตามรายการ (ไม่ต้องตั้งชื่อไฟล์) เสร็จแล้วไปแท็บ 2 กด <b>📱 ส่งไฟล์จากมือถือ</b> หรือลากไฟล์ใส่", steps, act: "pack", btn: "🖨 เปิด Filming pack" };
   if (needVo.length) return { at: 2, text: `อัดเสียงพากย์สำหรับ <b>${needVo.map((v) => v.id).join(", ")}</b> (อ่านทุกบรรทัดในเทคเดียว) แล้วลากใส่ช่อง 🎙 ในแท็บ 2`, steps, act: "edit", btn: "ไปแท็บ 2" };
   if (have < shots.length) return { at: 3, text: `ยังขาดคลิป <b>${shots.length - have}</b> ช็อต — ถ่ายเพิ่มแล้วลากใส่ หรือกดเรนเดอร์ดูก่อนก็ได้ (ช็อตที่ขาดจะเป็นการ์ดสีเทา)`, steps, act: "edit", btn: "ไปแท็บ 2" };
   if (!p.renders.length) return { at: 4, text: "ทุกอย่างพร้อม! เลือกสไตล์แอนิเมชันแล้วกด <b>🎬 Render selected</b>", steps, act: "edit", btn: "ไปเรนเดอร์" };
@@ -527,4 +536,30 @@ function coachAction(act) {
   if (act === "pack") window.open(F("filming_pack.html"), "_blank");
   else if (act === "replan") $("#btnReplan").click();
   else if (act === "edit") { state.tab = "edit"; renderProject(); window.scrollTo(0, document.querySelector(".tabs").offsetTop - 70); }
+}
+
+
+/* ---------------- send files from a phone (QR over Wi-Fi) ---------------- */
+async function showPhoneLink() {
+  let r;
+  try { r = await api(P() + "/phone-link", { method: "POST" }); } catch (e) { return toast(e.message, 5000); }
+  const before = (state.project.files.length || 0) + ((state.project.narration || []).length || 0);
+  modal(`<div class="ob" style="text-align:center"><h2>📱 ส่งไฟล์จากมือถือ</h2>
+    <img src="${r.qr}" alt="QR" style="width:260px;height:260px;border-radius:12px;background:#fff;padding:8px">
+    <ol style="text-align:left"><li>ให้มือถือกับ Mac ต่อ <b>Wi‑Fi เดียวกัน</b></li>
+      <li>เปิดกล้องมือถือ <b>สแกน QR</b> นี้ (หรือพิมพ์ลิงก์ด้านล่างใน Chrome)</li>
+      <li>กด <b>เลือกคลิป</b> หรือ <b>เลือกเสียงพากย์</b> แล้วเลือกไฟล์จากแกลเลอรี</li></ol>
+    <p class="muted" style="word-break:break-all">${esc(r.url)}</p>
+    <p id="phoneCount" class="muted">ไฟล์ที่ได้รับแล้ว: 0</p>
+    <div class="tip">ไฟล์ส่งแบบคุณภาพเต็ม ไม่ถูกบีบอัดเหมือน LINE · ลิงก์ใช้ได้ ${r.hours} ชั่วโมง เฉพาะสินค้านี้</div>
+    <div class="row" style="justify-content:center"><button class="primary" id="phoneDone">เสร็จแล้ว</button></div></div>`);
+  const timer = setInterval(async () => {
+    if ($("#modal").classList.contains("hidden")) return clearInterval(timer);
+    try {
+      const p = await api(P());
+      const n = p.files.length + (p.narration || []).length - before;
+      const el = $("#phoneCount"); if (el) el.innerHTML = `ไฟล์ที่ได้รับแล้ว: <b class="ok">${Math.max(0, n)}</b>`;
+    } catch (e) { /* keep polling */ }
+  }, 3000);
+  $("#phoneDone").onclick = () => { clearInterval(timer); closeModal(); openProject(state.pid, true); };
 }

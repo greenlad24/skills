@@ -23,7 +23,9 @@ from .plan_schema import normalize_plan, plan_problems
 app = Flask(__name__, static_folder=None)
 app.config["MAX_CONTENT_LENGTH"] = None  # big video uploads are fine
 PORT = int(os.environ.get("TTS_STUDIO_PORT", "8765"))
-HOST = os.environ.get("TTS_STUDIO_HOST", "127.0.0.1")
+# Listen on the local network so phones can send files (only the /m/<secret> pages are
+# reachable from other devices — see require_login). Hosted mode sits behind a proxy.
+HOST = os.environ.get("TTS_STUDIO_HOST", "0.0.0.0")
 SERVER_MODE = os.environ.get("TTS_STUDIO_SERVER") == "1"      # hosted on a website (no Finder, no auto-browser)
 PASSWORD = os.environ.get("TTS_STUDIO_PASSWORD", "")          # required when hosted
 
@@ -53,8 +55,15 @@ LOGIN_PAGE = """<!doctype html><html lang="th"><meta charset="utf-8"><meta name=
 <div class="row"><button class="primary wide">เข้าสู่ระบบ · Log in</button></div></form></body></html>"""
 
 
+LOCAL_ADDRS = ("127.0.0.1", "::1", "::ffff:127.0.0.1")
+
+
 @app.before_request
 def require_login():
+    if request.path.startswith("/m/"):          # phone upload pages: the secret link is the key
+        return None
+    if not SERVER_MODE and request.remote_addr not in LOCAL_ADDRS:
+        abort(403)                               # the full app is only for this computer
     if not PASSWORD or request.path in ("/login",) or request.path.startswith("/static/"):
         return None
     if session.get("ok"):
@@ -257,6 +266,35 @@ def save_plan(pid):
     projects.save_json(d / "checks.json", {"warnings": plan_problems(plan), "compliance": compliance.check_plan(plan)})
     exports.write_all(d, plan, projects.meta(pid))
     return jsonify({"ok": True})
+
+
+@app.post("/api/projects/<pid>/phone-link")
+def phone_link(pid):
+    from . import phone
+    projects.pdir(pid)
+    token = phone.new_token(pid)
+    host = request.host if SERVER_MODE else f"{phone.lan_ip()}:{PORT}"
+    scheme = "https" if SERVER_MODE else "http"
+    url = f"{scheme}://{host}/m/{token}"
+    return jsonify({"url": url, "qr": phone.qr_data_uri(url), "hours": phone.TOKEN_TTL // 3600})
+
+
+@app.get("/m/<token>")
+def phone_page(token):
+    from . import phone
+    pid = phone.project_for(token)
+    if not pid:
+        return "<h2 style='font-family:sans-serif'>ลิงก์หมดอายุ — สแกน QR ใหม่จาก Mac</h2>", 404
+    return phone.page(projects.meta(pid).get("name", ""))
+
+
+@app.post("/m/<token>/upload")
+def phone_upload(token):
+    from . import phone
+    pid = phone.project_for(token)
+    if not pid:
+        return jsonify({"error": "Link expired"}), 404
+    return upload(pid)
 
 
 @app.post("/api/projects/<pid>/upload")

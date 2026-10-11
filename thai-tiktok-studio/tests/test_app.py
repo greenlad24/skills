@@ -124,3 +124,25 @@ def test_missing_project_is_404(client):
     assert c.get("/api/projects/20990101-000000-nope").status_code == 404
     r = c.post("/api/projects/20990101-000000-nope/upload", data={}, content_type="multipart/form-data")
     assert r.status_code == 404 and "error" in r.get_json()
+
+
+def test_phone_upload_via_qr_link(client):
+    c, tmp = client
+    r = c.post("/api/projects", data={"text": "ที่นอน"}, content_type="multipart/form-data").get_json()
+    pid = r["project"]["id"]
+    wait_job(c, r["job"]["id"])
+    link = c.post(f"/api/projects/{pid}/phone-link").get_json()
+    assert link["qr"].startswith("data:image/png;base64,") and "/m/" in link["url"]
+    path = "/m/" + link["url"].split("/m/")[1]
+    phone = {"REMOTE_ADDR": "192.168.1.50"}                 # another device on the Wi-Fi
+    assert c.get("/", environ_base=phone).status_code == 403            # main app stays private
+    assert c.get(f"/api/projects/{pid}", environ_base=phone).status_code == 403
+    page = c.get(path, environ_base=phone)
+    assert page.status_code == 200 and "ส่งไฟล์ไปที่ Mac" in page.get_data(as_text=True)
+    up = c.post(path + "/upload", environ_base=phone, content_type="multipart/form-data",
+                data={"kind": "narration", "files": [(io.BytesIO(b"x" * 1000), "VID_20261011.mp4")]})
+    assert up.status_code == 200 and up.get_json()["saved"] == ["VID_20261011.mp4"]
+    p = c.get(f"/api/projects/{pid}").get_json()
+    assert [f["name"] for f in p["narration"]] == ["VID_20261011.mp4"]
+    assert c.get("/m/not-a-real-token", environ_base=phone).status_code == 404
+    assert c.post("/m/not-a-real-token/upload", environ_base=phone).status_code == 404

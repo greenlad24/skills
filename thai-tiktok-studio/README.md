@@ -12,7 +12,17 @@ Everything runs on your Mac. Nothing is uploaded anywhere, except the product re
 
 ---
 
-## Install & start (macOS 12+, Intel or Apple Silicon)
+## Mac app (easiest)
+1. Download **[ThaiTikTokStudio-mac.zip](releases/ThaiTikTokStudio-mac.zip)** and unzip it.
+2. Drag **Thai TikTok Studio** into **Applications**.
+3. The first time only: right-click the app → **Open** → **Open** (it isn't from the App Store).
+4. The first launch sets itself up in 2–5 minutes. It installs Python if needed, with Thai/English dialogs. After that it opens in seconds, in its own window.
+
+**Clips from an Android phone (or iPhone):** in tab 2, press **📱 ส่งไฟล์จากมือถือ** ("send files from phone") and scan the QR code with the phone. The phone must be on the same Wi‑Fi. Pick clips or narration from the gallery and they upload straight into the product at full original quality. The link is secret, works for 12 hours, and only reaches that one product's upload page.
+
+Log file: `~/Library/Logs/ThaiTikTokStudio.log`. To rebuild the app after code changes, run `python mac/build_app.py`.
+
+## Install & start from source (macOS 12+, Intel or Apple Silicon)
 
 1. Get this folder onto the Mac: `git clone` the repo, or download the ZIP from GitHub and unzip it.
 2. Double-click **`start.command`**.
