@@ -80,8 +80,9 @@ def test_shots_cut_on_pauses_and_keep_animations(footage, narration, tmp_path):
     for s in R.segments[:-1]:
         t += s.dur
         cuts.append(t)
-    for c in cuts:   # no cut inside a spoken phrase
-        assert not any(a + 0.05 < c < b - 0.05 for a, b in sp.phrases), (c, sp.phrases)
+    mid = [c for c in cuts if any(a + 0.05 < c < b - 0.05 for a, b in sp.phrases)]
+    # picture cuts land in the voice's pauses; only when there are more clips than pauses may one fall mid-line
+    assert len(mid) <= max(0, len(cuts) - (len(sp.phrases) - 1)), (cuts, sp.phrases)
     types = {o["type"] for b in v["timeline"] for o in b["overlays"]}
     n_planned = sum(len(b["overlays"]) for b in v["timeline"])
     assert len(R.elements) >= n_planned - 1 and types   # the plan's graphics are all still there
@@ -102,6 +103,8 @@ def test_ai_edl_is_validated(footage, narration, tmp_path, monkeypatch):
     class Fake:
         @staticmethod
         def make_edl(prompt, images, schema, settings, log=print, workdir=None):
+            if "clips" in schema["properties"]:     # the upright check
+                return {"clips": []}
             calls.append((prompt, images))
             return {"segments": [
                 {"start": 0, "end": 2.0, "clip": "C2", "in": 0.5, "effect": "punch_in"},
@@ -196,3 +199,103 @@ def test_style_reference_upload(footage, tmp_path, monkeypatch):
     prof = reference.save_reference(footage / "V1-S01.mp4")
     assert prof["shots"] >= 1 and prof["source"] == "V1-S01.mp4" and reference.sheet_path()
     assert reference.reset()["source"].startswith("built-in")
+
+
+def _sideways_letterboxed(path):
+    """A portrait scene stored sideways inside a portrait frame with black bars (what chat apps can produce)."""
+    subprocess.run([media.ffmpeg_exe(), "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=1080x608:r=30:d=4",
+                    "-vf", "pad=1080:1920:0:656:black", "-pix_fmt", "yuv420p", "-c:v", "libx264", "-preset", "ultrafast",
+                    str(path)], check=True)
+
+
+def test_black_bars_detected(tmp_path):
+    f = tmp_path / "IMG_9001.mp4"
+    _sideways_letterboxed(f)
+    crop = media.black_bars(f)
+    w, h, x, y = map(int, crop.split("=")[1].split(":"))
+    assert abs(w - 1080) <= 4 and abs(h - 608) <= 8 and abs(y - 656) <= 8
+    full = tmp_path / "full.mp4"
+    subprocess.run([media.ffmpeg_exe(), "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=1080x1920:r=30:d=2",
+                    "-pix_fmt", "yuv420p", "-c:v", "libx264", "-preset", "ultrafast", str(full)], check=True)
+    assert media.black_bars(full) == ""
+
+
+def test_vision_turns_clips_upright(footage, narration, tmp_path, monkeypatch):
+    plan, v, a, files = _setup(footage, narration)
+    side = tmp_path / "IMG_9002.mp4"
+    _sideways_letterboxed(side)
+    files = files + [str(side)]
+    seen = {"orient": 0, "edl_images": []}
+
+    class Fake:
+        @staticmethod
+        def make_edl(prompt, images, schema, settings, log=print, workdir=None):
+            if "clips" in schema["properties"]:
+                seen["orient"] += 1
+                ids = [x.strip() for x in prompt.split("Clips:")[1].split("\n")[0].split(",")]
+                return {"clips": [{"id": i, "rotate": "90" if "IMG_9002" in images[k] or k == len(ids) - 1 else "0"}
+                                  for k, i in enumerate(ids)]}
+            seen["edl_images"] = images
+            return None
+    import studio.planner as P
+    monkeypatch.setattr(P, "_provider", lambda name: Fake)
+    st = {"provider": "claude_code", "claude_code_token": "x"}
+    R = SE.resolve(v, a, files, [], st, tmp_path / "w", narration_dir=narration)
+    _check_timeline(R)
+    clips = SE.clip_catalog(files, [], a, tmp_path / "w")
+    last = clips[-1]
+    assert last.path == str(side) and last.crop
+    assert any("Turned upright" in n for n in R.notes) and any("black bars" in n for n in R.notes)
+    used = [s for s in R.segments if s.path == str(side)]
+    assert all("transpose=1" in s.pre and s.pre.startswith("crop=") for s in used)
+    # the answer is cached per file: a second render doesn't ask again
+    SE.resolve(v, a, files, [], st, tmp_path / "w", narration_dir=narration)
+    assert seen["orient"] == 1
+    # rendering a fixed clip gives a full portrait frame (no bars, upright)
+    from studio.editor.timeline import Resolved, Segment
+    R2 = Resolved(segments=[Segment(str(side), "video", 0.5, 1.0, pre=used[0].pre if used else
+                                    SE.Clip("", str(side), "video", "broll", 4, [], last.crop, 90).pre)], total=1.0,
+                  speech=np.zeros(96000, dtype=np.float32))
+    out = tmp_path / "fixed.mp4"
+    render.render(R2, out, tmp_path, settings={"render_preset": "ultrafast"})
+    assert media.black_bars(out) == ""
+
+
+def test_exif_rotated_photo_is_upright(tmp_path):
+    from PIL import Image
+    from studio.editor import orient
+    im = Image.new("RGB", (400, 200), (200, 30, 30))
+    exif = im.getexif()
+    exif[0x0112] = 6            # "rotate 90 CW to display"
+    src = tmp_path / "photo.jpg"
+    im.save(src, exif=exif)
+    out = orient.upright_photo(str(src), tmp_path / "up")
+    assert out != str(src) and Image.open(out).size == (200, 400)
+
+
+def test_clips_keep_filmed_order_and_no_photos(footage, narration, tmp_path):
+    from PIL import Image
+    plan, v, a, files = _setup(footage, narration)
+    photo = tmp_path / "product.jpg"
+    Image.new("RGB", (300, 300), "red").save(photo)
+    R = SE.resolve(v, a, files + [str(photo)], [str(photo)], {"provider": "manual"}, tmp_path / "w", narration_dir=narration)
+    _check_timeline(R)
+    assert all(s.kind == "video" for s in R.segments)                       # only filmed clips
+    clips = SE.clip_catalog(files, [], a)
+    rank = {c.path: i for i, c in enumerate(clips)}
+    seq = [(rank[s.path], s.src_in) for s in R.segments]
+    assert seq == sorted(seq)                                                # steps never jump back
+    assert len({s.path for s in R.segments}) == len(clips)                   # every clip is used
+
+
+def test_ai_order_is_enforced(footage, narration, tmp_path):
+    plan, v, a, files = _setup(footage, narration)
+    clips = SE.clip_catalog(files, [], a)
+    sp = SE.narration_spine(narration / "IMG_0400.MOV")
+    draft = SE.fallback_edl(v, clips, sp, SE.beat_windows(v, sp))
+    bad = {"segments": [{"start": 0, "end": 3, "clip": "C3", "in": 0.3, "effect": "none"},
+                        {"start": 3, "end": 6, "clip": "C1", "in": 0.3, "effect": "none"},
+                        {"start": 6, "end": 99, "clip": "C2", "in": 0.3, "effect": "none"}], "notes": ""}
+    out = SE.validate_edl(bad, clips, sp, draft)
+    ranks = [int(s["clip"][1:]) for s in out["segments"]]
+    assert ranks == sorted(ranks)

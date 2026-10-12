@@ -53,7 +53,9 @@ EDITOR_RULES = """
 - Beat durations must add up to ≈ target_length_sec.
 - Shot lists in Thai: concrete, filmable at home with a phone, 9:16 vertical; say what to film, how, and how long.
   Always include at least one wide "real home/context" shot and several close-ups. Record each shot 2–3 s longer than needed.
-- If product photos were provided you may use a shot with shot_size "product_photo" (the editor can use downloaded product images).
+- NEVER plan product photos or downloaded images: every shot is a video clip the creator films themself
+  (do not use shot_size "product_photo"). Number the shots in the order they should be FILMED = the order of the
+  steps in the video; the editor keeps the clips in recording order.
 """
 
 

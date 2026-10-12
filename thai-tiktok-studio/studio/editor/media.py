@@ -138,5 +138,42 @@ def speech_islands(path, min_silence: float = 0.4, noise_db: int = -32) -> list:
     return islands
 
 
+@functools.lru_cache(maxsize=512)
+def _bars_cached(path: str, mtime: float) -> str:
+    info = probe(path)
+    w, h = info["width"], info["height"]
+    if not w or not h:
+        return ""
+    image = kind(Path(path)) == "image"
+    starts = [None] if image else [info["duration"] * k for k in (0.15, 0.5, 0.85)]
+    best = None
+    for t in starts:
+        cmd = [ffmpeg_exe(), "-hide_banner", "-nostats"]
+        if t is not None:
+            cmd += ["-ss", f"{t:.2f}"]
+        cmd += ["-i", path, "-frames:v", "1" if image else "12", "-vf", "cropdetect=limit=24:round=2:reset=0",
+                "-an", "-f", "null", "-"]
+        found = re.findall(r"crop=(\d+):(\d+):(\d+):(\d+)", subprocess.run(
+            cmd, capture_output=True, text=True, errors="replace").stderr)
+        if not found:
+            return ""        # can't tell → never crop
+        cw, ch, cx, cy = map(int, found[-1])
+        if best is None or cw * ch > best[0] * best[1]:
+            best = (cw, ch, cx, cy)   # the largest picture seen: a dark frame must not crop real footage
+    cw, ch, cx, cy = best
+    if cw < w * 0.2 or ch < h * 0.2 or (cw > w * 0.94 and ch > h * 0.94):
+        return ""
+    return f"crop={cw}:{ch}:{cx}:{cy}"
+
+
+def black_bars(path) -> str:
+    """'crop=w:h:x:y' when the picture has black bars baked in (e.g. a sideways video re-saved by a chat app), else ''."""
+    p = Path(path)
+    try:
+        return _bars_cached(str(p), p.stat().st_mtime)
+    except Exception:
+        return ""
+
+
 def run(cmd: list, **kw) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, capture_output=True, text=True, errors="replace", **kw)

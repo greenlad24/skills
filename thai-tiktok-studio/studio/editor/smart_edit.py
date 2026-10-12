@@ -29,7 +29,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from ..plan_schema import EFFECTS
-from . import audio_io, elements as E, matcher, media, reference, tts, voice
+from . import audio_io, elements as E, matcher, media, orient, reference, tts, voice
 from .timeline import FPS, SR, Resolved, Segment, _weight
 
 LEAD = 0.15          # silence before the first word
@@ -49,6 +49,12 @@ class Clip:
     type: str            # talk | broll | photo
     duration: float      # inf for photos
     shots: list = field(default_factory=list)   # planned shot ids this file was matched to
+    crop: str = ""       # black bars baked into the picture → cropped off
+    rotate: int = 0      # degrees clockwise to make it upright (Claude's vision check)
+
+    @property
+    def pre(self) -> str:
+        return ",".join(x for x in (self.crop, orient.ffmpeg_filter(self.rotate)) if x)
 
 
 @dataclass
@@ -62,7 +68,7 @@ class Spine:
 
 
 # --------------------------------------------------------------------------- clips
-def clip_catalog(files: list, product_images: list, assign: dict) -> list:
+def clip_catalog(files: list, product_images: list, assign: dict, work_dir: Path | None = None) -> list:
     by_name = {}
     for sid, name in (assign.get("shots") or {}).items():
         by_name.setdefault(name, []).append(sid)
@@ -70,7 +76,7 @@ def clip_catalog(files: list, product_images: list, assign: dict) -> list:
     for f in sorted(files, key=matcher.order_key):
         p = Path(f)
         k = media.kind(p)
-        if k not in ("video", "image"):
+        if k != "video":          # only the clips you filmed — no photos / product images
             continue
         if k == "video":
             info = media.probe(p)
@@ -80,18 +86,20 @@ def clip_catalog(files: list, product_images: list, assign: dict) -> list:
         else:
             dur = float("inf")
         out.append(Clip("", str(p), k, matcher.classify(p), dur, sorted(by_name.get(p.name, []))))
-    names = {Path(c.path).name for c in out}
-    for f in product_images:
-        if Path(f).exists() and Path(f).name not in names:
-            out.append(Clip("", str(f), "image", "photo", float("inf"), []))
+    up_dir = (work_dir.parent if work_dir else Path(out[0].path).parent if out else Path(".")) / "upright"
     for i, c in enumerate(out):
         c.id = f"C{i + 1}"
+        if c.kind == "image":
+            c.path = orient.upright_photo(c.path, up_dir)     # phone photos stored sideways + EXIF tag
+        c.crop = media.black_bars(c.path)
     return out
 
 
-def _frame(path: str, t: float, w: int = 240) -> Image.Image | None:
+def _frame(path: str, t: float, w: int = 240, pre: str = "") -> Image.Image | None:
+    """One frame exactly as the render will see it (same rotation handling and fix-ups)."""
+    vf = (pre + "," if pre else "") + f"scale={w}:-2"
     p = subprocess.run([media.ffmpeg_exe(), "-v", "error", "-ss", f"{max(0.0, t):.2f}", "-i", path,
-                        "-frames:v", "1", "-vf", f"scale={w}:-2", "-f", "image2pipe", "-vcodec", "png", "-"],
+                        "-frames:v", "1", "-vf", vf, "-f", "image2pipe", "-vcodec", "png", "-"],
                        capture_output=True)
     if p.returncode != 0 or not p.stdout:
         return None
@@ -107,14 +115,9 @@ def contact_sheet(c: Clip, out: Path) -> Path | None:
     if out.exists():
         return out
     if c.kind == "image":
-        try:
-            im = Image.open(c.path).convert("RGB")
-            im.thumbnail((360, 640))
-            frames = [im]
-        except Exception:
-            return None
+        frames = [f for f in [_frame(c.path, 0, 300, c.pre)] if f]
     else:
-        frames = [f for f in (_frame(c.path, c.duration * k) for k in (0.1, 0.5, 0.9)) if f]
+        frames = [f for f in (_frame(c.path, c.duration * k, 240, c.pre) for k in (0.1, 0.5, 0.9)) if f]
     if not frames:
         return None
     h = max(f.height for f in frames)
@@ -342,8 +345,83 @@ class _Picker:
         return start, ln
 
 
+def _overlays_for(video, sp, windows) -> list:
+    overlays = []
+    for bi, b in enumerate(video["timeline"]):
+        t0, t1 = windows[bi]
+        for o in b["overlays"]:
+            s = t0 + min(o["at"], max(0.0, t1 - t0 - 0.3))
+            e = sp.total if o["type"] == "cta_basket" and bi == len(windows) - 1 else min(sp.total, s + o["dur"])
+            overlays.append(dict(o, at=round(s, 2), dur=round(e - s, 2)))
+    return overlays
+
+
+def _snap(t: float, gaps: list, lo: float, hi: float) -> float:
+    near = [g for g in gaps if lo <= g <= hi and abs(g - t) <= 1.5]
+    return min(near, key=lambda g: abs(g - t)) if near else min(max(t, lo), hi)
+
+
+def chrono_edl(video: dict, clips: list, sp: Spine, windows: list, p: dict) -> dict:
+    """Your clips in the order you filmed them (= the order of the steps), spread over the voice.
+
+    Each clip gets time in proportion to its length; cuts snap to pauses in the voice. When there is
+    more voice than footage, clips play a little slower (down to 0.7x) rather than repeating out of order.
+    """
+    D = sp.total
+    vids = [c for c in clips if c.kind == "video"]
+    use = [max(0.4, c.duration - 0.45) for c in vids]           # skip the shaky first/last moments
+    total = sum(use)
+    speed = 1.0 if total >= D else max(0.7, total / D)
+    passes = 1
+    while total / speed * passes < D:                             # not enough footage even slowed down
+        passes += 1
+    order = [i for _ in range(passes) for i in range(len(vids))]
+    lengths = [use[i] / speed for i in order]
+    scale = D / sum(lengths)
+    gaps = [(a[1] + b[0]) / 2 for a, b in zip(sp.phrases, sp.phrases[1:])]
+    cut_ix = voice._choose_cuts(sp.phrases, lengths) if 0 < len(lengths) - 1 <= len(gaps) else []
+    if cut_ix:   # every clip change sits in a pause of the voice (best overall fit, in order)
+        bounds = [0.0] + [gaps[i] for i in cut_ix] + [D]
+    else:        # more clips than pauses: proportional, snapped to the nearest free pause
+        bounds, t = [0.0], 0.0
+        for ln in lengths[:-1]:
+            t += ln * scale
+            bounds.append(_snap(t, gaps, bounds[-1] + MIN_SEG, D - MIN_SEG))
+        bounds.append(D)
+    segs, n = [], 0
+    for k, i in enumerate(order):
+        a, b = bounds[k], bounds[k + 1]
+        if b - a < 0.05:
+            continue
+        c = vids[i]
+        need = (b - a) * speed
+        start = min(0.25, max(0.0, c.duration - need)) + max(0.0, (c.duration - 0.45 - need)) * 0.15
+        t, part = a, 0
+        while b - t > 1e-3:   # long share: a few shots of the same clip, always moving forward in it
+            ln = b - t
+            if b - t > p["max"] * 1.3:   # split a long share at a pause near the reference shot length
+                ok = [g - t for g in gaps if 1.5 <= g - t <= p["max"] and b - g >= MIN_SEG]
+                if ok:
+                    ln = min(ok, key=lambda d: abs(d - p["target"]))
+            if b - t - ln < MIN_SEG:
+                ln = b - t
+            eff = "slow_zoom" if (n % 2 == 1 and ln >= 2.0) else "none"
+            if n == 0:
+                eff = _calm_effect(video["timeline"][0]["effect"] if video["timeline"] else "none", p)
+            segs.append({"start": t, "end": t + ln, "clip": c.id, "in": start, "effect": eff, "speed": speed})
+            start += ln * speed + (0.4 if part == 0 else 0.3)
+            if start + 0.3 >= c.duration:
+                start = max(0.0, c.duration - 0.35)
+            t += ln
+            part += 1
+            n += 1
+    return {"segments": segs, "overlays": _overlays_for(video, sp, windows), "notes": "built-in editor"}
+
+
 def fallback_edl(video: dict, clips: list, sp: Spine, windows: list, p: dict | None = None) -> dict:
     p = p or pace(reference.DEFAULT_PROFILE)
+    if not sp.aroll:
+        return chrono_edl(video, clips, sp, windows, p)
     by_shot = {}
     for c in clips:
         for sid in c.shots:
@@ -376,14 +454,7 @@ def fallback_edl(video: dict, clips: list, sp: Spine, windows: list, p: dict | N
                          "effect": _calm_effect(b["effect"] if first else ("punch_in" if len(segs) % 3 == 0 else "none"), p)})
             t += ln
             last, first = c.id, False
-    overlays = []
-    for bi, b in enumerate(video["timeline"]):
-        t0, t1 = windows[bi]
-        for o in b["overlays"]:
-            s = t0 + min(o["at"], max(0.0, t1 - t0 - 0.3))
-            e = sp.total if o["type"] == "cta_basket" and bi == len(windows) - 1 else min(sp.total, s + o["dur"])
-            overlays.append(dict(o, at=round(s, 2), dur=round(e - s, 2)))
-    return {"segments": segs, "overlays": overlays, "notes": "built-in editor"}
+    return {"segments": segs, "overlays": _overlays_for(video, sp, windows), "notes": "built-in editor"}
 
 
 def _split_at(t: float, t1: float, phrase_ends: list, p: dict) -> float:
@@ -446,11 +517,13 @@ RULES
 - Cut on phrase boundaries or between words — never in the middle of a word.
 - PACING: copy the creator's own style reference below — typical shot {p["target"]:.1f} s, up to {p["max"]:.1f} s.
 - Show what is being said: when the voice talks about a feature/result, pick the clip that shows it.
-- Use only clip ids listed above. A clip may be reused with a different "in" point. Video clips:
-  in + (end - start) must be <= the clip's seconds. Photos ("seconds": null) at most ~2.5 s each.
+- ORDER: the clips are listed in the order the creator FILMED them, which is the order of the steps
+  (C1 first). Keep that order: a clip may only appear after all earlier clips' moments, never jump back to an
+  earlier clip. Within a clip, later shots use later "in" points. Use as many clips as fit; skip a clip only if
+  it is broken. Video clips: in + (end - start) must be <= the clip's seconds.
 - Never use a clip that looks broken, black, or a retake fumble if a better one exists.
 - First 1.5 s must be the most eye-catching footage.
-- effect: {"none on video clips (the clips' own smooth camera movement is the motion); slow_zoom on photos" if p["calm"] else "punch_in / punch_shake on emphasis, slow_zoom on photos, flash at most once, otherwise none"}.
+- effect: {"slow_zoom (a gentle zoom the creator likes) on about every other shot, otherwise none; never shake or flash" if p["calm"] else "punch_in / punch_shake on emphasis, slow_zoom on calm shots, flash at most once, otherwise none"}.
 
 THE CREATOR'S STYLE REFERENCE (their best-performing posted edit — match its rhythm and feel):
 {reference.describe(prof)}
@@ -465,16 +538,28 @@ Draft cut list from the built-in editor (improve it; you may change every segmen
 Reply with ONE JSON object: {{"segments":[...], "notes":"..."}}"""
 
 
-def ai_edl(video, clips, sp, windows, draft, settings, work_dir: Path, log, prof: dict | None = None) -> dict | None:
+def ai_ready(settings: dict) -> bool:
     provider = settings.get("provider", "claude_code")
     key = {"claude": "anthropic_api_key", "openai": "openai_api_key", "claude_code": "claude_code_token"}.get(provider)
-    if not key or not settings.get(key):
-        return None
+    return bool(key and settings.get(key))
+
+
+def build_sheets(clips: list, work_dir: Path) -> dict:
     sheets = {}
     for c in clips:
-        p = contact_sheet(c, work_dir / "sheets" / f"{c.id}_{_short_hash(c.path)}.jpg")
+        tag = hashlib.sha1(c.pre.encode()).hexdigest()[:6]
+        p = contact_sheet(c, work_dir / "sheets" / f"{c.id}_{_short_hash(c.path)}_{tag}.jpg")
         if p:
             sheets[c.id] = str(p.resolve())
+    return sheets
+
+
+def ai_edl(video, clips, sp, windows, draft, settings, work_dir: Path, log, prof: dict | None = None,
+           sheets: dict | None = None) -> dict | None:
+    if not ai_ready(settings):
+        return None
+    provider = settings.get("provider", "claude_code")
+    sheets = sheets if sheets is not None else build_sheets(clips, work_dir)
     ref = reference.sheet_path()
     prompt = edl_prompt(video, clips, sp, windows, draft, {k: Path(v).name for k, v in sheets.items()}, prof,
                         ref.name if ref else "")
@@ -515,7 +600,11 @@ def validate_edl(edl: dict, clips: list, sp: Spine, fallback: dict, p: dict | No
             src_in = max(0.0, float(s.get("in", 0)))
         except (TypeError, ValueError):
             src_in = 0.0
-        segs.append({"start": a, "end": b, "clip": clip, "in": src_in, "effect": eff})
+        try:
+            spd = min(1.0, max(0.6, float(s.get("speed", 1.0))))
+        except (TypeError, ValueError):
+            spd = 1.0
+        segs.append({"start": a, "end": b, "clip": clip, "in": src_in, "effect": eff, "speed": spd})
     segs.sort(key=lambda s: s["start"])
     if not segs:
         return fallback
@@ -542,12 +631,20 @@ def validate_edl(edl: dict, clips: list, sp: Spine, fallback: dict, p: dict | No
     if len(merged) > 1 and merged[0]["end"] - merged[0]["start"] < MIN_SEG * 0.6:
         merged[1]["start"] = 0.0
         merged.pop(0)
-    # clip length limits: shift the in-point back, else hand the rest of the time to another clip
-    pk = _Picker(clips)
+    # the steps must stay in the order they were filmed (C1 → Cn): put the chosen footage back in order
+    order = [c.id for c in clips]
+    rank = {cid: i for i, cid in enumerate(order)}
+    own = [s for s in merged if s["clip"] != AROLL]
+    keys = [(rank[s["clip"]], s["in"]) for s in own]
+    if keys != sorted(keys):
+        picks = sorted(((rank[s["clip"]], s["in"], s["clip"], s["speed"]) for s in own))
+        for s, (_, src_in, cid, spd) in zip(own, picks):
+            s["clip"], s["in"], s["speed"] = cid, src_in, spd
+    # clip length limits: shift the in-point back, else hand the rest of the time to the NEXT clip filmed
     fixed = []
     for s in merged:
         while True:
-            ln = s["end"] - s["start"]
+            ln = (s["end"] - s["start"]) * s.get("speed", 1.0)
             c = ids.get(s["clip"])
             if c is None or c.kind == "image":
                 if c is not None:
@@ -566,10 +663,13 @@ def validate_edl(edl: dict, clips: list, sp: Spine, fallback: dict, p: dict | No
                 s["in"] = 0.0
                 fixed.append(s)
                 break
-            cut = s["start"] + usable
+            cut = s["start"] + usable / s.get("speed", 1.0)
             fixed.append(dict(s, end=cut, **{"in": 0.0}))
-            nxt = pk.pick([], avoid=c.id) or c
-            s = {"start": cut, "end": s["end"], "clip": nxt.id, "in": 0.0, "effect": "none"}
+            nxt = ids[order[min(len(order) - 1, rank[c.id] + 1)]]
+            if nxt is c:   # the last clip: let it run slower / hold its last frame
+                fixed[-1]["end"] = s["end"]
+                break
+            s = {"start": cut, "end": s["end"], "clip": nxt.id, "in": 0.0, "effect": "none", "speed": s.get("speed", 1.0)}
     return {"segments": fixed, "overlays": fallback.get("overlays", []), "notes": str((edl or {}).get("notes", ""))[:300]}
 
 
@@ -578,12 +678,14 @@ def to_resolved(video: dict, edl: dict, clips: list, sp: Spine) -> Resolved:
     R = Resolved()
     ctx = E.Ctx(video)
     ids = {c.id: c for c in clips}
+    pre_by_path = {c.path: c.pre for c in clips}
     for s in edl["segments"]:
         a, b = s["start"], s["end"]
         if s["clip"] == AROLL:
             pieces = _aroll_cover(sp.aroll, a, b)
             for k, (path, src, d) in enumerate(pieces):
-                R.segments.append(Segment(path, "video", src, d, 1.0, False, s["effect"] if k == 0 else "none"))
+                R.segments.append(Segment(path, "video", src, d, 1.0, False, s["effect"] if k == 0 else "none",
+                                          pre=pre_by_path.get(path, "")))
         else:
             c = ids.get(s["clip"])
             if c is None:
@@ -592,7 +694,7 @@ def to_resolved(video: dict, edl: dict, clips: list, sp: Spine) -> Resolved:
                 eff = s["effect"]
                 if c.kind == "image" and eff == "none":
                     eff = "slow_zoom"
-                R.segments.append(Segment(c.path, c.kind, s["in"], b - a, 1.0, False, eff))
+                R.segments.append(Segment(c.path, c.kind, s["in"], b - a, s.get("speed", 1.0), False, eff, pre=c.pre))
         if s["effect"] == "flash":
             R.elements.append(E.flash(a))
         R.beats.append((a, b))
@@ -653,7 +755,7 @@ def _snap_to_frames(R: Resolved) -> None:
 def resolve(video: dict, assign: dict, footage_files: list, product_images: list, settings: dict, work_dir: Path,
             log=print, narration_dir: Path | None = None, use_ai: bool = True) -> Resolved:
     work_dir.mkdir(parents=True, exist_ok=True)
-    clips = clip_catalog(footage_files, product_images, assign)
+    clips = clip_catalog(footage_files, product_images, assign, work_dir)
     notes = []
     sp = None
     nar = (assign.get("narration") or {}).get(video["id"])
@@ -678,7 +780,7 @@ def resolve(video: dict, assign: dict, footage_files: list, product_images: list
             notes.append("No voice recording found for this video — upload your narration (any filename) "
                          "in the Narration box and render again.")
     if not clips:
-        notes.append("No clips or photos uploaded yet — the video has a plain background. Upload your clips and render again.")
+        notes.append("No video clips uploaded yet — the video has a plain background. Upload your clips and render again.")
     windows = beat_windows(video, sp)
     prof = reference.load()
     pc = pace(prof)
@@ -688,7 +790,22 @@ def resolve(video: dict, assign: dict, footage_files: list, product_images: list
     if not clips:
         draft["overlays"] = _overlays_only(video, sp, windows)
     edl = draft
-    if clips and use_ai and settings.get("smart_edit", True) and settings.get("provider") != "manual":
+    use_claude = bool(clips) and use_ai and settings.get("provider") != "manual" and ai_ready(settings)
+    sheets = {}
+    if use_claude:   # make sure no clip is sideways or upside down before anything is planned
+        sheets = build_sheets(clips, work_dir)
+        try:
+            turns = orient.check(clips, sheets, settings, work_dir.parent / "orient.json", log)
+            for c in clips:
+                c.rotate = turns.get(c.id, 0)
+            if any(c.rotate for c in clips):
+                sheets = build_sheets(clips, work_dir)
+                notes.append("Turned upright: " + ", ".join(Path(c.path).name for c in clips if c.rotate))
+        except Exception as e:
+            log(f"Upright check unavailable ({str(e)[:160]}).")
+    if any(c.crop for c in clips):
+        notes.append("Removed black bars from: " + ", ".join(Path(c.path).name for c in clips if c.crop))
+    if use_claude and settings.get("smart_edit", True):
         key = _cache_key(video, clips, sp, settings, prof)
         cache = work_dir / f"edl_{key}.json"
         got = None
@@ -700,7 +817,7 @@ def resolve(video: dict, assign: dict, footage_files: list, product_images: list
                 got = None
         if got is None:
             try:
-                got = ai_edl(video, clips, sp, windows, _round(draft), settings, work_dir, log, prof)
+                got = ai_edl(video, clips, sp, windows, _round(draft), settings, work_dir, log, prof, sheets)
                 if got:
                     cache.write_text(json.dumps(got, ensure_ascii=False, indent=1), "utf-8")
             except Exception as e:   # the built-in editor always works
@@ -711,7 +828,7 @@ def resolve(video: dict, assign: dict, footage_files: list, product_images: list
             edl = validate_edl(got, clips, sp, draft, pc)
             if edl.get("notes"):
                 notes.append("Edit idea: " + edl["notes"])
-    elif clips:
+    if clips and edl is draft:
         edl = validate_edl(draft, clips, sp, draft, pc)
     R = to_resolved(video, edl, clips, sp)
     if pc["calm"]:
@@ -739,7 +856,7 @@ def _round(edl: dict) -> dict:
 def _cache_key(video: dict, clips: list, sp: Spine, settings: dict, prof: dict | None = None) -> str:
     """Same clips + same voice + same script → same edit (extra animation versions re-use it)."""
     script = [(b["shot_id"], b["vo_th"], b["overlays"]) for b in video["timeline"]]
-    blob = json.dumps({"clips": [(c.id, _short_hash(c.path)) for c in clips], "total": round(sp.total, 2),
+    blob = json.dumps({"clips": [(c.id, _short_hash(c.path), c.pre) for c in clips], "total": round(sp.total, 2),
                        "phrases": [(round(a, 2), round(b, 2)) for a, b in sp.phrases], "script": script,
                        "provider": settings.get("provider"), "style": prof, "v": 2}, ensure_ascii=False, sort_keys=True)
     return hashlib.sha1(blob.encode()).hexdigest()[:16]

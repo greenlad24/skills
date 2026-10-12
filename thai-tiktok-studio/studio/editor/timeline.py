@@ -31,6 +31,7 @@ class Segment:
     use_audio: bool = False
     effect: str = "none"
     effect_t: float = 0.0     # seconds from this segment's start where the effect begins (0 = start)
+    pre: str = ""             # source fix-ups applied first: remove black bars, turn upright
 
 
 @dataclass

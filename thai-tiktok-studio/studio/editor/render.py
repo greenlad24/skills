@@ -27,7 +27,7 @@ def _even(x: float) -> int:
 
 
 def _video_chain(i: int, seg) -> str:
-    f = []
+    f = [seg.pre] if seg.pre else []     # black bars off + upright first
     if seg.kind == "video":
         f.append(f"setpts=(PTS-STARTPTS)/{seg.speed:.4f}")
     f.append(f"fps={FPS}")
@@ -196,4 +196,7 @@ def render(R: Resolved, out_path: Path, work_dir: Path, music: Path | None = Non
     th.join(timeout=5)
     if proc.returncode != 0:
         raise RuntimeError("ffmpeg failed: " + " | ".join(err_lines[-6:]))
+    info = probe(out_path)
+    if (info["width"], info["height"]) != (W, H):   # every video must be vertical 9:16
+        raise RuntimeError(f"render came out {info['width']}x{info['height']} instead of {W}x{H}")
     return out_path

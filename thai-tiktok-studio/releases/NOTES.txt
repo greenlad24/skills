@@ -1,2 +1,2 @@
-1.3.2 — แสดงความคืบหน้าการดาวน์โหลดอัปเดต · ปุ่ม ตรวจหาอัปเดตตอนนี้ ในตั้งค่า · ตัดต่อตามสไตล์คลิปของคุณ (ช็อตนิ่งสบายตา ตัวหนังสือเล็กสีแดงขอบขาวด้านบน ลูกศร ↓ ไปที่ตะกร้า) · อัปโหลดคลิปตัวอย่างใหม่ได้ในตั้งค่า · แจ้งอัปเดตทันทีที่พร้อม
-Update download progress shown · Check for updates button · Edits follow your own posted style (calm shots, small red top text card, ↓ arrows to the basket) · upload a new style reference in Settings · update banner appears as soon as an update is ready
+1.4.0 — คลิปเรียงตามลำดับที่ถ่ายเสมอ (ขั้นตอนไม่สลับ) · ใช้เฉพาะคลิปวิดีโอที่คุณถ่ายเอง ไม่ใช้รูปสินค้า · Claude ตรวจคลิปที่กลับหัว/ตะแคง แล้วหมุนให้ตรง · ตัดขอบดำออกอัตโนมัติ · วิดีโอแนวตั้ง 9:16 เสมอ
+1.4.0 — Clips always follow the order you filmed them · only your own video clips, no product photos · Claude spots upside-down/sideways clips and turns them upright · black bars cropped · always vertical 9:16
