@@ -86,6 +86,31 @@ def test_manual_flow_upload_and_render(client):
     names = sorted(x["name"] for x in p["renders"])
     assert len(names) == 2 and names[0].startswith("V1_bouncy_draft") and names[1].startswith("V1_punchy_draft")
 
+    # review step: prepare all edits with previews → edit a sticker → preview → final render
+    r = c.post(f"/api/projects/{pid}/prepare", json={"videos": ["V1"], "versions": 1}).get_json()
+    j = wait_job(c, r["job"]["id"])
+    assert j["status"] == "done", j["log"]
+    edits = c.get(f"/api/projects/{pid}/edits").get_json()["edits"]
+    assert len(edits) == 1 and edits[0]["preview"] and edits[0]["stickers"]
+    e = edits[0]
+    assert c.get(f"/files/{pid}/{e['preview']}").status_code == 200
+    st = e["stickers"]
+    upd = c.post(f"/api/projects/{pid}/edits/{e['key']}", json={"stickers": [
+        {"i": st[0]["i"], "text": "ข้อความใหม่ 990 บาท"}, {"i": st[1]["i"], "hidden": True}]}).get_json()["edit"]
+    assert upd["stickers"][0]["text"] == "ข้อความใหม่" and upd["stickers"][1]["hidden"] and upd["preview_stale"]
+    assert c.post(f"/api/projects/{pid}/edits/../x", json={}).status_code in (400, 404)
+    j = wait_job(c, c.post(f"/api/projects/{pid}/edits/{e['key']}/preview").get_json()["job"]["id"])
+    assert j["status"] == "done", j["log"]
+    assert not c.get(f"/api/projects/{pid}/edits").get_json()["edits"][0]["preview_stale"]
+    j = wait_job(c, c.post(f"/api/projects/{pid}/render-final", json={"keys": [e["key"]]}).get_json()["job"]["id"])
+    assert j["status"] == "done", j["log"]
+    p = c.get(f"/api/projects/{pid}").get_json()
+    assert len(p["renders"]) == 3 and p["edits"][0]["rendered"]
+    # delete finished videos (one or a selection)
+    gone = c.post(f"/api/projects/{pid}/renders/delete", json={"names": names + ["../../settings.json"]}).get_json()
+    assert sorted(gone["deleted"]) == names
+    assert len(c.get(f"/api/projects/{pid}").get_json()["renders"]) == 1
+
     plan = p["plan"]
     plan["videos"][0]["timeline"][0]["vo_th"] = "แก้บทแล้ว"
     assert c.post(f"/api/projects/{pid}/plan", json={"plan": plan}).status_code == 200

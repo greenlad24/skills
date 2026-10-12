@@ -643,6 +643,8 @@ def to_resolved(video: dict, edl: dict, clips: list, sp: Spine) -> Resolved:
     R.total = round(sp.total * FPS) / FPS
     _snap_to_frames(R)
     for o in edl["overlays"]:
+        if o.get("hidden"):        # removed on the review screen
+            continue
         s = o["at"]
         e = min(R.total, s + o["dur"])
         if o["type"] == "cta_basket" and e > R.total - 1.0:
@@ -695,7 +697,12 @@ def _snap_to_frames(R: Resolved) -> None:
 
 # --------------------------------------------------------------------------- entry point
 def resolve(video: dict, assign: dict, footage_files: list, product_images: list, settings: dict, work_dir: Path,
-            log=print, narration_dir: Path | None = None, use_ai: bool = True) -> Resolved:
+            log=print, narration_dir: Path | None = None, use_ai: bool = True,
+            edl_override: dict | None = None) -> Resolved:
+    """Plan (or, with edl_override, re-use a reviewed plan) and build the renderable timeline.
+
+    R.edl holds the final cut list + stickers, so it can be saved for the review screen.
+    """
     work_dir.mkdir(parents=True, exist_ok=True)
     clips = clip_catalog(footage_files, product_images, assign, work_dir)
     notes = []
@@ -733,6 +740,8 @@ def resolve(video: dict, assign: dict, footage_files: list, product_images: list
         draft["overlays"] = _overlays_only(video, sp, windows)
     edl = draft
     use_claude = bool(clips) and use_ai and settings.get("provider") != "manual" and ai_ready(settings)
+    for c in clips:   # upright answers already known for these files (no AI needed)
+        c.rotate = orient.cached(c, work_dir.parent / "orient.json")
     sheets = {}
     if use_claude:   # make sure no clip is sideways or upside down before anything is planned
         sheets = build_sheets(clips, work_dir)
@@ -747,7 +756,11 @@ def resolve(video: dict, assign: dict, footage_files: list, product_images: list
             log(f"Upright check unavailable ({str(e)[:160]}).")
     if any(c.crop for c in clips):
         notes.append("Removed black bars from: " + ", ".join(Path(c.path).name for c in clips if c.crop))
-    if use_claude and settings.get("smart_edit", True):
+    if edl_override is not None:   # the reviewed edit: render exactly that (stickers as edited)
+        edl = validate_edl(edl_override, clips, sp, {"overlays": edl_override.get("overlays", [])}, pc) \
+            if clips else dict(draft, overlays=edl_override.get("overlays", []))
+        edl["overlays"] = edl_override.get("overlays", [])
+    elif use_claude and settings.get("smart_edit", True):
         key = _cache_key(video, clips, sp, settings, prof)
         cache = work_dir / f"edl_{key}.json"
         got = None
@@ -773,6 +786,7 @@ def resolve(video: dict, assign: dict, footage_files: list, product_images: list
     if clips and edl is draft:
         edl = validate_edl(draft, clips, sp, draft, pc)
     R = to_resolved(video, edl, clips, sp)
+    R.edl = edl
     if pc["calm"]:
         R.progress_color = None   # the creator's style has no progress bar
     R.notes = notes

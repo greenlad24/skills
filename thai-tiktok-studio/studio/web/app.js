@@ -448,12 +448,12 @@ function coachAction(act) {
 /* ---------------- jobs (progress) ---------------- */
 function jobHtml(j) {
   const pct = Math.round((j.progress || 0) * 100);
-  const plan = j.kind === "plan";
+  const plan = j.kind === "plan", prep = j.kind === "prepare";
   const log = `<details id="dLog"><summary>${t("job.details")}</summary><div class="log">${esc((j.log || []).join("\n"))}</div></details>`;
   if (j.status === "running") {
     const mins = Math.floor((j.elapsed || 0) / 60), secs = (j.elapsed || 0) % 60;
     return `<section class="card job running" aria-live="polite"><div class="job-head"><span class="spinner"></span>
-      <div><h2>${t(plan ? "job.planTitle" : "job.renderTitle")}</h2><p class="muted">${t(plan ? "job.planWait" : "job.renderWait")}</p></div></div>
+      <div><h2>${t(plan ? "job.planTitle" : prep ? "job.prepTitle" : "job.renderTitle")}</h2><p class="muted">${t(plan ? "job.planWait" : prep ? "job.prepWait" : "job.renderWait")}</p></div></div>
       <div class="progress" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${Math.max(pct, 3)}%"></i></div>
       <div class="job-meta"><b>${pct}%</b><span class="muted">${t("job.elapsed", { m: mins, s: secs < 10 ? "0" + secs : secs })}</span></div>
       <p class="reassure">☕ ${t("job.leave")}</p>${log}</section>`;
@@ -469,7 +469,7 @@ function wireJobBox() {
   const r = $("#jobRetry");
   if (!r) return;
   const j = (state.project.jobs || []).slice(-1)[0];
-  r.onclick = () => (j && j.kind === "render" ? setStep("make") : replan());
+  r.onclick = () => (j && (j.kind === "render" || j.kind === "prepare") ? setStep("make") : replan());
 }
 function pollJob(id) {
   if (state.polls[id]) return;
@@ -489,12 +489,13 @@ function pollJob(id) {
       clearInterval(state.polls[id]); delete state.polls[id];
       loadProjects();
       if (here) {
-        if (j.kind === "render" && j.status === "done") state.step = "make";
+        if ((j.kind === "render" || j.kind === "prepare") && j.status === "done") state.step = "make";
         if (j.kind === "plan" && j.status === "done") state.step = "scripts";
         await refreshProject();
       }
       if (j.status === "done") {
         if (j.kind === "render") celebrate("celebrate.videosTitle", "celebrate.videosText", j.project_id);
+        else if (j.kind === "prepare") { toast(`<b>👀 ${t("review.ready")}</b>`, 4500, "good"); if (here) setTimeout(() => { const rv = $("#review"); if (rv) rv.scrollIntoView({ behavior: "smooth" }); }, 80); }
         else toast(`<b>🎉 ${t(here && state.project && !state.project.plan ? "job.pasteReady" : "job.planDone")}</b>`, 4000, "good");
       } else toast(`<b>😕 ${t(j.kind === "plan" ? "job.planFailedTitle" : "job.renderFailedTitle")}</b>`, 5000, "bad");
     }
@@ -759,10 +760,42 @@ function upload(files, kind, progSel) {
 }
 
 /* ---------------- step 4: make videos ---------------- */
+const STICKER_TEXT = { checklist: "items", trust_badges: "items", spec_card: "items", text_card: "both" };
+function stickerForm(e, st) {
+  const kind = STICKER_TEXT[st.type] || "text";
+  const id = `stk_${e.key}_${st.i}`;
+  const hasItems = !!(st.items && st.items.length);
+  const showText = kind === "text" || !!st.text || (kind === "both" && !hasItems);
+  const showItems = kind === "items" || hasItems;
+  return `<div class="stk ${st.hidden ? "off" : ""}" data-key="${esc(e.key)}" data-i="${st.i}">
+    <div class="stk-head"><b>${t("stk." + st.type)}</b><span class="muted small">${st.at.toFixed(1)}–${(st.at + st.dur).toFixed(1)} s</span>
+      <label class="stk-show"><input type="checkbox" data-f="show" ${st.hidden ? "" : "checked"}> ${t("review.show")}</label></div>
+    ${showText ? `<label class="sr" for="${id}_t">${t("review.text")}</label><input id="${id}_t" data-f="text" value="${esc(st.text)}" placeholder="${tt("review.text")}">` : ""}
+    ${st.sub_text ? `<input data-f="sub_text" value="${esc(st.sub_text)}" aria-label="${tt("review.subText")}">` : ""}
+    ${showItems ? `<label class="small muted" for="${id}_l">${t("review.items")}</label><textarea id="${id}_l" data-f="items" rows="${Math.max(2, (st.items || []).length)}">${esc((st.items || []).join("\n"))}</textarea>` : ""}
+    ${st.emoji || ["emoji_sticker", "reaction_text", "cta_basket", "keyword_pop"].includes(st.type) ? `<input data-f="emoji" class="emoji-in" value="${esc(st.emoji)}" aria-label="${tt("review.emoji")}" maxlength="8">` : ""}
+  </div>`;
+}
+function reviewHtml(p, busy) {
+  if (!(p.edits || []).length) return "";
+  const todo = p.edits.filter((e) => !e.rendered).length;
+  return `<section class="card" id="review"><h2>👀 ${t("review.title", { n: p.edits.length })}</h2><p class="muted">${t("review.text1")}</p>
+    <div class="review-grid">${p.edits.map((e) => `<article class="rv" data-key="${esc(e.key)}">
+      <div class="rv-top"><label class="chk"><input type="checkbox" class="rvchk" value="${esc(e.key)}" ${e.rendered ? "" : "checked"}><span class="chk-box" aria-hidden="true"></span>
+        <b>#${e.rank} ${esc(e.title)}</b></label><span class="muted small">${t("style." + e.anim_style)} · ${Math.round(e.duration)} s${e.rendered ? ` · ✅ ${t("review.done")}` : ""}</span></div>
+      ${e.preview ? `<video src="${F(e.preview)}?v=${e.preview_v}" controls preload="metadata" playsinline></video>` : `<div class="empty small">…</div>`}
+      ${e.preview_stale ? `<p class="stale small">⚠️ ${t("review.stale")}</p>` : ""}
+      <details class="rv-stk" open><summary>✏️ ${t("review.stickers", { n: e.stickers.length })}</summary>
+        ${e.stickers.map((st) => stickerForm(e, st)).join("") || `<p class="muted small">${t("review.noStickers")}</p>`}
+        <button class="btn secondary wide" data-save="${esc(e.key)}" ${busy ? "disabled" : ""}>💾 ${t("review.save")}</button></details>
+    </article>`).join("")}</div>
+    <div class="actionbar"><button class="btn primary big wide" id="btnFinal" ${busy ? "disabled" : ""}>🎬 ${t("review.final", { n: todo })}</button>
+      <p class="muted small">${t("review.finalHint")}</p></div></section>`;
+}
 function renderMake(body) {
   const p = state.project;
   if (!p.plan) { body.innerHTML = needPlanHtml(); wireNeedPlan(); return; }
-  const running = (p.jobs || []).some((j) => j.kind === "render" && j.status === "running");
+  const running = (p.jobs || []).some((j) => (j.kind === "render" || j.kind === "prepare") && j.status === "running");
   body.innerHTML = `
     <section class="card"><h2>🎨 ${t("make.chooseTitle")}</h2><p class="muted">${t("make.chooseText")}</p>
       <div class="make-list">${p.plan.videos.map((v, vi) => `<div class="make-row">
@@ -774,14 +807,20 @@ function renderMake(body) {
       <details id="dVersions"><summary>${t("make.moreOptions")}</summary>
         <label for="versions">${t("make.versions")}</label>
         <select id="versions"><option value="1">${t("make.v1")}</option><option value="2">${t("make.v2")}</option><option value="3">${t("make.v3")}</option><option value="5">${t("make.v5")}</option></select>
-        <p class="muted small">${t("make.versionsHint")}</p></details>
+        <p class="muted small">${t("make.versionsHint")}</p>
+        <button class="btn ghost wide" id="btnRender" ${running ? "disabled" : ""}>⏩ ${t("make.skipReview")}</button></details>
     </section>
-    <div class="actionbar"><button class="btn primary big wide" id="btnRender" ${running ? "disabled" : ""}>🎬 ${t(running ? "make.running" : "make.go")}</button>
-      <button class="btn ghost wide" id="btnDraft" ${running ? "disabled" : ""}>⚡ ${t("make.draft")}</button></div>
+    <div class="actionbar"><button class="btn primary big wide" id="btnPrepare" ${running ? "disabled" : ""}>👀 ${t(running ? "make.running" : "make.prepare")}</button>
+      <p class="muted small">${t("make.prepareHint")}</p></div>
+    ${reviewHtml(p, running)}
     <section class="card" id="finished"><h2>🍿 ${t("make.finished")}</h2>
-      ${p.renders.length ? `<div class="renders">${p.renders.map((r) => `<figure class="render"><video src="${F("renders/" + r.name)}" controls preload="metadata" playsinline></video>
+      ${p.renders.length ? `<div class="row sel-row"><label class="chk"><input type="checkbox" id="rAll"><span class="chk-box" aria-hidden="true"></span>${t("make.selectAll")}</label>
+          <button class="btn ghost danger" id="btnDelSel" disabled>🗑 ${t("make.deleteSel")}</button></div>
+        <div class="renders">${p.renders.map((r) => `<figure class="render"><label class="chk rsel"><input type="checkbox" class="rchk" value="${esc(r.name)}"><span class="chk-box" aria-hidden="true"></span></label>
+        <video src="${F("renders/" + r.name)}" controls preload="metadata" playsinline></video>
         <figcaption class="muted small">${esc(r.name)}</figcaption>
-        <a class="btn secondary wide" href="${F("renders/" + r.name)}?download=1" download>⬇ ${t("make.download")}</a></figure>`).join("")}</div>
+        <a class="btn secondary wide" href="${F("renders/" + r.name)}?download=1" download>⬇ ${t("make.download")}</a>
+        <button class="btn ghost danger wide" data-del="${esc(r.name)}">🗑 ${t("make.delete")}</button></figure>`).join("")}</div>
         <div class="row"><a class="btn secondary big" href="#/schedule">📅 ${t("make.schedule")}</a><button class="btn ghost localonly" id="btnRendersFolder">📂 ${t("make.folder")}</button></div>`
       : `<div class="empty small"><div class="empty-art sm" aria-hidden="true">🎬</div><p class="muted">${t("make.none")}</p></div>`}</section>`;
   $$("[data-style]", body).forEach((sel) => (sel.onchange = () => updateVideo(+sel.dataset.style, { anim_style: sel.value })));
@@ -790,8 +829,64 @@ function renderMake(body) {
     updateVideo(+b.dataset.shuffle, { variation: (v.variation || 0) + 1 });
   }));
   $("#btnRender").onclick = () => startRender(false);
-  $("#btnDraft").onclick = () => startRender(true);
+  $("#btnPrepare").onclick = startPrepare;
+  $$("[data-save]", body).forEach((b) => (b.onclick = () => saveStickers(b.dataset.save)));
+  $$(".stk [data-f=show]", body).forEach((c) => (c.onchange = () => c.closest(".stk").classList.toggle("off", !c.checked)));
+  const fin = $("#btnFinal"); if (fin) fin.onclick = startFinal;
+  // finished videos: delete one or a selection
+  const sel = () => $$(".rchk:checked", body).map((c) => c.value);
+  const sync = () => { const b = $("#btnDelSel"); if (b) { const n = sel().length; b.disabled = !n; b.innerHTML = `🗑 ${t("make.deleteSel")}${n ? ` (${n})` : ""}`; } };
+  $$(".rchk", body).forEach((c) => (c.onchange = sync));
+  const all = $("#rAll"); if (all) all.onchange = () => { $$(".rchk", body).forEach((c) => (c.checked = all.checked)); sync(); };
+  $$("[data-del]", body).forEach((b) => (b.onclick = () => deleteRenders([b.dataset.del])));
+  const ds = $("#btnDelSel"); if (ds) ds.onclick = () => deleteRenders(sel());
   const rf = $("#btnRendersFolder"); if (rf) rf.onclick = () => api(P() + "/reveal", { method: "POST", json: { sub: "renders" } }).catch((e) => errToast(e));
+}
+function readStickers(key) {
+  return $$(`.stk[data-key="${CSS.escape(key)}"]`).map((box) => {
+    const o = { i: +box.dataset.i, hidden: !$("[data-f=show]", box).checked };
+    ["text", "sub_text", "emoji"].forEach((f) => { const el = $(`[data-f=${f}]`, box); if (el) o[f] = el.value; });
+    const it = $("[data-f=items]", box); if (it) o.items = it.value.split("\n").map((x) => x.trim()).filter(Boolean);
+    return o;
+  });
+}
+async function saveStickers(key) {
+  try {
+    await api(P() + `/edits/${encodeURIComponent(key)}`, { method: "POST", json: { stickers: readStickers(key) } });
+    const r = await api(P() + `/edits/${encodeURIComponent(key)}/preview`, { method: "POST" });
+    toast(`<b>💾 ${t("review.saved")}</b>`, 3000, "good");
+    state.project.jobs = (state.project.jobs || []).concat([r.job]);
+    renderProject(); pollJob(r.job.id);
+  } catch (e) { errToast(e); }
+}
+async function startPrepare() {
+  const videos = $$(".vchk:checked").map((c) => c.value);
+  if (!videos.length) { toast(`<b>${t("make.pickOne")}</b>`, 3500, "bad"); return; }
+  if ((state.project.edits || []).some((e) => !e.rendered) && !confirm(tt("review.replace"))) return;
+  const versions = +$("#versions").value || 1;
+  try {
+    const r = await api(P() + "/prepare", { method: "POST", json: { videos, versions } });
+    state.project.jobs = (state.project.jobs || []).concat([r.job]);
+    renderProject(); window.scrollTo({ top: 0, behavior: "smooth" }); pollJob(r.job.id);
+  } catch (e) { errToast(e); }
+}
+async function startFinal() {
+  const keys = $$(".rvchk:checked").map((c) => c.value);
+  if (!keys.length) { toast(`<b>${t("make.pickOne")}</b>`, 3500, "bad"); return; }
+  try {
+    for (const k of keys) await api(P() + `/edits/${encodeURIComponent(k)}`, { method: "POST", json: { stickers: readStickers(k) } });
+    const r = await api(P() + "/render-final", { method: "POST", json: { keys } });
+    state.project.jobs = (state.project.jobs || []).concat([r.job]);
+    renderProject(); window.scrollTo({ top: 0, behavior: "smooth" }); pollJob(r.job.id);
+  } catch (e) { errToast(e); }
+}
+async function deleteRenders(names) {
+  if (!names.length || !confirm(tt(names.length > 1 ? "make.deleteManyQ" : "make.deleteQ", { n: names.length }))) return;
+  try {
+    const r = await api(P() + "/renders/delete", { method: "POST", json: { names } });
+    toast(`<b>🗑 ${t("make.deleted", { n: r.deleted.length })}</b>`, 3000, "good");
+    await refreshProject();
+  } catch (e) { errToast(e); }
 }
 async function updateVideo(vi, patch) {
   const snap = snapshot();

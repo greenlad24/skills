@@ -1,2 +1,2 @@
-1.4.1 — แต่ละคลิปใช้แค่ครั้งเดียวในวิดีโอ (ไม่มีคลิปซ้ำตอนท้าย) · ถ้าเสียงยาวกว่าคลิป จะเล่นช้าลงแทนการวนซ้ำ
-1.4.1 — Each clip is used only once per video (no repeats at the end) · if the voice is longer than your footage, clips play slower instead of repeating
+1.5.0 — ขั้นตอนตรวจก่อนทำคลิปจริง: เตรียมทุกคลิปพร้อมตัวอย่าง แก้ข้อความ/อีโมจิของสติกเกอร์ได้ แล้วค่อยทำคลิปจริง · ลบคลิปที่เสร็จแล้วได้ทีละคลิปหรือหลายคลิป
+1.5.0 — Review step: all videos prepared with a preview, edit sticker text/emoji or remove stickers, then render the finals · delete finished videos one by one or as a selection

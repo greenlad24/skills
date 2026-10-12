@@ -74,6 +74,13 @@ Clips: {ids}
 Reply with ONE JSON object: {{"clips":[{{"id":"C1","rotate":"0"}}, ...]}}"""
 
 
+def cached(clip, cache_file: Path) -> int:
+    try:
+        return int(json.loads(cache_file.read_text("utf-8")).get(file_key(clip.path), 0))
+    except (OSError, ValueError, TypeError):
+        return 0
+
+
 def check(clips: list, sheets: dict, settings: dict, cache_file: Path, log) -> dict:
     """→ {clip_id: degrees}. Uses the cache; asks Claude only about clips not seen before."""
     cache = {}

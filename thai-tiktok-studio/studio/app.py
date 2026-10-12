@@ -318,6 +318,7 @@ def get_project(pid):
         "narration": service.file_infos(pid, "narration"),
         "assign": service.refresh_assign(pid, plan) if plan else service.load_assign(pid),
         "renders": service.list_renders(pid),
+        "edits": service.list_edits(pid),
         "product_images": [p.name for p in sorted((d / "product_images").glob("*"))],
         "jobs": jobs.for_project(pid),
         "folder": str(d),
@@ -438,12 +439,63 @@ def set_assign(pid):
 @app.post("/api/projects/<pid>/render")
 def render_videos(pid):
     data = request.get_json(force=True) or {}
-    running = [j for j in jobs.for_project(pid) if j["kind"] == "render" and j["status"] == "running"]
-    if running:
+    if _busy(pid):
         return jsonify({"error": "A render is already running for this product."}), 409
     job = jobs.start("render", pid, service.render_videos, pid, data.get("videos") or [], config.load_settings(),
                      bool(data.get("draft")), int(data.get("versions") or 1))
     return jsonify({"job": job.to_dict()})
+
+
+def _busy(pid):
+    return any(j["kind"] in ("render", "prepare") and j["status"] == "running" for j in jobs.for_project(pid))
+
+
+@app.post("/api/projects/<pid>/prepare")
+def prepare_edits(pid):
+    """Review step 1: plan every video + quick previews (nothing final is rendered yet)."""
+    data = request.get_json(force=True) or {}
+    if _busy(pid):
+        return jsonify({"error": "A render is already running for this product."}), 409
+    job = jobs.start("prepare", pid, service.prepare_edits, pid, data.get("videos") or [], config.load_settings(),
+                     int(data.get("versions") or 1))
+    return jsonify({"job": job.to_dict()})
+
+
+@app.get("/api/projects/<pid>/edits")
+def list_edits(pid):
+    return jsonify({"edits": service.list_edits(pid)})
+
+
+@app.post("/api/projects/<pid>/edits/<key>")
+def update_edit(pid, key):
+    data = request.get_json(force=True) or {}
+    try:
+        return jsonify({"edit": service.update_edit(pid, key, data.get("stickers") or [])})
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.post("/api/projects/<pid>/edits/<key>/preview")
+def preview_edit(pid, key):
+    if _busy(pid):
+        return jsonify({"error": "A render is already running for this product."}), 409
+    job = jobs.start("prepare", pid, service.preview_edit, pid, key, config.load_settings())
+    return jsonify({"job": job.to_dict()})
+
+
+@app.post("/api/projects/<pid>/render-final")
+def render_final(pid):
+    data = request.get_json(force=True) or {}
+    if _busy(pid):
+        return jsonify({"error": "A render is already running for this product."}), 409
+    job = jobs.start("render", pid, service.render_final, pid, data.get("keys") or [], config.load_settings())
+    return jsonify({"job": job.to_dict()})
+
+
+@app.post("/api/projects/<pid>/renders/delete")
+def delete_renders(pid):
+    data = request.get_json(force=True) or {}
+    return jsonify(service.delete_renders(pid, data.get("names") or []))
 
 
 @app.get("/api/jobs/<jid>")

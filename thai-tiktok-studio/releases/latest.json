@@ -1,6 +1,6 @@
 {
- "version": "1.4.1",
+ "version": "1.5.0",
  "zip_url": "https://raw.githubusercontent.com/greenlad24/skills/claude/wizardly-thompson-w6jjr8/thai-tiktok-studio/releases/ThaiTikTokStudio-mac.zip",
- "sha256": "8cd78da723de8da2d49bd2b0261e84436443bea0697616c7875dc6cfc91db075",
- "notes": "1.4.1 — แต่ละคลิปใช้แค่ครั้งเดียวในวิดีโอ (ไม่มีคลิปซ้ำตอนท้าย) · ถ้าเสียงยาวกว่าคลิป จะเล่นช้าลงแทนการวนซ้ำ\n1.4.1 — Each clip is used only once per video (no repeats at the end) · if the voice is longer than your footage, clips play slower instead of repeating"
+ "sha256": "ce6f1cd864dc21115d4c9d3ba09ae66bb1585d48f61276e7bba7bcc293123f2d",
+ "notes": "1.5.0 — ขั้นตอนตรวจก่อนทำคลิปจริง: เตรียมทุกคลิปพร้อมตัวอย่าง แก้ข้อความ/อีโมจิของสติกเกอร์ได้ แล้วค่อยทำคลิปจริง · ลบคลิปที่เสร็จแล้วได้ทีละคลิปหรือหลายคลิป\n1.5.0 — Review step: all videos prepared with a preview, edit sticker text/emoji or remove stickers, then render the finals · delete finished videos one by one or as a selection"
 }

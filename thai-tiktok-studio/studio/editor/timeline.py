@@ -44,6 +44,7 @@ class Resolved:
     missing: list = field(default_factory=list)
     progress_color: tuple | None = None
     notes: list = field(default_factory=list)
+    edl: dict | None = None                           # smart edit: final cut list + stickers (review screen)
 
 
 def _chunk_text(text: str, max_chars: int = 18) -> list:

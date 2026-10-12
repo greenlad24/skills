@@ -302,6 +302,21 @@ def cancel_project(project_id: str, settings: dict) -> int:
     return n
 
 
+def forget_renders(project_id: str, names: list, settings: dict | None = None) -> int:
+    """Finished videos were deleted: cancel their posts that haven't gone out yet."""
+    from . import config
+    settings = settings or config.load_settings()
+    n = 0
+    for p in load()["posts"]:
+        if p["project_id"] == project_id and p["render"] in names and p["status"] in ("planned", "queued", "missed"):
+            try:
+                cancel(p["id"], settings)
+            except Exception:
+                _update(p["id"], status="cancelled")
+            n += 1
+    return n
+
+
 def edit(post_id: str, at: str | None = None, caption: str | None = None, hashtags: list | None = None,
          settings: dict | None = None) -> dict | None:
     """Change time/caption. A post already queued at PostPeer is cancelled there and re-queued."""
