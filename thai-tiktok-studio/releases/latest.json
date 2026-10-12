@@ -1,6 +1,6 @@
 {
- "version": "1.4.0",
+ "version": "1.4.1",
  "zip_url": "https://raw.githubusercontent.com/greenlad24/skills/claude/wizardly-thompson-w6jjr8/thai-tiktok-studio/releases/ThaiTikTokStudio-mac.zip",
- "sha256": "cfaebe08f7fad6cd2be43bdd9b22fb4a71279f70c2006012e7ea526401662112",
- "notes": "1.4.0 — คลิปเรียงตามลำดับที่ถ่ายเสมอ (ขั้นตอนไม่สลับ) · ใช้เฉพาะคลิปวิดีโอที่คุณถ่ายเอง ไม่ใช้รูปสินค้า · Claude ตรวจคลิปที่กลับหัว/ตะแคง แล้วหมุนให้ตรง · ตัดขอบดำออกอัตโนมัติ · วิดีโอแนวตั้ง 9:16 เสมอ\n1.4.0 — Clips always follow the order you filmed them · only your own video clips, no product photos · Claude spots upside-down/sideways clips and turns them upright · black bars cropped · always vertical 9:16"
+ "sha256": "8cd78da723de8da2d49bd2b0261e84436443bea0697616c7875dc6cfc91db075",
+ "notes": "1.4.1 — แต่ละคลิปใช้แค่ครั้งเดียวในวิดีโอ (ไม่มีคลิปซ้ำตอนท้าย) · ถ้าเสียงยาวกว่าคลิป จะเล่นช้าลงแทนการวนซ้ำ\n1.4.1 — Each clip is used only once per video (no repeats at the end) · if the voice is longer than your footage, clips play slower instead of repeating"
 }

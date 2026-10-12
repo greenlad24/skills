@@ -53,7 +53,7 @@ def _check_timeline(R):
     assert abs(sum(s.dur for s in R.segments) - R.total) < 1 / 30 + 1e-6     # picture == voice length
     for s in R.segments:
         if s.kind == "video":
-            assert s.src_in + s.dur <= media.probe(s.path)["duration"] + 0.6   # brief last-frame hold allowed
+            assert s.src_in + s.dur * s.speed <= media.probe(s.path)["duration"] + 0.6   # brief last-frame hold allowed
     assert not any(e.anim_in in ("caption", "caption_punch") for e in R.elements)   # no subtitles
 
 
@@ -299,3 +299,57 @@ def test_ai_order_is_enforced(footage, narration, tmp_path):
     out = SE.validate_edl(bad, clips, sp, draft)
     ranks = [int(s["clip"][1:]) for s in out["segments"]]
     assert ranks == sorted(ranks)
+
+
+def _runs(R):
+    """Clip paths in the order shown, merging consecutive pieces of the same uninterrupted shot."""
+    out = []
+    for s in R.segments:
+        if not out or out[-1] != s.path:
+            out.append(s.path)
+    return out
+
+
+def test_no_clip_twice_even_with_long_voice(footage, tmp_path):
+    # 30 s of voice, only ~23 s of footage: clips slow down, nothing repeats
+    nar = tmp_path / "n"
+    nar.mkdir()
+    spans = [(0.5 + 3 * k, 2.8 + 3 * k) for k in range(10)]
+    expr = "+".join(f"between(t,{a},{b})" for a, b in spans)
+    subprocess.run([media.ffmpeg_exe(), "-y", "-v", "error", "-f", "lavfi", "-i", f"aevalsrc='if({expr},0.3*sin(2*PI*190*t),0)':s=48000:d=31",
+                    str(nar / "voice.m4a")], check=True)
+    plan = normalize_plan(sample_plan())
+    files = [str(p) for p in footage.iterdir()]
+    a = matcher.auto_match(plan, files)
+    v = plan["videos"][0]
+    a["narration"] = {"V1": "voice.m4a"}
+    R = SE.resolve(v, a, files, [], {"provider": "manual"}, tmp_path / "w", narration_dir=nar)
+    _check_timeline(R)
+    runs = _runs(R)
+    assert len(runs) == len(set(runs)), runs
+
+
+def test_ai_repeats_are_removed(footage, narration, tmp_path):
+    plan, v, a, files = _setup(footage, narration)
+    clips = SE.clip_catalog(files, [], a)
+    sp = SE.narration_spine(narration / "IMG_0400.MOV")
+    draft = SE.fallback_edl(v, clips, sp, SE.beat_windows(v, sp))
+    rep = {"segments": [{"start": 0, "end": 2, "clip": "C1", "in": 0.3, "effect": "none"},
+                        {"start": 2, "end": 4, "clip": "C2", "in": 0.3, "effect": "none"},
+                        {"start": 4, "end": 6, "clip": "C1", "in": 2.0, "effect": "none"},
+                        {"start": 6, "end": 7, "clip": "C2", "in": 2.0, "effect": "none"},
+                        {"start": 7, "end": 99, "clip": "C2", "in": 3.0, "effect": "none"}], "notes": ""}
+    out = SE.validate_edl(rep, clips, sp, draft)
+    ids = [s["clip"] for s in out["segments"]]
+    assert ids == sorted(set(ids)) and out["segments"][-1]["end"] == sp.total
+
+
+def test_talking_fallback_no_repeats(footage, tmp_path):
+    plan = normalize_plan(sample_plan())
+    files = [str(p) for p in footage.iterdir()]
+    a = matcher.auto_match(plan, files)
+    R = SE.resolve(plan["videos"][1], a, files, [], {"provider": "manual"}, tmp_path)
+    _check_timeline(R)
+    talk = {r for r in [s.path for s in R.segments] if "V2-S01" in r}
+    broll = [r for r in _runs(R) if r not in talk]
+    assert len(broll) == len(set(broll))

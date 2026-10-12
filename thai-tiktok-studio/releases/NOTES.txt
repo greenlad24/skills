@@ -1,2 +1,2 @@
-1.4.0 — คลิปเรียงตามลำดับที่ถ่ายเสมอ (ขั้นตอนไม่สลับ) · ใช้เฉพาะคลิปวิดีโอที่คุณถ่ายเอง ไม่ใช้รูปสินค้า · Claude ตรวจคลิปที่กลับหัว/ตะแคง แล้วหมุนให้ตรง · ตัดขอบดำออกอัตโนมัติ · วิดีโอแนวตั้ง 9:16 เสมอ
-1.4.0 — Clips always follow the order you filmed them · only your own video clips, no product photos · Claude spots upside-down/sideways clips and turns them upright · black bars cropped · always vertical 9:16
+1.4.1 — แต่ละคลิปใช้แค่ครั้งเดียวในวิดีโอ (ไม่มีคลิปซ้ำตอนท้าย) · ถ้าเสียงยาวกว่าคลิป จะเล่นช้าลงแทนการวนซ้ำ
+1.4.1 — Each clip is used only once per video (no repeats at the end) · if the voice is longer than your footage, clips play slower instead of repeating

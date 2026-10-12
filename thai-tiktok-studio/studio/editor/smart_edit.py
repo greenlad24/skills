@@ -36,7 +36,6 @@ LEAD = 0.15          # silence before the first word
 TAIL = 0.6           # picture after the last word (lets the CTA breathe)
 MIN_SEG = 0.45       # shortest shot on screen
 MAX_SEG = 3.6        # longest shot before the built-in editor changes picture
-PHOTO_MAX = 2.6
 AROLL = "AROLL"      # talking videos: "show the person speaking, in sync"
 
 
@@ -318,33 +317,6 @@ def _calm_effect(eff: str, p: dict) -> str:
 
 
 # --------------------------------------------------------------------------- built-in editor (no AI)
-class _Picker:
-    def __init__(self, clips: list):
-        self.clips = clips
-        self.uses = {c.id: 0 for c in clips}
-        self.cursor = {c.id: 0.0 for c in clips}   # next unused in-point per clip
-
-    def pick(self, prefer: list, avoid: str = "") -> Clip | None:
-        cands = [c for c in prefer if c.id != avoid] or \
-                sorted([c for c in self.clips if c.id != avoid and c.type != "talk"] or
-                       [c for c in self.clips if c.id != avoid] or self.clips,
-                       key=lambda c: (self.uses[c.id], self.clips.index(c)))
-        return cands[0] if cands else None
-
-    def take(self, c: Clip, want: float) -> tuple:
-        """→ (in_point, length) from a part of the clip not shown yet when possible."""
-        self.uses[c.id] += 1
-        if c.kind == "image":
-            return 0.0, min(want, PHOTO_MAX)
-        usable = max(0.0, c.duration - 0.15)
-        start = self.cursor[c.id]
-        if start + min(want, usable) > usable:
-            start = 0.25 if usable > want + 0.25 else 0.0
-        ln = min(want, usable - start)
-        self.cursor[c.id] = start + ln
-        return start, ln
-
-
 def _overlays_for(video, sp, windows) -> list:
     overlays = []
     for bi, b in enumerate(video["timeline"]):
@@ -361,24 +333,25 @@ def _snap(t: float, gaps: list, lo: float, hi: float) -> float:
     return min(near, key=lambda g: abs(g - t)) if near else min(max(t, lo), hi)
 
 
-def chrono_edl(video: dict, clips: list, sp: Spine, windows: list, p: dict) -> dict:
-    """Your clips in the order you filmed them (= the order of the steps), spread over the voice.
+def _fit(c: "Clip", ln: float) -> tuple:
+    """(in_point, speed) to fill ln seconds with ONE pass of clip c: trim if longer, slow down if shorter."""
+    use = max(0.4, c.duration - 0.45)                 # skip the shaky first/last moments
+    if use >= ln:
+        return min(0.25, c.duration - ln) + (use - ln) * 0.15, 1.0
+    return 0.0, max(0.5, min(1.0, (c.duration - 0.05) / ln))   # beyond 0.5x the last frame is held
 
-    Each clip gets time in proportion to its length; cuts snap to pauses in the voice. When there is
-    more voice than footage, clips play a little slower (down to 0.7x) rather than repeating out of order.
+
+def chrono_edl(video: dict, clips: list, sp: Spine, windows: list, p: dict) -> dict:
+    """Each clip you filmed appears ONCE, in the order you filmed it (= the order of the steps).
+
+    Clips get time in proportion to their length; cuts snap to pauses in the voice. When there is more
+    voice than footage, clips play slower instead of repeating.
     """
     D = sp.total
     vids = [c for c in clips if c.kind == "video"]
-    use = [max(0.4, c.duration - 0.45) for c in vids]           # skip the shaky first/last moments
-    total = sum(use)
-    speed = 1.0 if total >= D else max(0.7, total / D)
-    passes = 1
-    while total / speed * passes < D:                             # not enough footage even slowed down
-        passes += 1
-    order = [i for _ in range(passes) for i in range(len(vids))]
-    lengths = [use[i] / speed for i in order]
+    lengths = [max(0.4, c.duration - 0.45) for c in vids]
     scale = D / sum(lengths)
-    gaps = [(a[1] + b[0]) / 2 for a, b in zip(sp.phrases, sp.phrases[1:])]
+    gaps = [(x[1] + y[0]) / 2 for x, y in zip(sp.phrases, sp.phrases[1:])]
     cut_ix = voice._choose_cuts(sp.phrases, lengths) if 0 < len(lengths) - 1 <= len(gaps) else []
     if cut_ix:   # every clip change sits in a pause of the voice (best overall fit, in order)
         bounds = [0.0] + [gaps[i] for i in cut_ix] + [D]
@@ -388,81 +361,45 @@ def chrono_edl(video: dict, clips: list, sp: Spine, windows: list, p: dict) -> d
             t += ln * scale
             bounds.append(_snap(t, gaps, bounds[-1] + MIN_SEG, D - MIN_SEG))
         bounds.append(D)
-    segs, n = [], 0
-    for k, i in enumerate(order):
+    segs = []
+    for k, c in enumerate(vids):
         a, b = bounds[k], bounds[k + 1]
         if b - a < 0.05:
             continue
-        c = vids[i]
-        need = (b - a) * speed
-        start = min(0.25, max(0.0, c.duration - need)) + max(0.0, (c.duration - 0.45 - need)) * 0.15
-        t, part = a, 0
-        while b - t > 1e-3:   # long share: a few shots of the same clip, always moving forward in it
-            ln = b - t
-            if b - t > p["max"] * 1.3:   # split a long share at a pause near the reference shot length
-                ok = [g - t for g in gaps if 1.5 <= g - t <= p["max"] and b - g >= MIN_SEG]
-                if ok:
-                    ln = min(ok, key=lambda d: abs(d - p["target"]))
-            if b - t - ln < MIN_SEG:
-                ln = b - t
-            eff = "slow_zoom" if (n % 2 == 1 and ln >= 2.0) else "none"
-            if n == 0:
-                eff = _calm_effect(video["timeline"][0]["effect"] if video["timeline"] else "none", p)
-            segs.append({"start": t, "end": t + ln, "clip": c.id, "in": start, "effect": eff, "speed": speed})
-            start += ln * speed + (0.4 if part == 0 else 0.3)
-            if start + 0.3 >= c.duration:
-                start = max(0.0, c.duration - 0.35)
-            t += ln
-            part += 1
-            n += 1
+        src_in, speed = _fit(c, b - a)
+        eff = "slow_zoom" if (len(segs) % 2 == 1 and b - a >= 2.0) else "none"
+        if not segs:
+            eff = _calm_effect(video["timeline"][0]["effect"] if video["timeline"] else "none", p)
+        segs.append({"start": a, "end": b, "clip": c.id, "in": src_in, "effect": eff, "speed": speed})
+    if segs:
+        segs[0]["start"], segs[-1]["end"] = 0.0, D
+    return {"segments": segs, "overlays": _overlays_for(video, sp, windows), "notes": "built-in editor"}
+
+
+def talking_edl(video: dict, clips: list, sp: Spine, windows: list, p: dict) -> dict:
+    """Talking video: the speaker in sync, with each B-roll clip shown ONCE as a cutaway (filmed order)."""
+    shots = {x["id"]: x for x in video["shots"]}
+    talk_paths = {r[2] for r in sp.aroll}
+    broll = [c for c in clips if c.kind == "video" and c.path not in talk_paths]
+    slots = [w for b, w in zip(video["timeline"], windows) if shots.get(b["shot_id"], {}).get("audio") != "sync"]
+    segs, t = [], 0.0
+    for c, (a, b) in zip(broll, slots):
+        a, b = max(a, t), min(b, a + max(1.2, c.duration - 0.45))
+        if b - a < MIN_SEG:
+            continue
+        if a - t > 0.05:
+            segs.append({"start": t, "end": a, "clip": AROLL, "in": 0.0, "effect": "none", "speed": 1.0})
+        src_in, speed = _fit(c, b - a)
+        segs.append({"start": a, "end": b, "clip": c.id, "in": src_in, "effect": "none", "speed": speed})
+        t = b
+    if sp.total - t > 0.05:
+        segs.append({"start": t, "end": sp.total, "clip": AROLL, "in": 0.0, "effect": "none", "speed": 1.0})
     return {"segments": segs, "overlays": _overlays_for(video, sp, windows), "notes": "built-in editor"}
 
 
 def fallback_edl(video: dict, clips: list, sp: Spine, windows: list, p: dict | None = None) -> dict:
     p = p or pace(reference.DEFAULT_PROFILE)
-    if not sp.aroll:
-        return chrono_edl(video, clips, sp, windows, p)
-    by_shot = {}
-    for c in clips:
-        for sid in c.shots:
-            by_shot.setdefault(sid, c)
-    pk = _Picker(clips)
-    segs, last = [], ""
-    phrase_ends = [b for _, b in sp.phrases]
-    for bi, (b, (t0, t1)) in enumerate(zip(video["timeline"], windows)):
-        t = t0
-        own = by_shot.get(b["shot_id"])
-        first = True
-        while t1 - t > 1e-3:
-            if sp.aroll and own and own.type == "talk":
-                c = None
-            else:
-                c = pk.pick([own] if first and own else [], avoid=last)
-            remain = t1 - t
-            want = remain if remain <= p["max"] else _split_at(t, t1, phrase_ends, p)
-            if c is None:   # talking beat: show the speaker in sync
-                segs.append({"start": t, "end": t + remain, "clip": AROLL, "in": 0.0,
-                             "effect": _calm_effect(b["effect"], p) if first else "none"})
-                t += remain
-                break
-            src_in, ln = pk.take(c, want)
-            if ln < MIN_SEG and remain > ln:
-                ln = min(remain, max(ln, MIN_SEG))
-            if remain - ln < MIN_SEG:   # don't leave a sliver — let this shot run to the end of the beat
-                ln = remain
-            segs.append({"start": t, "end": t + ln, "clip": c.id, "in": src_in,
-                         "effect": _calm_effect(b["effect"] if first else ("punch_in" if len(segs) % 3 == 0 else "none"), p)})
-            t += ln
-            last, first = c.id, False
-    return {"segments": segs, "overlays": _overlays_for(video, sp, windows), "notes": "built-in editor"}
-
-
-def _split_at(t: float, t1: float, phrase_ends: list, p: dict) -> float:
-    """Length of the next shot inside a long beat: end on a phrase end near the reference's shot length."""
-    ok = [e - t for e in phrase_ends if 1.2 <= e - t <= p["max"] and t1 - e >= MIN_SEG]
-    if ok:
-        return min(ok, key=lambda d: abs(d - p["target"]))
-    return min(p["max"], (t1 - t) / 2 if t1 - t < 2 * p["max"] else p["target"])
+    return talking_edl(video, clips, sp, windows, p) if sp.aroll else chrono_edl(video, clips, sp, windows, p)
 
 
 # --------------------------------------------------------------------------- AI editor
@@ -519,8 +456,9 @@ RULES
 - Show what is being said: when the voice talks about a feature/result, pick the clip that shows it.
 - ORDER: the clips are listed in the order the creator FILMED them, which is the order of the steps
   (C1 first). Keep that order: a clip may only appear after all earlier clips' moments, never jump back to an
-  earlier clip. Within a clip, later shots use later "in" points. Use as many clips as fit; skip a clip only if
-  it is broken. Video clips: in + (end - start) must be <= the clip's seconds.
+  earlier clip. Use EVERY clip EXACTLY ONCE as one continuous shot — never show the same clip twice, never
+  split one clip into several shots. Skip a clip only if it is broken. Video clips: in + (end - start) must be
+  <= the clip's seconds (a clip may run up to 2x slower if the voice is longer than the footage).
 - Never use a clip that looks broken, black, or a retake fumble if a better one exists.
 - First 1.5 s must be the most eye-catching footage.
 - effect: {"slow_zoom (a gentle zoom the creator likes) on about every other shot, otherwise none; never shake or flash" if p["calm"] else "punch_in / punch_shake on emphasis, slow_zoom on calm shots, flash at most once, otherwise none"}.
@@ -601,7 +539,7 @@ def validate_edl(edl: dict, clips: list, sp: Spine, fallback: dict, p: dict | No
         except (TypeError, ValueError):
             src_in = 0.0
         try:
-            spd = min(1.0, max(0.6, float(s.get("speed", 1.0))))
+            spd = min(1.0, max(0.5, float(s.get("speed", 1.0))))
         except (TypeError, ValueError):
             spd = 1.0
         segs.append({"start": a, "end": b, "clip": clip, "in": src_in, "effect": eff, "speed": spd})
@@ -640,7 +578,19 @@ def validate_edl(edl: dict, clips: list, sp: Spine, fallback: dict, p: dict | No
         picks = sorted(((rank[s["clip"]], s["in"], s["clip"], s["speed"]) for s in own))
         for s, (_, src_in, cid, spd) in zip(own, picks):
             s["clip"], s["in"], s["speed"] = cid, src_in, spd
-    # clip length limits: shift the in-point back, else hand the rest of the time to the NEXT clip filmed
+    # each clip ONCE: a repeat of a clip already shown becomes more time for the shot before it
+    seen, dedup = set(), []
+    for s in merged:
+        if s["clip"] != AROLL and s["clip"] in seen and dedup:
+            dedup[-1]["end"] = s["end"]
+            continue
+        seen.add(s["clip"])
+        if dedup and s["clip"] == AROLL and dedup[-1]["clip"] == AROLL:
+            dedup[-1]["end"] = s["end"]
+            continue
+        dedup.append(s)
+    merged = dedup
+    # clip length limits: shift the in-point back, else play it slower (never fill with another clip)
     fixed = []
     for s in merged:
         while True:
@@ -659,17 +609,9 @@ def validate_edl(edl: dict, clips: list, sp: Spine, fallback: dict, p: dict | No
                 s["in"] = max(0.0, usable - ln)
                 fixed.append(s)
                 break
-            if ln - usable < 0.6:   # a hair too short: hold its last frame briefly rather than flash another clip
-                s["in"] = 0.0
-                fixed.append(s)
-                break
-            cut = s["start"] + usable / s.get("speed", 1.0)
-            fixed.append(dict(s, end=cut, **{"in": 0.0}))
-            nxt = ids[order[min(len(order) - 1, rank[c.id] + 1)]]
-            if nxt is c:   # the last clip: let it run slower / hold its last frame
-                fixed[-1]["end"] = s["end"]
-                break
-            s = {"start": cut, "end": s["end"], "clip": nxt.id, "in": 0.0, "effect": "none", "speed": s.get("speed", 1.0)}
+            s["in"], s["speed"] = 0.0, max(0.5, min(1.0, usable / max(0.1, s["end"] - s["start"])))
+            fixed.append(s)
+            break
     return {"segments": fixed, "overlays": fallback.get("overlays", []), "notes": str((edl or {}).get("notes", ""))[:300]}
 
 
