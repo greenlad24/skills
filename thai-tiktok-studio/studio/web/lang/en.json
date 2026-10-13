@@ -655,7 +655,7 @@
  "perr.rejected": "PostPeer didn't accept this post (see the message below). Send me a screenshot so I can fix it.",
  "perr.other": "Something went wrong sending this post (see the message below).",
  "sched.capsPhone": "Captions on my phone",
- "sched.caps1": "Scan this with your phone's camera (same Wi-Fi as this computer).",
+ "sched.caps1": "Scan this with your phone's camera (same Wi-Fi as this computer), then tap Share → Add to Home Screen — the link stays the same, so you only do this once.",
  "sched.caps2": "When a video arrives in your TikTok inbox, tap Copy caption on that page.",
  "sched.caps3": "Paste it in TikTok, add the product basket and post."
 }

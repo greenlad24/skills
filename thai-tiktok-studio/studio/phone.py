@@ -29,6 +29,35 @@ def lan_ip() -> str:
         s.close()
 
 
+CAPTIONS_TTL = 365 * 24 * 3600     # the captions page is a bookmark on your phone's home screen
+
+
+def captions_token() -> str:
+    """One stable secret link for the phone's captions page (kept across restarts)."""
+    from . import config
+    f = config.HOME / "captions_token.txt"
+    try:
+        t = f.read_text().strip()
+    except OSError:
+        t = ""
+    if len(t) < 16:
+        t = secrets.token_urlsafe(16)
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(t)
+    _TOKENS[t] = ("__captions__", time.time() + CAPTIONS_TTL)
+    return t
+
+
+def is_captions(token: str) -> bool:
+    if project_for(token) == "__captions__":
+        return True
+    try:
+        from . import config
+        return bool(token) and token == (config.HOME / "captions_token.txt").read_text().strip()
+    except OSError:
+        return False
+
+
 def new_token(pid: str) -> str:
     now = time.time()
     for t, (_, exp) in list(_TOKENS.items()):
@@ -163,6 +192,7 @@ def expired_page(lang: str = "th") -> str:
 
 CAPTIONS_PAGE = """<!doctype html><html lang="{lang}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>{title}</title>
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="TikTok captions">
 <style>
 body{{margin:0;font-family:-apple-system,"Sukhumvit Set","Noto Sans Thai",sans-serif;background:#f4f4f6;color:#111}}
 header{{padding:18px 16px 6px}}h1{{font-size:22px;margin:0 0 4px}}p.sub{{margin:0;color:#666;font-size:15px}}
@@ -205,6 +235,7 @@ def captions_page(posts: list, lang: str) -> str:
     import html
     T = CAP_TEXT.get(lang, CAP_TEXT["th"])
     cards = []
+    posts = sorted(posts, key=lambda p: p["when"], reverse=True)    # newest first
     for i, p in enumerate(posts):
         cards.append(
             f'<div class="card" id="c{i}" data-id="{html.escape(p["id"])}"><div class="when">🕒 {html.escape(p["when"])}</div>'

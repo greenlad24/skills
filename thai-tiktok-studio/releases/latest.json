@@ -1,6 +1,6 @@
 {
- "version": "1.9.3",
+ "version": "1.9.4",
  "zip_url": "https://raw.githubusercontent.com/greenlad24/skills/claude/wizardly-thompson-w6jjr8/thai-tiktok-studio/releases/ThaiTikTokStudio-mac.zip",
- "sha256": "a199f026a40760214e72d65327e530eed91d78d9be95303158826daa6cb38d9d",
- "notes": "1.9.3 — 📱 แคปชันบนมือถือ: สแกน QR แล้วกดคัดลอกแคปชัน+แฮชแท็กไปวางใน TikTok (TikTok ไม่ให้แอปใส่แคปชันในโหมดกล่องข้อความ)\n1.9.3 — 📱 Captions on my phone: scan a QR and copy each caption + hashtags into TikTok (TikTok doesn't let apps fill the caption in inbox mode)"
+ "sha256": "398997e9dc55d8ddef2ac51ce86e48ef3858ef55e70ce31a89353072c50e10d1",
+ "notes": "1.9.4 — หน้าแคปชันบนมือถือเป็นลิงก์ถาวร เพิ่มไว้ที่หน้าจอโฮมได้ โพสต์ล่าสุดอยู่บนสุด\n1.9.4 — The phone captions page is a permanent link you can add to your home screen; newest post on top"
 }

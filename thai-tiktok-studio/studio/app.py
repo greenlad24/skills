@@ -377,7 +377,7 @@ def phone_link(pid):
 def captions_link():
     """QR for the phone: captions + hashtags of the posts, ready to copy into TikTok."""
     from . import phone
-    token = phone.new_token("__captions__")
+    token = phone.captions_token()
     host = request.host if SERVER_MODE else f"{phone.lan_ip()}:{PORT}"
     url = f"{'https' if SERVER_MODE else 'http'}://{host}/m/c/{token}?lang={_ui_lang()}"
     return jsonify({"url": url, "qr": phone.qr_data_uri(url), "hours": phone.TOKEN_TTL // 3600})
@@ -387,7 +387,7 @@ def captions_link():
 def captions_page(token):
     from . import phone, scheduler
     lang = _ui_lang()
-    if phone.project_for(token) != "__captions__":
+    if not phone.is_captions(token):
         return phone.expired_page(lang), 404
     now = scheduler.now_bkk()
     rows = []

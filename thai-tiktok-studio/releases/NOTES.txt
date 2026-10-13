@@ -1,2 +1,2 @@
-1.9.3 — 📱 แคปชันบนมือถือ: สแกน QR แล้วกดคัดลอกแคปชัน+แฮชแท็กไปวางใน TikTok (TikTok ไม่ให้แอปใส่แคปชันในโหมดกล่องข้อความ)
-1.9.3 — 📱 Captions on my phone: scan a QR and copy each caption + hashtags into TikTok (TikTok doesn't let apps fill the caption in inbox mode)
+1.9.4 — หน้าแคปชันบนมือถือเป็นลิงก์ถาวร เพิ่มไว้ที่หน้าจอโฮมได้ โพสต์ล่าสุดอยู่บนสุด
+1.9.4 — The phone captions page is a permanent link you can add to your home screen; newest post on top
