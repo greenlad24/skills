@@ -43,6 +43,7 @@ DEFAULTS = {
     "tts_voice": "Kanya",       # macOS Thai voice (System Settings → Accessibility → Spoken Content)
     "tts_rate": 185,            # words-per-minute for `say`
     "voice_cleanup": True,      # remove breaths, clicks, false starts; shorten long pauses (words untouched)
+    "voice_mode": "clean",      # "clean" = breaths/long pauses out, words never cut · "exact" = as recorded
     "smart_edit": True,         # Claude watches your clips and plans the cuts (built-in editor if off/unavailable)
     "subtitles": False,         # no subtitles — only the plan's animations
     "render_preset": "veryfast",

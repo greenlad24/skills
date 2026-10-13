@@ -592,5 +592,10 @@
  "review.clipsTitle": "Is a clip sideways or upside down? Turn it here",
  "review.clipsText": "Claude checks this automatically. If one still looks wrong, tap ↻ until it stands upright — then tap “Save & update preview” on the videos.",
  "review.turnClip": "Turn right 90°",
- "review.turned": "Turned ✓ — update the previews to see it"
+ "review.turned": "Turned ✓ — update the previews to see it",
+ "set.voiceEdit": "Editing my voice recording",
+ "set.voiceClean": "Clean it up (recommended)",
+ "set.voiceCleanDesc": "Removes breaths, chuckles, clicks and long silences. Every word you say is kept.",
+ "set.voiceExact": "Use my recording exactly as recorded",
+ "set.voiceExactDesc": "Nothing is removed — only the silence before your first word and after your last."
 }

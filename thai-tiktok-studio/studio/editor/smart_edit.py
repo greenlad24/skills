@@ -158,7 +158,7 @@ def _fade(y: np.ndarray, ms: float = 12) -> np.ndarray:
     return y
 
 
-def narration_spine(path: Path, clean: bool = True) -> Spine | None:
+def narration_spine(path: Path, clean: bool = True, words: list | None = None) -> Spine | None:
     """Whole narration as one take: breaths, clicks, false starts and over-long pauses removed
     (every spoken word stays exactly as recorded), loudness normalised."""
     y = audio_io.decode(path)
@@ -166,7 +166,7 @@ def narration_spine(path: Path, clean: bool = True) -> Spine | None:
         return None
     if clean:
         from . import cleanup
-        out, ph, rep = cleanup.clean(_norm(y))
+        out, ph, rep = cleanup.clean(_norm(y), words=words)
         if ph:
             a = max(0.0, ph[0][0] - 0.08)
             b = min(len(out) / SR, ph[-1][1] + 0.25)
@@ -185,12 +185,16 @@ def narration_spine(path: Path, clean: bool = True) -> Spine | None:
     return Spine(_place(seg, LEAD, total), total, phrases, source="narration", shift=LEAD - a)
 
 
-def _hear(sp: Spine, path: Path, video: dict, cache: Path, log, settings: dict) -> None:
-    """Attach what was actually said (and where each script line starts) from the transcript, if available."""
+def _transcript(path: Path, cache: Path, log, settings: dict) -> dict | None:
     from . import transcribe
     if not settings.get("hear_voice", True):
-        return
-    tr = transcribe.transcript(path, cache, log, allow_install=settings.get("_allow_install", False))
+        return None
+    return transcribe.transcript(path, cache, log, allow_install=settings.get("_allow_install", False))
+
+
+def _hear(sp: Spine, tr: dict | None, video: dict) -> None:
+    """Attach what was actually said (and where each script line starts) from the transcript, if available."""
+    from . import transcribe
     if not tr or not tr.get("words"):
         return
     starts = transcribe.beat_starts(tr["words"], video)
@@ -762,7 +766,7 @@ def resolve(video: dict, assign: dict, footage_files: list, product_images: list
     work_dir.mkdir(parents=True, exist_ok=True)
     clips = clip_catalog(footage_files, product_images, assign, work_dir)
     notes = []
-    sp = None
+    sp, tr = None, None
     nar = (assign.get("narration") or {}).get(video["id"])
     nar_path = narration_dir / nar if nar and narration_dir and (narration_dir / nar).exists() else None
     if nar_path is None:
@@ -770,7 +774,10 @@ def resolve(video: dict, assign: dict, footage_files: list, product_images: list
         files = {Path(f).name: Path(f) for f in footage_files}
         nar_path = files.get(vo) if vo else None
     if nar_path is not None:
-        sp = narration_spine(nar_path, settings.get("voice_cleanup", True))
+        tr = _transcript(nar_path, work_dir.parent / "transcripts", log, settings)
+        keep_all = settings.get("voice_mode", "clean") == "exact"
+        sp = narration_spine(nar_path, not keep_all and settings.get("voice_cleanup", True),
+                             (tr or {}).get("words"))
         if sp:
             notes.append(f"Your narration '{nar_path.name}' is used as one continuous take ({sp.total - LEAD - TAIL:.1f}s).")
             r = sp.report
@@ -778,7 +785,7 @@ def resolve(video: dict, assign: dict, footage_files: list, product_images: list
                 notes.append(f"Voice cleaned: {r.get('false_start', 0)} false start(s), {r.get('breath', 0)} breath(s), "
                              f"{r.get('click', 0)} click(s) removed; {r.get('pauses_shortened', 0)} long pause(s) shortened.")
     if sp is not None and sp.source == "narration" and nar_path is not None:
-        _hear(sp, nar_path, video, work_dir.parent / "transcripts", log, settings)
+        _hear(sp, tr, video)
     if sp is None and video["audio_mode"] == "talking":
         sp = talking_spine(video, clips, assign)
         if sp:

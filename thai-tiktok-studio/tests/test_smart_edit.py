@@ -380,12 +380,44 @@ def test_voice_cleanup_removes_breaths_false_starts_and_long_pauses():
     parts = [sil(0.6), word([0, 1, 2, 3]), sil(0.25), breath, sil(0.2), word([4, 5]), sil(0.45), word([4, 5, 1, 0]),
              sil(1.4), word([2, 4, 3, 5]), sil(0.8), word([3, 2, 1, 0]), sil(0.5)]
     y = np.concatenate(parts) + rng.normal(0, 0.002, sum(len(p) for p in parts)).astype(np.float32)
+    # without a transcript: breaths + long silences go, but NOTHING that might be a word (no false-start guessing)
     out, phrases, rep = C.clean(y)
-    assert rep["breath"] == 1 and rep["false_start"] == 1 and rep["pauses_shortened"] >= 2
-    assert len(phrases) == 4                                       # the four real phrases, whole
-    assert all(abs((b - a) - 0.72) < 0.08 for a, b in phrases)
-    gaps = [b[0] - a[1] for a, b in zip(phrases, phrases[1:])]
-    assert max(gaps) <= C.MAX_PAUSE + 2 * C.PAD + 0.02
+    assert rep["breath"] == 1 and rep["false_start"] == 0 and rep["pauses_shortened"] >= 2
+    assert len(phrases) == 5 and all(b - a > 0.3 for a, b in phrases)
+    # with the transcript: the restart is confirmed by its words, so it is removed
+    t = {"a": 0.6, "fs": 0.6 + 0.72 + 0.25 + 0.4 + 0.2, }
+    fs_s = 0.6 + 0.72 + 0.25 + 0.4 + 0.2
+    full_s = fs_s + 0.36 + 0.45
+    words = [{"w": "แขวน", "s": 0.62, "e": 1.3}, {"w": "พับผ้า", "s": fs_s, "e": fs_s + 0.34},
+             {"w": "พับผ้าเก็บได้", "s": full_s, "e": full_s + 0.7}, {"w": "ของเยอะ", "s": full_s + 2.15, "e": full_s + 2.85},
+             {"w": "ชอบมาก", "s": full_s + 3.65, "e": full_s + 4.35}]
+    out2, phrases2, rep2 = C.clean(y, words=words)
+    assert rep2["false_start"] == 1 and len(phrases2) == 4
+    assert all(abs((b - a) - 0.72) < 0.1 for a, b in phrases2)
+    gaps = [b[0] - a[1] for a, b in zip(phrases2, phrases2[1:])]
+    assert max(gaps) <= C.MAX_PAUSE + 2 * C.PAD + 0.05
+
+
+def test_cleanup_never_cuts_soft_words():
+    from studio.editor import cleanup as C
+    SR = 48000
+    rng = np.random.default_rng(2)
+    t = lambda d: np.arange(int(d * SR)) / SR
+    loud = lambda d: (0.4 * np.sin(2 * np.pi * 200 * t(d)) * np.sin(np.pi * t(d) / d)).astype(np.float32)
+    soft = lambda d: (0.012 * np.sin(2 * np.pi * 220 * t(d)) * np.sin(np.pi * t(d) / d)).astype(np.float32)  # a whispered "ค่ะ"
+    sil = lambda d: np.zeros(int(d * SR), np.float32)
+    y = np.concatenate([sil(0.5), loud(1.2), sil(0.15), soft(0.35), sil(1.3), loud(1.0), sil(0.5)])
+    y = y + rng.normal(0, 0.0005, len(y)).astype(np.float32)
+    out, ph, rep = C.clean(y)
+    seg = lambda a, b: out[int(a * SR): int(b * SR)]
+    # the soft ending right after the first phrase is still there, at full strength
+    e1 = ph[0][1]
+    tail = seg(e1, e1 + 0.6)
+    assert np.sqrt((tail ** 2).mean()) > 0.004
+    assert len(out) < len(y) - 0.4 * SR              # but the long silence after it was shortened
+    # "exactly as recorded" (no clean-up) keeps every sample between first and last word
+    from studio.editor import smart_edit as SE  # noqa: F401  (mode is applied in narration_spine)
+
 
 
 def test_sticker_can_be_moved_and_straightened():

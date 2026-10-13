@@ -432,3 +432,4 @@ body.server .localonly{display:none!important}
 .clip-turn{margin:0;display:flex;flex-direction:column;gap:4px;align-items:center}
 .clip-turn img{width:100%;aspect-ratio:9/16;object-fit:contain;background:#111;border-radius:10px}
 .clip-turn figcaption{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+h3.sub{margin:16px 0 8px;font-size:16px}

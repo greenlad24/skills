@@ -1010,7 +1010,10 @@ function showSettings() {
           ${pv === "claude_code" ? `<div class="row"><button class="btn ghost" id="ccTest">🔌 ${t("set.ccTest")}</button><span id="ccTestSt" class="small" aria-live="polite"></span></div>` : ""}</div>`; }).join("")}</section>
       <section class="m-sec"><h3>🎙 ${t("set.voice")}</h3><div class="choices">
         <label class="choice ${s.voice_source !== "tts" ? "on" : ""}"><input type="radio" name="sVsrc" id="sVsrc_mine" value="mine" ${s.voice_source !== "tts" ? "checked" : ""} data-sync="1"><span class="choice-txt"><b>${t("set.voiceMine")}</b><span class="muted">${t("set.voiceMineDesc")}</span></span></label>
-        <label class="choice ${s.voice_source === "tts" ? "on" : ""}"><input type="radio" name="sVsrc" id="sVsrc_tts" value="tts" ${s.voice_source === "tts" ? "checked" : ""} data-sync="1"><span class="choice-txt"><b>${t("set.voiceTts")}</b><span class="muted">${t("set.voiceTtsDesc")}</span></span></label></div></section>
+        <label class="choice ${s.voice_source === "tts" ? "on" : ""}"><input type="radio" name="sVsrc" id="sVsrc_tts" value="tts" ${s.voice_source === "tts" ? "checked" : ""} data-sync="1"><span class="choice-txt"><b>${t("set.voiceTts")}</b><span class="muted">${t("set.voiceTtsDesc")}</span></span></label></div>
+        <h3 class="sub">✂️ ${t("set.voiceEdit")}</h3><div class="choices">
+        <label class="choice ${s.voice_mode !== "exact" ? "on" : ""}"><input type="radio" name="sVmode" value="clean" ${s.voice_mode !== "exact" ? "checked" : ""} data-sync="1"><span class="choice-txt"><b>${t("set.voiceClean")}</b><span class="muted">${t("set.voiceCleanDesc")}</span></span></label>
+        <label class="choice ${s.voice_mode === "exact" ? "on" : ""}"><input type="radio" name="sVmode" value="exact" ${s.voice_mode === "exact" ? "checked" : ""} data-sync="1"><span class="choice-txt"><b>${t("set.voiceExact")}</b><span class="muted">${t("set.voiceExactDesc")}</span></span></label></div></section>
       <section class="m-sec"><h3>🎬 ${t("set.style")}</h3><p class="muted small">${t("set.styleHint")}</p>
         <p class="small" id="sStyleNow">…</p>
         <div class="row"><input type="file" id="sStyleFile" accept="video/*" hidden><button class="btn ghost" id="sStylePick">📤 ${t("set.styleUpload")}</button>
@@ -1088,7 +1091,7 @@ function showSettings() {
     $("#sSave").onclick = async () => {
       const provSel = $('input[name="sProv"]:checked').value;
       const upd = { provider: provSel, claude_model: $("#sCm").value.trim(), openai_model: $("#sOm").value.trim(),
-        videos_per_product: +$("#sN").value || 5, claude_effort: $("#sEff").value, voice_source: $('input[name="sVsrc"]:checked').value,
+        videos_per_product: +$("#sN").value || 5, claude_effort: $("#sEff").value, voice_source: $('input[name="sVsrc"]:checked').value, voice_mode: ($('input[name="sVmode"]:checked') || {}).value || "clean",
         tts_voice: $("#sVoice").value.trim(), tts_rate: +$("#sRate").value || 185, music_volume: +$("#sMv").value || 0.14,
         render_crf: +$("#sCrf").value || 20, language: I18N.lang };
       $$("[data-field]").forEach((i) => { upd[i.dataset.field] = i.value.trim(); });

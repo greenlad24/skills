@@ -1,6 +1,6 @@
 {
- "version": "1.7.1",
+ "version": "1.8.0",
  "zip_url": "https://raw.githubusercontent.com/greenlad24/skills/claude/wizardly-thompson-w6jjr8/thai-tiktok-studio/releases/ThaiTikTokStudio-mac.zip",
- "sha256": "e9690d242483843d7e23f914636b9ff911c1f61708fd16cb7e887e354eae3b6b",
- "notes": "1.7.1 — คลิปแนวนอนจะถูกหมุนขวา 90° ให้ตั้งตรงอัตโนมัติ (คลิปตะแคงของคุณมักเอียงซ้าย) · ปุ่ม หมุนขวา 90° ในหน้าตรวจ\n1.7.1 — Horizontal clips are turned 90° right automatically (your sideways clips are usually turned left) · 'Turn right 90°' button on the review screen"
+ "sha256": "cb3afc1a7c6a6f1b205361fccd54d008423def4a536c66e677e8f51952f7cf44",
+ "notes": "1.8.0 — เสียงพากย์ไม่ถูกตัดคำหรือประโยคอีกแล้ว: ตัดเฉพาะเสียงหายใจ/หัวเราะเบาๆ และช่วงเงียบ คำพูดทุกคำอยู่ครบ · ตั้งค่าใหม่: ใช้เสียงที่อัดไว้ทั้งหมดตามจริง\n1.8.0 — Voice clean-up never cuts words or sentences: only breaths/chuckles and silence are removed · new setting: use my recording exactly as recorded"
 }

@@ -1,15 +1,13 @@
-"""Clean up your recorded voice-over: no awkward pauses, breaths, clicks or false starts.
+"""Clean up your recorded voice-over without ever cutting a word.
 
-Only whole sounds BETWEEN words are touched — every spoken word stays exactly as recorded,
-so the voice never sounds chopped:
+What is removed:
+- breaths and chuckles between phrases (soft, noisy, un-voiced sounds),
+- clicks / bumps (very short sharp sounds on their own),
+- false starts — ONLY when the transcript confirms you said the same words again,
+- the silent middle of an over-long pause (the pause is shortened to MAX_PAUSE).
 
-- long pauses are shortened to a natural beat (MAX_PAUSE), short ones are left alone;
-- breaths (soft, noisy, un-voiced sounds between phrases) are removed;
-- clicks / bumps (very short sharp sounds) are removed;
-- false starts: when you start a phrase, stop and say it again, the first attempt is
-  removed (the later take is kept), detected by comparing the sound of the two starts.
-
-Joins get short crossfades so there are no clicks.
+What is never removed: anything the transcript heard as a word, and any sound inside a pause —
+only true silence is trimmed. `keep_all` mode (Settings) leaves the recording exactly as recorded.
 """
 
 from __future__ import annotations
@@ -108,79 +106,127 @@ def _dtw(a: np.ndarray, b: np.ndarray) -> float:
     return float(acc[n, m] / (n + m))
 
 
-def classify(y: np.ndarray, isl: list, feats) -> list:
+def _overlaps_word(i: "Island", words: list) -> bool:
+    return any(w["s"] < i.e + 0.04 and w["e"] > i.s - 0.04 for w in words)
+
+
+def _text_in(i: "Island", words: list) -> str:
+    from .transcribe import norm
+    return norm("".join(w["w"] for w in words if w["s"] < i.e and w["e"] > i.s))
+
+
+def classify(y: np.ndarray, isl: list, feats, words: list | None = None) -> list:
     db, voiced, flat, spec = feats
     f = lambda t: int(round(t / HOP))
     speech_db = np.median([db[f(i.s):f(i.e)].mean() for i in isl if i.e - i.s > 0.3] or [db.max()])
     for n, i in enumerate(isl):
+        if words and _overlaps_word(i, words):
+            continue                        # the transcript heard a word here: it stays, always
         a, b = f(i.s), max(f(i.s) + 1, f(i.e))
         dur = i.e - i.s
         alone = (n == 0 or i.s - isl[n - 1].e >= 0.25) and (n == len(isl) - 1 or isl[n + 1].s - i.e >= 0.25)
         if dur < 0.09 and alone and voiced[a:b].max() < 0.3:      # short un-voiced bang on its own, not a syllable
             i.kind = "click"
-        elif (dur < 0.9 and np.median(voiced[a:b]) < 0.35 and np.median(flat[a:b]) > 0.18
-              and db[a:b].mean() < speech_db - 4):
-            i.kind = "breath"
-    mel = _mfcc(spec)
+        elif (dur < 0.8 and np.median(voiced[a:b]) < 0.3 and np.median(flat[a:b]) > 0.2
+              and db[a:b].mean() < speech_db - 6):
+            i.kind = "breath"              # breath / chuckle: soft, noisy, no pitch
+    if not words:
+        return isl                         # no transcript → never guess at false starts
+    from .transcribe import norm
     sp = [i for i in isl if i.kind == "speech"]
-
-    def start(i, L):
-        return mel[f(i.s): f(i.s) + L]
-    for k, (x, nxt) in enumerate(zip(sp, sp[1:])):
-        gap, dur = nxt.s - x.e, x.e - x.s
-        if dur > 2.2 or gap > 1.6 or dur < 0.15 or dur > (nxt.e - nxt.s) + 0.3:
+    for x, nxt in zip(sp, sp[1:]):
+        if nxt.s - x.e > 1.6 or x.e - x.s > 2.5:
             continue
-        L = f(min(dur, 1.2))
-        A = start(x, L)
-        if len(A) < 8:
-            continue
-        d_next = _dtw(A, start(nxt, L))
-        # how different does this attempt sound from your OTHER phrases? (relative, so it works for any voice/mic)
-        others = [o for j, o in enumerate(sp) if j not in (k, k + 1) and o.e - o.s >= dur * 0.8][:8]
-        if len(others) < 2:
-            continue
-        base = float(np.median([_dtw(A, start(o, L)) for o in others]))
-        if d_next < 0.7 * base:       # measured on real Thai narration: repeats ≈0.4-0.55, normal ≈0.9-1.0
-            x.kind = "false_start"     # the first attempt sounds like the start of the next phrase
+        a_txt, b_txt = _text_in(x, words), _text_in(nxt, words)
+        # a false start: what you said first is just the beginning of what you said next
+        if len(a_txt) >= 3 and len(b_txt) > len(a_txt) and b_txt.startswith(a_txt[: max(3, int(len(a_txt) * 0.8))]):
+            x.kind = "false_start"
     return isl
 
 
-def clean(y: np.ndarray, max_pause: float = MAX_PAUSE):
-    """→ (cleaned audio, [(t0, t1)] phrases in the cleaned audio, report dict)."""
+def clean(y: np.ndarray, max_pause: float = MAX_PAUSE, words: list | None = None):
+    """→ (cleaned audio, [(t0, t1)] phrases in the cleaned audio, report dict incl. "map")."""
     if y is None or len(y) < SR * 0.3:
         return y, [], {}
+    words = words or []
     feats = features(y)
-    isl = classify(y, islands(feats[0]), feats)
-    keep = [i for i in isl if i.kind == "speech"]
+    db = feats[0]
+    isl = classify(y, islands(db), feats, words)
     report = {k: sum(1 for i in isl if i.kind == k) for k in ("breath", "click", "false_start")}
+    keep = [i for i in isl if i.kind == "speech"]
     if not keep:
         return y, [], report
-    parts, phrases, t = [], [], 0.0
+    y = y.astype(np.float32).copy()
     fade = int(SR * FADE)
-    ramp = np.linspace(0, 1, fade, dtype=np.float32)
-    shortened, prev_b, kept = 0, None, []
-    for i in keep:
-        a = max(0, int((i.s - PAD) * SR))
-        b = min(len(y), int((i.e + PAD) * SR))
-        if prev_b is not None:
-            a = max(a, prev_b)                     # never play the same sound twice
-            orig = (a - prev_b) / SR
-            gap = orig if orig <= MIN_KEEP_PAUSE else min(orig, max_pause)
-            shortened += orig > gap + 0.01
-            parts.append(np.zeros(int(gap * SR), dtype=np.float32))
-            t += int(gap * SR) / SR
-        seg = y[a:b].astype(np.float32).copy()
-        if len(seg) > 2 * fade:
-            seg[:fade] *= ramp
-            seg[-fade:] *= ramp[::-1]
-        phrases.append((t + (i.s - a / SR), t + (i.e - a / SR)))
-        kept.append((a / SR, b / SR, t))
+    for i in isl:                                  # mute breaths / clicks / confirmed false starts
+        if i.kind == "speech":
+            continue
+        a, b = max(0, int((i.s - 0.02) * SR)), min(len(y), int((i.e + 0.02) * SR))
+        env = np.zeros(b - a, dtype=np.float32)
+        k = min(fade, (b - a) // 2)
+        if k > 1:
+            env[:k] = np.linspace(1, 0, k)
+            env[-k:] = np.linspace(0, 1, k)
+        y[a:b] *= env
+    # sound anywhere (lower threshold than speech): never cut into it
+    floor = np.percentile(db, 10)
+    quiet = db < floor + 6
+    for i in isl:
+        if i.kind != "speech":                     # the muted bits count as silence now
+            quiet[int(i.s / HOP): int(i.e / HOP) + 1] = True
+    gone = [i for i in isl if i.kind == "false_start"]
+    for w in words:                                # every word the transcript heard is protected…
+        if any(w["s"] >= i.s - 0.05 and w["e"] <= i.e + 0.05 for i in gone):
+            continue                               # …except the words of a confirmed restart
+        quiet[max(0, int((w["s"] - 0.03) / HOP)): int((w["e"] + 0.03) / HOP) + 1] = False
+    cuts = []                                      # [(a, b)] seconds of pure silence to drop
+    for gi, (x, nxt) in enumerate(zip(keep, keep[1:])):
+        g0, g1 = x.e + PAD, nxt.s - PAD
+        if g1 - g0 <= max_pause:
+            continue
+        run_s = None
+        for fi in range(int(g0 / HOP), int(g1 / HOP) + 1):    # longest silent stretch inside this pause
+            q = fi < len(quiet) and quiet[fi]
+            if q and run_s is None:
+                run_s = fi
+            if (not q or fi == int(g1 / HOP)) and run_s is not None:
+                end = fi if not q else fi + 1
+                cuts.append((run_s * HOP, end * HOP, gi, g1 - g0))
+                run_s = None
+    drop, shortened = [], 0
+    by_gap = {}
+    for a, b, gi, glen in cuts:
+        by_gap.setdefault(gi, (glen, []))[1].append((a, b))
+    for glen, runs in by_gap.values():
+        excess, did = glen - max_pause, False
+        for a, b in sorted(runs, key=lambda r: r[0] - r[1]):      # longest silent stretches first
+            take = min(excess, (b - a) - 0.06)
+            if take > 0.03:
+                mid = (a + b) / 2
+                drop.append((mid - take / 2, mid + take / 2))
+                excess -= take
+                did = True
+            if excess <= 0.03:
+                break
+        shortened += did
+    drop.sort()
+    parts, kept, t, pos = [], [], 0.0, 0
+    for a, b in drop + [(len(y) / SR, len(y) / SR)]:
+        ia = int(a * SR)
+        seg = y[pos:ia].copy()
+        if len(seg) > 2 * fade and pos > 0:
+            seg[:fade] *= np.linspace(0, 1, fade)
+        if len(seg) > 2 * fade and ia < len(y):
+            seg[-fade:] *= np.linspace(1, 0, fade)
+        kept.append((pos / SR, ia / SR, t))
         parts.append(seg)
         t += len(seg) / SR
-        prev_b = b
+        pos = int(b * SR)
+    out = np.concatenate(parts) if parts else y
+    phrases = [(to_clean_time(i.s, kept), to_clean_time(i.e, kept)) for i in keep]
     report["pauses_shortened"] = shortened
-    report["map"] = kept          # [(original start, original end, cleaned start)] — to follow words in time
-    return np.concatenate(parts), phrases, report
+    report["map"] = kept
+    return out, phrases, report
 
 
 def to_clean_time(t: float, kept: list) -> float:
