@@ -13,6 +13,9 @@ Responses are parsed tolerantly because field names aren't fully documented.
 
 from __future__ import annotations
 
+import json
+import time
+
 import requests
 
 BASE = "https://api.postpeer.dev/v1"
@@ -21,6 +24,22 @@ TIMEOUT = 60
 
 class PostPeerError(RuntimeError):
     pass
+
+
+def _log(method: str, path: str, body, status: int, data) -> None:
+    """~/ThaiTikTokStudio/logs/postpeer.log — what we sent and what PostPeer answered (never the key)."""
+    try:
+        from . import config
+        d = config.HOME / "logs"
+        d.mkdir(parents=True, exist_ok=True)
+        f = d / "postpeer.log"
+        if f.exists() and f.stat().st_size > 2_000_000:
+            f.write_text("")
+        with f.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"t": time.strftime("%Y-%m-%d %H:%M:%S"), "req": f"{method} {path}", "body": body,
+                                 "status": status, "reply": data}, ensure_ascii=False)[:4000] + "\n")
+    except Exception:
+        pass
 
 
 def _h(key: str) -> dict:
@@ -38,11 +57,15 @@ def _call(method: str, path: str, key: str, **kw) -> dict:
         data = r.json() if r.content else {}
     except ValueError:
         data = {"raw": r.text[:500]}
+    _log(method, path, kw.get("json"), r.status_code, data)
     if r.status_code >= 400:
         msg = ""
         if isinstance(data, dict):
             err = data.get("error")
             msg = (err.get("message") if isinstance(err, dict) else err) or data.get("message") or ""
+            extra = data.get("details") or data.get("errors") or (err.get("details") if isinstance(err, dict) else None)
+            if extra:                       # validation errors: which field PostPeer didn't like
+                msg = f"{msg} — {json.dumps(extra, ensure_ascii=False)[:300]}"
         if r.status_code in (401, 403):
             msg = "PostPeer rejected the API key. " + str(msg or "")
         elif r.status_code == 402 or "credit" in str(msg).lower():

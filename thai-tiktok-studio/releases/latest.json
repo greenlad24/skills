@@ -1,6 +1,6 @@
 {
- "version": "1.9.0",
+ "version": "1.9.1",
  "zip_url": "https://raw.githubusercontent.com/greenlad24/skills/claude/wizardly-thompson-w6jjr8/thai-tiktok-studio/releases/ThaiTikTokStudio-mac.zip",
- "sha256": "ee7735d29010612693eb8d2962ccc6acf93ca8ee65c5a1374908d4c75ef536d5",
- "notes": "1.9.0 — หน้าตั้งเวลาโพสต์ใหม่: ทำตามขั้นตอน 1-2-3 (PostPeer → TikTok → Cloudinary พร้อมปุ่มสมัคร/เปิด API keys และทดสอบอัปโหลดจริง) · ปุ่มตรวจสอบทั้งหมด · โพสต์ที่มีปัญหาบอกสาเหตุชัดเจน กดลองใหม่ได้ และลองใหม่เองทุก 10 นาที\n1.9.0 — New posting screen: guided steps 1-2-3 (PostPeer → TikTok → Cloudinary with sign-up/API-key buttons and a real test upload) · Check everything button · posts with a problem show why, can be retried, and retry by themselves every 10 minutes"
+ "sha256": "ea22242a8b2f7bb25774819c58eef45d07762f4e40be60679080217a6b4e3988",
+ "notes": "1.9.1 — โพสต์ที่มีปัญหาบอกสาเหตุจริงและวิธีแก้ (ไม่ใช่แค่ 'ตรวจคีย์') พร้อมข้อความจาก PostPeer\n1.9.1 — Posts with a problem show the real reason and how to fix it (not just 'check your key'), plus PostPeer's own message"
 }

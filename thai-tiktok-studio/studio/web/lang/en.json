@@ -641,5 +641,17 @@
  "sched.cd2": "Open your API keys page.",
  "sched.cdKeys": "Open my API keys",
  "sched.cd3": "Copy Cloud name, API key and API secret (click the eye 👁 first) into the 3 boxes, then tap Test & save.",
- "sched.storeShort": "Video storage"
+ "sched.storeShort": "Video storage",
+ "perr.said": "What PostPeer said:",
+ "perr.key": "PostPeer didn't accept your key. Copy a fresh key from PostPeer → Access Keys into step 1, tap Save & check, then Try again.",
+ "perr.credits": "Your PostPeer plan has run out of posts/credits. Top up or upgrade in PostPeer, then Try again.",
+ "perr.net": "Couldn't reach PostPeer — check the internet connection, then Try again.",
+ "perr.privacy": "TikTok only allows this account to post as 'only me' for now. Switch to 📥 TikTok inbox mode (step 4) and Try again.",
+ "perr.spam": "TikTok limited how many posts this account can make today. It will work again tomorrow.",
+ "perr.media": "PostPeer couldn't download the video. Set up Cloudinary (step 3), then Try again.",
+ "perr.cloud": "Cloudinary didn't take the video — open step 3, enter the keys again and tap Test & save.",
+ "perr.temp": "The temporary video link didn't work. Set up Cloudinary (step 3), then Try again.",
+ "perr.account": "The TikTok connection has expired. In step 2 tap Connect again, then Try again.",
+ "perr.rejected": "PostPeer didn't accept this post (see the message below). Send me a screenshot so I can fix it.",
+ "perr.other": "Something went wrong sending this post (see the message below)."
 }

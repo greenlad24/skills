@@ -1238,17 +1238,34 @@ function setupHtml(d, s, st) {
           <span class="choice-txt"><b>⚡ ${t("sched.modeDirectTitle")}</b><span class="muted">${t("sched.modeDirectDesc")}</span></span></label></div></details>
   </div>`;
 }
+const POST_ERR = [
+  [/401|403|rejected the API key|unauthori|invalid.*key|forbidden/i, "perr.key"],
+  [/402|credit|plan limit|quota|upgrade/i, "perr.credits"],
+  [/Can't reach PostPeer|ConnectionError|timed? ?out|Max retries|Name or service|getaddrinfo/i, "perr.net"],
+  [/privacy_level|privacy level/i, "perr.privacy"],
+  [/spam_risk|too many posts|daily/i, "perr.spam"],
+  [/url_ownership|media.*(url|download|fetch)|could not (download|fetch)|invalid.*url|video url/i, "perr.media"],
+  [/Cloudinary/i, "perr.cloud"],
+  [/litterbox|catbox|Video upload failed/i, "perr.temp"],
+  [/account.*(not found|disconnected|expired|reconnect)|integration|token.*expired|refresh token/i, "perr.account"],
+  [/PostPeer 4\d\d|validation|required|invalid/i, "perr.rejected"],
+];
+function postErrorText(raw) {
+  const hit = POST_ERR.find((m) => m[0].test(raw || ""));
+  return t(hit ? hit[1] : "perr.other");
+}
 function postRow(p) {
   const fileUrl = `/files/${encodeURIComponent(p.project_id)}/renders/${encodeURIComponent(p.render)}`;
   const bad = !!p.error || p.status === "missed";
-  const stTxt = bad ? (p.error ? friendly({ message: p.error }, "err.postFailed").text : t("sched.st.missed"))
+  const stTxt = bad ? (p.error ? postErrorText(p.error) : t("sched.st.missed"))
     : tOr("sched.st." + p.status, "");
   return `<article class="prow ${bad ? "bad" : ""}" data-post="${esc(p.id)}">
     <video src="${fileUrl}#t=1" preload="metadata" muted playsinline class="pthumb"></video>
     <div class="pmain">
       <div class="ptop"><span class="ptime">🕒 ${esc(p.at.slice(11, 16))}</span><span class="pill ${POST_ST[p.status] || ""} ${bad ? "bad" : ""}">${bad ? "⚠️ " + t("sched.problem") : tOr("post." + p.status, p.status)}</span></div>
       <b class="ptitle">${esc(p.title || p.video_id)}</b><span class="muted small">${esc(p.project_name)}</span>
-      <p class="pst small ${bad ? "bad" : "muted"}">${esc(stTxt)}</p>
+      <p class="pst small ${bad ? "bad" : "muted"}">${bad ? stTxt : esc(stTxt)}</p>
+      ${p.error ? `<p class="praw small">${t("perr.said")} <code>${esc(p.error.slice(0, 300))}</code></p>` : ""}
       ${p.host_note ? `<p class="small muted">ℹ️ ${esc(p.host_note)}</p>` : ""}
       ${p.post_url ? `<a class="small" href="${esc(p.post_url)}" target="_blank" rel="noopener">${t("sched.viewPost")} ↗</a>` : ""}
       <div class="row pbtns">

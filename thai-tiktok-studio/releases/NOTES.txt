@@ -1,2 +1,2 @@
-1.9.0 — หน้าตั้งเวลาโพสต์ใหม่: ทำตามขั้นตอน 1-2-3 (PostPeer → TikTok → Cloudinary พร้อมปุ่มสมัคร/เปิด API keys และทดสอบอัปโหลดจริง) · ปุ่มตรวจสอบทั้งหมด · โพสต์ที่มีปัญหาบอกสาเหตุชัดเจน กดลองใหม่ได้ และลองใหม่เองทุก 10 นาที
-1.9.0 — New posting screen: guided steps 1-2-3 (PostPeer → TikTok → Cloudinary with sign-up/API-key buttons and a real test upload) · Check everything button · posts with a problem show why, can be retried, and retry by themselves every 10 minutes
+1.9.1 — โพสต์ที่มีปัญหาบอกสาเหตุจริงและวิธีแก้ (ไม่ใช่แค่ 'ตรวจคีย์') พร้อมข้อความจาก PostPeer
+1.9.1 — Posts with a problem show the real reason and how to fix it (not just 'check your key'), plus PostPeer's own message
