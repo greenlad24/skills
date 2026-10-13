@@ -107,6 +107,18 @@ def accounts(key: str) -> list:
     return [a for a in out if a["id"]]
 
 
+def rfc3339(when_local: str, tz: str = "Asia/Bangkok") -> str:
+    """'2026-10-14T20:00' (local) → '2026-10-14T20:00:00+07:00' — PostPeer needs a full date-time with offset."""
+    from datetime import datetime, timedelta, timezone as _tz
+    dt = datetime.strptime(when_local[:16], "%Y-%m-%dT%H:%M")
+    try:
+        from zoneinfo import ZoneInfo
+        dt = dt.replace(tzinfo=ZoneInfo(tz))
+    except Exception:                      # no tz database: Bangkok is UTC+7 all year
+        dt = dt.replace(tzinfo=_tz(timedelta(hours=7)))
+    return dt.isoformat(timespec="seconds")
+
+
 def create_post(key: str, account_id: str, caption: str, video_url: str, when_local: str | None,
                 timezone: str = "Asia/Bangkok", mode: str = "inbox") -> dict:
     """mode 'inbox' = draft to TikTok inbox (add basket, tap post) · 'direct' = publish publicly."""
@@ -117,8 +129,7 @@ def create_post(key: str, account_id: str, caption: str, video_url: str, when_lo
         "mediaItems": [{"type": "video", "url": video_url}],
     }
     if when_local:
-        stamp = when_local[:16] + ":00" if len(when_local) == 16 else when_local[:19]
-        body.update({"scheduledFor": stamp, "timezone": timezone})
+        body.update({"scheduledFor": rfc3339(when_local, timezone), "timezone": timezone})
     else:
         body["publishNow"] = True
     try:

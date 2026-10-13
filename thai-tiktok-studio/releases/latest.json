@@ -1,6 +1,6 @@
 {
- "version": "1.9.1",
+ "version": "1.9.2",
  "zip_url": "https://raw.githubusercontent.com/greenlad24/skills/claude/wizardly-thompson-w6jjr8/thai-tiktok-studio/releases/ThaiTikTokStudio-mac.zip",
- "sha256": "ea22242a8b2f7bb25774819c58eef45d07762f4e40be60679080217a6b4e3988",
- "notes": "1.9.1 — โพสต์ที่มีปัญหาบอกสาเหตุจริงและวิธีแก้ (ไม่ใช่แค่ 'ตรวจคีย์') พร้อมข้อความจาก PostPeer\n1.9.1 — Posts with a problem show the real reason and how to fix it (not just 'check your key'), plus PostPeer's own message"
+ "sha256": "738c6fcebeb1005ebe1884d07db996db7db3ac16c257a8120c046058aa209931",
+ "notes": "1.9.2 — แก้การตั้งเวลาโพสต์กับ PostPeer (รูปแบบเวลา) — กด ลองใหม่ ที่โพสต์ที่มีปัญหาได้เลย\n1.9.2 — Fixed scheduling with PostPeer (time format) — tap Try again on the post with a problem"
 }

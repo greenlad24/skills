@@ -1,2 +1,2 @@
-1.9.1 — โพสต์ที่มีปัญหาบอกสาเหตุจริงและวิธีแก้ (ไม่ใช่แค่ 'ตรวจคีย์') พร้อมข้อความจาก PostPeer
-1.9.1 — Posts with a problem show the real reason and how to fix it (not just 'check your key'), plus PostPeer's own message
+1.9.2 — แก้การตั้งเวลาโพสต์กับ PostPeer (รูปแบบเวลา) — กด ลองใหม่ ที่โพสต์ที่มีปัญหาได้เลย
+1.9.2 — Fixed scheduling with PostPeer (time format) — tap Try again on the post with a problem

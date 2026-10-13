@@ -181,7 +181,9 @@ def test_postpeer_gets_full_timestamps(monkeypatch):
         return {"success": True, "postId": "p1", "status": "scheduled"}
     monkeypatch.setattr(postpeer, "_call", fake)
     r = postpeer.create_post("k", "acc", "hi", "https://x/v.mp4", "2026-10-14T20:00")
-    assert sent["scheduledFor"] == "2026-10-14T20:00:00" and sent["timezone"] == "Asia/Bangkok" and r["id"] == "p1"
+    assert sent["scheduledFor"] == "2026-10-14T20:00:00+07:00" and sent["timezone"] == "Asia/Bangkok" and r["id"] == "p1"
+    from datetime import datetime
+    assert datetime.fromisoformat(sent["scheduledFor"]).utcoffset().total_seconds() == 7 * 3600   # valid RFC 3339
     assert sent["platforms"][0]["platformSpecificData"]["draft"] is True
 
 
