@@ -159,3 +159,60 @@ def page(project_name: str, lang: str = "th", website: bool = False) -> str:
 def expired_page(lang: str = "th") -> str:
     import html
     return EXPIRED.replace("{lang}", lang).replace("{msg}", html.escape(_texts(lang)["expired"]))
+
+
+CAPTIONS_PAGE = """<!doctype html><html lang="{lang}"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>{title}</title>
+<style>
+body{{margin:0;font-family:-apple-system,"Sukhumvit Set","Noto Sans Thai",sans-serif;background:#f4f4f6;color:#111}}
+header{{padding:18px 16px 6px}}h1{{font-size:22px;margin:0 0 4px}}p.sub{{margin:0;color:#666;font-size:15px}}
+.card{{background:#fff;margin:12px 16px;border-radius:18px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.08)}}
+.card.done{{opacity:.5}}.when{{font-weight:700;font-size:17px}}.title{{color:#555;font-size:14px;margin:2px 0 8px}}
+textarea{{width:100%;box-sizing:border-box;border:1px solid #ddd;border-radius:12px;padding:10px;font-size:16px;min-height:120px;font-family:inherit}}
+button{{width:100%;margin-top:8px;border:0;border-radius:14px;padding:16px;font-size:18px;font-weight:700;background:#e11d48;color:#fff}}
+button.ok{{background:#10b981}}.mark{{background:#eee;color:#333;font-size:15px;padding:10px}}
+.steps{{margin:8px 16px;padding:12px 14px 12px 32px;background:#fff7ed;border-radius:14px;font-size:15px}}
+.empty{{text-align:center;color:#777;padding:40px 16px}}
+</style></head><body>
+<header><h1>{title}</h1><p class="sub">{sub}</p></header>
+<ol class="steps">{steps}</ol>
+{cards}
+<script>
+function copy(i){{var t=document.getElementById('t'+i);t.focus();t.select();t.setSelectionRange(0,99999);
+var ok=false;try{{ok=document.execCommand('copy')}}catch(e){{}}
+if(!ok&&navigator.clipboard){{navigator.clipboard.writeText(t.value)}}
+var b=document.getElementById('b'+i);b.textContent='{copied}';b.className='ok';setTimeout(function(){{b.textContent='{copy}';b.className=''}},2500)}}
+function mark(i,id){{var c=document.getElementById('c'+i);c.classList.toggle('done');
+try{{var d=JSON.parse(localStorage.getItem('doneCaps')||'{{}}');d[id]=c.classList.contains('done');localStorage.setItem('doneCaps',JSON.stringify(d))}}catch(e){{}}}}
+try{{var d=JSON.parse(localStorage.getItem('doneCaps')||'{{}}');document.querySelectorAll('.card').forEach(function(c){{if(d[c.dataset.id])c.classList.add('done')}})}}catch(e){{}}
+</script></body></html>"""
+
+CAP_TEXT = {
+    "th": {"title": "📋 แคปชันสำหรับโพสต์", "sub": "คัดลอกไปวางใน TikTok ตอนโพสต์จากกล่องข้อความ",
+           "steps": ["เปิด TikTok → กล่องข้อความ (หรือ ฉบับร่าง) แตะคลิปที่ส่งมา", "กด คัดลอก ด้านล่าง แล้ววางในช่องคำบรรยาย",
+                     "เพิ่มตะกร้าสินค้า แล้วกด โพสต์"],
+           "copy": "📋 คัดลอกแคปชัน", "copied": "✓ คัดลอกแล้ว — ไปวางใน TikTok ได้เลย", "mark": "✓ โพสต์อันนี้แล้ว",
+           "empty": "ยังไม่มีโพสต์ที่ส่งไป TikTok"},
+    "en": {"title": "📋 Captions to post", "sub": "Copy them into TikTok when you post from your inbox",
+           "steps": ["Open TikTok → Inbox (or Drafts) and tap the video that arrived", "Tap Copy below and paste into the description",
+                     "Add the product basket and tap Post"],
+           "copy": "📋 Copy caption", "copied": "✓ Copied — paste it in TikTok", "mark": "✓ I posted this one",
+           "empty": "No posts sent to TikTok yet"},
+}
+
+
+def captions_page(posts: list, lang: str) -> str:
+    import html
+    T = CAP_TEXT.get(lang, CAP_TEXT["th"])
+    cards = []
+    for i, p in enumerate(posts):
+        cards.append(
+            f'<div class="card" id="c{i}" data-id="{html.escape(p["id"])}"><div class="when">🕒 {html.escape(p["when"])}</div>'
+            f'<div class="title">{html.escape(p["title"])}</div>'
+            f'<textarea id="t{i}" readonly>{html.escape(p["text"])}</textarea>'
+            f'<button id="b{i}" onclick="copy({i})">{T["copy"]}</button>'
+            f'<button class="mark" onclick="mark({i},\'{html.escape(p["id"])}\')">{T["mark"]}</button></div>')
+    return CAPTIONS_PAGE.format(lang=lang, title=T["title"], sub=T["sub"],
+                                steps="".join(f"<li>{s}</li>" for s in T["steps"]),
+                                cards="".join(cards) or f'<p class="empty">{T["empty"]}</p>',
+                                copy=T["copy"], copied=T["copied"])

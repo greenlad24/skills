@@ -422,9 +422,9 @@
  "sched.cdOk": "Cloudinary works ({cloud})",
  "sched.s3Title": "How should posts go out?",
  "sched.modeInboxTitle": "Send to TikTok drafts (best for affiliates)",
- "sched.modeInboxDesc": "At post time the video arrives in your TikTok inbox → open the app → <b>add the product basket</b> → post (10 seconds)",
+ "sched.modeInboxDesc": "The video lands in your TikTok inbox/drafts. TikTok doesn't let apps fill in the caption there, so you paste it (📱 Captions on my phone) and add the product basket — best for TikTok Shop.",
  "sched.modeDirectTitle": "Post fully automatically",
- "sched.modeDirectDesc": "Posts by itself on time, but <b>can't add the product basket</b> (TikTok doesn't allow it) — add it later in Seller Center",
+ "sched.modeDirectDesc": "Posts by itself on time <b>with your caption and hashtags</b>, but <b>can't add the product basket</b> (TikTok doesn't allow it) — add it later in Seller Center. TikTok may show it as 'only me' until PostPeer is approved for your account.",
  "sched.modeInbox": "TikTok drafts",
  "sched.modeDirect": "fully automatic",
  "sched.connectedTo": "Connected to TikTok: {name}",
@@ -653,5 +653,9 @@
  "perr.temp": "The temporary video link didn't work. Set up Cloudinary (step 3), then Try again.",
  "perr.account": "The TikTok connection has expired. In step 2 tap Connect again, then Try again.",
  "perr.rejected": "PostPeer didn't accept this post (see the message below). Send me a screenshot so I can fix it.",
- "perr.other": "Something went wrong sending this post (see the message below)."
+ "perr.other": "Something went wrong sending this post (see the message below).",
+ "sched.capsPhone": "Captions on my phone",
+ "sched.caps1": "Scan this with your phone's camera (same Wi-Fi as this computer).",
+ "sched.caps2": "When a video arrives in your TikTok inbox, tap Copy caption on that page.",
+ "sched.caps3": "Paste it in TikTok, add the product basket and post."
 }

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 import os
 import subprocess
 import sys
@@ -370,6 +371,32 @@ def phone_link(pid):
     scheme = "https" if SERVER_MODE else "http"
     url = f"{scheme}://{host}/m/{token}"
     return jsonify({"url": url, "qr": phone.qr_data_uri(url), "hours": phone.TOKEN_TTL // 3600})
+
+
+@app.post("/api/schedule/phone-link")
+def captions_link():
+    """QR for the phone: captions + hashtags of the posts, ready to copy into TikTok."""
+    from . import phone
+    token = phone.new_token("__captions__")
+    host = request.host if SERVER_MODE else f"{phone.lan_ip()}:{PORT}"
+    url = f"{'https' if SERVER_MODE else 'http'}://{host}/m/c/{token}?lang={_ui_lang()}"
+    return jsonify({"url": url, "qr": phone.qr_data_uri(url), "hours": phone.TOKEN_TTL // 3600})
+
+
+@app.get("/m/c/<token>")
+def captions_page(token):
+    from . import phone, scheduler
+    lang = _ui_lang()
+    if phone.project_for(token) != "__captions__":
+        return phone.expired_page(lang), 404
+    now = scheduler.now_bkk()
+    rows = []
+    for p in sorted(scheduler.load()["posts"], key=lambda x: x["at"]):
+        if p["status"] in ("cancelled",) or scheduler._parse(p["at"]) < now - timedelta(days=3):
+            continue
+        rows.append({"id": p["id"], "when": p["at"].replace("T", " "), "title": p.get("title") or p.get("project_name", ""),
+                     "text": scheduler.full_text(p)})
+    return phone.captions_page(rows, lang)
 
 
 @app.get("/m/<token>")

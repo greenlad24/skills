@@ -1297,6 +1297,7 @@ function renderScheduler() {
     <section class="card status-card">
       <div class="schips">${chip(st.key, "🔑", "PostPeer")}${chip(st.acct, "🎵", st.acct ? esc(d.account) : "TikTok")}${chip(st.store, "☁️", d.cloud ? "Cloudinary" : t("sched.storeShort"))}</div>
       <div class="row"><button class="btn secondary" id="schCheck">🩺 ${t("sched.checkAll")}</button>
+        ${s.postpeer_mode !== "direct" ? `<button class="btn secondary" id="schPhone">📱 ${t("sched.capsPhone")}</button>` : ""}
         <span class="muted small">${st.ready ? t("sched.readyAll") : t("sched.notReady")}</span></div>
       <details class="setup-fold" id="dSetup" ${st.ready ? "" : "open"}><summary>⚙️ ${t(st.ready ? "sched.changeSetup" : "sched.setupTitle")}</summary>${setupHtml(d, s, st)}</details>
     </section>
@@ -1340,6 +1341,13 @@ async function runCheck() {
 function wireScheduler() {
   $$("[data-open-setup]").forEach((b) => (b.onclick = () => { const d = $("#dSetup"); d.open = true; d.scrollIntoView({ behavior: "smooth" }); }));
   $("#schCheck").onclick = runCheck;
+  const sp = $("#schPhone"); if (sp) sp.onclick = async () => {
+    let r; try { r = await api("/api/schedule/phone-link", { method: "POST" }); } catch (e) { return errToast(e); }
+    openModal(() => { setModal(`<div class="ob phone-modal"><h2>📱 ${t("sched.capsPhone")}</h2><img src="${r.qr}" alt="" class="qr">
+      <ol class="big-steps"><li>${t("sched.caps1")}</li><li>${t("sched.caps2")}</li><li>${t("sched.caps3")}</li></ol>
+      <details><summary>${t("phone.link")}</summary><p class="muted small breakall">${esc(r.url)}</p></details>
+      <button class="btn primary big wide" id="capOk">${t("celebrate.ok")}</button></div>`); $("#capOk").onclick = closeModal; });
+  };
   $("#ppSave").onclick = async () => {
     const k = $("#ppKey").value.trim();
     if (!k) { toast(`<b>🔑 ${t("sched.needKey")}</b>`, 4000, "bad"); return; }

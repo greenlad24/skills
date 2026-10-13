@@ -1,6 +1,6 @@
 {
- "version": "1.9.2",
+ "version": "1.9.3",
  "zip_url": "https://raw.githubusercontent.com/greenlad24/skills/claude/wizardly-thompson-w6jjr8/thai-tiktok-studio/releases/ThaiTikTokStudio-mac.zip",
- "sha256": "738c6fcebeb1005ebe1884d07db996db7db3ac16c257a8120c046058aa209931",
- "notes": "1.9.2 — แก้การตั้งเวลาโพสต์กับ PostPeer (รูปแบบเวลา) — กด ลองใหม่ ที่โพสต์ที่มีปัญหาได้เลย\n1.9.2 — Fixed scheduling with PostPeer (time format) — tap Try again on the post with a problem"
+ "sha256": "a199f026a40760214e72d65327e530eed91d78d9be95303158826daa6cb38d9d",
+ "notes": "1.9.3 — 📱 แคปชันบนมือถือ: สแกน QR แล้วกดคัดลอกแคปชัน+แฮชแท็กไปวางใน TikTok (TikTok ไม่ให้แอปใส่แคปชันในโหมดกล่องข้อความ)\n1.9.3 — 📱 Captions on my phone: scan a QR and copy each caption + hashtags into TikTok (TikTok doesn't let apps fill the caption in inbox mode)"
 }

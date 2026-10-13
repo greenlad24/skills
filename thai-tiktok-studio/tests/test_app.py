@@ -191,3 +191,17 @@ def test_phone_upload_via_qr_link(client):
     assert [f["name"] for f in p["narration"]] == ["VID_20261011.mp4"]
     assert c.get("/m/not-a-real-token", environ_base=phone).status_code == 404
     assert c.post("/m/not-a-real-token/upload", environ_base=phone).status_code == 404
+
+
+def test_captions_on_phone(client):
+    c, tmp = client
+    from studio import scheduler
+    scheduler.save({"posts": [{"id": "p1", "project_id": "x", "project_name": "ราวแขวน", "video_id": "V1", "style": "",
+                               "render": "V1_bouncy_100000.mp4", "title": "แกะกล่อง", "at": scheduler._fmt(scheduler.now_bkk()),
+                               "caption": "ราวแขวนดีมาก 👉 กดตะกร้า", "hashtags": ["#tiktokshop", "#ป้ายยา"], "status": "queued"}]})
+    r = c.post("/api/schedule/phone-link").get_json()
+    assert "/m/c/" in r["url"] and r["qr"].startswith("data:image/png")
+    path = r["url"].split("://", 1)[1].split("/", 1)[1]
+    page = c.get("/" + path).get_data(as_text=True)
+    assert "ราวแขวนดีมาก" in page and "#tiktokshop" in page and "copy(0)" in page
+    assert c.get("/m/c/not-a-token").status_code == 404

@@ -1,2 +1,2 @@
-1.9.2 — แก้การตั้งเวลาโพสต์กับ PostPeer (รูปแบบเวลา) — กด ลองใหม่ ที่โพสต์ที่มีปัญหาได้เลย
-1.9.2 — Fixed scheduling with PostPeer (time format) — tap Try again on the post with a problem
+1.9.3 — 📱 แคปชันบนมือถือ: สแกน QR แล้วกดคัดลอกแคปชัน+แฮชแท็กไปวางใน TikTok (TikTok ไม่ให้แอปใส่แคปชันในโหมดกล่องข้อความ)
+1.9.3 — 📱 Captions on my phone: scan a QR and copy each caption + hashtags into TikTok (TikTok doesn't let apps fill the caption in inbox mode)
