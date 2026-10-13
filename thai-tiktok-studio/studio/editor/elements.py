@@ -498,9 +498,37 @@ def build_overlay(o: dict, start: float, end: float, ctx: Ctx) -> list:
     if o is None:
         return []
     try:
-        return styles.apply(fn(o, start, end, ctx), o["type"], ctx.style, ctx.rng)
+        return place(styles.apply(fn(o, start, end, ctx), o["type"], ctx.style, ctx.rng), o)
     except Exception:  # one bad overlay must never kill a render
         return []
+
+
+def place(els: list, o: dict) -> list:
+    """Your own placement from the review screen: x/y (0-1, centre of the sticker) and tilt (degrees, + = clockwise).
+
+    The whole sticker (with its arrows/badges) moves together; the entrance animation stays the same.
+    """
+    if not els:
+        return els
+    x, y, tilt = o.get("x"), o.get("y"), o.get("tilt")
+    if x is not None and y is not None:
+        main = next((e for e in els if e.sprite is not None), els[0])
+        w = main.sprite.width if main.sprite is not None else 0
+        h = main.sprite.height if main.sprite is not None else 0
+        tx = min(max(float(x) * W, w / 2 + 10), W - w / 2 - 10) if w < W - 20 else W / 2
+        ty = min(max(float(y) * H, h / 2 + 10), H - h / 2 - 10) if h < H - 20 else H / 2
+        dx, dy = tx - main.cx, ty - main.cy
+        for e in els:
+            if e.draw is None or e.cx != W / 2 or e.cy != H / 2:   # full-screen layers (flash) stay put
+                e.cx += dx
+                e.cy += dy
+    if tilt is not None:
+        for e in els:
+            if e.sprite is not None:
+                e.rot = -float(tilt)              # PIL turns counter-clockwise for positive angles
+                if e.loop in ("wiggle", "spin_slow"):
+                    e.loop = "breathe"            # a straightened sticker must not keep rocking
+    return els
 
 
 # --------------------------------------------------------------------------- captions & globals

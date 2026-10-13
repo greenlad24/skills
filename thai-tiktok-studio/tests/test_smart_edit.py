@@ -61,14 +61,15 @@ def test_narration_is_one_continuous_take(footage, narration, tmp_path):
     plan, v, a, files = _setup(footage, narration)
     R = SE.resolve(v, a, files, [], {"provider": "manual"}, tmp_path, narration_dir=narration)
     _check_timeline(R)
-    # the voice is the original recording shifted, not re-assembled: inner pauses keep their length
+    # every phrase is still there, whole; natural pauses stay natural (short ones untouched, none over ~0.5 s)
     on = _envelope(R.speech) > 0.05
     edges = np.flatnonzero(np.diff(on.astype(int)))
     first = edges[0] / 100
-    assert abs(first - (SE.LEAD + 0.08)) < 0.08                               # lead silence trimmed
+    assert abs(first - (SE.LEAD + 0.08)) < 0.1                                # lead silence trimmed
     gaps = [(edges[i + 1] - edges[i]) / 100 for i in range(1, len(edges) - 1, 2)]
-    assert len(gaps) == 4 and abs(gaps[0] - 0.3) < 0.06 and abs(gaps[2] - 0.3) < 0.06 and abs(gaps[1] - 0.5) < 0.06
-    assert abs(R.total - (SE.LEAD + 8.6 - 0.72 + 0.25 + SE.TAIL)) < 0.2
+    talk = [(edges[i + 1] - edges[i]) / 100 for i in range(0, len(edges) - 1, 2)]
+    assert len(gaps) == 4 and all(0.25 <= g <= 0.56 for g in gaps), gaps
+    assert len(talk) == 5 and all(abs(t - d) < 0.12 for t, d in zip(talk, [1.2, 1.3, 1.1, 1.4, 1.2])), talk
     assert any("continuous" in n for n in R.notes)
 
 
@@ -353,3 +354,47 @@ def test_talking_fallback_no_repeats(footage, tmp_path):
     talk = {r for r in [s.path for s in R.segments] if "V2-S01" in r}
     broll = [r for r in _runs(R) if r not in talk]
     assert len(broll) == len(set(broll))
+
+
+
+def test_voice_cleanup_removes_breaths_false_starts_and_long_pauses():
+    from studio.editor import cleanup as C
+    rng = np.random.default_rng(1)
+    SR = 48000
+
+    def vowel(f0, formants, dur, amp=0.4):
+        t = np.arange(int(dur * SR)) / SR
+        y = sum((sum(np.exp(-((f0 * h - F) / 120) ** 2) for F in formants) + 0.02) / h ** 0.5
+                * np.sin(2 * np.pi * f0 * h * t + rng.uniform(0, 6)) for h in range(1, 30))
+        env = np.minimum(1, np.minimum(t / 0.02, (dur - t) / 0.02))
+        return (amp * y / np.abs(y).max() * env).astype(np.float32)
+    SYL = [(180, (700, 1200)), (200, (300, 2300)), (170, (500, 900)), (210, (400, 2000)), (190, (650, 1700)), (160, (350, 800))]
+    word = lambda ix: np.concatenate([vowel(SYL[k][0], SYL[k][1], 0.18) for k in ix])
+    sil = lambda d: np.zeros(int(d * SR), np.float32)
+    n = rng.normal(0, 1, int(0.4 * SR)).astype(np.float32)
+    breath = (0.06 * np.convolve(n, np.ones(8) / 8, "same") / 3 * np.sin(np.linspace(0, np.pi, len(n)))).astype(np.float32)
+    parts = [sil(0.6), word([0, 1, 2, 3]), sil(0.25), breath, sil(0.2), word([4, 5]), sil(0.45), word([4, 5, 1, 0]),
+             sil(1.4), word([2, 4, 3, 5]), sil(0.8), word([3, 2, 1, 0]), sil(0.5)]
+    y = np.concatenate(parts) + rng.normal(0, 0.002, sum(len(p) for p in parts)).astype(np.float32)
+    out, phrases, rep = C.clean(y)
+    assert rep["breath"] == 1 and rep["false_start"] == 1 and rep["pauses_shortened"] >= 2
+    assert len(phrases) == 4                                       # the four real phrases, whole
+    assert all(abs((b - a) - 0.72) < 0.08 for a, b in phrases)
+    gaps = [b[0] - a[1] for a, b in zip(phrases, phrases[1:])]
+    assert max(gaps) <= C.MAX_PAUSE + 2 * C.PAD + 0.02
+
+
+def test_sticker_can_be_moved_and_straightened():
+    from studio.editor import elements as E
+    v = normalize_plan(sample_plan())["videos"][0]
+    ctx = E.Ctx(v)
+    o = {"type": "discount_badge", "text": "ลด 50%", "sub_text": "", "items": [], "emoji": "", "at": 0, "dur": 2,
+         "position": "auto", "color": "auto", "target_x": .5, "target_y": .5}
+    auto = E.build_overlay(o, 0, 2, ctx)
+    assert auto[0].rot != 0                                   # the badge is tilted by default
+    moved = E.build_overlay(dict(o, x=0.3, y=0.7, tilt=0), 0, 2, ctx)
+    assert abs(moved[0].cx - 0.3 * E.W) < 2 and abs(moved[0].cy - 0.7 * E.H) < 2 and moved[0].rot == 0
+    edge = E.build_overlay(dict(o, x=1.0, y=0.0), 0, 2, ctx)[0]   # kept fully inside the frame
+    assert edge.cx + edge.sprite.width / 2 <= E.W and edge.cy - edge.sprite.height / 2 >= 0
+    tilted = E.build_overlay(dict(o, tilt=12), 0, 2, ctx)[0]
+    assert tilted.rot == -12

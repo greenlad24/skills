@@ -64,6 +64,7 @@ class Spine:
     phrases: list                      # [(t0, t1)] spoken phrases on the output timeline
     aroll: list = field(default_factory=list)   # talking: [(t0, t1, path, src_in)]
     source: str = "none"               # narration | talking | tts | none
+    report: dict = field(default_factory=dict)   # voice clean-up: breaths / false starts / pauses
 
 
 # --------------------------------------------------------------------------- clips
@@ -148,11 +149,23 @@ def _fade(y: np.ndarray, ms: float = 12) -> np.ndarray:
     return y
 
 
-def narration_spine(path: Path) -> Spine | None:
-    """Whole narration, uncut: only leading/trailing silence trimmed, loudness normalised."""
+def narration_spine(path: Path, clean: bool = True) -> Spine | None:
+    """Whole narration as one take: breaths, clicks, false starts and over-long pauses removed
+    (every spoken word stays exactly as recorded), loudness normalised."""
     y = audio_io.decode(path)
     if y is None or not len(y):
         return None
+    if clean:
+        from . import cleanup
+        out, ph, rep = cleanup.clean(_norm(y))
+        if ph:
+            a = max(0.0, ph[0][0] - 0.08)
+            b = min(len(out) / SR, ph[-1][1] + 0.25)
+            seg = _fade(_norm(out[int(a * SR): int(b * SR)]))
+            total = LEAD + len(seg) / SR + TAIL
+            sp = Spine(_place(seg, LEAD, total), total, [(LEAD + s - a, LEAD + e - a) for s, e in ph],
+                       source="narration", report=rep)
+            return sp
     ph = voice._phrases(path)
     a = max(0.0, ph[0][0] - 0.08)
     b = min(len(y) / SR, ph[-1][1] + 0.25)
@@ -714,9 +727,13 @@ def resolve(video: dict, assign: dict, footage_files: list, product_images: list
         files = {Path(f).name: Path(f) for f in footage_files}
         nar_path = files.get(vo) if vo else None
     if nar_path is not None:
-        sp = narration_spine(nar_path)
+        sp = narration_spine(nar_path, settings.get("voice_cleanup", True))
         if sp:
             notes.append(f"Your narration '{nar_path.name}' is used as one continuous take ({sp.total - LEAD - TAIL:.1f}s).")
+            r = sp.report
+            if r and any(r.values()):
+                notes.append(f"Voice cleaned: {r.get('false_start', 0)} false start(s), {r.get('breath', 0)} breath(s), "
+                             f"{r.get('click', 0)} click(s) removed; {r.get('pauses_shortened', 0)} long pause(s) shortened.")
     if sp is None and video["audio_mode"] == "talking":
         sp = talking_spine(video, clips, assign)
         if sp:

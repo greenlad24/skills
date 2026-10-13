@@ -121,7 +121,7 @@ def _render(job, R, out, work, music, st, i, n, label):
 
 
 # --------------------------------------------------------------------------- review step
-EDIT_FIELDS = ("text", "sub_text", "items", "emoji", "hidden")
+EDIT_FIELDS = ("text", "sub_text", "items", "emoji", "hidden", "x", "y", "tilt")
 
 
 def edits_dir(pid: str) -> Path:
@@ -140,7 +140,11 @@ def prepare_edits(job, pid: str, video_ids: list, settings: dict, versions: int 
     items = _variants(plan, video_ids, versions)
     ed = edits_dir(pid)
     for f in ed.glob("*"):          # a new batch replaces the previous review
-        f.unlink()
+        if f.is_dir():
+            import shutil
+            shutil.rmtree(f, ignore_errors=True)
+        else:
+            f.unlink()
     st = _draft(settings)
     keys = []
     for i, v in enumerate(items):
@@ -160,10 +164,35 @@ def prepare_edits(job, pid: str, video_ids: list, settings: dict, versions: int 
     return {"edits": keys}
 
 
-def _sticker_view(o: dict, i: int) -> dict:
+def _sticker_view(o: dict, i: int, home: list | None = None) -> dict:
+    hx, hy, hw, hh, hr = (home or [0.5, 0.3, 0.5, 0.08, 0.0])
     return {"i": i, "type": o["type"], "text": o.get("text", ""), "sub_text": o.get("sub_text", ""),
             "items": o.get("items", []), "emoji": o.get("emoji", ""), "at": o.get("at", 0), "dur": o.get("dur", 0),
-            "hidden": bool(o.get("hidden"))}
+            "hidden": bool(o.get("hidden")),
+            "x": o.get("x") if o.get("x") is not None else hx, "y": o.get("y") if o.get("y") is not None else hy,
+            "w": hw, "h": hh, "tilt": o.get("tilt") if o.get("tilt") is not None else hr,
+            "moved": o.get("x") is not None}
+
+
+def _homes(pid: str, rec: dict) -> list:
+    """Where each sticker sits by default (x, y, w, h as 0-1 of the frame, tilt) — the start point for dragging."""
+    from . import elements as E
+    _, plan, *_ = _context(pid)
+    try:
+        ctx = E.Ctx(_video_for(plan, rec))
+    except ValueError:
+        return []
+    out = []
+    for o in (rec.get("edl") or {}).get("overlays", []):
+        base = {k: v for k, v in o.items() if k not in ("x", "y", "tilt")}
+        els = E.build_overlay(base, 0.0, max(0.5, o.get("dur", 2)), ctx)
+        main = next((e for e in els if e.sprite is not None), None)
+        if main is None:
+            out.append([0.5, 0.3, 0.3, 0.06, 0.0])
+            continue
+        out.append([round(main.cx / E.W, 4), round(main.cy / E.H, 4), round(main.sprite.width / E.W, 4),
+                    round(main.sprite.height / E.H, 4), round(-main.rot, 1)])
+    return out
 
 
 def list_edits(pid: str) -> list:
@@ -172,12 +201,20 @@ def list_edits(pid: str) -> list:
         rec = projects.load_json(f, {})
         if not rec:
             continue
+        if len(rec.get("homes") or []) != len((rec.get("edl") or {}).get("overlays", [])):
+            try:
+                rec["homes"] = _homes(pid, rec)
+                projects.save_json(f, rec)
+            except Exception:
+                rec["homes"] = []
+        homes = rec.get("homes") or []
         pv = edits_dir(pid) / rec.get("preview", "")
         out.append({k: rec.get(k) for k in ("key", "video", "anim_style", "variation", "title", "rank", "duration",
                                               "notes", "preview_stale", "rendered")}
                    | {"preview": f"edits/{rec['preview']}" if pv.is_file() else "",
                       "preview_v": int(pv.stat().st_mtime) if pv.is_file() else 0,
-                      "stickers": [_sticker_view(o, i) for i, o in enumerate((rec.get("edl") or {}).get("overlays", []))]})
+                      "stickers": [_sticker_view(o, i, homes[i] if i < len(homes) else None)
+                                   for i, o in enumerate((rec.get("edl") or {}).get("overlays", []))]})
     return sorted(out, key=lambda r: (r["rank"] or 0, r["key"]))
 
 
@@ -212,6 +249,13 @@ def update_edit(pid: str, key: str, stickers: list) -> dict:
                 v = [str(x).strip()[:60] for x in (v if isinstance(v, list) else str(v).splitlines()) if str(x).strip()][:6]
             elif k == "hidden":
                 v = bool(v)
+            elif k in ("x", "y", "tilt"):      # None = back to the automatic place / angle
+                try:
+                    v = None if v is None else float(v)
+                except (TypeError, ValueError):
+                    continue
+                if v is not None:
+                    v = max(-45.0, min(45.0, v)) if k == "tilt" else max(0.0, min(1.0, v))
             else:
                 v = str(v).strip()[:120]
             o[k] = v
@@ -220,6 +264,23 @@ def update_edit(pid: str, key: str, stickers: list) -> dict:
     rec["preview_stale"] = True
     projects.save_json(f, rec)
     return next(e for e in list_edits(pid) if e["key"] == key)
+
+
+def edit_frame(pid: str, key: str, t: float) -> Path:
+    """A still of the preview at time t (for placing a sticker by dragging)."""
+    import subprocess
+    _, rec = _load_edit(pid, key)
+    src = edits_dir(pid) / rec.get("preview", "")
+    if not src.is_file():
+        raise ValueError("No preview yet.")
+    out = edits_dir(pid) / "frames" / f"{key}_{int(t * 10)}_{int(src.stat().st_mtime)}.jpg"
+    if not out.exists():
+        out.parent.mkdir(exist_ok=True)
+        subprocess.run([media.ffmpeg_exe(), "-v", "error", "-y", "-ss", f"{max(0.0, t):.2f}", "-i", str(src),
+                        "-frames:v", "1", "-vf", "scale=360:-2", str(out)], capture_output=True)
+    if not out.exists():
+        raise ValueError("Couldn't read the preview.")
+    return out
 
 
 def _video_for(plan: dict, rec: dict) -> dict:

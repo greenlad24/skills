@@ -774,6 +774,15 @@ function stickerForm(e, st) {
     ${st.sub_text ? `<input data-f="sub_text" value="${esc(st.sub_text)}" aria-label="${tt("review.subText")}">` : ""}
     ${showItems ? `<label class="small muted" for="${id}_l">${t("review.items")}</label><textarea id="${id}_l" data-f="items" rows="${Math.max(2, (st.items || []).length)}">${esc((st.items || []).join("\n"))}</textarea>` : ""}
     ${st.emoji || ["emoji_sticker", "reaction_text", "cta_basket", "keyword_pop"].includes(st.type) ? `<input data-f="emoji" class="emoji-in" value="${esc(st.emoji)}" aria-label="${tt("review.emoji")}" maxlength="8">` : ""}
+    <details class="stk-place"><summary>📍 ${t("review.place")}</summary>
+      <div class="pad" data-pad style="background-image:url('${P()}/edits/${encodeURIComponent(e.key)}/frame?t=${(st.at + Math.min(st.dur / 2, 1.2) + 0.4).toFixed(1)}&v=${e.preview_v}')"
+        data-x="${st.x}" data-y="${st.y}" data-moved="${st.moved ? 1 : 0}" title="${tt("review.dragHint")}">
+        <div class="mk" style="left:${st.x * 100}%;top:${st.y * 100}%;width:${Math.max(8, st.w * 100)}%;height:${Math.max(3, st.h * 100)}%;transform:translate(-50%,-50%) rotate(${st.tilt}deg)"></div></div>
+      <p class="muted small">${t("review.dragHint")}</p>
+      <label class="small" for="${id}_r">${t("review.tilt")}: <b data-tiltv>${Math.round(st.tilt)}°</b></label>
+      <input type="range" id="${id}_r" data-f="tilt" min="-30" max="30" step="1" value="${Math.round(st.tilt)}" data-orig="${Math.round(st.tilt)}">
+      <div class="row"><button class="btn ghost small" data-straight>📏 ${t("review.straight")}</button>
+        <button class="btn ghost small" data-resetpos>↺ ${t("review.resetPos")}</button></div></details>
   </div>`;
 }
 function reviewHtml(p, busy) {
@@ -832,6 +841,7 @@ function renderMake(body) {
   $("#btnPrepare").onclick = startPrepare;
   $$("[data-save]", body).forEach((b) => (b.onclick = () => saveStickers(b.dataset.save)));
   $$(".stk [data-f=show]", body).forEach((c) => (c.onchange = () => c.closest(".stk").classList.toggle("off", !c.checked)));
+  wirePads(body);
   const fin = $("#btnFinal"); if (fin) fin.onclick = startFinal;
   // finished videos: delete one or a selection
   const sel = () => $$(".rchk:checked", body).map((c) => c.value);
@@ -842,10 +852,38 @@ function renderMake(body) {
   const ds = $("#btnDelSel"); if (ds) ds.onclick = () => deleteRenders(sel());
   const rf = $("#btnRendersFolder"); if (rf) rf.onclick = () => api(P() + "/reveal", { method: "POST", json: { sub: "renders" } }).catch((e) => errToast(e));
 }
+function wirePads(root) {
+  $$(".stk", root).forEach((box) => {
+    const pad = $("[data-pad]", box), mk = pad && $(".mk", pad), rng = $("[data-f=tilt]", box);
+    if (!pad) return;
+    const draw = () => {
+      mk.style.left = `${pad.dataset.x * 100}%`; mk.style.top = `${pad.dataset.y * 100}%`;
+      mk.style.transform = `translate(-50%,-50%) rotate(${rng.value}deg)`;
+      $("[data-tiltv]", box).textContent = `${rng.value}°`;
+    };
+    const at = (ev) => {
+      const r = pad.getBoundingClientRect();
+      pad.dataset.x = Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width)).toFixed(4);
+      pad.dataset.y = Math.min(1, Math.max(0, (ev.clientY - r.top) / r.height)).toFixed(4);
+      pad.dataset.moved = "1"; box.dataset.dirty = "1"; draw();
+    };
+    pad.onpointerdown = (ev) => { pad.setPointerCapture(ev.pointerId); at(ev); pad.onpointermove = at; ev.preventDefault(); };
+    pad.onpointerup = pad.onpointercancel = () => { pad.onpointermove = null; };
+    rng.oninput = () => { box.dataset.tiltSet = "1"; box.dataset.dirty = "1"; draw(); };
+    $("[data-straight]", box).onclick = () => { rng.value = 0; box.dataset.tiltSet = "1"; box.dataset.dirty = "1"; draw(); };
+    $("[data-resetpos]", box).onclick = () => { box.dataset.reset = "1"; box.dataset.dirty = "1"; pad.dataset.moved = "0"; toast(tt("review.resetDone"), 2500); };
+  });
+}
 function readStickers(key) {
   return $$(`.stk[data-key="${CSS.escape(key)}"]`).map((box) => {
     const o = { i: +box.dataset.i, hidden: !$("[data-f=show]", box).checked };
-    ["text", "sub_text", "emoji"].forEach((f) => { const el = $(`[data-f=${f}]`, box); if (el) o[f] = el.value; });
+    const pad = $("[data-pad]", box), rng = $("[data-f=tilt]", box);
+    if (box.dataset.reset === "1") { o.x = null; o.y = null; o.tilt = null; }
+    else {
+      if (pad && pad.dataset.moved === "1") { o.x = +pad.dataset.x; o.y = +pad.dataset.y; }
+      if (rng && box.dataset.tiltSet === "1") o.tilt = +rng.value;
+    }
+    ["text", "sub_text", "emoji"].forEach((f) => { const el = $(`.stk-head ~ [data-f=${f}], :scope > [data-f=${f}]`, box); if (el) o[f] = el.value; });
     const it = $("[data-f=items]", box); if (it) o.items = it.value.split("\n").map((x) => x.trim()).filter(Boolean);
     return o;
   });

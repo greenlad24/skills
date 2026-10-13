@@ -99,6 +99,15 @@ def test_manual_flow_upload_and_render(client):
         {"i": st[0]["i"], "text": "ข้อความใหม่ 990 บาท"}, {"i": st[1]["i"], "hidden": True}]}).get_json()["edit"]
     assert upd["stickers"][0]["text"] == "ข้อความใหม่" and upd["stickers"][1]["hidden"] and upd["preview_stale"]
     assert c.post(f"/api/projects/{pid}/edits/../x", json={}).status_code in (400, 404)
+    mv = c.post(f"/api/projects/{pid}/edits/{e['key']}", json={"stickers": [
+        {"i": st[0]["i"], "x": 0.25, "y": 0.8, "tilt": 0}]}).get_json()["edit"]["stickers"][0]
+    assert (mv["x"], mv["y"], mv["tilt"], mv["moved"]) == (0.25, 0.8, 0, True)
+    back = c.post(f"/api/projects/{pid}/edits/{e['key']}", json={"stickers": [
+        {"i": st[0]["i"], "x": None, "y": None, "tilt": None}]}).get_json()["edit"]["stickers"][0]
+    assert not back["moved"]
+    c.post(f"/api/projects/{pid}/edits/{e['key']}", json={"stickers": [{"i": st[0]["i"], "x": 0.25, "y": 0.8, "tilt": 0}]})
+    fr = c.get(f"/api/projects/{pid}/edits/{e['key']}/frame?t=1.0")
+    assert fr.status_code == 200 and fr.mimetype == "image/jpeg"
     j = wait_job(c, c.post(f"/api/projects/{pid}/edits/{e['key']}/preview").get_json()["job"]["id"])
     assert j["status"] == "done", j["log"]
     assert not c.get(f"/api/projects/{pid}/edits").get_json()["edits"][0]["preview_stale"]

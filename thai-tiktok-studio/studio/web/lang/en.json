@@ -573,5 +573,11 @@
  "stk.reaction_text": "Reaction",
  "stk.speech_bubble": "Speech bubble",
  "stk.lower_third": "Name strip",
- "stk.text_card": "Text card"
+ "stk.text_card": "Text card",
+ "review.place": "Move / straighten",
+ "review.dragHint": "Tap or drag on the picture to place this sticker.",
+ "review.tilt": "Tilt",
+ "review.straight": "Straight",
+ "review.resetPos": "Automatic place",
+ "review.resetDone": "Back to the automatic place — tap Save to see it"
 }

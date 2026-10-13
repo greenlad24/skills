@@ -419,3 +419,8 @@ body.server .localonly{display:none!important}
 .render{position:relative}
 .render .rsel{position:absolute;top:8px;left:8px;z-index:2;width:auto;display:inline-flex;background:rgba(255,255,255,.9);border-radius:10px;padding:4px}
 .btn.danger{color:#dc2626}
+.stk-place summary{cursor:pointer;font-size:14px;padding:2px 0}
+.pad{position:relative;width:100%;max-width:220px;aspect-ratio:9/16;margin:6px auto;border-radius:12px;background:#222 center/cover no-repeat;
+  touch-action:none;cursor:crosshair;overflow:hidden;outline:1px solid var(--line)}
+.pad .mk{position:absolute;border:2px dashed #fff;box-shadow:0 0 0 2px rgba(225,29,72,.9);border-radius:6px;pointer-events:none;background:rgba(225,29,72,.15)}
+.stk input[type=range]{width:100%}

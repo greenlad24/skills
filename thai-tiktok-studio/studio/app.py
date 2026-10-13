@@ -475,6 +475,15 @@ def update_edit(pid, key):
         return jsonify({"error": str(e)}), 400
 
 
+@app.get("/api/projects/<pid>/edits/<key>/frame")
+def edit_frame(pid, key):
+    try:
+        f = service.edit_frame(pid, key, float(request.args.get("t", 0)))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+    return send_file(f, mimetype="image/jpeg", max_age=3600)
+
+
 @app.post("/api/projects/<pid>/edits/<key>/preview")
 def preview_edit(pid, key):
     if _busy(pid):
