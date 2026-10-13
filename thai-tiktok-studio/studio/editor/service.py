@@ -386,7 +386,8 @@ def clip_list(pid: str) -> list:
         if media.kind(Path(f)) != "video":
             continue
         c = smart_edit.Clip("", f, "video", "", 0.0)
-        out.append({"name": Path(f).name, "rotate": orient.cached(c, cache),
+        c.crop = media.black_bars(f)
+        out.append({"name": Path(f).name, "rotate": orient.cached(c, cache) if orient.known(c, cache) else orient.guess(c),
                     "manual": orient.file_key(f) in orient.manual(cache)})
     return out
 
@@ -398,8 +399,10 @@ def turn_clip(pid: str, name: str, degrees: int) -> dict:
     if not f.is_file():
         raise ValueError("Clip not found.")
     c = smart_edit.Clip("", str(f), "video", "", 0.0)
+    c.crop = media.black_bars(f)
     cache = d / "work" / "orient.json"
-    new = orient.set_manual(str(f), orient.cached(c, cache) + int(degrees), cache)
+    now = orient.cached(c, cache) if orient.known(c, cache) else orient.guess(c)
+    new = orient.set_manual(str(f), now + int(degrees), cache)
     for e in edits_dir(pid).glob("*.json"):       # every preview using it is now out of date
         rec = projects.load_json(e, {})
         if rec:
@@ -416,7 +419,8 @@ def clip_thumb(pid: str, name: str) -> Path:
         raise ValueError("Clip not found.")
     c = smart_edit.Clip("", str(f), "video", "", media.probe(f)["duration"])
     c.crop = media.black_bars(f)
-    c.rotate = orient.cached(c, d / "work" / "orient.json")
+    oc = d / "work" / "orient.json"
+    c.rotate = orient.cached(c, oc) if orient.known(c, oc) else orient.guess(c)
     out = d / "work" / "thumbs" / f"{orient.file_key(str(f))}_{c.rotate}.jpg"
     if not out.exists():
         out.parent.mkdir(parents=True, exist_ok=True)

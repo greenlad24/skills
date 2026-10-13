@@ -109,7 +109,9 @@ def test_manual_flow_upload_and_render(client):
     rot = c.post(f"/api/projects/{pid}/edits/{e['key']}", json={"stickers": [{"i": st[2]["i"], "tilt": 170}]}).get_json()
     assert rot["edit"]["stickers"][2]["tilt"] == 170                 # full rotation allowed
     clips = c.get(f"/api/projects/{pid}/clips").get_json()["clips"]
-    assert clips and all(x["rotate"] == 0 for x in clips)
+    rot = {x["name"]: x["rotate"] for x in clips}
+    assert rot["V1-S01.mp4"] == 90 and rot["clip4.mp4"] == 0      # a wide (horizontal) clip is turned right by default
+    clips = [x for x in clips if x["name"] == "clip4.mp4"]
     turned = c.post(f"/api/projects/{pid}/clips/turn", json={"name": clips[0]["name"], "degrees": 90}).get_json()
     assert turned["rotate"] == 90 and turned["manual"]
     assert c.get(f"/api/projects/{pid}/clips/thumb?name={clips[0]['name']}").status_code == 200

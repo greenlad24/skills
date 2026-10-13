@@ -1,3 +1,4 @@
+from pathlib import Path
 import json
 import subprocess
 
@@ -445,3 +446,11 @@ def test_only_voiced_videos_are_made(footage, narration, tmp_path, monkeypatch):
     assert rep["IMG_0400.MOV"]["video"] == "V2"                    # recognised by what was said, not by order
     assert service.load_assign("x")["narration"] == {"V2": "IMG_0400.MOV"}
     assert service._voiced("x", plan, []) == ["V2"]                 # 1 recording → 1 video
+
+
+def test_wide_clips_turn_right_by_default(footage, tmp_path):
+    from studio.editor import orient
+    clips = {Path(c.path).name: c for c in SE.clip_catalog([str(p) for p in footage.iterdir()], [], {})}
+    assert orient.guess(clips["V1-S01.mp4"]) == 90      # 1280x720: filmed sideways (turned left) → turn right
+    assert orient.guess(clips["clip4.mp4"]) == 0        # already vertical
+    assert orient.guess(clips["V1S03.mp4"]) == 0        # square: leave it

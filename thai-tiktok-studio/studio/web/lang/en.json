@@ -591,6 +591,6 @@
  "review.rotate": "Rotate",
  "review.clipsTitle": "Is a clip sideways or upside down? Turn it here",
  "review.clipsText": "Claude checks this automatically. If one still looks wrong, tap ↻ until it stands upright — then tap “Save & update preview” on the videos.",
- "review.turnClip": "Turn",
+ "review.turnClip": "Turn right 90°",
  "review.turned": "Turned ✓ — update the previews to see it"
 }

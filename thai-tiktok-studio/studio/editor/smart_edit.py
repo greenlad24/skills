@@ -802,8 +802,9 @@ def resolve(video: dict, assign: dict, footage_files: list, product_images: list
         draft["overlays"] = _overlays_only(video, sp, windows)
     edl = draft
     use_claude = bool(clips) and use_ai and settings.get("provider") != "manual" and ai_ready(settings)
-    for c in clips:   # upright answers already known for these files (no AI needed)
-        c.rotate = orient.cached(c, work_dir.parent / "orient.json")
+    for c in clips:   # upright answers already known for these files (no AI needed); else wide → turn right
+        oc = work_dir.parent / "orient.json"
+        c.rotate = orient.cached(c, oc) if orient.known(c, oc) else orient.guess(c)
     sheets = {}
     if use_claude:   # make sure no clip is sideways or upside down before anything is planned
         sheets = build_sheets(clips, work_dir)

@@ -1,6 +1,6 @@
 {
- "version": "1.7.0",
+ "version": "1.7.1",
  "zip_url": "https://raw.githubusercontent.com/greenlad24/skills/claude/wizardly-thompson-w6jjr8/thai-tiktok-studio/releases/ThaiTikTokStudio-mac.zip",
- "sha256": "8daf7ba3f61955e09014be9c60850ba18e168ac29c4390f30310a2b294bae8a8",
- "notes": "1.7.0 — แอปฟังเสียงพากย์แล้วรู้ว่าคุณอ่านสคริปต์ไหน ทำเฉพาะคลิปที่มีเสียง และตัดต่อตามคำที่พูดจริง · หมุนสติกเกอร์ได้รอบทิศ · หมุนคลิปที่ตะแคงเองได้ในหน้าตรวจ\n1.7.0 — The app listens to your voice recordings, recognises which script each one reads, makes only those videos and cuts on the words you actually said · rotate stickers all the way round · turn a sideways clip yourself on the review screen"
+ "sha256": "e9690d242483843d7e23f914636b9ff911c1f61708fd16cb7e887e354eae3b6b",
+ "notes": "1.7.1 — คลิปแนวนอนจะถูกหมุนขวา 90° ให้ตั้งตรงอัตโนมัติ (คลิปตะแคงของคุณมักเอียงซ้าย) · ปุ่ม หมุนขวา 90° ในหน้าตรวจ\n1.7.1 — Horizontal clips are turned 90° right automatically (your sideways clips are usually turned left) · 'Turn right 90°' button on the review screen"
 }

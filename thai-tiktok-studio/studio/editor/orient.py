@@ -70,8 +70,29 @@ For every clip decide how many degrees CLOCKWISE it must be turned so the scene 
 person would see it: people's heads up, floors and tables at the bottom, furniture standing, text readable.
 Answer "0" when it is already upright. Only answer 90/180/270 when the picture is clearly sideways or
 upside down (a close-up with no clear up/down is "0").
+This creator films vertically. Their sideways clips are almost always turned 90° to the LEFT, so the usual fix
+is "90" (turn right). A clip marked "wider than tall" is sideways unless the picture clearly shows otherwise.
 Clips: {ids}
 Reply with ONE JSON object: {{"clips":[{{"id":"C1","rotate":"0"}}, ...]}}"""
+
+
+DEFAULT_WIDE = 90   # your sideways clips are usually turned 90° left → turn them 90° right
+
+
+def known(clip, cache_file: Path) -> bool:
+    """Was this clip already checked (by Claude or by you)?"""
+    k = file_key(clip.path)
+    if k in manual(cache_file):
+        return True
+    try:
+        return k in json.loads(cache_file.read_text("utf-8"))
+    except (OSError, ValueError):
+        return False
+
+
+def guess(clip) -> int:
+    """No check possible (no AI): a clip wider than tall is turned 90° right, everything else stays."""
+    return DEFAULT_WIDE if _wide(clip) else 0
 
 
 def _manual_file(cache_file: Path) -> Path:
@@ -150,6 +171,8 @@ def check(clips: list, sheets: dict, settings: dict, cache_file: Path, log) -> d
             except (TypeError, ValueError):
                 deg = 0
             deg = deg if deg in ROTATIONS else 0
+            if deg == 0 and _wide(c):
+                deg = DEFAULT_WIDE      # your clips are filmed vertically: a wide one is sideways
             out[c.id] = cache[file_key(c.path)] = deg
             if deg:
                 log(f"{Path(c.path).name} was {'upside down' if deg == 180 else 'sideways'} — turned it upright.")
