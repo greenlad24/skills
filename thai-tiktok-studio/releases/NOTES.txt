@@ -1,2 +1,2 @@
-1.8.1 — สติกเกอร์ไม่ซ้อนทับกันอีกแล้ว: ถ้าชนกันจะย้ายไปที่ว่างที่ใกล้ที่สุด หรือรอให้อันก่อนหน้าหายไป (สติกเกอร์ที่คุณวางเองไม่ถูกย้าย)
-1.8.1 — Stickers never sit on top of each other: a clashing one moves to the nearest free spot or waits until the other is gone (stickers you placed yourself stay put)
+1.9.0 — หน้าตั้งเวลาโพสต์ใหม่: ทำตามขั้นตอน 1-2-3 (PostPeer → TikTok → Cloudinary พร้อมปุ่มสมัคร/เปิด API keys และทดสอบอัปโหลดจริง) · ปุ่มตรวจสอบทั้งหมด · โพสต์ที่มีปัญหาบอกสาเหตุชัดเจน กดลองใหม่ได้ และลองใหม่เองทุก 10 นาที
+1.9.0 — New posting screen: guided steps 1-2-3 (PostPeer → TikTok → Cloudinary with sign-up/API-key buttons and a real test upload) · Check everything button · posts with a problem show why, can be retried, and retry by themselves every 10 minutes

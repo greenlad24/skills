@@ -157,3 +157,69 @@ def test_deleting_product_cancels_its_posts(env, monkeypatch):
     st = {p["id"]: p["status"] for p in scheduler.load()["posts"]}
     assert all(st[p["id"]] == "cancelled" for p in mine) and cancelled == ["pp1"]
     assert all(st[p["id"]] == "planned" for p in posts if p["project_id"] != made[0])
+
+
+def test_cloudinary_address_is_read_however_it_was_copied():
+    from studio import cloudinary_host as C
+    for raw in ("cloudinary://123456789:AbC-dEf_9@my-cloud", "CLOUDINARY_URL=cloudinary://123456789:AbC-dEf_9@my-cloud",
+                ' "cloudinary://123456789:AbC-dEf_9@my-cloud" ', "export CLOUDINARY_URL='cloudinary://123456789:AbC-dEf_9@my-cloud'"):
+        assert C.parse_url(raw) == {"api_key": "123456789", "api_secret": "AbC-dEf_9", "cloud": "my-cloud"}
+    assert C.parse_url(C.make_url(" my-cloud ", "123456789 ", " AbC-dEf_9"))["cloud"] == "my-cloud"
+    with pytest.raises(C.CloudinaryError, match="hidden"):
+        C.parse_url("cloudinary://123456789:**********@my-cloud")
+    with pytest.raises(C.CloudinaryError, match="numbers"):
+        C.parse_url("cloudinary://AbCsecret:123456789@my-cloud")
+    assert "secret" in C.explain(401, "Invalid Signature 8f1c... String to sign - 'folder=...'")
+
+
+def test_postpeer_gets_full_timestamps(monkeypatch):
+    from studio import postpeer
+    sent = {}
+
+    def fake(method, path, key, **kw):
+        sent.update(kw["json"])
+        return {"success": True, "postId": "p1", "status": "scheduled"}
+    monkeypatch.setattr(postpeer, "_call", fake)
+    r = postpeer.create_post("k", "acc", "hi", "https://x/v.mp4", "2026-10-14T20:00")
+    assert sent["scheduledFor"] == "2026-10-14T20:00:00" and sent["timezone"] == "Asia/Bangkok" and r["id"] == "p1"
+    assert sent["platforms"][0]["platformSpecificData"]["draft"] is True
+
+
+def test_failed_post_waits_then_retry_works(env, monkeypatch):
+    scheduler, _, _ = env
+    st = {"postpeer_key": "k", "postpeer_account_id": "tt_1", "cloudinary_url": "cloudinary://1:b@c"}
+    n = {"calls": 0}
+
+    def boom(*a, **k):
+        n["calls"] += 1
+        raise scheduler.postpeer.PostPeerError("PostPeer 500: temporary")
+    monkeypatch.setattr(scheduler.cloudinary_host, "upload_video", lambda path, cfg, pid: {"url": "https://res/x.mp4", "public_id": pid})
+    monkeypatch.setattr(scheduler.postpeer, "create_post", boom)
+    scheduler.auto_schedule(per_day=1, start=scheduler.now_bkk() + timedelta(hours=1))
+    scheduler.tick(st)
+    first = n["calls"]
+    scheduler.tick(st)                                   # backed off: no hammering every minute
+    assert n["calls"] == first and all(p["error"] for p in scheduler.load()["posts"])
+    monkeypatch.setattr(scheduler.postpeer, "create_post", lambda *a, **k: {"id": "ok1", "url": ""})
+    pid = scheduler.load()["posts"][0]["id"]
+    scheduler._try_submit(pid, st) if scheduler.retry(pid, st) else None
+    p = next(x for x in scheduler.load()["posts"] if x["id"] == pid)
+    assert p["status"] == "queued" and not p["error"]
+
+
+def test_cloudinary_failure_falls_back_for_soon_posts(env, monkeypatch):
+    scheduler, _, _ = env
+    def bad(*a, **k):
+        raise scheduler.cloudinary_host.CloudinaryError("Cloudinary says the API secret is wrong.")
+    monkeypatch.setattr(scheduler.cloudinary_host, "upload_video", bad)
+    monkeypatch.setattr(scheduler.media_host, "upload_litterbox", lambda path: "https://litter.catbox.moe/a.mp4")
+    got = []
+    monkeypatch.setattr(scheduler.postpeer, "create_post", lambda key, acct, text, url, *a: got.append(url) or {"id": "x", "url": ""})
+    st = {"postpeer_key": "k", "postpeer_account_id": "tt_1", "cloudinary_url": "cloudinary://1:b@c"}
+    scheduler.auto_schedule(per_day=1, start=scheduler.now_bkk() + timedelta(hours=1))
+    scheduler.tick(st)
+    posts = scheduler.load()["posts"]
+    soon = [p for p in posts if scheduler._parse(p["at"]) - scheduler.now_bkk() < timedelta(hours=48)]
+    assert soon and all(p["status"] == "queued" and "temporary" in p["host_note"] for p in soon)
+    later = [p for p in posts if p not in soon]
+    assert all(p["status"] == "planned" and "secret" in p["error"] for p in later)

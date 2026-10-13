@@ -1195,89 +1195,150 @@ async function showScheduler() {
   } catch (e) { errToast(e); return; }
   if (state.view !== "schedule") return;
   renderScheduler();
-  if (state.settings.postpeer_key && !state.sched.connected) loadAccts(true);
 }
 function fmtDay(iso) {
   const dt = new Date(iso + "T12:00:00");
   return t("sched.dayLabel", { day: tt("day." + dt.getDay()), d: dt.getDate(), m: dt.getMonth() + 1 });
 }
+function schedState(d, s) {
+  const key = !!d.has_key, acct = !!(d.connected), store = !!(d.cloud || d.hosting === "website");
+  return { key, acct, store, ready: key && acct && store };
+}
+function setupHtml(d, s, st) {
+  const step = !st.key ? 1 : !st.acct ? 2 : !st.store ? 3 : 4;
+  const head = (n, done, title) => `<summary><span class="stepno ${done ? "done" : n === step ? "now" : ""}">${done ? "✓" : n}</span><b>${title}</b></summary>`;
+  return `<div class="wizard">
+    <details class="wstep" ${step === 1 ? "open" : ""}>${head(1, st.key, t("sched.w1"))}
+      <ol class="mini-steps"><li>${t("sched.pp1")} <a class="btn ghost small" href="https://www.postpeer.dev" target="_blank" rel="noopener">${t("sched.ppOpen")} ↗</a></li>
+        <li>${t("sched.pp2")}</li><li>${t("sched.pp3")}</li></ol>
+      <label for="ppKey">${t("sched.ppKey")}</label>
+      <div class="inline"><input id="ppKey" placeholder="pp_…" value="${esc(s.postpeer_key)}" autocomplete="off"><button class="btn primary" id="ppSave">${t("sched.saveCheck")}</button></div>
+      <p class="hint">${t("sched.ppKeyHint")}</p></details>
+    <details class="wstep" ${step === 2 ? "open" : ""}>${head(2, st.acct, t("sched.w2"))}
+      <p class="muted">${t("sched.w2Text")}</p>
+      <div class="row"><button class="btn primary" id="ppConnect">🔗 ${t("sched.connect")}</button><button class="btn ghost" id="ppRefresh">↻ ${t("sched.loadAccts")}</button></div>
+      <label for="ppAcct">${t("sched.pickAcct")}</label><select id="ppAcct"><option value="">${t("sched.pickAcctNone")}</option></select></details>
+    <details class="wstep" ${step === 3 && !st.store ? "open" : ""}>${head(3, st.store, t("sched.w3"))}
+      <p class="muted">${t("sched.w3Text")}</p>
+      <ol class="mini-steps">
+        <li>${t("sched.cd1")} <a class="btn ghost small" href="https://cloudinary.com/users/register_free" target="_blank" rel="noopener">${t("sched.cdSignup")} ↗</a></li>
+        <li>${t("sched.cd2")} <a class="btn ghost small" href="https://console.cloudinary.com/settings/api-keys" target="_blank" rel="noopener">${t("sched.cdKeys")} ↗</a></li>
+        <li>${t("sched.cd3")}</li></ol>
+      ${d.cloud ? `<p class="banner good small">✅ ${t("sched.cdNow", { cloud: esc(d.cloud) })} <button class="linkbtn" id="cdRemove">${t("sched.cdRemove")}</button></p>` : ""}
+      <div class="grid3">
+        <div><label for="cdCloud">Cloud name</label><input id="cdCloud" placeholder="dxyz123" autocomplete="off" value="${esc(d.cloud || "")}"></div>
+        <div><label for="cdKey">API key</label><input id="cdKey" placeholder="123456789012345" inputmode="numeric" autocomplete="off"></div>
+        <div><label for="cdSecret">API secret</label><input id="cdSecret" placeholder="abcDEF…" autocomplete="off"></div></div>
+      <p class="hint">${t("sched.cdWhere")}</p>
+      <div class="row"><button class="btn primary" id="cdSave">🧪 ${t("sched.cdTest")}</button><span id="cdSt" class="small" aria-live="polite"></span></div></details>
+    <details class="wstep">${head(4, true, t("sched.w4"))}<div class="choices">
+        <label class="choice ${s.postpeer_mode !== "direct" ? "on" : ""}"><input type="radio" name="ppMode" value="inbox" ${s.postpeer_mode !== "direct" ? "checked" : ""}>
+          <span class="choice-txt"><b>📥 ${t("sched.modeInboxTitle")}</b><span class="muted">${t("sched.modeInboxDesc")}</span></span></label>
+        <label class="choice ${s.postpeer_mode === "direct" ? "on" : ""}"><input type="radio" name="ppMode" value="direct" ${s.postpeer_mode === "direct" ? "checked" : ""}>
+          <span class="choice-txt"><b>⚡ ${t("sched.modeDirectTitle")}</b><span class="muted">${t("sched.modeDirectDesc")}</span></span></label></div></details>
+  </div>`;
+}
+function postRow(p) {
+  const fileUrl = `/files/${encodeURIComponent(p.project_id)}/renders/${encodeURIComponent(p.render)}`;
+  const bad = !!p.error || p.status === "missed";
+  const stTxt = bad ? (p.error ? friendly({ message: p.error }, "err.postFailed").text : t("sched.st.missed"))
+    : tOr("sched.st." + p.status, "");
+  return `<article class="prow ${bad ? "bad" : ""}" data-post="${esc(p.id)}">
+    <video src="${fileUrl}#t=1" preload="metadata" muted playsinline class="pthumb"></video>
+    <div class="pmain">
+      <div class="ptop"><span class="ptime">🕒 ${esc(p.at.slice(11, 16))}</span><span class="pill ${POST_ST[p.status] || ""} ${bad ? "bad" : ""}">${bad ? "⚠️ " + t("sched.problem") : tOr("post." + p.status, p.status)}</span></div>
+      <b class="ptitle">${esc(p.title || p.video_id)}</b><span class="muted small">${esc(p.project_name)}</span>
+      <p class="pst small ${bad ? "bad" : "muted"}">${esc(stTxt)}</p>
+      ${p.host_note ? `<p class="small muted">ℹ️ ${esc(p.host_note)}</p>` : ""}
+      ${p.post_url ? `<a class="small" href="${esc(p.post_url)}" target="_blank" rel="noopener">${t("sched.viewPost")} ↗</a>` : ""}
+      <div class="row pbtns">
+        ${bad ? `<button class="btn primary small" data-act="retry">↻ ${t("sched.retry")}</button>` : ""}
+        ${["posted", "cancelled"].includes(p.status) ? "" : `<button class="btn ghost small" data-act="edit">✏️ ${t("sched.edit")}</button>`}
+        ${p.error ? `<button class="btn ghost small" data-act="details">🔎 ${t("sched.details")}</button>` : ""}</div>
+      <div class="pedit hidden">
+        <label for="at_${esc(p.id)}">🕒 ${t("sched.time")}</label><input type="datetime-local" id="at_${esc(p.id)}" data-f="at" value="${esc(p.at)}">
+        <label for="cap_${esc(p.id)}">💬 ${t("sched.caption")}</label><textarea id="cap_${esc(p.id)}" data-f="caption" rows="4">${esc(p.caption)}</textarea>
+        <label for="tag_${esc(p.id)}"># ${t("sched.hashtags")}</label><input id="tag_${esc(p.id)}" data-f="hashtags" value="${esc(p.hashtags.join(" "))}">
+        <div class="post-actions"><button class="btn primary" data-act="save">💾 ${t("common.save")}</button>
+          <button class="btn ghost" data-act="newcap">🔄 ${t("sched.newCaption")}</button>
+          <button class="btn ghost" data-act="copy">📋 ${t("common.copy")}</button>
+          <button class="btn secondary" data-act="now">🚀 ${t("sched.postNow")}</button>
+          <button class="btn ghost danger" data-act="cancel">🗑 ${t("sched.cancel")}</button></div></div>
+      ${p.error ? `<pre class="perr hidden small">${esc(p.error)}</pre>` : ""}
+    </div></article>`;
+}
 function renderScheduler() {
-  const d = state.sched, s = state.settings;
+  const d = state.sched, s = state.settings, st = schedState(d, s);
   const upcoming = d.posts.filter((p) => ["cancelled", "posted"].indexOf(p.status) < 0);
   const done = d.posts.filter((p) => ["cancelled", "posted"].indexOf(p.status) >= 0);
+  const problems = upcoming.filter((p) => p.error || p.status === "missed").length;
   const groups = {};
   upcoming.forEach((p) => { const k = p.at.slice(0, 10); (groups[k] = groups[k] || []).push(p); });
-  const fileUrl = (p) => `/files/${encodeURIComponent(p.project_id)}/renders/${encodeURIComponent(p.render)}`;
-  const card = (p) => `<article class="card post" data-post="${esc(p.id)}">
-      <div class="post-top"><video src="${fileUrl(p)}" preload="metadata" muted controls playsinline class="post-vid"></video>
-        <div class="post-meta"><b>${esc(p.project_name)}</b> <span class="muted">· ${esc(p.video_id)}</span>
-          <div><span class="pill ${POST_ST[p.status] || ""}">${tOr("post." + p.status, p.status)}</span></div>
-          <label for="at_${esc(p.id)}">🕒 ${t("sched.time")}</label><input type="datetime-local" id="at_${esc(p.id)}" data-f="at" value="${esc(p.at)}"></div></div>
-      <label for="cap_${esc(p.id)}">💬 ${t("sched.caption")}</label><textarea id="cap_${esc(p.id)}" data-f="caption" rows="3">${esc(p.caption)}</textarea>
-      <label for="tag_${esc(p.id)}"># ${t("sched.hashtags")}</label><input id="tag_${esc(p.id)}" data-f="hashtags" value="${esc(p.hashtags.join(" "))}">
-      ${p.error ? `<p class="banner bad small">⚠️ ${esc(friendly({ message: p.error }, "err.postFailed").text)}<br><small>${t("err.details")}: ${esc(p.error)}</small></p>` : ""}
-      ${p.post_url ? `<p><a href="${esc(p.post_url)}" target="_blank" rel="noopener">${t("sched.viewPost")} ↗</a></p>` : ""}
-      <div class="post-actions"><button class="btn" data-act="save">💾 ${t("common.save")}</button>
-        <button class="btn ghost" data-act="newcap">🔄 ${t("sched.newCaption")}</button>
-        <button class="btn ghost" data-act="copy">📋 ${t("common.copy")}</button>
-        <button class="btn secondary" data-act="now">🚀 ${t("sched.postNow")}</button>
-        <button class="btn ghost danger" data-act="cancel">🗑 ${t("sched.cancel")}</button></div></article>`;
-  const hostNote = tOr("sched.host." + d.hosting, "");
-  const modeTxt = s.postpeer_mode === "direct" ? t("sched.modeDirect") : t("sched.modeInbox");
-  const setup = `
-    <ol class="setup-steps">
-      <li><h3>${t("sched.s1Title")}</h3><p class="muted">${t("sched.s1Text")}</p>
-        <label for="ppKey">${t("sched.ppKey")}</label>
-        <div class="inline"><input id="ppKey" placeholder="pp_…" value="${esc(s.postpeer_key)}" autocomplete="off"><button class="btn" id="ppSave">${t("common.save")}</button></div>
-        <p class="hint">${t("sched.ppKeyHint")}</p>
-        <div class="row"><button class="btn primary" id="ppConnect">🔗 ${t("sched.connect")}</button><button class="btn ghost" id="ppRefresh">↻ ${t("sched.loadAccts")}</button></div>
-        <label for="ppAcct">${t("sched.pickAcct")}</label><select id="ppAcct"><option value="">${t("sched.pickAcctNone")}</option></select></li>
-      <li><h3>${t("sched.s2Title")} <span class="opt">${t("sched.recommended")}</span></h3><p class="muted">${t("sched.s2Text")}</p>
-        <label for="cdUrl">${t("sched.cdUrl")}</label>
-        <div class="inline"><input id="cdUrl" placeholder="cloudinary://API_KEY:API_SECRET@CLOUD_NAME" value="${esc(s.cloudinary_url)}" autocomplete="off"><button class="btn" id="cdSave">${t("sched.cdSave")}</button></div></li>
-      <li><h3>${t("sched.s3Title")}</h3><div class="choices">
-        <label class="choice ${s.postpeer_mode !== "direct" ? "on" : ""}"><input type="radio" name="ppMode" id="ppMode_inbox" value="inbox" ${s.postpeer_mode !== "direct" ? "checked" : ""}>
-          <span class="choice-txt"><b>📥 ${t("sched.modeInboxTitle")}</b><span class="muted">${t("sched.modeInboxDesc")}</span></span></label>
-        <label class="choice ${s.postpeer_mode === "direct" ? "on" : ""}"><input type="radio" name="ppMode" id="ppMode_direct" value="direct" ${s.postpeer_mode === "direct" ? "checked" : ""}>
-          <span class="choice-txt"><b>⚡ ${t("sched.modeDirectTitle")}</b><span class="muted">${t("sched.modeDirectDesc")}</span></span></label></div></li></ol>`;
+  const chip = (ok, icon, label) => `<button class="schip ${ok ? "ok" : "todo"}" data-open-setup>${ok ? "✅" : "⚠️"} ${icon} ${label}</button>`;
   $("#main").innerHTML = `${healthBanner()}
     <div class="page-head"><h1>📅 ${t("sched.title")}</h1><p class="muted">${t("sched.sub")}</p></div>
-    ${d.connected ? `<section class="card connected"><div class="conn-row"><span class="conn-ico" aria-hidden="true">✅</span>
-        <div><b>${t("sched.connectedTo", { name: s.postpeer_account_name || s.postpeer_account_id })}</b><br><span class="muted small">${t("sched.modeIs")} ${modeTxt} · ${hostNote}</span></div></div>
-        <details id="dSetup"><summary>${t("sched.changeSetup")}</summary>${setup}</details></section>`
-      : `<section class="card setup"><h2>🔗 ${t("sched.setupTitle")}</h2><p class="muted">${t("sched.setupSub")}</p>${setup}</section>`}
+    <section class="card status-card">
+      <div class="schips">${chip(st.key, "🔑", "PostPeer")}${chip(st.acct, "🎵", st.acct ? esc(d.account) : "TikTok")}${chip(st.store, "☁️", d.cloud ? "Cloudinary" : t("sched.storeShort"))}</div>
+      <div class="row"><button class="btn secondary" id="schCheck">🩺 ${t("sched.checkAll")}</button>
+        <span class="muted small">${st.ready ? t("sched.readyAll") : t("sched.notReady")}</span></div>
+      <details class="setup-fold" id="dSetup" ${st.ready ? "" : "open"}><summary>⚙️ ${t(st.ready ? "sched.changeSetup" : "sched.setupTitle")}</summary>${setupHtml(d, s, st)}</details>
+    </section>
+    ${problems ? `<section class="banner bad">⚠️ ${t("sched.problems", { n: problems })} <button class="btn small" id="retryAll">↻ ${t("sched.retryAll")}</button></section>` : ""}
     <section class="card plan-card"><div class="ready-num"><b>${d.ready.length}</b><span>${t("sched.readyLabel")}</span></div>
       <p class="muted">${t("sched.autoText")}</p>
-      <label for="perDay">${t("sched.perDay")}</label>
-      <select id="perDay">${[1, 2, 3].map((n) => `<option ${+s.posts_per_day === n ? "selected" : ""} value="${n}">${t("sched.perDay" + n)}</option>`).join("")}</select>
-      ${d.ready.length ? `<button class="btn primary big wide" id="schAuto">✨ ${t("sched.autoBtn", { n: d.ready.length })}</button>`
+      <div class="seg" role="radiogroup" aria-label="${tt("sched.perDay")}">${[1, 2, 3].map((n) => `<button class="seg-b ${+s.posts_per_day === n || (!s.posts_per_day && n === 1) ? "on" : ""}" data-perday="${n}">${t("sched.perDay" + n)}</button>`).join("")}</div>
+      ${d.ready.length ? `<button class="btn primary big wide" id="schAuto" ${st.ready ? "" : "disabled"}>✨ ${t("sched.autoBtn", { n: d.ready.length })}</button>
+        ${st.ready ? "" : `<p class="small muted center">${t("sched.finishSetupFirst")}</p>`}`
         : `<p class="banner warn small">🎬 ${t("sched.noneReady")}</p>`}
-      <p class="small"><button class="linkbtn" id="schSync">↻ ${t("sched.sync")}</button> <span class="muted">${t("sched.syncHint")}</span></p>
       <p class="muted small">🕗 ${t("sched.times")}</p></section>
-    ${Object.keys(groups).sort().map((day) => `<h2 class="day-title">${fmtDay(day)}</h2>${groups[day].map(card).join("")}`).join("")
+    ${Object.keys(groups).sort().map((day) => `<h2 class="day-title">${fmtDay(day)}</h2><div class="plist">${groups[day].map(postRow).join("")}</div>`).join("")
       || `<section class="card empty"><div class="empty-art" aria-hidden="true">🗓️</div><h2>${t("sched.emptyTitle")}</h2><p class="muted">${t("sched.emptyText")}</p></section>`}
-    ${done.length ? `<details class="card fold" id="dDone"><summary><span>${t("sched.done", { n: done.length })}</span></summary>${done.map(card).join("")}</details>` : ""}`;
+    ${done.length ? `<details class="card fold" id="dDone"><summary><span>${t("sched.done", { n: done.length })}</span></summary><div class="plist">${done.map(postRow).join("")}</div></details>` : ""}`;
   wireScheduler();
+  if (st.key) loadAccts(true);
 }
 const saveSet = async (u) => { state.settings = await api("/api/settings", { method: "POST", json: u }); };
 async function loadAccts(quiet) {
   const s = state.settings;
   try {
     const r = await api("/api/postpeer/accounts");
-    const sel = $("#ppAcct"); if (!sel) return;
+    const sel = $("#ppAcct"); if (!sel) return r.accounts;
     sel.innerHTML = `<option value="">${t("sched.pickAcctNone")}</option>` + r.accounts.map((a) => `<option value="${esc(a.id)}" data-name="${esc(a.name)}" ${a.id === s.postpeer_account_id ? "selected" : ""}>${esc(a.name || a.id)}</option>`).join("");
     if (!r.accounts.length && !quiet) toast(`<b>${t("sched.noAccts")}</b>`, 5000, "bad");
     if (r.accounts.length === 1 && !s.postpeer_account_id) { sel.value = r.accounts[0].id; sel.onchange(); }
-  } catch (e) { if (!quiet) errToast(e, "err.postpeer"); }
+    return r.accounts;
+  } catch (e) { if (!quiet) errToast(e, "err.postpeer"); return null; }
+}
+async function runCheck() {
+  openModal(() => setModal(`<h2>🩺 ${t("sched.checkAll")}</h2><div class="center"><div class="spinner"></div><p class="muted">${t("sched.checking")}</p></div>`));
+  try {
+    const r = await api("/api/schedule/check", { method: "POST" });
+    const name = { postpeer: "🔑 PostPeer", tiktok: "🎵 TikTok", hosting: "☁️ " + tt("sched.w3") };
+    setModal(`<h2>🩺 ${t("sched.checkAll")}</h2><ul class="checklist">${r.steps.map((x) => `<li class="${x.ok ? "ok" : "bad"}"><span>${x.ok ? "✅" : "❌"}</span><div><b>${name[x.step] || x.step}</b><p class="small">${esc(x.detail)}</p></div></li>`).join("")}</ul>
+      <p class="muted small">${t(r.steps.every((x) => x.ok) ? "sched.checkGood" : "sched.checkBad")}</p>
+      <button class="btn primary big wide" id="ckOk">${t("celebrate.ok")}</button>`);
+    $("#ckOk").onclick = () => { closeModal(); showScheduler(); };
+  } catch (e) { closeModal(); errToast(e, "err.postpeer"); }
 }
 function wireScheduler() {
-  $("#ppSave").onclick = async () => { try { await saveSet({ postpeer_key: $("#ppKey").value.trim() }); toast(`<b>✓ ${t("sched.keySaved")}</b>`, 2500, "good"); } catch (e) { errToast(e); } };
+  $$("[data-open-setup]").forEach((b) => (b.onclick = () => { const d = $("#dSetup"); d.open = true; d.scrollIntoView({ behavior: "smooth" }); }));
+  $("#schCheck").onclick = runCheck;
+  $("#ppSave").onclick = async () => {
+    const k = $("#ppKey").value.trim();
+    if (!k) { toast(`<b>🔑 ${t("sched.needKey")}</b>`, 4000, "bad"); return; }
+    try {
+      await saveSet({ postpeer_key: k });
+      const acc = await loadAccts(false);
+      if (acc) toast(`<b>✓ ${t("sched.keyWorks")}</b>`, 3000, "good");
+      await showScheduler();
+    } catch (e) { errToast(e, "err.postpeer"); }
+  };
   $("#ppConnect").onclick = async () => {
     if (!$("#ppKey").value.trim()) { toast(`<b>🔑 ${t("sched.needKey")}</b>`, 4000, "bad"); $("#ppKey").focus(); return; }
     try {
       await saveSet({ postpeer_key: $("#ppKey").value.trim() });
       const r = await api("/api/postpeer/connect", { method: "POST" }); window.open(r.url, "_blank");
-      toast(`<b>${t("sched.loginHint")}</b>`, 7000);
+      toast(`<b>${t("sched.loginHint")}</b>`, 8000);
     } catch (e) { errToast(e, "err.postpeer"); }
   };
   $("#ppRefresh").onclick = () => loadAccts(false);
@@ -1287,35 +1348,54 @@ function wireScheduler() {
     try { await saveSet({ postpeer_account_id: o.value, postpeer_account_name: o.dataset.name || "" }); celebrateSmall("sched.acctConnected"); showScheduler(); } catch (e) { errToast(e); }
   };
   $("#cdSave").onclick = async () => {
+    const stt = $("#cdSt"); stt.className = "small muted"; stt.textContent = tt("sched.cdTesting"); $("#cdSave").disabled = true;
+    const body = { cloud: $("#cdCloud").value, api_key: $("#cdKey").value, api_secret: $("#cdSecret").value };
+    if (/^\s*(CLOUDINARY_URL=)?cloudinary:\/\//i.test(body.cloud)) { body.url = body.cloud; delete body.cloud; delete body.api_key; delete body.api_secret; }
     try {
-      await saveSet({ cloudinary_url: $("#cdUrl").value.trim() });
-      const r = await api("/api/cloudinary/check", { method: "POST" });
-      toast(`<b>✓ ${t("sched.cdOk", { cloud: r.cloud })}</b>`, 3500, "good"); showScheduler();
-    } catch (e) { errToast(e, "err.cloudinary"); }
+      const r = await api("/api/cloudinary/check", { method: "POST", json: body });
+      stt.className = "small ok"; stt.textContent = "✓ " + tt("sched.cdOk", { cloud: r.cloud });
+      setTimeout(showScheduler, 1200);
+    } catch (e) { stt.className = "small bad"; stt.textContent = e.message || ""; }
+    finally { $("#cdSave").disabled = false; }
   };
+  const cr = $("#cdRemove"); if (cr) cr.onclick = async () => { await api("/api/cloudinary", { method: "DELETE" }); showScheduler(); };
   $$('[name="ppMode"]').forEach((r) => (r.onchange = () => {
     $$('[name="ppMode"]').forEach((x) => x.closest(".choice").classList.toggle("on", x.checked));
     saveSet({ postpeer_mode: r.value }).then(() => toast(tt("common.saved"), 2000, "good")).catch((e) => errToast(e));
   }));
+  $$("[data-perday]").forEach((b) => (b.onclick = async () => {
+    $$("[data-perday]").forEach((x) => x.classList.toggle("on", x === b));
+    try { await saveSet({ posts_per_day: +b.dataset.perday }); } catch (e) { /* not critical */ }
+  }));
   if ($("#schAuto")) $("#schAuto").onclick = async () => {
+    const per = +(($(".seg-b.on") || {}).dataset || {}).perday || 1;
     try {
-      const r = await api("/api/schedule/auto", { method: "POST", json: { per_day: +$("#perDay").value } });
+      const r = await api("/api/schedule/auto", { method: "POST", json: { per_day: per } });
       await showScheduler();
       openModal(() => {
         setModal(`<div class="celebrate"><div class="big-emoji" aria-hidden="true">🗓️</div><h2>${t("celebrate.schedTitle", { n: r.created })}</h2>
-          <p class="muted">${t(state.sched.connected ? "celebrate.schedText" : "celebrate.schedTextNoConn")}</p>
+          <p class="muted">${t("sched.sentAuto")}</p>
           <button class="btn primary big wide" id="celOk">${t("celebrate.ok")}</button></div>`);
         $("#celOk").onclick = closeModal;
       });
+      setTimeout(showScheduler, 8000);
     } catch (e) { errToast(e); }
   };
-  $("#schSync").onclick = async () => { try { await api("/api/schedule/sync", { method: "POST" }); toast(`<b>✓ ${t("sched.synced")}</b>`, 2500, "good"); showScheduler(); } catch (e) { errToast(e, "err.postpeer"); } };
+  const ra = $("#retryAll"); if (ra) ra.onclick = async () => {
+    for (const p of state.sched.posts.filter((x) => x.error || x.status === "missed")) { try { await api(`/api/schedule/${p.id}/retry`, { method: "POST" }); } catch (e) { /* next */ } }
+    toast(`<b>↻ ${t("sched.retrying")}</b>`, 3500); setTimeout(showScheduler, 6000);
+  };
   $$("[data-post]").forEach((el) => {
     const id = el.dataset.post;
     $$("[data-act]", el).forEach((b) => (b.onclick = async () => {
+      const act = b.dataset.act;
+      if (act === "edit") { $(".pedit", el).classList.toggle("hidden"); return; }
+      if (act === "details") { const e = $(".perr", el); if (e) e.classList.toggle("hidden"); return; }
       try {
-        const act = b.dataset.act;
-        if (act === "save") {
+        if (act === "retry") {
+          await api(`/api/schedule/${id}/retry`, { method: "POST" });
+          toast(`<b>↻ ${t("sched.retrying")}</b>`, 3500); setTimeout(showScheduler, 6000); return;
+        } else if (act === "save") {
           await api(`/api/schedule/${id}`, { method: "PATCH", json: { at: $('[data-f="at"]', el).value,
             caption: $('[data-f="caption"]', el).value, hashtags: $('[data-f="hashtags"]', el).value.split(/\s+/).filter(Boolean) } });
           toast(tt("common.saved"), 2000, "good");

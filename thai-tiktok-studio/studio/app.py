@@ -576,6 +576,8 @@ def schedule_get():
     return jsonify({"posts": [dict(p, text=scheduler.full_text(p)) for p in posts], "ready": ready,
                     "slots": scheduler.SLOTS, "now": scheduler._fmt(scheduler.now_bkk()),
                     "connected": bool(st.get("postpeer_key") and st.get("postpeer_account_id")),
+                    "cloud": (st.get("cloudinary_url") or "").rsplit("@", 1)[-1] if st.get("cloudinary_url") else "",
+                    "has_key": bool(st.get("postpeer_key")), "account": st.get("postpeer_account_name") or st.get("postpeer_account_id") or "",
                     "hosting": "website" if st.get("public_base_url") else
                                "cloudinary" if st.get("cloudinary_url") else "litterbox"})
 
@@ -674,11 +676,39 @@ def postpeer_accounts():
 
 @app.post("/api/cloudinary/check")
 def cloudinary_check():
+    """Save + really test Cloudinary (3 boxes, or a pasted cloudinary:// address)."""
     from . import cloudinary_host
+    data = request.get_json(silent=True) or {}
     try:
-        return jsonify(cloudinary_host.check(_sched_settings().get("cloudinary_url", "")))
+        if data.get("cloud") or data.get("api_key") or data.get("api_secret"):
+            url = cloudinary_host.make_url(data.get("cloud"), data.get("api_key"), data.get("api_secret"))
+        else:
+            url = (data.get("url") or _sched_settings().get("cloudinary_url", "")).strip()
+        c = cloudinary_host.parse_url(url)
+        url = cloudinary_host.make_url(c["cloud"], c["api_key"], c["api_secret"])
+        res = cloudinary_host.check(url, config.HOME / "tmp")
+        config.save_settings({"cloudinary_url": url})
+        return jsonify(res)
     except Exception as e:
         return jsonify({"error": str(e)}), 400
+
+
+@app.delete("/api/cloudinary")
+def cloudinary_remove():
+    config.save_settings({"cloudinary_url": ""})
+    return jsonify({"ok": True})
+
+
+@app.post("/api/schedule/check")
+def schedule_check():
+    from . import scheduler
+    return jsonify({"steps": scheduler.diagnose(_sched_settings())})
+
+
+@app.post("/api/schedule/<post_id>/retry")
+def schedule_retry(post_id):
+    from . import scheduler
+    return jsonify(scheduler.retry(post_id, _sched_settings()) or {})
 
 
 @app.get("/pub/<token>/<name>")

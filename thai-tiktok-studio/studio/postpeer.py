@@ -94,10 +94,18 @@ def create_post(key: str, account_id: str, caption: str, video_url: str, when_lo
         "mediaItems": [{"type": "video", "url": video_url}],
     }
     if when_local:
-        body.update({"scheduledFor": when_local, "timezone": timezone})
+        stamp = when_local[:16] + ":00" if len(when_local) == 16 else when_local[:19]
+        body.update({"scheduledFor": stamp, "timezone": timezone})
     else:
         body["publishNow"] = True
-    d = _call("POST", "/posts", key, json=body)
+    try:
+        d = _call("POST", "/posts", key, json=body)
+    except PostPeerError as e:
+        if mode == "inbox" or "privacy" not in str(e).lower():
+            raise
+        # TikTok only allows "only me" until PostPeer's app is approved for this account
+        psd["privacyLevel"] = "SELF_ONLY"
+        d = _call("POST", "/posts", key, json=body)
     inner = d.get("data") if isinstance(d.get("data"), dict) else d
     post_id = inner.get("postId") or inner.get("id") or d.get("postId") or d.get("id")
     if not post_id:

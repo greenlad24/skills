@@ -1,6 +1,6 @@
 {
- "version": "1.8.1",
+ "version": "1.9.0",
  "zip_url": "https://raw.githubusercontent.com/greenlad24/skills/claude/wizardly-thompson-w6jjr8/thai-tiktok-studio/releases/ThaiTikTokStudio-mac.zip",
- "sha256": "6de1c231ecec4d8f6f9b58b3cd3bc3201fd5d77c16c692617fac79f99bc99928",
- "notes": "1.8.1 — สติกเกอร์ไม่ซ้อนทับกันอีกแล้ว: ถ้าชนกันจะย้ายไปที่ว่างที่ใกล้ที่สุด หรือรอให้อันก่อนหน้าหายไป (สติกเกอร์ที่คุณวางเองไม่ถูกย้าย)\n1.8.1 — Stickers never sit on top of each other: a clashing one moves to the nearest free spot or waits until the other is gone (stickers you placed yourself stay put)"
+ "sha256": "ee7735d29010612693eb8d2962ccc6acf93ca8ee65c5a1374908d4c75ef536d5",
+ "notes": "1.9.0 — หน้าตั้งเวลาโพสต์ใหม่: ทำตามขั้นตอน 1-2-3 (PostPeer → TikTok → Cloudinary พร้อมปุ่มสมัคร/เปิด API keys และทดสอบอัปโหลดจริง) · ปุ่มตรวจสอบทั้งหมด · โพสต์ที่มีปัญหาบอกสาเหตุชัดเจน กดลองใหม่ได้ และลองใหม่เองทุก 10 นาที\n1.9.0 — New posting screen: guided steps 1-2-3 (PostPeer → TikTok → Cloudinary with sign-up/API-key buttons and a real test upload) · Check everything button · posts with a problem show why, can be retried, and retry by themselves every 10 minutes"
 }

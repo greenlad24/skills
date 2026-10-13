@@ -253,10 +253,16 @@ def _media_url(p: dict, settings: dict) -> str:
     if settings.get("cloudinary_url"):
         if p.get("media_url") and p.get("cloudinary_id"):
             return p["media_url"]
-        res = cloudinary_host.upload_video(_render_path(p), settings["cloudinary_url"],
-                                           f"post-{p['id']}")
-        _update(p["id"], media_url=res["url"], cloudinary_id=res["public_id"], media_uploaded=time.time())
-        return res["url"]
+        try:
+            res = cloudinary_host.upload_video(_render_path(p), settings["cloudinary_url"], f"post-{p['id']}")
+            _update(p["id"], media_url=res["url"], cloudinary_id=res["public_id"], media_uploaded=time.time(),
+                    host_note="")
+            return res["url"]
+        except Exception as e:
+            # Cloudinary not working: for posts in the next 2 days a free 72-hour link still gets it out
+            if _parse(p["at"]) - now_bkk() > timedelta(hours=SUBMIT_AHEAD_H_LOCAL):
+                raise
+            _update(p["id"], host_note=f"Cloudinary didn't work ({str(e)[:140]}) — used a temporary 72-hour link instead.")
     if p.get("media_url") and time.time() - p.get("media_uploaded", 0) < 60 * 3600:
         return p["media_url"]
     url = media_host.upload_litterbox(_render_path(p))
@@ -338,6 +344,58 @@ def edit(post_id: str, at: str | None = None, caption: str | None = None, hashta
     return _update(post_id, **upd)
 
 
+RETRY_MIN = 10
+
+
+def retry(post_id: str, settings: dict) -> dict | None:
+    """'Try again' on a post with a problem: clear it and send it right away (in the background)."""
+    p = _update(post_id, error="", retry_at=0, status="planned")
+    threading.Thread(target=lambda: _try_submit(post_id, settings), daemon=True).start()
+    return p
+
+
+def _try_submit(post_id: str, settings: dict) -> None:
+    try:
+        submit(post_id, settings)
+    except Exception as e:
+        _update(post_id, error=str(e)[:400], retry_at=time.time() + RETRY_MIN * 60)
+
+
+def diagnose(settings: dict) -> list:
+    """Step-by-step check of everything posting needs → [{"step", "ok", "detail"}]."""
+    out = []
+    key, acct = settings.get("postpeer_key", ""), settings.get("postpeer_account_id", "")
+    if not key:
+        out.append({"step": "postpeer", "ok": False, "detail": "No PostPeer API key yet."})
+    else:
+        try:
+            accts = postpeer.accounts(key)
+            out.append({"step": "postpeer", "ok": True, "detail": f"Key works ({len(accts)} connected account(s))."})
+            tik = [a for a in accts if not a["platform"] or "tiktok" in a["platform"]]
+            if not tik:
+                out.append({"step": "tiktok", "ok": False, "detail": "No TikTok account connected in PostPeer yet."})
+            elif not acct:
+                out.append({"step": "tiktok", "ok": False, "detail": "Choose which TikTok account to post to."})
+            elif acct not in {a["id"] for a in tik}:
+                out.append({"step": "tiktok", "ok": False, "detail": "The chosen TikTok account isn't connected any more — connect it again."})
+            else:
+                name = next((a["name"] for a in tik if a["id"] == acct), "")
+                out.append({"step": "tiktok", "ok": True, "detail": f"Posting to {name or acct}."})
+        except Exception as e:
+            out.append({"step": "postpeer", "ok": False, "detail": str(e)[:300]})
+    if settings.get("public_base_url"):
+        out.append({"step": "hosting", "ok": True, "detail": "Videos are served from your website."})
+    elif settings.get("cloudinary_url"):
+        try:
+            r = cloudinary_host.check(settings["cloudinary_url"], config.HOME / "tmp")
+            out.append({"step": "hosting", "ok": True, "detail": f"Test video uploaded to Cloudinary ({r['cloud']}) and removed."})
+        except Exception as e:
+            out.append({"step": "hosting", "ok": False, "detail": str(e)[:300]})
+    else:
+        out.append({"step": "hosting", "ok": True, "detail": "No Cloudinary: temporary 72-hour links are used — keep the app open at least once a day."})
+    return out
+
+
 def tick(settings: dict) -> None:
     """One worker pass: hand due posts to PostPeer; mark long-overdue ones as missed."""
     if not settings.get("postpeer_key") or not settings.get("postpeer_account_id"):
@@ -368,11 +426,13 @@ def tick(settings: dict) -> None:
         if at < now - timedelta(minutes=MISSED_AFTER_MIN):
             _update(p["id"], status="missed", error="The app was closed at post time — press “Post now”.")
             continue
+        if p.get("retry_at") and time.time() < p["retry_at"]:
+            continue                         # failed a moment ago: wait a bit before trying again
         if hosted or at - now <= timedelta(hours=SUBMIT_AHEAD_H_LOCAL):
             try:
                 submit(p["id"], settings)
-            except Exception as e:          # keep going; show the reason on the post
-                _update(p["id"], error=str(e)[:300])
+            except Exception as e:          # keep going; show the reason on the post, retry in 10 min
+                _update(p["id"], error=str(e)[:400], retry_at=time.time() + RETRY_MIN * 60)
 
 
 _worker_started = False
