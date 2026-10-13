@@ -577,3 +577,95 @@ def missing_card(shot: dict, start: float, end: float) -> Element:
         T.text_block(lines[1], size=44, weight="medium", max_w=820, max_lines=3) if lines[1] else None,
     ], gap=10)
     return Element(start=start, end=end, cx=W / 2, cy=760, sprite=t, anim_in="none", in_dur=0, out="none", z=0)
+
+
+# --------------------------------------------------------------------------- no stickers on top of each other
+GAP = 18                                   # px kept between two stickers
+SAFE = (40, 150, 1040, 1420)               # where stickers may go (TikTok's own buttons/caption cover the rest)
+SPOTS = [POS[k] for k in ("top", "upper", "center", "lower", "bottom", "top_left", "top_right",
+                          "center_left", "center_right", "lower_left", "lower_right")]
+
+
+def _box(els: list):
+    """Bounding box (x0, y0, x1, y1) of a sticker's parts, at rest."""
+    xs0, ys0, xs1, ys1 = [], [], [], []
+    for e in els:
+        img = e.sprite
+        if img is None and e.draw is not None:
+            try:
+                img = e.draw(min(0.5, max(0.0, e.end - e.start)))
+            except Exception:
+                img = None
+        if img is None or (img.width >= W - 2 and img.height >= H - 2):   # full-screen layers don't count
+            continue
+        xs0.append(e.cx - img.width / 2); xs1.append(e.cx + img.width / 2)
+        ys0.append(e.cy - img.height / 2); ys1.append(e.cy + img.height / 2)
+    if not xs0:
+        return None
+    return min(xs0), min(ys0), max(xs1), max(ys1)
+
+
+def _hit(a, b) -> bool:
+    return not (a[2] + GAP <= b[0] or b[2] + GAP <= a[0] or a[3] + GAP <= b[1] or b[3] + GAP <= a[1])
+
+
+def _inside(b) -> bool:
+    return b[0] >= SAFE[0] and b[1] >= SAFE[1] and b[2] <= SAFE[2] and b[3] <= SAFE[3]
+
+
+def _shift(els, dx, dy):
+    for e in els:
+        e.cx += dx
+        e.cy += dy
+
+
+def build_all(overlays: list, ctx: Ctx, total: float) -> list:
+    """Build every sticker of a video and make sure no two on screen at the same time overlap.
+
+    A sticker that would land on another one moves to the nearest free spot (right below it,
+    or another free place); if there is no room, it waits until the other one is gone.
+    Stickers you placed yourself (review screen) never move.
+    → [(overlay, [Element])] in the same order as `overlays` (hidden ones get []).
+    """
+    built = []
+    for o in overlays:
+        if o.get("hidden"):
+            built.append((o, []))
+            continue
+        s = o["at"]
+        e = min(total, s + o["dur"])
+        if o["type"] == "cta_basket" and e > total - 1.0:
+            e = total
+        built.append((o, build_overlay(o, s, e, ctx)))
+    order = sorted(range(len(built)), key=lambda i: (built[i][0].get("x") is None, built[i][0]["at"]))
+    placed = []                                       # (start, end, box)
+    for i in order:
+        o, els = built[i]
+        box = _box(els) if els else None
+        if box is None:
+            continue
+        s0, e0 = min(el.start for el in els), max(el.end for el in els)
+        live = lambda a, b: [p for p in placed if p[0] < b and p[1] > a]
+        others = [p[2] for p in live(s0, e0)]
+        if o.get("x") is not None or not any(_hit(box, ob) for ob in others):
+            placed.append((s0, e0, box))
+            continue
+        w, h = box[2] - box[0], box[3] - box[1]
+        cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
+        cands = [(cx, ob[3] + GAP + h / 2) for ob in others] + [(cx, ob[1] - GAP - h / 2) for ob in others] + list(SPOTS)
+        cands.sort(key=lambda c: (c[0] - cx) ** 2 + (c[1] - cy) ** 2)
+        for nx, ny in cands:
+            nb = (nx - w / 2, ny - h / 2, nx + w / 2, ny + h / 2)
+            if _inside(nb) and not any(_hit(nb, ob) for ob in others):
+                _shift(els, nx - cx, ny - cy)
+                placed.append((s0, e0, nb))
+                break
+        else:   # no room: appear once the stickers in the way are gone (or skip if that's too late)
+            later = max(p[1] for p in live(s0, e0) if _hit(box, p[2]))
+            if e0 - later >= 0.8:
+                for el in els:
+                    el.start = max(el.start, later + 0.05)
+                placed.append((later, e0, box))
+            else:
+                built[i] = (o, [])
+    return built

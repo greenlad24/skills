@@ -486,3 +486,28 @@ def test_wide_clips_turn_right_by_default(footage, tmp_path):
     assert orient.guess(clips["V1-S01.mp4"]) == 90      # 1280x720: filmed sideways (turned left) → turn right
     assert orient.guess(clips["clip4.mp4"]) == 0        # already vertical
     assert orient.guess(clips["V1S03.mp4"]) == 0        # square: leave it
+
+
+def test_stickers_never_overlap():
+    from studio.editor import elements as E
+    plan = normalize_plan(sample_plan())
+    v = plan["videos"][1]                       # the busy one: up to 8 stickers in one beat
+    ctx = E.Ctx(v)
+    ovs, t = [], 0.0
+    for b in v["timeline"]:
+        for o in b["overlays"]:
+            ovs.append(dict(o, at=t + o["at"]))
+        t += b["duration"]
+    built = E.build_all(ovs, ctx, t)
+    shown = [(min(e.start for e in els), max(e.end for e in els), E._box(els)) for _, els in built if els]
+    assert len(shown) >= len(ovs) // 2
+    for i, (s1, e1, b1) in enumerate(shown):
+        for s2, e2, b2 in shown[i + 1:]:
+            if s1 < e2 and s2 < e1:
+                assert not E._hit(b1, b2), (b1, b2)
+    # your own placement is respected even if it touches another sticker
+    mine = dict(ovs[0], x=0.5, y=0.2)
+    clash = dict(ovs[0], x=None, type="keyword_pop", text="ปัง", position="top")
+    out = E.build_all([mine, clash], ctx, t)
+    assert abs(out[0][1][0].cy - 0.2 * E.H) < 2
+    assert not E._hit(E._box(out[0][1]), E._box(out[1][1])) if out[1][1] else True

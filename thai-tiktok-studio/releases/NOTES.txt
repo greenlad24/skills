@@ -1,2 +1,2 @@
-1.8.0 — เสียงพากย์ไม่ถูกตัดคำหรือประโยคอีกแล้ว: ตัดเฉพาะเสียงหายใจ/หัวเราะเบาๆ และช่วงเงียบ คำพูดทุกคำอยู่ครบ · ตั้งค่าใหม่: ใช้เสียงที่อัดไว้ทั้งหมดตามจริง
-1.8.0 — Voice clean-up never cuts words or sentences: only breaths/chuckles and silence are removed · new setting: use my recording exactly as recorded
+1.8.1 — สติกเกอร์ไม่ซ้อนทับกันอีกแล้ว: ถ้าชนกันจะย้ายไปที่ว่างที่ใกล้ที่สุด หรือรอให้อันก่อนหน้าหายไป (สติกเกอร์ที่คุณวางเองไม่ถูกย้าย)
+1.8.1 — Stickers never sit on top of each other: a clashing one moves to the nearest free spot or waits until the other is gone (stickers you placed yourself stay put)

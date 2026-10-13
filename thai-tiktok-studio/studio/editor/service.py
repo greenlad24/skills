@@ -241,9 +241,9 @@ def _homes(pid: str, rec: dict) -> list:
     except ValueError:
         return []
     out = []
-    for o in (rec.get("edl") or {}).get("overlays", []):
-        base = {k: v for k, v in o.items() if k not in ("x", "y", "tilt")}
-        els = E.build_overlay(base, 0.0, max(0.5, o.get("dur", 2)), ctx)
+    ovs = [{k: v for k, v in o.items() if k not in ("x", "y", "tilt")} for o in (rec.get("edl") or {}).get("overlays", [])]
+    total = float(rec.get("duration") or 60)
+    for o, els in E.build_all(ovs, ctx, total):            # the same layout the render uses
         main = next((e for e in els if e.sprite is not None), None)
         if main is None:
             out.append([0.5, 0.3, 0.3, 0.06, 0.0])

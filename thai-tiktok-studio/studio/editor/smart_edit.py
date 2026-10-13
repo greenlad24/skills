@@ -702,14 +702,8 @@ def to_resolved(video: dict, edl: dict, clips: list, sp: Spine) -> Resolved:
         R.beats.append((a, b))
     R.total = round(sp.total * FPS) / FPS
     _snap_to_frames(R)
-    for o in edl["overlays"]:
-        if o.get("hidden"):        # removed on the review screen
-            continue
-        s = o["at"]
-        e = min(R.total, s + o["dur"])
-        if o["type"] == "cta_basket" and e > R.total - 1.0:
-            e = R.total
-        R.elements += E.build_overlay(o, s, e, ctx)
+    for _, els in E.build_all(edl["overlays"], ctx, R.total):   # laid out so no two stickers overlap
+        R.elements += els
     if video.get("progress_bar"):
         R.progress_color = ctx.theme["accent"]
     R.elements.sort(key=lambda el: el.z)
