@@ -424,3 +424,11 @@ body.server .localonly{display:none!important}
   touch-action:none;cursor:crosshair;overflow:hidden;outline:1px solid var(--line)}
 .pad .mk{position:absolute;border:2px dashed #fff;box-shadow:0 0 0 2px rgba(225,29,72,.9);border-radius:6px;pointer-events:none;background:rgba(225,29,72,.15)}
 .stk input[type=range]{width:100%}
+.make-row.dim{opacity:.55}
+.heard{list-style:none;padding:0;margin:10px 0 0;display:flex;flex-direction:column;gap:8px}
+.heard li{padding:8px 10px;border-radius:12px;background:var(--soft, #f5f5f7)}
+.clips-turn{margin:6px 0 14px}.clips-turn summary{cursor:pointer;font-weight:600}
+.clip-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;margin-top:8px}
+.clip-turn{margin:0;display:flex;flex-direction:column;gap:4px;align-items:center}
+.clip-turn img{width:100%;aspect-ratio:9/16;object-fit:contain;background:#111;border-radius:10px}
+.clip-turn figcaption{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

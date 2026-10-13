@@ -448,12 +448,12 @@ function coachAction(act) {
 /* ---------------- jobs (progress) ---------------- */
 function jobHtml(j) {
   const pct = Math.round((j.progress || 0) * 100);
-  const plan = j.kind === "plan", prep = j.kind === "prepare";
+  const plan = j.kind === "plan", prep = j.kind === "prepare", voices = j.kind === "voices";
   const log = `<details id="dLog"><summary>${t("job.details")}</summary><div class="log">${esc((j.log || []).join("\n"))}</div></details>`;
   if (j.status === "running") {
     const mins = Math.floor((j.elapsed || 0) / 60), secs = (j.elapsed || 0) % 60;
     return `<section class="card job running" aria-live="polite"><div class="job-head"><span class="spinner"></span>
-      <div><h2>${t(plan ? "job.planTitle" : prep ? "job.prepTitle" : "job.renderTitle")}</h2><p class="muted">${t(plan ? "job.planWait" : prep ? "job.prepWait" : "job.renderWait")}</p></div></div>
+      <div><h2>${t(plan ? "job.planTitle" : prep ? "job.prepTitle" : voices ? "voices.title" : "job.renderTitle")}</h2><p class="muted">${t(plan ? "job.planWait" : prep ? "job.prepWait" : voices ? "voices.wait" : "job.renderWait")}</p></div></div>
       <div class="progress" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${Math.max(pct, 3)}%"></i></div>
       <div class="job-meta"><b>${pct}%</b><span class="muted">${t("job.elapsed", { m: mins, s: secs < 10 ? "0" + secs : secs })}</span></div>
       <p class="reassure">☕ ${t("job.leave")}</p>${log}</section>`;
@@ -495,6 +495,7 @@ function pollJob(id) {
       }
       if (j.status === "done") {
         if (j.kind === "render") celebrate("celebrate.videosTitle", "celebrate.videosText", j.project_id);
+        else if (j.kind === "voices") toast(`<b>🎙 ${t("voices.done")}</b>`, 4500, "good");
         else if (j.kind === "prepare") { toast(`<b>👀 ${t("review.ready")}</b>`, 4500, "good"); if (here) setTimeout(() => { const rv = $("#review"); if (rv) rv.scrollIntoView({ behavior: "smooth" }); }, 80); }
         else toast(`<b>🎉 ${t(here && state.project && !state.project.plan ? "job.pasteReady" : "job.planDone")}</b>`, 4000, "good");
       } else toast(`<b>😕 ${t(j.kind === "plan" ? "job.planFailedTitle" : "job.renderFailedTitle")}</b>`, 5000, "bad");
@@ -693,7 +694,11 @@ function renderUpload(body) {
       <div id="narProg"></div>
       ${nars.length ? `<ul class="files">${fileCards(nars, "narration")}</ul>
         <p class="list-title">${t("upload.whichVoice")}</p>
-        <div class="match-list">${p.plan.videos.map((v) => `<label class="match-row"><span>#${v.rank} ${esc(v.title_th)}</span><select id="nar_${esc(v.id)}" data-nar="${esc(v.id)}">${opt(nars, a.narration[v.id])}</select></label>`).join("")}</div>`
+        <div class="match-list">${p.plan.videos.map((v) => `<label class="match-row"><span>#${v.rank} ${esc(v.title_th)}</span><select id="nar_${esc(v.id)}" data-nar="${esc(v.id)}">${opt(nars, a.narration[v.id])}</select></label>`).join("")}</div>
+        ${Object.keys(p.voice_match || {}).length ? `<ul class="heard">${Object.entries(p.voice_match).map(([f, r]) => {
+          const v = p.plan.videos.find((x) => x.id === r.video);
+          return `<li>🎙 <b>${esc(f)}</b> → ${v ? `${t("voices.is")} <b>#${v.rank} ${esc(v.title_th)}</b> <span class="muted">(${Math.round(r.score * 100)}%)</span>` : `<span class="bad">${t("voices.none")}</span>`}
+            <div class="muted small">“${esc(r.heard)}…”</div></li>`; }).join("")}</ul>` : ""}`
         : `<p class="muted center">${t("upload.noVoice")}</p>`}
     </section>
     ${!p.files.length ? "" : `<section class="card"><div class="match-sum ${allOk ? "ok" : "warn"}"><span class="ms-ico" aria-hidden="true">${allOk ? "✅" : "🧩"}</span>
@@ -723,7 +728,7 @@ function renderUpload(body) {
     if (!(await ask({ title: "confirm.deleteFile", text: "confirm.deleteFileText", ok: "confirm.deleteOk", danger: true, vars: { name: b.dataset.del } }))) return;
     try { await api(`${P()}/files/${encodeURIComponent(b.dataset.del)}?kind=${b.dataset.kind}`, { method: "DELETE" }); refreshProject(); } catch (e) { errToast(e); }
   }));
-  $$("[data-nar]", body).forEach((s) => (s.onchange = () => saveAssign().then(() => toast(tt("common.saved"), 2000, "good")).catch((e) => errToast(e))));
+  $$("[data-nar]", body).forEach((s) => (s.onchange = () => { s.dataset.changed = "1"; saveAssign().then(() => toast(tt("common.saved"), 2000, "good")).catch((e) => errToast(e)); }));
   if ($("#btnSaveAssign")) $("#btnSaveAssign").onclick = async () => { try { await saveAssign(); toast(tt("upload.matchSaved"), 2500, "good"); refreshProject(); } catch (e) { errToast(e); } };
   $$("[data-phone]", body).forEach((b) => (b.onclick = showPhoneLink));
   if ($("#toMake")) $("#toMake").onclick = async () => { try { await saveAssign(); } catch (e) { /* keep going */ } setStep("make"); };
@@ -733,9 +738,13 @@ async function saveAssign() {
   const a = state.project.assign || {};
   const shots = Object.assign({}, a.shots || {}), narration = Object.assign({}, a.narration || {});
   $$("[data-shot]").forEach((s) => { if (s.value) shots[s.dataset.shot] = s.value; else delete shots[s.dataset.shot]; });
-  $$("[data-nar]").forEach((s) => { if (s.value) narration[s.dataset.nar] = s.value; else delete narration[s.dataset.nar]; });
+  const manual = {};
+  $$("[data-nar]").forEach((s) => {
+    if (s.value) narration[s.dataset.nar] = s.value; else delete narration[s.dataset.nar];
+    if (s.dataset.changed === "1" && s.value) manual[s.dataset.nar] = s.value;   // your own choice beats the automatic match
+  });
   const m = $("#musicSel") ? $("#musicSel").value : (a.music || [])[0];
-  await api(P() + "/assign", { method: "POST", json: { shots, vo: a.vo || {}, narration, music: m ? [m] : [] } });
+  await api(P() + "/assign", { method: "POST", json: { shots, vo: a.vo || {}, narration, narration_manual: manual, music: m ? [m] : [] } });
 }
 function upload(files, kind, progSel) {
   if (!files.length) return;
@@ -751,7 +760,10 @@ function upload(files, kind, progSel) {
     box.innerHTML = `<div class="upbox"><div class="progress"><i style="width:${pc}%"></i></div><b>${t("upload.uploading", { n: files.length, p: pc })}</b><span class="muted small">${t("upload.keepOpen")}</span></div>`;
   };
   xhr.onload = () => {
-    if (xhr.status < 400) toast(`<b>✓ ${t("upload.added", { n: files.length })}</b>`, 3000, "good");
+    let res = {};
+    try { res = JSON.parse(xhr.responseText || "{}"); } catch (e) { /* ignore */ }
+    if (res.job) { state.project.jobs = (state.project.jobs || []).concat([res.job]); pollJob(res.job.id); }
+    if (xhr.status < 400) toast(`<b>✓ ${t("upload.added", { n: files.length })}</b>${res.job ? "<br>" + t("voices.listening") : ""}`, 4000, "good");
     else errToast({ message: (JSON.parse(xhr.responseText || "{}").error) || "HTTP " + xhr.status }, "err.upload");
     refreshProject();
   };
@@ -780,8 +792,9 @@ function stickerForm(e, st) {
         <div class="mk" style="left:${st.x * 100}%;top:${st.y * 100}%;width:${Math.max(8, st.w * 100)}%;height:${Math.max(3, st.h * 100)}%;transform:translate(-50%,-50%) rotate(${st.tilt}deg)"></div></div>
       <p class="muted small">${t("review.dragHint")}</p>
       <label class="small" for="${id}_r">${t("review.tilt")}: <b data-tiltv>${Math.round(st.tilt)}°</b></label>
-      <input type="range" id="${id}_r" data-f="tilt" min="-30" max="30" step="1" value="${Math.round(st.tilt)}" data-orig="${Math.round(st.tilt)}">
-      <div class="row"><button class="btn ghost small" data-straight>📏 ${t("review.straight")}</button>
+      <input type="range" id="${id}_r" data-f="tilt" min="-180" max="180" step="1" value="${Math.round(st.tilt)}" data-orig="${Math.round(st.tilt)}">
+      <div class="row"><button class="btn ghost small" data-turn="-90">↺ 90°</button><button class="btn ghost small" data-turn="90">↻ 90°</button>
+        <button class="btn ghost small" data-straight>📏 ${t("review.straight")}</button>
         <button class="btn ghost small" data-resetpos>↺ ${t("review.resetPos")}</button></div></details>
   </div>`;
 }
@@ -789,6 +802,8 @@ function reviewHtml(p, busy) {
   if (!(p.edits || []).length) return "";
   const todo = p.edits.filter((e) => !e.rendered).length;
   return `<section class="card" id="review"><h2>👀 ${t("review.title", { n: p.edits.length })}</h2><p class="muted">${t("review.text1")}</p>
+    <details class="clips-turn" id="clipsTurn"><summary>🔄 ${t("review.clipsTitle")}</summary><p class="muted small">${t("review.clipsText")}</p>
+      <div class="clip-grid" id="clipGrid">…</div></details>
     <div class="review-grid">${p.edits.map((e) => `<article class="rv" data-key="${esc(e.key)}">
       <div class="rv-top"><label class="chk"><input type="checkbox" class="rvchk" value="${esc(e.key)}" ${e.rendered ? "" : "checked"}><span class="chk-box" aria-hidden="true"></span>
         <b>#${e.rank} ${esc(e.title)}</b></label><span class="muted small">${t("style." + e.anim_style)} · ${Math.round(e.duration)} s${e.rendered ? ` · ✅ ${t("review.done")}` : ""}</span></div>
@@ -807,12 +822,13 @@ function renderMake(body) {
   const running = (p.jobs || []).some((j) => (j.kind === "render" || j.kind === "prepare") && j.status === "running");
   body.innerHTML = `
     <section class="card"><h2>🎨 ${t("make.chooseTitle")}</h2><p class="muted">${t("make.chooseText")}</p>
-      <div class="make-list">${p.plan.videos.map((v, vi) => `<div class="make-row">
-        <label class="chk"><input type="checkbox" class="vchk" id="vchk_${esc(v.id)}" value="${esc(v.id)}" checked><span class="chk-box" aria-hidden="true"></span>
-          <span class="mk-title"><b>#${v.rank} ${esc(v.title_th)}</b></span></label>
+      ${(p.narration || []).length ? `<p class="small">🎙 ${t("voices.onlyVoiced")}</p>` : ""}
+      <div class="make-list">${p.plan.videos.map((v, vi) => { const nar = ((p.assign || {}).narration || {})[v.id]; const off = (p.narration || []).length && !nar; return `<div class="make-row ${off ? "dim" : ""}">
+        <label class="chk"><input type="checkbox" class="vchk" id="vchk_${esc(v.id)}" value="${esc(v.id)}" ${off ? "disabled" : "checked"}><span class="chk-box" aria-hidden="true"></span>
+          <span class="mk-title"><b>#${v.rank} ${esc(v.title_th)}</b>${nar ? ` <span class="muted small">🎙 ${esc(nar)}</span>` : off ? ` <span class="muted small">${t("voices.noVoice")}</span>` : ""}</span></label>
         <div class="mk-ctrls"><label class="sr" for="style_${vi}">${t("make.style")}</label>
           <select id="style_${vi}" data-style="${vi}">${STYLE_KEYS.map((k) => `<option value="${k}" ${k === v.anim_style ? "selected" : ""}>${t("style." + k)}</option>`).join("")}</select>
-          <button class="btn ghost" data-shuffle="${vi}" title="${tt("make.shuffleHint")}">🎲 ${t("make.shuffle")}${v.variation ? ` <span class="muted">#${v.variation}</span>` : ""}</button></div></div>`).join("")}</div>
+          <button class="btn ghost" data-shuffle="${vi}" title="${tt("make.shuffleHint")}">🎲 ${t("make.shuffle")}${v.variation ? ` <span class="muted">#${v.variation}</span>` : ""}</button></div></div>`; }).join("")}</div>
       <details id="dVersions"><summary>${t("make.moreOptions")}</summary>
         <label for="versions">${t("make.versions")}</label>
         <select id="versions"><option value="1">${t("make.v1")}</option><option value="2">${t("make.v2")}</option><option value="3">${t("make.v3")}</option><option value="5">${t("make.v5")}</option></select>
@@ -842,6 +858,7 @@ function renderMake(body) {
   $$("[data-save]", body).forEach((b) => (b.onclick = () => saveStickers(b.dataset.save)));
   $$(".stk [data-f=show]", body).forEach((c) => (c.onchange = () => c.closest(".stk").classList.toggle("off", !c.checked)));
   wirePads(body);
+  const ct = $("#clipsTurn"); if (ct) ct.ontoggle = () => { if (ct.open) loadClipTurns(); };
   const fin = $("#btnFinal"); if (fin) fin.onclick = startFinal;
   // finished videos: delete one or a selection
   const sel = () => $$(".rchk:checked", body).map((c) => c.value);
@@ -871,8 +888,26 @@ function wirePads(root) {
     pad.onpointerup = pad.onpointercancel = () => { pad.onpointermove = null; };
     rng.oninput = () => { box.dataset.tiltSet = "1"; box.dataset.dirty = "1"; draw(); };
     $("[data-straight]", box).onclick = () => { rng.value = 0; box.dataset.tiltSet = "1"; box.dataset.dirty = "1"; draw(); };
+    $$("[data-turn]", box).forEach((b) => (b.onclick = () => {
+      let v = (+rng.value + +b.dataset.turn + 540) % 360 - 180;
+      rng.value = v; box.dataset.tiltSet = "1"; box.dataset.dirty = "1"; draw();
+    }));
     $("[data-resetpos]", box).onclick = () => { box.dataset.reset = "1"; box.dataset.dirty = "1"; pad.dataset.moved = "0"; toast(tt("review.resetDone"), 2500); };
   });
+}
+async function loadClipTurns() {
+  const grid = $("#clipGrid"); if (!grid) return;
+  let r; try { r = await api(P() + "/clips"); } catch (e) { grid.textContent = ""; return; }
+  grid.innerHTML = r.clips.map((c) => `<figure class="clip-turn"><img alt="" src="${P()}/clips/thumb?name=${encodeURIComponent(c.name)}&r=${c.rotate}">
+    <figcaption class="small">${esc(c.name)}</figcaption><button class="btn ghost small" data-turnclip="${esc(c.name)}">↻ ${t("review.turnClip")}</button></figure>`).join("");
+  $$("[data-turnclip]", grid).forEach((b) => (b.onclick = async () => {
+    try {
+      const c = await api(P() + "/clips/turn", { method: "POST", json: { name: b.dataset.turnclip, degrees: 90 } });
+      b.closest("figure").querySelector("img").src = `${P()}/clips/thumb?name=${encodeURIComponent(c.name)}&r=${c.rotate}`;
+      toast(tt("review.turned"), 3500, "good");
+      state.project.edits.forEach((e) => (e.preview_stale = true));
+    } catch (e) { errToast(e); }
+  }));
 }
 function readStickers(key) {
   return $$(`.stk[data-key="${CSS.escape(key)}"]`).map((box) => {

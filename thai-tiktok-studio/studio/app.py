@@ -319,6 +319,7 @@ def get_project(pid):
         "assign": service.refresh_assign(pid, plan) if plan else service.load_assign(pid),
         "renders": service.list_renders(pid),
         "edits": service.list_edits(pid),
+        "voice_match": projects.load_json(d / "voice_match.json", {}),
         "product_images": [p.name for p in sorted((d / "product_images").glob("*"))],
         "jobs": jobs.for_project(pid),
         "folder": str(d),
@@ -409,7 +410,10 @@ def upload(pid):
             saved.append(p.name)
     plan = projects.load_json(projects.pdir(pid) / "plan.json")
     assign = service.refresh_assign(pid, plan) if plan else {}
-    return jsonify({"saved": saved, "assign": assign})
+    job = None
+    if plan and sub == "narration" and saved:   # listen to the new recordings: which script is each one?
+        job = jobs.start("voices", pid, service.match_voices, pid, config.load_settings()).to_dict()
+    return jsonify({"saved": saved, "assign": assign, "job": job})
 
 
 @app.delete("/api/projects/<pid>/files/<name>")
@@ -428,6 +432,8 @@ def set_assign(pid):
     nar_names = {i["name"] for i in service.file_infos(pid, "narration")}
     assign = {
         "narration": {k: v for k, v in (data.get("narration") or {}).items() if v in nar_names},
+        "narration_manual": {k: v for k, v in {**(service.load_assign(pid).get("narration_manual") or {}),
+                                                 **(data.get("narration_manual") or {})}.items() if v in nar_names},
         "shots": {k: v for k, v in (data.get("shots") or {}).items() if v in names},
         "vo": {k: v for k, v in (data.get("vo") or {}).items() if v in names},
         "music": [m for m in (data.get("music") or []) if m in names],
@@ -473,6 +479,29 @@ def update_edit(pid, key):
         return jsonify({"edit": service.update_edit(pid, key, data.get("stickers") or [])})
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
+
+
+@app.get("/api/projects/<pid>/clips")
+def clip_list(pid):
+    return jsonify({"clips": service.clip_list(pid)})
+
+
+@app.post("/api/projects/<pid>/clips/turn")
+def turn_clip(pid):
+    data = request.get_json(force=True) or {}
+    try:
+        return jsonify(service.turn_clip(pid, str(data.get("name", "")), int(data.get("degrees", 90))))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.get("/api/projects/<pid>/clips/thumb")
+def clip_thumb(pid):
+    try:
+        f = service.clip_thumb(pid, request.args.get("name", ""))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+    return send_file(f, mimetype="image/jpeg", max_age=600)
 
 
 @app.get("/api/projects/<pid>/edits/<key>/frame")

@@ -20,9 +20,47 @@ def footage_files(pid: str, sub: str = "footage") -> list:
 
 def load_assign(pid: str) -> dict:
     a = projects.load_json(projects.pdir(pid) / "assign.json", {})
-    for k, dflt in (("shots", {}), ("vo", {}), ("music", []), ("narration", {})):
+    for k, dflt in (("shots", {}), ("vo", {}), ("music", []), ("narration", {}), ("narration_manual", {})):
         a.setdefault(k, dflt)
     return a
+
+
+def match_voices(job, pid: str, settings: dict | None = None) -> dict:
+    """Listen to each narration and find which script it reads (Whisper on this Mac). Cached per file."""
+    from . import transcribe
+    say = job.say if job else (lambda m: None)
+    d = projects.pdir(pid)
+    plan = projects.load_json(d / "plan.json")
+    files = footage_files(pid, "narration")
+    if not plan or not files:
+        return {}
+    heard = {}
+    for f in files:
+        t = transcribe.transcript(Path(f), d / "work" / "transcripts", say, allow_install=True)
+        if t:
+            heard[Path(f).name] = t
+    if not heard:
+        return {}
+    auto = transcribe.match(heard, plan["videos"])
+    a = load_assign(pid)
+    nar = {vid: name for name, (vid, _) in auto.items()}
+    for vid, name in (a.get("narration") or {}).items():       # recordings we couldn't recognise keep their place
+        if name not in auto and vid not in nar and name not in nar.values():
+            nar[vid] = name
+    for vid, name in (a.get("narration_manual") or {}).items():  # your own choice on the upload screen always wins
+        nar = {k: v for k, v in nar.items() if v != name}
+        nar[vid] = name
+    a["narration"] = nar
+    projects.save_json(d / "assign.json", a)
+    titles = {v["id"]: f"#{v.get('rank', '')} {v.get('title_th', '')}" for v in plan["videos"]}
+    report = {name: {"video": vid, "score": score, "heard": heard[name]["text"][:160]} for name, (vid, score) in auto.items()}
+    for name in heard:
+        if name not in auto:
+            report[name] = {"video": "", "score": 0, "heard": heard[name]["text"][:160]}
+    projects.save_json(d / "voice_match.json", report)
+    for name, r in report.items():
+        say(f"🎙 {name} → {titles.get(r['video'], 'no matching script')} ({round(r['score'] * 100)}% match)")
+    return report
 
 
 def refresh_assign(pid: str, plan: dict) -> dict:
@@ -35,6 +73,8 @@ def refresh_assign(pid: str, plan: dict) -> dict:
     cur["music"] = [m for m in cur.get("music", []) if m in names]
     out = matcher.auto_match(plan, footage_files(pid), cur)
     out["narration"] = matcher.match_narration(plan, footage_files(pid, "narration"), cur.get("narration"))
+    nar_names = {Path(f).name for f in footage_files(pid, "narration")}
+    out["narration_manual"] = {k: v for k, v in (cur.get("narration_manual") or {}).items() if v in nar_names}
     projects.save_json(projects.pdir(pid) / "assign.json", out)
     return out
 
@@ -66,9 +106,22 @@ def _context(pid: str):
     return d, plan, assign, product_images, (music if music and music.exists() else None)
 
 
+def _voiced(pid: str, plan: dict, video_ids: list, say=None) -> list:
+    """When you uploaded voice recordings, only the scripts you recorded become videos."""
+    ids = [v["id"] for v in plan["videos"] if not video_ids or v["id"] in video_ids]
+    if not footage_files(pid, "narration"):
+        return ids
+    nar = load_assign(pid).get("narration") or {}
+    keep = [i for i in ids if i in nar]
+    if say and len(keep) < len(ids):
+        say(f"Making only the videos you recorded a voice for: {', '.join(keep) or 'none'} "
+            f"(skipped {', '.join(i for i in ids if i not in keep)}).")
+    return keep
+
+
 def _variants(plan: dict, video_ids: list, versions: int) -> list:
     from .styles import STYLES
-    vids = [v for v in plan["videos"] if not video_ids or v["id"] in video_ids]
+    vids = [v for v in plan["videos"] if v["id"] in video_ids]
     versions = max(1, min(5, int(versions or 1)))
     out = []
     for v in vids:
@@ -94,9 +147,10 @@ def _draft(settings: dict) -> dict:
 
 def render_videos(job, pid: str, video_ids: list, settings: dict, draft: bool = False, versions: int = 1) -> dict:
     """Plan + render in one go (no review)."""
+    match_voices(job, pid, settings)
     _, plan, *_ = _context(pid)
-    items = _variants(plan, video_ids, versions)
-    st = _draft(settings) if draft else dict(settings)
+    items = _variants(plan, _voiced(pid, plan, video_ids, job.say), versions)
+    st = dict(_draft(settings) if draft else settings, _allow_install=True)
     results = []
     for i, v in enumerate(items):
         label = f"{v['id']} ({v['anim_style']})"
@@ -136,8 +190,12 @@ def _edit_key(v: dict) -> str:
 
 def prepare_edits(job, pid: str, video_ids: list, settings: dict, versions: int = 1) -> dict:
     """Batch: plan every video and make a quick preview of each, for the review screen."""
+    match_voices(job, pid, settings)
     _, plan, *_ = _context(pid)
-    items = _variants(plan, video_ids, versions)
+    items = _variants(plan, _voiced(pid, plan, video_ids, job.say), versions)
+    if not items:
+        raise RuntimeError("None of the chosen videos has a voice recording yet.")
+    settings = dict(settings, _allow_install=True)
     ed = edits_dir(pid)
     for f in ed.glob("*"):          # a new batch replaces the previous review
         if f.is_dir():
@@ -255,7 +313,7 @@ def update_edit(pid: str, key: str, stickers: list) -> dict:
                 except (TypeError, ValueError):
                     continue
                 if v is not None:
-                    v = max(-45.0, min(45.0, v)) if k == "tilt" else max(0.0, min(1.0, v))
+                    v = max(-180.0, min(180.0, v)) if k == "tilt" else max(0.0, min(1.0, v))
             else:
                 v = str(v).strip()[:120]
             o[k] = v
@@ -316,6 +374,57 @@ def render_final(job, pid: str, keys: list, settings: dict) -> dict:
         rec["rendered"] = out.name
         projects.save_json(f, rec)
     return {"renders": results}
+
+
+def clip_list(pid: str) -> list:
+    """Your video clips with how they're turned now (review screen: tap to turn a sideways clip)."""
+    from . import orient
+    d = projects.pdir(pid)
+    cache = d / "work" / "orient.json"
+    out = []
+    for f in footage_files(pid):
+        if media.kind(Path(f)) != "video":
+            continue
+        c = smart_edit.Clip("", f, "video", "", 0.0)
+        out.append({"name": Path(f).name, "rotate": orient.cached(c, cache),
+                    "manual": orient.file_key(f) in orient.manual(cache)})
+    return out
+
+
+def turn_clip(pid: str, name: str, degrees: int) -> dict:
+    from . import orient
+    d = projects.pdir(pid)
+    f = d / "footage" / Path(name).name
+    if not f.is_file():
+        raise ValueError("Clip not found.")
+    c = smart_edit.Clip("", str(f), "video", "", 0.0)
+    cache = d / "work" / "orient.json"
+    new = orient.set_manual(str(f), orient.cached(c, cache) + int(degrees), cache)
+    for e in edits_dir(pid).glob("*.json"):       # every preview using it is now out of date
+        rec = projects.load_json(e, {})
+        if rec:
+            rec["preview_stale"] = True
+            projects.save_json(e, rec)
+    return {"name": name, "rotate": new, "manual": True}
+
+
+def clip_thumb(pid: str, name: str) -> Path:
+    from . import orient
+    d = projects.pdir(pid)
+    f = d / "footage" / Path(name).name
+    if not f.is_file():
+        raise ValueError("Clip not found.")
+    c = smart_edit.Clip("", str(f), "video", "", media.probe(f)["duration"])
+    c.crop = media.black_bars(f)
+    c.rotate = orient.cached(c, d / "work" / "orient.json")
+    out = d / "work" / "thumbs" / f"{orient.file_key(str(f))}_{c.rotate}.jpg"
+    if not out.exists():
+        out.parent.mkdir(parents=True, exist_ok=True)
+        im = smart_edit._frame(str(f), c.duration * 0.5, 180, c.pre)
+        if im is None:
+            raise ValueError("Couldn't read the clip.")
+        im.save(out, quality=82)
+    return out
 
 
 def delete_renders(pid: str, names: list) -> dict:

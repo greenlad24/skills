@@ -74,11 +74,47 @@ Clips: {ids}
 Reply with ONE JSON object: {{"clips":[{{"id":"C1","rotate":"0"}}, ...]}}"""
 
 
-def cached(clip, cache_file: Path) -> int:
+def _manual_file(cache_file: Path) -> Path:
+    return cache_file.with_name("orient_manual.json")
+
+
+def manual(cache_file: Path) -> dict:
     try:
-        return int(json.loads(cache_file.read_text("utf-8")).get(file_key(clip.path), 0))
+        return json.loads(_manual_file(cache_file).read_text("utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def set_manual(path: str, degrees: int, cache_file: Path) -> int:
+    """Your own turn from the review screen — always wins over the automatic check."""
+    m = manual(cache_file)
+    m[file_key(path)] = int(degrees) % 360
+    _manual_file(cache_file).parent.mkdir(parents=True, exist_ok=True)
+    _manual_file(cache_file).write_text(json.dumps(m, indent=1), "utf-8")
+    return m[file_key(path)]
+
+
+def cached(clip, cache_file: Path) -> int:
+    k = file_key(clip.path)
+    m = manual(cache_file)
+    if k in m:
+        return int(m[k])
+    try:
+        return int(json.loads(cache_file.read_text("utf-8")).get(k, 0))
     except (OSError, ValueError, TypeError):
         return 0
+
+
+def _wide(c) -> bool:
+    try:
+        from . import media
+        info = media.probe(c.path)
+        w, h = info["width"], info["height"]
+        if c.crop:
+            w, h = map(int, c.crop.split("=")[1].split(":")[:2])
+        return w > h * 1.15
+    except Exception:
+        return False
 
 
 def check(clips: list, sheets: dict, settings: dict, cache_file: Path, log) -> dict:
@@ -90,9 +126,12 @@ def check(clips: list, sheets: dict, settings: dict, cache_file: Path, log) -> d
         except ValueError:
             cache = {}
     out, todo = {}, []
+    mine = manual(cache_file)
     for c in clips:
         k = file_key(c.path)
-        if k in cache:
+        if k in mine:
+            out[c.id] = int(mine[k])
+        elif k in cache:
             out[c.id] = int(cache[k])
         elif c.id in sheets:
             todo.append(c)
@@ -100,7 +139,8 @@ def check(clips: list, sheets: dict, settings: dict, cache_file: Path, log) -> d
         from ..planner import _provider
         mod = _provider(settings.get("provider", "claude_code"))
         log(f"Claude is checking {len(todo)} clip(s) are the right way up…")
-        got = mod.make_edl(PROMPT.format(ids=", ".join(c.id for c in todo)),
+        got = mod.make_edl(PROMPT.format(ids=", ".join(c.id + (" (picture is wider than tall — a phone clip like this is "
+                                                                "often sideways)" if _wide(c) else "") for c in todo)),
                            [sheets[c.id] for c in todo], SCHEMA, settings, log=log,
                            workdir=cache_file.parent)
         ans = {str(x.get("id", "")).strip().upper(): x.get("rotate") for x in (got or {}).get("clips", [])}

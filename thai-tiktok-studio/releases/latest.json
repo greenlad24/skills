@@ -1,6 +1,6 @@
 {
- "version": "1.6.0",
+ "version": "1.7.0",
  "zip_url": "https://raw.githubusercontent.com/greenlad24/skills/claude/wizardly-thompson-w6jjr8/thai-tiktok-studio/releases/ThaiTikTokStudio-mac.zip",
- "sha256": "92810fce44409f3031db42df5d0a443957d3fb2fe33dd898c41e060b97d78fe8",
- "notes": "1.6.0 — ย้ายสติกเกอร์ไปตรงไหนก็ได้ และปรับให้ตรงหรือเอียงได้ในหน้าตรวจ · เสียงพากย์สะอาดขึ้น: ตัดเสียงหายใจ เสียงคลิก การพูดผิดแล้วพูดใหม่ และช่วงเงียบที่ยาวเกินไป (คำพูดไม่ถูกตัด)\n1.6.0 — Move stickers anywhere and straighten/tilt them on the review screen · cleaner voice-over: breaths, clicks, false starts and over-long pauses removed (words untouched)"
+ "sha256": "8daf7ba3f61955e09014be9c60850ba18e168ac29c4390f30310a2b294bae8a8",
+ "notes": "1.7.0 — แอปฟังเสียงพากย์แล้วรู้ว่าคุณอ่านสคริปต์ไหน ทำเฉพาะคลิปที่มีเสียง และตัดต่อตามคำที่พูดจริง · หมุนสติกเกอร์ได้รอบทิศ · หมุนคลิปที่ตะแคงเองได้ในหน้าตรวจ\n1.7.0 — The app listens to your voice recordings, recognises which script each one reads, makes only those videos and cuts on the words you actually said · rotate stickers all the way round · turn a sideways clip yourself on the review screen"
 }

@@ -233,7 +233,10 @@ def test_vision_turns_clips_upright(footage, narration, tmp_path, monkeypatch):
         def make_edl(prompt, images, schema, settings, log=print, workdir=None):
             if "clips" in schema["properties"]:
                 seen["orient"] += 1
-                ids = [x.strip() for x in prompt.split("Clips:")[1].split("\n")[0].split(",")]
+                import re
+                line = prompt.split("Clips:")[1].split("\n")[0]
+                ids = re.findall(r"C\d+", line)
+                assert "wider than tall" in line             # the sideways clip is pointed out to Claude
                 return {"clips": [{"id": i, "rotate": "90" if "IMG_9002" in images[k] or k == len(ids) - 1 else "0"}
                                   for k, i in enumerate(ids)]}
             seen["edl_images"] = images
@@ -398,3 +401,47 @@ def test_sticker_can_be_moved_and_straightened():
     assert edge.cx + edge.sprite.width / 2 <= E.W and edge.cy - edge.sprite.height / 2 >= 0
     tilted = E.build_overlay(dict(o, tilt=12), 0, 2, ctx)[0]
     assert tilted.rot == -12
+
+
+def test_script_recognition_and_word_timing():
+    from studio.editor import transcribe as T
+    plan = normalize_plan(sample_plan())
+    v1, v2 = plan["videos"]
+    v2 = dict(v2, timeline=[dict(b, vo_th=t) for b, t in zip(v2["timeline"], ["ใช่ค่ะ นุ่มจริงมาก ลองนอนแล้ว", "", "", ""])])
+    said1 = "ทำไมถูกจังที่นอนห้าฟุตแค่สองพันกว่าบาท นุ่มเด้งไม่ปวดหลัง ราคาเหลือแค่ กดตะกร้าเหลืองได้เลย"
+    words, t = [], 0.5
+    for w in ["ทำไมถูกจัง", "ที่นอนห้าฟุต", "แค่สองพันกว่าบาท", "นุ่มเด้ง", "ไม่ปวดหลัง", "ราคาเหลือแค่", "สองพันเก้า", "กดตะกร้าเหลือง", "ได้เลย"]:
+        words.append({"w": w, "s": t, "e": t + 0.7})
+        t += 0.8 if w not in ("แค่สองพันกว่าบาท", "ไม่ปวดหลัง", "สองพันเก้า") else 1.4
+    heard = {"IMG_1.MOV": {"text": said1, "words": words}, "IMG_2.MOV": {"text": "ใช่ค่ะนุ่มจริงมากลองนอนแล้ว", "words": []}}
+    m = T.match(heard, [v1, v2])
+    assert m["IMG_1.MOV"][0] == "V1" and m["IMG_2.MOV"][0] == "V2"
+    starts = T.beat_starts(words, v1)
+    spoken = [s for s, b in zip(starts, v1["timeline"]) if b["vo_th"]]
+    assert all(x is not None for x in spoken) and spoken == sorted(spoken)
+    assert abs(starts[0] - 0.5) < 0.3 and abs(starts[1] - words[3]["s"]) < 0.4 and abs(starts[-1] - words[7]["s"]) < 0.4
+    assert starts[3] is None                       # silent beat
+
+
+def test_only_voiced_videos_are_made(footage, narration, tmp_path, monkeypatch):
+    from studio import projects
+    from studio.editor import service, transcribe as T
+    monkeypatch.setattr(projects, "PROJECTS_DIR", tmp_path / "projects", raising=False)
+    plan = normalize_plan(sample_plan())
+    d = tmp_path / "p"
+    (d / "narration").mkdir(parents=True)
+    (d / "footage").mkdir()
+    import shutil
+    shutil.copy(narration / "IMG_0400.MOV", d / "narration" / "IMG_0400.MOV")
+    monkeypatch.setattr(projects, "pdir", lambda pid: d)
+    projects.save_json(d / "plan.json", plan)
+    monkeypatch.setattr(T, "transcript", lambda path, cache, log=print, allow_install=True: {
+        "text": "ใช่ค่ะ นุ่มจริง", "words": [{"w": "ใช่ค่ะ", "s": 0.8, "e": 1.4}, {"w": "นุ่มจริง", "s": 2.3, "e": 3.0}]})
+
+    class J:
+        progress = 0
+        def say(self, m): pass
+    rep = service.match_voices(J(), "x", {})
+    assert rep["IMG_0400.MOV"]["video"] == "V2"                    # recognised by what was said, not by order
+    assert service.load_assign("x")["narration"] == {"V2": "IMG_0400.MOV"}
+    assert service._voiced("x", plan, []) == ["V2"]                 # 1 recording → 1 video

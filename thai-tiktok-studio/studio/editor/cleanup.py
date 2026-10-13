@@ -158,7 +158,7 @@ def clean(y: np.ndarray, max_pause: float = MAX_PAUSE):
     parts, phrases, t = [], [], 0.0
     fade = int(SR * FADE)
     ramp = np.linspace(0, 1, fade, dtype=np.float32)
-    shortened, prev_b = 0, None
+    shortened, prev_b, kept = 0, None, []
     for i in keep:
         a = max(0, int((i.s - PAD) * SR))
         b = min(len(y), int((i.e + PAD) * SR))
@@ -174,8 +174,20 @@ def clean(y: np.ndarray, max_pause: float = MAX_PAUSE):
             seg[:fade] *= ramp
             seg[-fade:] *= ramp[::-1]
         phrases.append((t + (i.s - a / SR), t + (i.e - a / SR)))
+        kept.append((a / SR, b / SR, t))
         parts.append(seg)
         t += len(seg) / SR
         prev_b = b
     report["pauses_shortened"] = shortened
+    report["map"] = kept          # [(original start, original end, cleaned start)] — to follow words in time
     return np.concatenate(parts), phrases, report
+
+
+def to_clean_time(t: float, kept: list) -> float:
+    """Time in the original recording → time in the cleaned one (removed bits snap to the next kept sound)."""
+    for a, b, start in kept:
+        if t < a:
+            return start
+        if t <= b:
+            return start + (t - a)
+    return kept[-1][2] + (kept[-1][1] - kept[-1][0]) if kept else t

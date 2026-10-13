@@ -1,2 +1,2 @@
-1.6.0 — ย้ายสติกเกอร์ไปตรงไหนก็ได้ และปรับให้ตรงหรือเอียงได้ในหน้าตรวจ · เสียงพากย์สะอาดขึ้น: ตัดเสียงหายใจ เสียงคลิก การพูดผิดแล้วพูดใหม่ และช่วงเงียบที่ยาวเกินไป (คำพูดไม่ถูกตัด)
-1.6.0 — Move stickers anywhere and straighten/tilt them on the review screen · cleaner voice-over: breaths, clicks, false starts and over-long pauses removed (words untouched)
+1.7.0 — แอปฟังเสียงพากย์แล้วรู้ว่าคุณอ่านสคริปต์ไหน ทำเฉพาะคลิปที่มีเสียง และตัดต่อตามคำที่พูดจริง · หมุนสติกเกอร์ได้รอบทิศ · หมุนคลิปที่ตะแคงเองได้ในหน้าตรวจ
+1.7.0 — The app listens to your voice recordings, recognises which script each one reads, makes only those videos and cuts on the words you actually said · rotate stickers all the way round · turn a sideways clip yourself on the review screen

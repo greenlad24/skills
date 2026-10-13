@@ -65,6 +65,15 @@ class Spine:
     aroll: list = field(default_factory=list)   # talking: [(t0, t1, path, src_in)]
     source: str = "none"               # narration | talking | tts | none
     report: dict = field(default_factory=dict)   # voice clean-up: breaths / false starts / pauses
+    kept: list = field(default_factory=list)     # cleaned-audio map [(orig a, orig b, clean start)]
+    shift: float = 0.0                           # clean-audio time → video time offset
+    said: list = field(default_factory=list)     # what was actually said: [{"t0", "t1", "text"}] (video time)
+    starts: list = field(default_factory=list)   # video time each script beat starts (None = unknown)
+
+    def at(self, t_orig: float) -> float:
+        """Time in the original recording → time in the video."""
+        from . import cleanup
+        return (cleanup.to_clean_time(t_orig, self.kept) if self.kept else t_orig) + self.shift
 
 
 # --------------------------------------------------------------------------- clips
@@ -164,7 +173,8 @@ def narration_spine(path: Path, clean: bool = True) -> Spine | None:
             seg = _fade(_norm(out[int(a * SR): int(b * SR)]))
             total = LEAD + len(seg) / SR + TAIL
             sp = Spine(_place(seg, LEAD, total), total, [(LEAD + s - a, LEAD + e - a) for s, e in ph],
-                       source="narration", report=rep)
+                       source="narration", report={k: v for k, v in rep.items() if k != "map"},
+                       kept=rep.get("map", []), shift=LEAD - a)
             return sp
     ph = voice._phrases(path)
     a = max(0.0, ph[0][0] - 0.08)
@@ -172,7 +182,28 @@ def narration_spine(path: Path, clean: bool = True) -> Spine | None:
     seg = _fade(_norm(y[int(a * SR): int(b * SR)]))
     total = LEAD + len(seg) / SR + TAIL
     phrases = [(LEAD + s - a, LEAD + e - a) for s, e in ph]
-    return Spine(_place(seg, LEAD, total), total, phrases, source="narration")
+    return Spine(_place(seg, LEAD, total), total, phrases, source="narration", shift=LEAD - a)
+
+
+def _hear(sp: Spine, path: Path, video: dict, cache: Path, log, settings: dict) -> None:
+    """Attach what was actually said (and where each script line starts) from the transcript, if available."""
+    from . import transcribe
+    if not settings.get("hear_voice", True):
+        return
+    tr = transcribe.transcript(path, cache, log, allow_install=settings.get("_allow_install", False))
+    if not tr or not tr.get("words"):
+        return
+    starts = transcribe.beat_starts(tr["words"], video)
+    sp.starts = [sp.at(t) if t is not None else None for t in starts]
+    said, cur = [], None
+    for w in tr["words"]:
+        t0, t1 = sp.at(w["s"]), sp.at(w["e"])
+        if cur and t0 - cur["t1"] < 0.35:
+            cur["t1"], cur["text"] = round(t1, 2), cur["text"] + w["w"]
+        else:
+            cur = {"t0": round(t0, 2), "t1": round(t1, 2), "text": w["w"]}
+            said.append(cur)
+    sp.said = said
 
 
 def _place(y: np.ndarray, at: float, total: float) -> np.ndarray:
@@ -282,6 +313,17 @@ def beat_windows(video: dict, sp: Spine) -> list:
             a += (e0 - s0) * w / wt
             bounds.append(a)
         bounds.append(sp.total)
+    if sp.starts and sum(1 for t in sp.starts if t is not None) >= max(2, len(spoken) // 2):
+        # we heard the recording: each line starts where it was actually said (snapped into the pause before it)
+        gaps = [(x[1] + y[0]) / 2 for x, y in zip(ph, ph[1:])]
+        for k, bi in enumerate(spoken[1:], start=1):
+            t = sp.starts[bi] if bi < len(sp.starts) else None
+            if t is None:
+                continue
+            near = [g for g in gaps if abs(g - (t - 0.05)) <= 0.5]
+            bounds[k] = min(near, key=lambda g: abs(g - t)) if near else t - 0.05
+        for k in range(1, len(bounds) - 1):          # keep order and a minimum length
+            bounds[k] = min(max(bounds[k], bounds[k - 1] + 0.3), bounds[-1] - 0.3 * (len(bounds) - 1 - k))
     win = {bi: (bounds[k], bounds[k + 1]) for k, bi in enumerate(spoken)}
     # silent beats borrow the start of the next spoken beat (or the end of the previous one)
     out = [None] * n
@@ -452,6 +494,7 @@ def edl_prompt(video: dict, clips: list, sp: Spine, windows: list, draft: dict, 
 THE VOICE IS FIXED and THE ANIMATED GRAPHICS ARE FIXED. It is one continuous take, {sp.total:.2f} s long including a short tail. Never cut,
 reorder or shorten it — your job is only the PICTURE: which clip is on screen when.
 Spoken phrases (seconds on the final video): {json.dumps([[round(a, 2), round(b, 2)] for a, b in sp.phrases])}
+{("What the creator ACTUALLY said (heard from the recording — trust this over the script when they differ):" + chr(10) + json.dumps(sp.said, ensure_ascii=False)) if sp.said else ""}
 
 Script beats (what is said when, and which shot the script planned):
 {json.dumps(beats, ensure_ascii=False, indent=1)}
@@ -731,9 +774,11 @@ def resolve(video: dict, assign: dict, footage_files: list, product_images: list
         if sp:
             notes.append(f"Your narration '{nar_path.name}' is used as one continuous take ({sp.total - LEAD - TAIL:.1f}s).")
             r = sp.report
-            if r and any(r.values()):
+            if r and any(r.get(k) for k in ("false_start", "breath", "click", "pauses_shortened")):
                 notes.append(f"Voice cleaned: {r.get('false_start', 0)} false start(s), {r.get('breath', 0)} breath(s), "
                              f"{r.get('click', 0)} click(s) removed; {r.get('pauses_shortened', 0)} long pause(s) shortened.")
+    if sp is not None and sp.source == "narration" and nar_path is not None:
+        _hear(sp, nar_path, video, work_dir.parent / "transcripts", log, settings)
     if sp is None and video["audio_mode"] == "talking":
         sp = talking_spine(video, clips, assign)
         if sp:
@@ -831,5 +876,6 @@ def _cache_key(video: dict, clips: list, sp: Spine, settings: dict, prof: dict |
     script = [(b["shot_id"], b["vo_th"], b["overlays"]) for b in video["timeline"]]
     blob = json.dumps({"clips": [(c.id, _short_hash(c.path), c.pre) for c in clips], "total": round(sp.total, 2),
                        "phrases": [(round(a, 2), round(b, 2)) for a, b in sp.phrases], "script": script,
+                       "heard": [round(t, 2) if t is not None else None for t in sp.starts],
                        "provider": settings.get("provider"), "style": prof, "v": 2}, ensure_ascii=False, sort_keys=True)
     return hashlib.sha1(blob.encode()).hexdigest()[:16]

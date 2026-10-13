@@ -106,6 +106,15 @@ def test_manual_flow_upload_and_render(client):
         {"i": st[0]["i"], "x": None, "y": None, "tilt": None}]}).get_json()["edit"]["stickers"][0]
     assert not back["moved"]
     c.post(f"/api/projects/{pid}/edits/{e['key']}", json={"stickers": [{"i": st[0]["i"], "x": 0.25, "y": 0.8, "tilt": 0}]})
+    rot = c.post(f"/api/projects/{pid}/edits/{e['key']}", json={"stickers": [{"i": st[2]["i"], "tilt": 170}]}).get_json()
+    assert rot["edit"]["stickers"][2]["tilt"] == 170                 # full rotation allowed
+    clips = c.get(f"/api/projects/{pid}/clips").get_json()["clips"]
+    assert clips and all(x["rotate"] == 0 for x in clips)
+    turned = c.post(f"/api/projects/{pid}/clips/turn", json={"name": clips[0]["name"], "degrees": 90}).get_json()
+    assert turned["rotate"] == 90 and turned["manual"]
+    assert c.get(f"/api/projects/{pid}/clips/thumb?name={clips[0]['name']}").status_code == 200
+    assert c.get(f"/api/projects/{pid}/edits").get_json()["edits"][0]["preview_stale"]
+    c.post(f"/api/projects/{pid}/clips/turn", json={"name": clips[0]["name"], "degrees": 270})   # back upright
     fr = c.get(f"/api/projects/{pid}/edits/{e['key']}/frame?t=1.0")
     assert fr.status_code == 200 and fr.mimetype == "image/jpeg"
     j = wait_job(c, c.post(f"/api/projects/{pid}/edits/{e['key']}/preview").get_json()["job"]["id"])
