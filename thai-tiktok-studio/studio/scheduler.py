@@ -241,6 +241,11 @@ def _render_path(p: dict) -> Path:
 
 def _media_url(p: dict, settings: dict) -> str:
     """Public link for the FINAL video only: own website > Cloudinary > Litterbox (72 h)."""
+    try:                                         # never send a video that players would show sideways
+        from .editor.render import _strip_rotation
+        _strip_rotation(_render_path(p))
+    except Exception:
+        pass
     base = (settings.get("public_base_url") or "").rstrip("/")
     if base:                                     # hosted website: our own permanent link
         return f"{base}/pub/{p['pub_token']}/{p['render']}"

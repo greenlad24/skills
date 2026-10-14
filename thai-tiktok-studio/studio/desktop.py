@@ -55,7 +55,14 @@ def main() -> None:
     from . import scheduler
     scheduler.start_worker(config.load_settings)        # hands posts to PostPeer while the app is open
     from . import updater
-    updater.start()                                      # new versions install themselves
+    updater.start()
+    def _fix_old_renders():                              # videos made before 1.9.6 may carry a rotation tag
+        try:
+            from .editor import render
+            render.fix_existing(config.PROJECTS_DIR)
+        except Exception:
+            pass
+    threading.Thread(target=_fix_old_renders, daemon=True).start()                                      # new versions install themselves
 
     from werkzeug.serving import make_server
     server = make_server("0.0.0.0", port, webapp.app, threaded=True)

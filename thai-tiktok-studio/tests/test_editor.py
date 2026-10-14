@@ -180,3 +180,20 @@ def test_style_packs_change_motion():
                        loop="float", out="pop_out")
         for t in (0.05, 0.2, 1.0, 1.95):
             render_element(el, t)
+
+
+def test_finished_video_never_carries_a_rotation_tag(tmp_path):
+    """ffmpeg 7.1 (Mac) can copy a phone clip's rotation tag into the output → whole video shown sideways."""
+    ff = media.ffmpeg_exe()
+    subprocess.run([ff, "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=1080x1920:r=30:d=1", "-c:v", "libx264",
+                    "-preset", "ultrafast", str(tmp_path / "v.mp4")], check=True)
+    subprocess.run([ff, "-v", "error", "-y", "-display_rotation", "90", "-i", str(tmp_path / "v.mp4"), "-c", "copy",
+                    str(tmp_path / "tagged.mp4")], check=True)
+    f = tmp_path / "tagged.mp4"
+    assert render._rotation_tag(f) and media.probe(f)["width"] == 1920
+    render._strip_rotation(f)
+    assert not render._rotation_tag(f) and (media.probe(f)["width"], media.probe(f)["height"]) == (1080, 1920)
+    (tmp_path / "p" / "renders").mkdir(parents=True)
+    subprocess.run([ff, "-v", "error", "-y", "-display_rotation", "90", "-i", str(tmp_path / "v.mp4"), "-c", "copy",
+                    str(tmp_path / "p" / "renders" / "V1_bouncy_100000.mp4")], check=True)
+    assert render.fix_existing(tmp_path) == 1 and not render._rotation_tag(tmp_path / "p" / "renders" / "V1_bouncy_100000.mp4")

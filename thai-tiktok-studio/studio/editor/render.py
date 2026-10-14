@@ -7,6 +7,7 @@ RGBA over stdin and composited on top. Audio: clip sound + voice + ducked music 
 
 from __future__ import annotations
 
+import re
 import subprocess
 import threading
 from pathlib import Path
@@ -119,6 +120,31 @@ def overlay_frames(R: Resolved):
         yield canvas.tobytes()
 
 
+def _rotation_tag(path: Path) -> bool:
+    err = subprocess.run([ffmpeg_exe(), "-hide_banner", "-i", str(path)], capture_output=True, text=True,
+                         errors="replace").stderr
+    angles = [float(a) for a in re.findall(r"rotation of (-?[\d.]+)", err)]
+    angles += [float(a) for a in re.findall(r"\brotate\s*:\s*(-?[\d.]+)", err)]
+    return any(abs(a) % 360 > 0.5 for a in angles)
+
+
+def _strip_rotation(path: Path) -> None:
+    """Safety net: if a rotation tag still ended up in the file, rewrite it without one (no re-encode)."""
+    if not _rotation_tag(path):
+        return
+    tmp = path.with_name(path.stem + "_fix.mp4")
+    subprocess.run([ffmpeg_exe(), "-y", "-v", "error", "-display_rotation", "0", "-i", str(path), "-c", "copy",
+                    "-map_metadata", "-1", "-movflags", "+faststart", str(tmp)], capture_output=True)
+    if tmp.exists() and tmp.stat().st_size > 0:
+        tmp.replace(path)
+    if _rotation_tag(path):   # last resort: rebuild the container without any side data
+        subprocess.run([ffmpeg_exe(), "-y", "-v", "error", "-i", str(path), "-c", "copy", "-map_metadata", "-1",
+                        "-bsf:v", "filter_units=remove_types=6", "-metadata:s:v:0", "rotate=0", str(tmp)],
+                       capture_output=True)
+        if tmp.exists() and tmp.stat().st_size > 0:
+            tmp.replace(path)
+
+
 def build_audio(R: Resolved, out_wav: Path) -> None:
     audio_io.write_wav(out_wav, R.speech)
 
@@ -152,7 +178,9 @@ def render(R: Resolved, out_path: Path, work_dir: Path, music: Path | None = Non
         graph.append(f"[bv]drawbox=x=0:y=145:w=iw:h=10:color=white@0.3:t=fill,"
                      f"drawbox=x=0:y=145:w='iw*t/{R.total:.3f}':h=10:color={c}:t=fill[bvp]")
         base = "bvp"
-    graph.append(f"[{base}][{ov_i}:v]overlay=0:0:format=auto,format=yuv420p[vout]")
+    # the finished video must never carry a phone clip's rotation tag (ffmpeg 7.1 can copy it → whole video sideways)
+    graph.append(f"[{base}][{ov_i}:v]overlay=0:0:format=auto,format=yuv420p,"
+                 f"sidedata=mode=delete:type=DISPLAYMATRIX[vout]")
     graph.append(f"[{fx_i}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[fx]")
     graph.append("[ba][fx]amix=inputs=2:normalize=0:duration=first[speech]")
     if music:
@@ -196,7 +224,21 @@ def render(R: Resolved, out_path: Path, work_dir: Path, music: Path | None = Non
     th.join(timeout=5)
     if proc.returncode != 0:
         raise RuntimeError("ffmpeg failed: " + " | ".join(err_lines[-6:]))
+    _strip_rotation(out_path)
     info = probe(out_path)
     if (info["width"], info["height"]) != (W, H):   # every video must be vertical 9:16
         raise RuntimeError(f"render came out {info['width']}x{info['height']} instead of {W}x{H}")
     return out_path
+
+
+def fix_existing(root: Path) -> int:
+    """One sweep over finished videos and previews: remove a rotation tag where an older render left one."""
+    n = 0
+    for f in list(root.glob("*/renders/*.mp4")) + list(root.glob("*/edits/*.mp4")):
+        try:
+            if _rotation_tag(f):
+                _strip_rotation(f)
+                n += 1
+        except Exception:
+            pass
+    return n
