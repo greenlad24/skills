@@ -1,6 +1,6 @@
 {
- "version": "1.9.6",
+ "version": "1.9.7",
  "zip_url": "https://raw.githubusercontent.com/greenlad24/skills/claude/wizardly-thompson-w6jjr8/thai-tiktok-studio/releases/ThaiTikTokStudio-mac.zip",
- "sha256": "bb8d545862cea0e52b1524b6cbc065bc7cf0a670b7a1ab80400e2990c3151f6e",
+ "sha256": "8ba46a582d0450d6ee491aee5831d47728e6095a199c488f284946bafae98c0b",
  "notes": "1.9.6 — แก้คลิปที่ออกมาแนวนอนทั้งคลิป (รวมสติกเกอร์): ลบป้ายการหมุนที่ติดมาจากคลิปมือถือ และซ่อมคลิปเก่าให้อัตโนมัติ\n1.9.6 — Fixed whole videos (stickers too) showing sideways: the phone clip's rotation tag is removed, and older videos are repaired automatically"
 }

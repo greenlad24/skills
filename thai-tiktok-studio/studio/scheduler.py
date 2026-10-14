@@ -243,7 +243,8 @@ def _media_url(p: dict, settings: dict) -> str:
     """Public link for the FINAL video only: own website > Cloudinary > Litterbox (72 h)."""
     try:                                         # never send a video that players would show sideways
         from .editor.render import _strip_rotation
-        _strip_rotation(_render_path(p))
+        if _strip_rotation(_render_path(p)):        # repaired → the uploaded copy is the old sideways one
+            p = _update(p["id"], media_url="", cloudinary_id="", media_uploaded=0) or p
     except Exception:
         pass
     base = (settings.get("public_base_url") or "").rstrip("/")

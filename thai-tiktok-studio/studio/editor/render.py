@@ -128,10 +128,10 @@ def _rotation_tag(path: Path) -> bool:
     return any(abs(a) % 360 > 0.5 for a in angles)
 
 
-def _strip_rotation(path: Path) -> None:
+def _strip_rotation(path: Path) -> bool:
     """Safety net: if a rotation tag still ended up in the file, rewrite it without one (no re-encode)."""
     if not _rotation_tag(path):
-        return
+        return False
     tmp = path.with_name(path.stem + "_fix.mp4")
     subprocess.run([ffmpeg_exe(), "-y", "-v", "error", "-display_rotation", "0", "-i", str(path), "-c", "copy",
                     "-map_metadata", "-1", "-movflags", "+faststart", str(tmp)], capture_output=True)
@@ -143,6 +143,7 @@ def _strip_rotation(path: Path) -> None:
                        capture_output=True)
         if tmp.exists() and tmp.stat().st_size > 0:
             tmp.replace(path)
+    return True
 
 
 def build_audio(R: Resolved, out_wav: Path) -> None:
