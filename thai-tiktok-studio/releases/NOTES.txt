@@ -1,2 +1,2 @@
-1.9.4 — หน้าแคปชันบนมือถือเป็นลิงก์ถาวร เพิ่มไว้ที่หน้าจอโฮมได้ โพสต์ล่าสุดอยู่บนสุด
-1.9.4 — The phone captions page is a permanent link you can add to your home screen; newest post on top
+1.9.5 — เวลาโพสต์หลักเปลี่ยนเป็น 18:00 ทุกวัน (เพิ่มได้ 12:15 และ 21:00)
+1.9.5 — Default posting time is now 6 pm every day (extra posts at 12:15 and 9 pm)

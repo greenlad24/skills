@@ -1,4 +1,5 @@
 # When to post (Thai TikTok Shop, Bangkok time)
+> **In use:** the creator chose 18:00 as the daily default (extra posts 12:15 and 21:00). The research below is kept for reference.
 
 Built into `studio/scheduler.py` (`SLOTS`). Evidence was gathered on 2026-10-11:
 - **BigSeller 2025.** Weekdays: 06–09, 12:00–13:30, 18–21. Weekends: 08–10, 12–14, 17–20. https://www.bigseller.com/blog/articleDetails/2828/best-times-tiktok-2025.htm

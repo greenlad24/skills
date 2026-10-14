@@ -24,17 +24,11 @@ TZ_NAME = "Asia/Bangkok"
 STORE = lambda: config.HOME / "schedule.json"  # noqa: E731  (HOME can change in tests)
 _LOCK = threading.RLock()
 
-# Best Thai posting slots (Bangkok time) per weekday, best first. Mon=0 … Sun=6.
+# Posting slots (Bangkok time) per weekday, first = default. Mon=0 … Sun=6. You chose 18:00.
 # Evidence (frameworks/posting_times.md): Thai TikTok Shop buying peaks 19:30–22:30 and
-# lunch 12:00–13:30; 20:00 is the core slot; Tue–Thu strongest; weekends start earlier.
-SLOTS = {
-    0: ["20:00", "12:15", "18:30"],
-    1: ["20:00", "12:15", "18:30"],
-    2: ["20:00", "12:15", "21:00"],
-    3: ["20:00", "12:15", "07:30"],
-    4: ["20:30", "12:15", "18:30"],
-    5: ["19:00", "10:00", "13:00"],
-    6: ["20:00", "10:00", "13:00"],
+# lunch 12:00–13:30 (research favoured 20:00; the creator's own choice is 18:00).
+SLOTS = {   # 18:00 is your main time every day; 12:15 lunch and 21:00 evening for extra posts
+    d: ["18:00", "12:15", "21:00"] for d in range(7)
 }
 MIN_GAP_H = 3
 SUBMIT_AHEAD_H_LOCAL = 48      # Litterbox links last 72 h → hand over at most 48 h early

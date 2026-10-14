@@ -41,8 +41,8 @@ def test_auto_schedule_best_slots_alternating(env):
     posts = scheduler.auto_schedule(per_day=1, start=start)
     assert len(posts) == 6
     times = [p["at"] for p in posts]
-    assert times[0] == "2026-10-12T20:00" and times[1] == "2026-10-13T20:00"   # Mon/Tue 20:00
-    assert all(t.endswith(("20:00", "20:30", "19:00")) for t in times)        # slot #1 of each day
+    assert times[0] == "2026-10-12T18:00" and times[1] == "2026-10-13T18:00"   # Mon/Tue 18:00
+    assert all(t.endswith("18:00") for t in times)                             # default slot every day
     assert posts[0]["project_id"] != posts[1]["project_id"]                   # products alternate
     # the A/B version of the same video waits ≥ 2 days
     by = {}
