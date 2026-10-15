@@ -448,7 +448,7 @@
  "sched.emptyText": "Finish some videos, then tap “✨ Plan my posts” above.",
  "sched.dayLabel": "{day} {d}/{m}",
  "sched.done": "Posted / cancelled ({n})",
- "sched.time": "Post time",
+ "sched.time": "Time",
  "sched.caption": "Caption (no price · invites people to tap the basket)",
  "sched.hashtags": "Hashtags (3–5)",
  "sched.viewPost": "View on TikTok",
@@ -657,5 +657,6 @@
  "sched.capsPhone": "Captions on my phone",
  "sched.caps1": "Scan this with your phone's camera (same Wi-Fi as this computer), then tap Share → Add to Home Screen — the link stays the same, so you only do this once.",
  "sched.caps2": "When a video arrives in your TikTok inbox, tap Copy caption on that page.",
- "sched.caps3": "Paste it in TikTok, add the product basket and post."
+ "sched.caps3": "Paste it in TikTok, add the product basket and post.",
+ "sched.date": "Date"
 }

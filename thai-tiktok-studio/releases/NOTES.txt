@@ -1,2 +1,2 @@
-1.9.10 — แก้แอปปิดเอง (Python quit unexpectedly) ตอนวาดตัวอักษรไทยบนสติกเกอร์
-1.9.10 — Fixed the app crashing (Python quit unexpectedly) while drawing Thai sticker text
+1.9.11 — เปลี่ยนเวลาโพสต์ได้แล้ว: เลือกวันที่และเวลาแยกกัน (ทุก 15 นาที) พร้อมปุ่มลัด 12:15 · 18:00 · 21:00
+1.9.11 — Change a post's time, not only the date: separate date and time (15-minute steps) with quick 12:15 · 18:00 · 21:00 buttons

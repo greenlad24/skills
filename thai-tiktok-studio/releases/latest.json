@@ -1,6 +1,6 @@
 {
- "version": "1.9.10",
+ "version": "1.9.11",
  "zip_url": "https://raw.githubusercontent.com/greenlad24/skills/claude/wizardly-thompson-w6jjr8/thai-tiktok-studio/releases/ThaiTikTokStudio-mac.zip",
- "sha256": "acdcc71b654ee99d6c2e6cbeffca2ef10544616171b947690693a1d8d26f1394",
- "notes": "1.9.10 — แก้แอปปิดเอง (Python quit unexpectedly) ตอนวาดตัวอักษรไทยบนสติกเกอร์\n1.9.10 — Fixed the app crashing (Python quit unexpectedly) while drawing Thai sticker text"
+ "sha256": "a6328be36955f9c78feb348e4df8a1653abe8bbd343389ce9971a6b21e7d1c4c",
+ "notes": "1.9.11 — เปลี่ยนเวลาโพสต์ได้แล้ว: เลือกวันที่และเวลาแยกกัน (ทุก 15 นาที) พร้อมปุ่มลัด 12:15 · 18:00 · 21:00\n1.9.11 — Change a post's time, not only the date: separate date and time (15-minute steps) with quick 12:15 · 18:00 · 21:00 buttons"
 }

@@ -1254,6 +1254,12 @@ function postErrorText(raw) {
   const hit = POST_ERR.find((m) => m[0].test(raw || ""));
   return t(hit ? hit[1] : "perr.other");
 }
+function timeOptions(cur) {
+  const opts = [];
+  for (let m = 0; m < 24 * 60; m += 15) opts.push(`${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`);
+  if (cur && opts.indexOf(cur) < 0) { opts.push(cur); opts.sort(); }
+  return opts.map((o) => `<option value="${o}" ${o === cur ? "selected" : ""}>${o}</option>`).join("");
+}
 function postRow(p) {
   const fileUrl = `/files/${encodeURIComponent(p.project_id)}/renders/${encodeURIComponent(p.render)}`;
   const bad = !!p.error || p.status === "missed";
@@ -1273,7 +1279,10 @@ function postRow(p) {
         ${["posted", "cancelled"].includes(p.status) ? "" : `<button class="btn ghost small" data-act="edit">✏️ ${t("sched.edit")}</button>`}
         ${p.error ? `<button class="btn ghost small" data-act="details">🔎 ${t("sched.details")}</button>` : ""}</div>
       <div class="pedit hidden">
-        <label for="at_${esc(p.id)}">🕒 ${t("sched.time")}</label><input type="datetime-local" id="at_${esc(p.id)}" data-f="at" value="${esc(p.at)}">
+        <div class="when-row">
+          <div><label for="d_${esc(p.id)}">📅 ${t("sched.date")}</label><input type="date" id="d_${esc(p.id)}" data-f="date" value="${esc(p.at.slice(0, 10))}"></div>
+          <div><label for="tm_${esc(p.id)}">🕒 ${t("sched.time")}</label><select id="tm_${esc(p.id)}" data-f="time">${timeOptions(p.at.slice(11, 16))}</select></div></div>
+        <div class="row quick-times">${["12:15", "18:00", "21:00"].map((x) => `<button class="btn ghost small" data-qt="${x}">${x}</button>`).join("")}</div>
         <label for="cap_${esc(p.id)}">💬 ${t("sched.caption")}</label><textarea id="cap_${esc(p.id)}" data-f="caption" rows="4">${esc(p.caption)}</textarea>
         <label for="tag_${esc(p.id)}"># ${t("sched.hashtags")}</label><input id="tag_${esc(p.id)}" data-f="hashtags" value="${esc(p.hashtags.join(" "))}">
         <div class="post-actions"><button class="btn primary" data-act="save">💾 ${t("common.save")}</button>
@@ -1412,6 +1421,7 @@ function wireScheduler() {
   };
   $$("[data-post]").forEach((el) => {
     const id = el.dataset.post;
+    $$("[data-qt]", el).forEach((b) => (b.onclick = () => { const sel = $('[data-f="time"]', el); sel.innerHTML = timeOptions(b.dataset.qt); sel.value = b.dataset.qt; }));
     $$("[data-act]", el).forEach((b) => (b.onclick = async () => {
       const act = b.dataset.act;
       if (act === "edit") { $(".pedit", el).classList.toggle("hidden"); return; }
@@ -1421,7 +1431,7 @@ function wireScheduler() {
           await api(`/api/schedule/${id}/retry`, { method: "POST" });
           toast(`<b>↻ ${t("sched.retrying")}</b>`, 3500); setTimeout(showScheduler, 6000); return;
         } else if (act === "save") {
-          await api(`/api/schedule/${id}`, { method: "PATCH", json: { at: $('[data-f="at"]', el).value,
+          await api(`/api/schedule/${id}`, { method: "PATCH", json: { at: `${$('[data-f="date"]', el).value}T${$('[data-f="time"]', el).value}`,
             caption: $('[data-f="caption"]', el).value, hashtags: $('[data-f="hashtags"]', el).value.split(/\s+/).filter(Boolean) } });
           toast(tt("common.saved"), 2000, "good");
         } else if (act === "newcap") {
