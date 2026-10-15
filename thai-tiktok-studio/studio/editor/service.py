@@ -133,6 +133,12 @@ def _variants(plan: dict, video_ids: list, versions: int) -> list:
 
 
 def _build(pid, v, settings, say, edl=None):
+    from . import shaper, text as T
+    from PIL import ImageFont
+    if T.LAYOUT != ImageFont.Layout.RAQM and not shaper.available():   # Mac: Thai marks need the shaper
+        say("Setting up Thai text for the stickers (one time)…")
+        shaper.ensure(background=False)
+        T._SHAPER_OK = None
     d, plan, assign, product_images, music = _context(pid)
     R = smart_edit.resolve(v, assign, footage_files(pid), product_images, settings, d / "work" / v["id"],
                            log=say, narration_dir=d / "narration", edl_override=edl)

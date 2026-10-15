@@ -30,7 +30,12 @@ def available() -> bool:
 
 def ensure(background: bool = True) -> None:
     """Install the shaping packages once (they're small wheels for every Mac)."""
-    if available() or not _INSTALLING.acquire(blocking=False):
+    if available():
+        return
+    if not _INSTALLING.acquire(blocking=False):
+        if not background:            # someone else is installing: wait for it to finish
+            with _INSTALLING:
+                pass
         return
 
     def run():
