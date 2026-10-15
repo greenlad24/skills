@@ -197,3 +197,23 @@ def test_finished_video_never_carries_a_rotation_tag(tmp_path):
     subprocess.run([ff, "-v", "error", "-y", "-display_rotation", "90", "-i", str(tmp_path / "v.mp4"), "-c", "copy",
                     str(tmp_path / "p" / "renders" / "V1_bouncy_100000.mp4")], check=True)
     assert render.fix_existing(tmp_path) == 1 and not render._rotation_tag(tmp_path / "p" / "renders" / "V1_bouncy_100000.mp4")
+
+
+def test_thai_marks_drawn_correctly_without_raqm():
+    """Macs usually lack raqm: stacked marks (ที่ น้ำ) must still look exactly like the shaped text."""
+    from PIL import ImageChops, ImageFont
+    from studio.editor import shaper
+    if not shaper.available():
+        pytest.skip("uharfbuzz / freetype-py not installed")
+    txt = "ที่นอนนุ่ม น้ำหนักเบา ผู้หญิงทำได้ไหม ปี่ ฝั่ง"
+    ref = T.text_block(txt, size=60, max_w=2000, max_lines=1, highlight=["น้ำหนัก"])
+    old = T.LAYOUT
+    try:
+        T.LAYOUT, T._SHAPER_OK = ImageFont.Layout.BASIC, None
+        got = T.text_block(txt, size=60, max_w=2000, max_lines=1, highlight=["น้ำหนัก"])
+    finally:
+        T.LAYOUT, T._SHAPER_OK = old, None
+    assert ref.size == got.size
+    diff = ImageChops.difference(ref.convert("RGBA"), got.convert("RGBA")).convert("L")
+    bad = sum(1 for v in diff.getdata() if v > 60)
+    assert bad < ref.width * ref.height * 0.01, bad

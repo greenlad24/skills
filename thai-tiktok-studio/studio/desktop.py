@@ -62,7 +62,14 @@ def main() -> None:
             render.fix_existing(config.PROJECTS_DIR)
         except Exception:
             pass
-    threading.Thread(target=_fix_old_renders, daemon=True).start()                                      # new versions install themselves
+    threading.Thread(target=_fix_old_renders, daemon=True).start()
+    try:                                                 # Thai marks on stickers need a shaper on most Macs
+        from PIL import features
+        if not features.check("raqm"):
+            from .editor import shaper
+            shaper.ensure(background=True)
+    except Exception:
+        pass                                      # new versions install themselves
 
     from werkzeug.serving import make_server
     server = make_server("0.0.0.0", port, webapp.app, threaded=True)

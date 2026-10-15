@@ -34,6 +34,27 @@ EMOJI_RE = re.compile(
 COMBINING = set(range(0x0E34, 0x0E3B)) | {0x0E31} | set(range(0x0E47, 0x0E4F))
 
 
+_SHAPER_OK = None
+
+
+def use_shaper() -> bool:
+    """True when Pillow can't shape Thai (no raqm) but our HarfBuzz/FreeType drawing is installed."""
+    global _SHAPER_OK
+    if LAYOUT == ImageFont.Layout.RAQM:
+        return False
+    if not _SHAPER_OK:
+        from . import shaper
+        _SHAPER_OK = shaper.available()
+    return bool(_SHAPER_OK)
+
+
+def text_len(f, s: str) -> float:
+    if use_shaper() and s:
+        from . import shaper
+        return shaper.length(f.path, f.size, s)
+    return f.getlength(s)
+
+
 def strip_emoji(s: str) -> str:
     return re.sub(r"\s{2,}", " ", EMOJI_RE.sub("", s or "")).strip()
 
@@ -166,7 +187,7 @@ def text_block(
     sw = stroke_w if stroke_w is not None else (max(3, int(f.size * 0.10)) if stroke else 0)
     asc, desc = f.getmetrics()
     lh = int((asc + desc) * (1 + line_gap))
-    widths = [int(f.getlength(l)) for l in lines]
+    widths = [int(text_len(f, l)) for l in lines]
     pad = sw + 12
     W = max(widths) + pad * 2
     H = lh * len(lines) + pad * 2 + desc // 2
@@ -177,8 +198,12 @@ def text_block(
         y = pad + i * lh
         for chunk, hl in safe_splits(line, highlight or []):
             col = hl_fill if hl else fill
-            d.text((x, y), chunk, font=f, fill=col, stroke_width=sw, stroke_fill=stroke if sw else None)
-            x += int(f.getlength(chunk))
+            if use_shaper():      # Mac without raqm: HarfBuzz places Thai vowel/tone marks correctly
+                from . import shaper
+                shaper.draw(img, (x, y), chunk, f.path, f.size, asc, fill=col, stroke=stroke if sw else None, stroke_w=sw)
+            else:
+                d.text((x, y), chunk, font=f, fill=col, stroke_width=sw, stroke_fill=stroke if sw else None)
+            x += int(text_len(f, chunk))
     if shadow:
         sh = Image.new("RGBA", img.size, (0, 0, 0, 0))
         alpha = img.getchannel("A").point(lambda a: int(a * 0.45))
