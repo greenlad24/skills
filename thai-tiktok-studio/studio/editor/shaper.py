@@ -22,10 +22,51 @@ import threading
 from PIL import Image
 
 _INSTALLING = threading.Lock()
+_USE = threading.RLock()          # FreeType/HarfBuzz objects must never be used by two threads at once
+
+
+def _marker():
+    from .. import config
+    return config.HOME / "thai_shaper_in_use"
+
+
+def _off_flag():
+    from .. import config
+    return config.HOME / "thai_shaper_off"
+
+
+def startup_check() -> None:
+    """Called at app start: if the app died while drawing text last time, never use the shaper again."""
+    m = _marker()
+    if m.exists():
+        try:
+            _off_flag().write_text("crashed while drawing Thai text")
+            m.unlink()
+        except OSError:
+            pass
 
 
 def available() -> bool:
+    if _off_flag().exists():
+        return False
     return importlib.util.find_spec("uharfbuzz") is not None and importlib.util.find_spec("freetype") is not None
+
+
+class _guard:
+    """One drawing at a time + a crash marker around native code."""
+    def __enter__(self):
+        _USE.acquire()
+        try:
+            _marker().touch()
+        except OSError:
+            pass
+
+    def __exit__(self, *a):
+        try:
+            _marker().unlink()
+        except OSError:
+            pass
+        _USE.release()
 
 
 def ensure(background: bool = True) -> None:
@@ -71,12 +112,18 @@ def _shape(path: str, size: int, text: str):
 
 
 def length(path: str, size: int, text: str) -> float:
-    _, pos = _shape(path, size, text)
-    return sum(p.x_advance for p in pos) / 64.0
+    with _guard():
+        _, pos = _shape(path, size, text)
+        return sum(p.x_advance for p in pos) / 64.0
 
 
 def draw(img: Image.Image, xy, text: str, path: str, size: int, ascent: int, fill, stroke=None, stroke_w: int = 0):
     """Draw text onto an RGBA image at xy (top-left like Pillow's d.text), baseline = y + ascent."""
+    with _guard():
+        _draw(img, xy, text, path, size, ascent, fill, stroke, stroke_w)
+
+
+def _draw(img, xy, text, path, size, ascent, fill, stroke, stroke_w):
     import freetype
     infos, pos = _shape(path, size, text)
     _, ft = _faces(path, size)

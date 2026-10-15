@@ -217,3 +217,30 @@ def test_thai_marks_drawn_correctly_without_raqm():
     diff = ImageChops.difference(ref.convert("RGBA"), got.convert("RGBA")).convert("L")
     bad = sum(1 for v in diff.getdata() if v > 60)
     assert bad < ref.width * ref.height * 0.01, bad
+
+
+def test_shaper_is_thread_safe_and_turns_off_after_a_crash(tmp_path, monkeypatch):
+    import threading
+    from PIL import ImageFont
+    from studio import config
+    from studio.editor import shaper
+    if not shaper.available():
+        pytest.skip("uharfbuzz / freetype-py not installed")
+    monkeypatch.setattr(config, "HOME", tmp_path)
+    monkeypatch.setattr(T, "LAYOUT", ImageFont.Layout.BASIC)
+    monkeypatch.setattr(T, "_SHAPER_OK", None)
+    errs = []
+
+    def work(k):
+        try:
+            for i in range(25):
+                T.text_block(f"ที่นอนนุ่ม น้ำหนักเบา {k}-{i}", size=40 + (i % 5) * 6, max_w=900, max_lines=2)
+        except Exception as e:
+            errs.append(e)
+    ts = [threading.Thread(target=work, args=(k,)) for k in range(6)]
+    [t.start() for t in ts]
+    [t.join() for t in ts]
+    assert not errs and not (tmp_path / "thai_shaper_in_use").exists()
+    (tmp_path / "thai_shaper_in_use").touch()          # the app died in the middle of drawing
+    shaper.startup_check()
+    assert not shaper.available() and not (tmp_path / "thai_shaper_in_use").exists()

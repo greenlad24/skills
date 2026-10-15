@@ -1,3 +1,3 @@
 """Thai TikTok Studio — product research → viral Thai scripts → automatic edits."""
 
-__version__ = "1.9.9"
+__version__ = "1.9.10"

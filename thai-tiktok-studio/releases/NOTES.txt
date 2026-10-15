@@ -1,2 +1,2 @@
-1.9.8 — แก้สระและวรรณยุกต์ที่หายไปในสติกเกอร์ (เช่น ที่ น้ำ ปี่) บน Mac — ติดตั้งตัวจัดตัวอักษรไทยให้อัตโนมัติ
-1.9.8 — Fixed missing Thai vowel/tone marks on stickers (ที่, น้ำ, ปี่) on Mac — a Thai text shaper is installed automatically
+1.9.10 — แก้แอปปิดเอง (Python quit unexpectedly) ตอนวาดตัวอักษรไทยบนสติกเกอร์
+1.9.10 — Fixed the app crashing (Python quit unexpectedly) while drawing Thai sticker text

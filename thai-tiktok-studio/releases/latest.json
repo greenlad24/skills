@@ -1,6 +1,6 @@
 {
- "version": "1.9.9",
+ "version": "1.9.10",
  "zip_url": "https://raw.githubusercontent.com/greenlad24/skills/claude/wizardly-thompson-w6jjr8/thai-tiktok-studio/releases/ThaiTikTokStudio-mac.zip",
- "sha256": "18c89fc0e0752cad654c59bc6a518eecec3af6ba9f8db68d553ea978e22bb809",
- "notes": "1.9.8 — แก้สระและวรรณยุกต์ที่หายไปในสติกเกอร์ (เช่น ที่ น้ำ ปี่) บน Mac — ติดตั้งตัวจัดตัวอักษรไทยให้อัตโนมัติ\n1.9.8 — Fixed missing Thai vowel/tone marks on stickers (ที่, น้ำ, ปี่) on Mac — a Thai text shaper is installed automatically"
+ "sha256": "acdcc71b654ee99d6c2e6cbeffca2ef10544616171b947690693a1d8d26f1394",
+ "notes": "1.9.10 — แก้แอปปิดเอง (Python quit unexpectedly) ตอนวาดตัวอักษรไทยบนสติกเกอร์\n1.9.10 — Fixed the app crashing (Python quit unexpectedly) while drawing Thai sticker text"
 }

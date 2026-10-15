@@ -65,8 +65,9 @@ def main() -> None:
     threading.Thread(target=_fix_old_renders, daemon=True).start()
     try:                                                 # Thai marks on stickers need a shaper on most Macs
         from PIL import features
+        from .editor import shaper
+        shaper.startup_check()                        # crashed while drawing text last time → stay off
         if not features.check("raqm"):
-            from .editor import shaper
             shaper.ensure(background=True)
     except Exception:
         pass                                      # new versions install themselves
