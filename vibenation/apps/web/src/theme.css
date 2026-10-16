@@ -1,0 +1,20 @@
+:root {
+  --bg-canvas: #0f0c0a;
+  --bg-panel: #18130f;
+  --bg-raised: #231c17;
+  --line: #3b3029;
+  --text-1: #f5eee6;
+  --text-2: #ada195;
+  --text-3: #7d7268;
+  --on-air: #3d8bff;
+  --on-air-fill: #1f66e0;
+  --warn: #ffb224;
+  --error: #ff5a52;
+  --ai: #b9a6ff;
+  --brand: #ff8a3d;
+  --font-display: 'Sora', sans-serif;
+  --font-ui: 'DM Sans', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg-canvas); color: var(--text-1); font-family: var(--font-ui); }
