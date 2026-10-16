@@ -43,3 +43,8 @@
 - At pre-flight Claude writes a click-optimised TITLE (plus ranked alternatives), an SEO DESCRIPTION (keywords, location, line-up, chapters added live as songs change) and TAGS.
 - A THUMBNAIL is generated with OpenAI's GPT Image from a real live camera frame + title text, and attached to the live broadcast automatically (YouTube API thumbnails.set; needs a channel verified for custom thumbnails).
 - All attached automatically at go-live; user can edit. Requires an OpenAI API key (ChatGPT plan does not cover API).
+
+## Channel & location (user decision)
+- YouTube channel: @MusicLiveLove ("Music Live Love").
+- NEVER mention Thailand, Koh Samui, islands or any location — not in titles, descriptions, tags, thumbnails, slates or the app.
+- Title style follows the channel: "Song – Artist | Live <Genre> Cover Band Arrangement (Not AI)"; live streams: "LIVE: Funk & Soul Cover Band — … | Real Musicians (Not AI)".
