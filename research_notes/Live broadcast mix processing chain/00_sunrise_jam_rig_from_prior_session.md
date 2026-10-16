@@ -33,4 +33,4 @@ Sax/harmonica/flute HPF 120, comp -18 3:1 20/150; Solo gtr HPF 100 comp -18 3:1;
 Feedback rings observed in room: 129, 160, 196, 226, 3377 Hz (FOH only — a broadcast mix off the USB feed has no feedback loop, so boosts/makeup are allowed there).
 
 ## Venue
-Open-stage bar in Thailand (Samui/Koh Phangan area). Neo-Soul/Funk, rotating musicians, guest soloists.
+Open-stage bar. Neo-Soul/Funk, rotating musicians, guest soloists.
