@@ -24,3 +24,9 @@
 - NO manual-control button. Engineer mode is the DEFAULT view.
 - Any manual change (fader, EQ, cut, etc.) overrides the AI on that control for the REST OF THE STREAM. The AI only touches a human-held control if something radical happens (feedback, clipping, dead signal / emergency).
 - Manual camera cuts are respected; the AI keeps directing from the shot the human picked.
+
+## Program only, click-to-cut (user decision)
+- No preview/next monitor and no Veto/Cut/Mix buttons. The Show screen has ONE picture: the live program.
+- Clicking any camera tile puts it on air immediately; the AI keeps directing from the picked shot.
+- The AI's next-shot reasoning lives in the sidebar ("Director is thinking") / backend, not as on-screen controls.
+- Green "preview" colour is therefore no longer used on the Show screen.
