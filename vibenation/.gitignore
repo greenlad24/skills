@@ -7,3 +7,5 @@ dist/
 data/
 __pycache__/
 .venv/
+services/audio/plugins/.gen/
+services/audio/plugins/build/

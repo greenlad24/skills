@@ -1,7 +1,0 @@
-@prefix lv2:  <http://lv2plug.in/ns/lv2core#> .
-@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-
-<https://vibenation.app/lv2/vn_opto>
-    a lv2:Plugin ;
-    lv2:binary <vn_opto.so> ;
-    rdfs:seeAlso <vn_opto.ttl> .
