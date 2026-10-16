@@ -19,3 +19,8 @@
 
 ## Name (user decision)
 - The app is called "VibeNation" (one word, capital V and N). NO mention of "Sunrise Jam" anywhere in the app or its design docs. The band/show name, logo and colours on stream graphics are user settings (generic placeholders in designs). VibeNation has its own identity, not a band-derived "sunrise" brand.
+
+## Override model (user decision, supersedes "take manual control")
+- NO manual-control button. Engineer mode is the DEFAULT view.
+- Any manual change (fader, EQ, cut, etc.) overrides the AI on that control for the REST OF THE STREAM. The AI only touches a human-held control if something radical happens (feedback, clipping, dead signal / emergency).
+- Manual camera cuts are respected; the AI keeps directing from the shot the human picked.
