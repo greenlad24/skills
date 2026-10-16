@@ -7,10 +7,10 @@ touch "$ENV_FILE" && chmod 600 "$ENV_FILE"
 
 read -rp "Login name [band]: " NAME
 NAME="${NAME:-band}"
-read -rsp "New password (min 10 characters): " PW1; echo
+read -rsp "New password: " PW1; echo
 read -rsp "Type it again: " PW2; echo
 [ "$PW1" = "$PW2" ] || { echo "Passwords don't match. Nothing changed."; exit 1; }
-[ "${#PW1}" -ge 10 ] || { echo "Too short. Nothing changed."; exit 1; }
+[ -n "$PW1" ] || { echo "Empty password. Nothing changed."; exit 1; }
 
 NAME="$NAME" PW="$PW1" SECRET="$(openssl rand -hex 32)" python3 - "$ENV_FILE" <<'EOF'
 import os, sys
