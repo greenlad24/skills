@@ -134,6 +134,23 @@ Subscribe: youtube.com/@MusicLiveLove</div>
         <a href="#" style="text-align: center; font-size: 13px; font-weight: 600">Start a private test stream first</a>
       </section>
 
+      <section aria-label="What Claude learned" style="position: relative; border-radius: 20px; padding: 1px; background: linear-gradient(140deg, rgba(185,166,255,0.85), rgba(185,166,255,0.12) 60%, rgba(255,138,61,0.35)); box-shadow: 0 14px 40px rgba(124,102,217,0.2)">
+        <div style="border-radius: 19px; padding: 16px; background: linear-gradient(180deg, #1C1626, #15101C); display: flex; flex-direction: column; gap: 10px">
+          <div style="display: flex; align-items: baseline; gap: 8px">
+            <span style="font-size: 11px; letter-spacing: 0.14em; color: #CDBFFF; font-weight: 700">LEARNED FROM LAST SHOW</span>
+            <span style="flex: 1"></span>
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #8F86A8">playbook v7 · 6 shows</span>
+          </div>
+          <sc-for list="{{lessons}}" as="l" hint-placeholder-count="4">
+            <div style="display: flex; gap: 10px; align-items: flex-start">
+              <span style="flex: none; margin-top: 2px; padding: 1px 6px; border-radius: 5px; background: rgba(185,166,255,0.15); color: #D9CFFF; font-size: 9px; font-weight: 800; letter-spacing: 0.06em">{{l.k}}</span>
+              <span style="font-size: 12px; line-height: 1.45; color: #ECE6FF">{{l.t}}</span>
+            </div>
+          </sc-for>
+          <a href="#" style="font-size: 12px; font-weight: 700; color: #CDBFFF">See the show review →</a>
+        </div>
+      </section>
+
       <section aria-label="Scheduled stream" style="border-radius: 20px; border: 1px solid rgba(255,236,220,0.1); background: rgba(255,236,220,0.03); padding: 18px; display: flex; flex-direction: column; gap: 12px">
         <div style="display: flex; align-items: center; gap: 8px">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C9BDB1" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M8 3v4M16 3v4M3 10h18"></path></svg>
@@ -195,7 +212,14 @@ class Component extends DCLogic {
         toggle: () => { const n = Object.assign({}, this.state.on); n[d.ab] = !n[d.ab]; this.setState({ on: n }); }
       });
     });
+    const lessons = [
+      { k: 'DIRECTOR', t: 'You cut to the drums 4 times in grooves; Claude now holds the drum cam longer when the kick and snare lock in.' },
+      { k: 'DIRECTOR', t: 'YouTube viewers dropped during long wide shots; wide shots now cap at 12 s unless the whole band is moving.' },
+      { k: 'VERTICAL', t: 'TikTok held viewers 31% longer on close-ups than band view; Auto now favours close-ups for solos and vocals.' },
+      { k: 'MIX', t: 'Harmonica was flagged harsh twice; its presence starts 1.5 dB lower tonight.' }
+    ];
     return {
+      lessons: lessons,
       dests: dests,
       destSummary: count + ' of 5 connected · Claude writes a title and caption for each',
       goLabel: 'Go Live on ' + count,

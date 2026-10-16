@@ -118,15 +118,39 @@ button:focus-visible{outline:2px solid #F5EEE6;outline-offset:2px}
           </div>
         </section>
         </div>
-        <section aria-label="Vertical program for TikTok and Instagram" style="flex: 0 0 214px; display: flex; flex-direction: column; gap: 8px">
+        <section aria-label="Vertical program for TikTok and Instagram" style="flex: 0 0 224px; display: flex; flex-direction: column; gap: 8px">
+          <div style="display: flex; gap: 2px; padding: 3px; border-radius: 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,236,220,0.06)" role="group" aria-label="Vertical layout">
+            <button onClick="{{vAuto}}" aria-pressed="{{isVAuto}}" style="{{vAutoStyle}}">Auto</button>
+            <button onClick="{{vClose}}" aria-pressed="{{isVClose}}" style="{{vCloseStyle}}">Close-up</button>
+            <button onClick="{{vBand}}" aria-pressed="{{isVBand}}" style="{{vBandStyle}}">Band</button>
+          </div>
           <div style="border-radius: 20px; padding: 2px; background: linear-gradient(160deg, #5EA2FF, #1F66E0 60%, #2A4F9E); box-shadow: 0 18px 50px rgba(31,102,224,0.2)">
-            <div style="border-radius: 18px; overflow: hidden; position: relative; aspect-ratio: 9 / 16; background: radial-gradient(80% 50% at 50% 35%, rgba(255,194,122,0.5), rgba(0,0,0,0) 70%), radial-gradient(90% 40% at 50% 100%, rgba(255,140,70,0.5), rgba(0,0,0,0) 70%), linear-gradient(180deg, #1A0D08, #0B0604)">
-              <svg viewBox="0 0 90 160" style="position: absolute; inset: 0; width: 100%; height: 100%" aria-hidden="true"><g fill="#030201"><circle cx="45" cy="62" r="13"></circle><path d="M18 160 C20 112 32 84 45 84 C58 84 70 112 72 160 Z"></path><rect x="44" y="76" width="2" height="84"></rect><rect x="42" y="70" width="6" height="11" rx="3"></rect></g></svg>
+            <div style="border-radius: 18px; overflow: hidden; position: relative; aspect-ratio: 9 / 16; background: #070403">
+              <sc-if value="{{showClose}}" hint-placeholder-val="{{ true }}">
+                <div style="position: absolute; inset: 0; background: radial-gradient(80% 50% at 50% 35%, rgba(255,194,122,0.5), rgba(0,0,0,0) 70%), radial-gradient(90% 40% at 50% 100%, rgba(255,140,70,0.5), rgba(0,0,0,0) 70%), linear-gradient(180deg, #1A0D08, #0B0604)">
+                  <svg viewBox="0 0 90 160" style="position: absolute; inset: 0; width: 100%; height: 100%" aria-hidden="true"><g fill="#030201"><circle cx="45" cy="62" r="13"></circle><path d="M18 160 C20 112 32 84 45 84 C58 84 70 112 72 160 Z"></path><rect x="44" y="76" width="2" height="84"></rect><rect x="42" y="70" width="6" height="11" rx="3"></rect></g></svg>
+                </div>
+              </sc-if>
+              <sc-if value="{{showBand}}" hint-placeholder-val="{{ false }}">
+                <div style="position: absolute; inset: 0; display: flex; flex-direction: column; background: linear-gradient(180deg, #160C08, #0B0604)">
+                  <div style="flex: 0 0 22%; display: flex; flex-direction: column; justify-content: flex-end; gap: 2px; padding: 0 10px 8px">
+                    <span style="font-size: 9px; font-weight: 800; letter-spacing: 0.12em; color: #FFC371">LIVE · MUSIC LIVE LOVE</span>
+                    <span style="font-family: Sora, sans-serif; font-size: 13px; font-weight: 800; line-height: 1.15">Song 7 · second chorus</span>
+                  </div>
+                  <div style="aspect-ratio: 16 / 9; position: relative; background: radial-gradient(60% 80% at 50% 40%, rgba(255,194,122,0.5), rgba(0,0,0,0) 70%), linear-gradient(180deg, #2A1810, #0D0705)">
+                    <svg viewBox="0 0 160 90" style="position: absolute; inset: 0; width: 100%; height: 100%" aria-hidden="true"><g fill="#030201"><circle cx="40" cy="44" r="7"></circle><path d="M30 90 C32 70 36 58 40 58 C44 58 48 70 50 90 Z"></path><circle cx="80" cy="38" r="8"></circle><path d="M68 90 C70 64 74 52 80 52 C86 52 90 64 92 90 Z"></path><circle cx="120" cy="46" r="7"></circle><path d="M110 90 C112 72 116 60 120 60 C124 60 128 72 130 90 Z"></path></g></svg>
+                  </div>
+                  <div style="flex: 1; position: relative; background: radial-gradient(70% 60% at 50% 30%, rgba(255,111,160,0.35), rgba(0,0,0,0) 70%), #0E0705">
+                    <svg viewBox="0 0 90 70" preserveAspectRatio="xMidYMax slice" style="position: absolute; inset: 0; width: 100%; height: 100%" aria-hidden="true"><g fill="#030201"><circle cx="45" cy="30" r="10"></circle><path d="M24 70 C26 52 34 42 45 42 C56 42 64 52 66 70 Z"></path></g></svg>
+                    <span style="position: absolute; left: 8px; bottom: 8px; font-size: 9px; font-weight: 700; color: #E9DED2">close-up · keys</span>
+                  </div>
+                </div>
+              </sc-if>
               <span style="position: absolute; left: 10px; top: 10px; padding: 3px 8px; border-radius: 6px; background: #1F66E0; color: #FFFFFF; font-size: 10px; font-weight: 800; letter-spacing: 0.1em">LIVE 9:16</span>
-              <span style="position: absolute; left: 10px; right: 10px; bottom: 10px; padding: 6px 8px; border-radius: 8px; background: rgba(10,6,4,0.6); backdrop-filter: blur(8px); font-size: 11px; line-height: 1.35; color: #E9DED2">Claude reframes the live shot to follow the action</span>
+              <span style="position: absolute; right: 10px; top: 10px; padding: 3px 8px; border-radius: 6px; background: rgba(10,6,4,0.6); font-size: 10px; font-weight: 700; color: #E9DED2">{{vLabel}}</span>
             </div>
           </div>
-          <span style="font-size: 11px; color: #9C9084; text-align: center">Vertical · TikTok + Instagram</span>
+          <span style="font-size: 11px; color: #9C9084; text-align: center; line-height: 1.4">{{vNote}}</span>
         </section>
       </div>
 
@@ -318,7 +342,7 @@ button:focus-visible{outline:2px solid #F5EEE6;outline-offset:2px}
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":960}}'>
 class Component extends DCLogic {
-  constructor(props) { super(props); this.state = { open: true, live: 2, tab: 'claude' }; }
+  constructor(props) { super(props); this.state = { open: true, live: 2, tab: 'claude', vmode: 'auto' }; }
   renderVals() {
     const s = this.state;
     const dot = (c) => 'width: 8px; height: 8px; border-radius: 50%; flex: none; background: ' + c + (c === '#B9A6FF' || c === '#FFB224' ? '; box-shadow: 0 0 8px ' + c : '');
@@ -386,11 +410,21 @@ class Component extends DCLogic {
       { p: 'TT', who: 'ana.r', c: '#9FC7A8', text: 'first time here, this is so good', tag: '', note: '' },
       { p: 'YT', who: 'theo', c: '#C9BDB1', text: 'the keys tone 🔥', tag: '', note: '' }
     ].map((m) => Object.assign({}, m, { pbg: PB[m.p], rowStyle: 'display: flex; flex-direction: column; gap: 3px; padding: 9px 10px; border-radius: 12px; ' + (m.tag ? 'background: rgba(255,236,220,0.05); border: 1px solid rgba(255,236,220,0.08)' : 'background: transparent') }));
+    const vm = s.vmode;
+    const autoPick = 'close';
+    const eff = vm === 'auto' ? autoPick : vm;
+    const seg = (on) => 'flex: 1; min-height: 30px; border-radius: 8px; border: 0; font-size: 11px; font-weight: 700; cursor: pointer; background: ' + (on ? 'rgba(255,236,220,0.14)' : 'transparent') + '; color: ' + (on ? '#F5EEE6' : '#9C9084');
     const open = s.open;
     return {
       open: open, closed: !open,
       liveLabel: liveCam.num + ' · ' + liveCam.name,
       cams: cams, groups: groups, procs: procs, feed: feed, chat: chat, dests: dests,
+      showClose: eff === 'close', showBand: eff === 'band',
+      isVAuto: vm === 'auto', isVClose: vm === 'close', isVBand: vm === 'band',
+      vAutoStyle: seg(vm === 'auto'), vCloseStyle: seg(vm === 'close'), vBandStyle: seg(vm === 'band'),
+      vAuto: () => this.setState({ vmode: 'auto' }), vClose: () => this.setState({ vmode: 'close' }), vBand: () => this.setState({ vmode: 'band' }),
+      vLabel: vm === 'auto' ? 'AUTO · close-up' : (vm === 'close' ? 'Close-up · yours' : 'Band view · yours'),
+      vNote: vm === 'auto' ? 'Claude switches close-up / band view · TikTok + Instagram 720×1280' : 'Held by you for the rest of the show',
       tabClaude: s.tab === 'claude', tabChat: s.tab === 'chat',
       tabClaudeStyle: tabBtn(s.tab === 'claude'), tabChatStyle: tabBtn(s.tab === 'chat'),
       showClaude: () => this.setState({ tab: 'claude' }), showChat: () => this.setState({ tab: 'chat' }),
