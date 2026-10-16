@@ -48,3 +48,9 @@
 - YouTube channel: @MusicLiveLove ("Music Live Love").
 - NEVER mention Thailand, Koh Samui, islands or any location — not in titles, descriptions, tags, thumbnails, slates or the app.
 - Title style follows the channel: "Song – Artist | Live <Genre> Cover Band Arrangement (Not AI)"; live streams: "LIVE: Funk & Soul Cover Band — … | Real Musicians (Not AI)".
+
+## Patterns adopted from user-supplied references (Boss RC-505, Dribbble audio-mixing search)
+- Each channel in its own recessed "bay"; channel colour identity carried by a glowing numbered ring (RC-505).
+- LCD-style display for the selected channel: big number + name + state (RC-505).
+- Per-strip EQ/CMP/GT lamps that light when active; Solo/Mute on every strip; dB readout box; layer tabs (All 16 / CH 1–8 / CH 9–16 / Buses / FX returns); FINE fader mode (Audio Mixing Console Tablet App).
+- Number-key shortcuts on camera tiles; stream health (Mbps, fps, CPU, dropped) in the top bar (Live Streaming Control Platform, 197 / 145k).

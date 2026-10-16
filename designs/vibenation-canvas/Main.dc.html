@@ -41,6 +41,9 @@ button:focus-visible{outline:2px solid #F5EEE6;outline-offset:2px}
     <div style="display: flex; align-items: center; gap: 7px; padding: 7px 12px; border-radius: 999px; background: rgba(255,236,220,0.05); border: 1px solid rgba(255,236,220,0.08); font-family: 'JetBrains Mono', monospace; font-size: 13px">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#C9BDB1" stroke-width="2" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"></path><circle cx="12" cy="12" r="3"></circle></svg>214
     </div>
+    <div style="display: flex; align-items: center; gap: 12px; padding: 7px 12px; border-radius: 999px; background: rgba(255,236,220,0.05); border: 1px solid rgba(255,236,220,0.08); font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #C9BDB1" aria-label="Stream health">
+      <span>9.0 Mbps</span><span>60 fps</span><span>CPU 38%</span><span>0 dropped</span>
+    </div>
     <div style="display: flex; align-items: center; gap: 8px; padding: 7px 14px; border-radius: 999px; background: rgba(185,166,255,0.1); border: 1px solid rgba(185,166,255,0.35); color: #CDBFFF; font-weight: 600; font-size: 13px">
       <span style="width: 8px; height: 8px; border-radius: 50%; background: #B9A6FF; box-shadow: 0 0 10px #B9A6FF; animation: vnBreath 2.4s ease-in-out infinite"></span>AUTO · Claude is running the show
     </div>
@@ -108,7 +111,7 @@ button:focus-visible{outline:2px solid #F5EEE6;outline-offset:2px}
 
       <div style="display: flex; align-items: center; gap: 10px">
         <span style="font-size: 11px; letter-spacing: 0.14em; color: #9C9084; font-weight: 700">CAMERAS</span>
-        <span style="color: #7D7268; font-size: 12px">Click any camera to put it on air — Claude keeps directing from there</span>
+        <span style="color: #7D7268; font-size: 12px">Click a camera or press 1–5 to put it on air — Claude keeps directing from there</span>
       </div>
       <section aria-label="Cameras" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 14px; margin-top: -6px">
         <sc-for list="{{cams}}" as="cam" hint-placeholder-count="5">
@@ -125,6 +128,7 @@ button:focus-visible{outline:2px solid #F5EEE6;outline-offset:2px}
               <span style="font-weight: 600; font-size: 13px; color: #F5EEE6">{{cam.name}}</span>
               <span style="flex: 1"></span>
               <span style="width: 7px; height: 7px; border-radius: 50%; background: {{cam.dot}}"></span>
+              <kbd style="min-width: 20px; height: 20px; padding: 0 5px; box-sizing: border-box; border-radius: 6px; background: rgba(255,236,220,0.06); border: 1px solid rgba(255,236,220,0.12); border-bottom-width: 2px; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700; color: #C9BDB1; display: flex; align-items: center; justify-content: center" aria-label="Shortcut key {{cam.id}}">{{cam.id}}</kbd>
             </div>
           </button>
         </sc-for>
