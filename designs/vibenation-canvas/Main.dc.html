@@ -20,7 +20,7 @@ button:focus-visible{outline:2px solid #F5EEE6;outline-offset:2px}
 @keyframes vnBreath{0%,100%{opacity:.55}50%{opacity:1}}
 </style>
 </helmet>
-<div style="min-height: 960px; color: #F5EEE6; font-family: 'DM Sans', system-ui, sans-serif; font-size: 14px; display: flex; flex-direction: column; background: radial-gradient(900px 520px at 8% -10%, rgba(255,122,61,0.16), rgba(255,122,61,0) 60%), radial-gradient(800px 600px at 100% 110%, rgba(185,166,255,0.08), rgba(185,166,255,0) 60%), linear-gradient(180deg, #120C09 0%, #0B0806 100%)">
+<div style="min-height: 1060px; color: #F5EEE6; font-family: 'DM Sans', system-ui, sans-serif; font-size: 14px; display: flex; flex-direction: column; background: radial-gradient(900px 520px at 8% -10%, rgba(255,122,61,0.16), rgba(255,122,61,0) 60%), radial-gradient(800px 600px at 100% 110%, rgba(185,166,255,0.08), rgba(185,166,255,0) 60%), linear-gradient(180deg, #120C09 0%, #0B0806 100%)">
 
   <header style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 14px 22px; border-bottom: 1px solid rgba(255,236,220,0.07); background: rgba(18,12,9,0.6); backdrop-filter: blur(16px)">
     <div style="display: flex; align-items: center; gap: 10px">
@@ -106,6 +106,27 @@ button:focus-visible{outline:2px solid #F5EEE6;outline-offset:2px}
               <span style="width: 6px; height: 86%; border-radius: 3px; background: linear-gradient(to top, #F5EEE6, #FFD7A8)"></span>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section aria-label="Show timeline" style="border-radius: 18px; background: linear-gradient(180deg, rgba(36,27,21,0.7), rgba(20,15,11,0.7)); border: 1px solid rgba(255,236,220,0.07); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px">
+        <div style="display: flex; align-items: center; gap: 10px">
+          <span style="font-size: 11px; letter-spacing: 0.14em; color: #9C9084; font-weight: 700">SHOW TIMELINE</span>
+          <span style="color: #7D7268; font-size: 12px">Songs become YouTube chapters automatically</span>
+          <span style="flex: 1"></span>
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #C9BDB1">set 2 · 01:12:48</span>
+        </div>
+        <div style="display: flex; gap: 4px; align-items: stretch; height: 54px">
+          <sc-for list="{{songs}}" as="sg" hint-placeholder-count="8">
+            <div style="{{sg.boxStyle}}" title="{{sg.name}}">
+              <div style="flex: 1; display: flex; align-items: center; gap: 2px; overflow: hidden" aria-hidden="true">
+                <sc-for list="{{sg.bars}}" as="h" hint-placeholder-count="12">
+                  <span style="flex: 1; min-width: 1px; border-radius: 1px; height: {{h.h}}; background: {{sg.barColor}}"></span>
+                </sc-for>
+              </div>
+              <span style="font-size: 10px; font-weight: 700; color: {{sg.labelColor}}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{sg.name}}</span>
+            </div>
+          </sc-for>
         </div>
       </section>
 
@@ -262,7 +283,7 @@ button:focus-visible{outline:2px solid #F5EEE6;outline-offset:2px}
   </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":960}}'>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1060}}'>
 class Component extends DCLogic {
   constructor(props) { super(props); this.state = { open: true, live: 2 }; }
   renderVals() {
@@ -320,11 +341,26 @@ class Component extends DCLogic {
       { time: '21:40:31', kind: 'ROLE', kindColor: '#B9A6FF', text: 'Ch 16 switched: harmonica → backing vocal.', why: 'Voice detected for 8 s; vocal preset crossfaded in 2 s.', undo: true },
       { time: '21:39:05', kind: 'YOURS', kindColor: '#F5EEE6', text: 'You moved Vocal piano — held by you for the rest of the show.', why: 'Claude only steps in for feedback, clipping or a dead signal.', undo: false }
     ];
+    const songList = [['Lose Control – Teddy Swims', 5, 'past'], ['Let Me Love You – DJ Snake', 4, 'past'], ['Break', 2, 'break'], ['Essence – Wizkid', 6, 'past'], ['Tennessee Whiskey', 5, 'past'], ['Use Somebody – KOL', 4, 'past'], ['Song 7', 5, 'now'], ['up next', 4, 'next']];
+    let seed = 7;
+    const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+    const songs = songList.map((x) => {
+      const n = x[1] * 6;
+      const bars = [];
+      for (let i = 0; i < n; i++) bars.push({ h: x[2] === 'break' ? '12%' : x[2] === 'next' ? '8%' : Math.round(25 + rnd() * 75) + '%' });
+      const now = x[2] === 'now';
+      return {
+        name: x[0], bars: bars,
+        barColor: now ? '#F5EEE6' : x[2] === 'next' ? 'rgba(255,236,220,0.12)' : x[2] === 'break' ? 'rgba(255,236,220,0.15)' : 'rgba(201,189,177,0.45)',
+        labelColor: now ? '#F5EEE6' : '#7D7268',
+        boxStyle: 'flex: ' + x[1] + ' 1 0; min-width: 0; display: flex; flex-direction: column; gap: 4px; padding: 6px 7px; border-radius: 10px; ' + (now ? 'background: rgba(255,236,220,0.07); box-shadow: inset 0 0 0 2px #F5EEE6' : 'background: rgba(0,0,0,0.2)')
+      };
+    });
     const open = s.open;
     return {
       open: open, closed: !open,
       liveLabel: liveCam.num + ' · ' + liveCam.name,
-      cams: cams, groups: groups, procs: procs, feed: feed,
+      cams: cams, groups: groups, procs: procs, feed: feed, songs: songs,
       sideStyle: 'flex: 0 0 ' + (open ? '350px' : '60px') + '; min-width: 0; border-left: 1px solid rgba(255,236,220,0.07); background: linear-gradient(180deg, rgba(20,14,11,0.85), rgba(14,10,8,0.85)); backdrop-filter: blur(18px)',
       toggleSide: () => this.setState({ open: !this.state.open })
     };

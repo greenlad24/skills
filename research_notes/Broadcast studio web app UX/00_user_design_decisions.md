@@ -54,3 +54,5 @@
 - LCD-style display for the selected channel: big number + name + state (RC-505).
 - Per-strip EQ/CMP/GT lamps that light when active; Solo/Mute on every strip; dB readout box; layer tabs (All 16 / CH 1–8 / CH 9–16 / Buses / FX returns); FINE fader mode (Audio Mixing Console Tablet App).
 - Number-key shortcuts on camera tiles; stream health (Mbps, fps, CPU, dropped) in the top bar (Live Streaming Control Platform, 197 / 145k).
+- From SplitEQ (user reference): numbered, colour-coded EQ bands with translucent per-band shapes over the analyser; FREQ/GAIN/Q table aligned under the curve; A (before) / B (Claude) compare; Pre/Post analyser toggle.
+- From the A/B studio app (user reference): arc-ring knobs for dynamics and sends; glowing lock icon under faders held by the user; Claude change cards styled as a purple "magic edit" pop-over with action bar (time, before/after, undo, amount); waveform show timeline with the current song highlighted and songs as YouTube chapters.
