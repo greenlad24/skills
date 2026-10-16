@@ -1,0 +1,13 @@
+[Unit]
+Description=VibeNation web app
+After=network.target
+
+[Service]
+WorkingDirectory=/root/vibenation/vibenation/apps/server
+ExecStart=/usr/bin/env pnpm start
+Restart=always
+RestartSec=3
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target

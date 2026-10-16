@@ -1,20 +1,44 @@
 :root {
   --bg-canvas: #0f0c0a;
+  --bg-deep: #0b0806;
   --bg-panel: #18130f;
   --bg-raised: #231c17;
   --line: #3b3029;
   --text-1: #f5eee6;
   --text-2: #ada195;
   --text-3: #7d7268;
+  --text-soft: #c9bdb1;
+  --text-meta: #9c9084;
   --on-air: #3d8bff;
   --on-air-fill: #1f66e0;
   --warn: #ffb224;
   --error: #ff5a52;
+  --error-fill: #d7261e;
   --ai: #b9a6ff;
+  --ai-text: #cdbfff;
   --brand: #ff8a3d;
   --font-display: 'Sora', sans-serif;
-  --font-ui: 'DM Sans', sans-serif;
+  --font-ui: 'DM Sans', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg-canvas); color: var(--text-1); font-family: var(--font-ui); }
+html, body, #root { min-height: 100%; }
+body { margin: 0; background: var(--bg-deep); color: var(--text-1); font-family: var(--font-ui); font-size: 14px; }
+a { color: #ff9a5a; }
+a:hover { color: #ffc08f; }
+button { font-family: inherit; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--text-1); outline-offset: 2px; }
+.vn-app {
+  min-height: 100vh; display: flex; flex-direction: column;
+  background: radial-gradient(900px 520px at 8% -10%, rgba(255,122,61,0.16), rgba(255,122,61,0) 60%),
+    radial-gradient(800px 600px at 100% 110%, rgba(185,166,255,0.08), rgba(185,166,255,0) 60%),
+    linear-gradient(180deg, #120c09 0%, #0b0806 100%);
+}
+.vn-label { font-size: 11px; letter-spacing: 0.14em; color: var(--text-meta); font-weight: 700; }
+.vn-mono { font-family: var(--font-mono); }
+@keyframes vnPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(61,139,255,.55) } 50% { box-shadow: 0 0 0 7px rgba(61,139,255,0) } }
+@keyframes vnThink { 0% { transform: translateX(-100%) } 100% { transform: translateX(250%) } }
+@keyframes vnBreath { 0%,100% { opacity: .55 } 50% { opacity: 1 } }
+@keyframes vnRta { 0% { transform: scaleY(.35) } 30% { transform: scaleY(1) } 55% { transform: scaleY(.55) } 80% { transform: scaleY(.85) } 100% { transform: scaleY(.4) } }
+@keyframes vnGlow { 0%,100% { box-shadow: 0 14px 40px rgba(31,102,224,.45), inset 0 1px 0 rgba(255,255,255,.25) } 50% { box-shadow: 0 14px 60px rgba(31,102,224,.75), inset 0 1px 0 rgba(255,255,255,.25) } }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; } }

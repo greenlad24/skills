@@ -1,18 +1,41 @@
 import { useEffect, useState } from 'react';
-import { CHANNELS, type HealthResponse } from '@vibenation/shared';
+import { connect, useShow, useStatus } from './store';
+import { useRoute } from './route';
+import { Header } from './components/Header';
+import { Login } from './screens/Login';
+import { ShowScreen } from './screens/Show';
+import { MixScreen } from './screens/Mix';
+import { FxScreen } from './screens/Fx';
+import { GoLiveScreen } from './screens/GoLive';
+import { SlateScreen } from './screens/Slate';
 
-// Milestone 1 placeholder: proves web ↔ server wiring. The real screens arrive in milestone 2.
 export function App() {
-  const [health, setHealth] = useState<HealthResponse | null>(null);
+  const [authed, setAuthed] = useState<boolean | null>(null);
+  const status = useStatus();
+  const show = useShow();
+  const route = useRoute();
+
   useEffect(() => {
-    fetch('/api/health').then((r) => r.json()).then(setHealth).catch(() => setHealth(null));
+    fetch('/api/me').then((r) => r.json()).then((m) => setAuthed(!!m.authed)).catch(() => setAuthed(false));
   }, []);
+  useEffect(() => { if (authed) connect(); }, [authed]);
+  useEffect(() => { if (status === 'unauthorized') setAuthed(false); }, [status]);
+
+  if (authed === null) return null;
+  if (!authed) return <Login onDone={() => setAuthed(true)} />;
+  if (!show) return <div className="vn-app" style={{ alignItems: 'center', justifyContent: 'center', color: 'var(--text-meta)' }}>Connecting to the show…</div>;
+
   return (
-    <main style={{ padding: 32 }}>
-      <h1 style={{ fontFamily: 'var(--font-display)', margin: 0 }}>VibeNation</h1>
-      <p style={{ color: 'var(--text-2)' }}>
-        Server: {health ? `OK · v${health.version} · up ${health.uptimeS}s` : 'not reachable'} · {CHANNELS.length} channels
-      </p>
-    </main>
+    <div className="vn-app">
+      <Header />
+      {status !== 'open' && (
+        <div role="alert" style={{ padding: '10px 22px', background: 'var(--error-fill)', color: '#fff', fontWeight: 700 }}>Lost connection to the server — reconnecting…</div>
+      )}
+      {route === 'show' && <ShowScreen />}
+      {route === 'mix' && <MixScreen />}
+      {route === 'fx' && <FxScreen />}
+      {route === 'golive' && <GoLiveScreen />}
+      {route === 'slate' && <SlateScreen />}
+    </div>
   );
 }
