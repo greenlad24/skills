@@ -40,7 +40,7 @@
 - Phone camera UI lives in a slide-out DRAWER (right edge). Closed: only the full image, a blue tally line in the left side bar and a small handle with a status dot. Open: ON AIR, camera name, WB/exposure, battery, temperature, Wi-Fi, bitrate, guides, hold-to-unlock.
 
 ## Auto YouTube package (user decision)
-- At pre-flight Claude writes a click-optimised TITLE (plus ranked alternatives), an SEO DESCRIPTION (keywords, location, line-up, chapters added live as songs change) and TAGS.
+- At pre-flight Claude writes a click-optimised TITLE (plus ranked alternatives), an SEO DESCRIPTION (keywords, line-up, chapters added live as songs change — never a location) and TAGS.
 - A THUMBNAIL is generated with OpenAI's GPT Image from a real live camera frame + title text, and attached to the live broadcast automatically (YouTube API thumbnails.set; needs a channel verified for custom thumbnails).
 - All attached automatically at go-live; user can edit. Requires an OpenAI API key (ChatGPT plan does not cover API).
 
