@@ -67,3 +67,4 @@
 ## Effects (user decision)
 - Engineer view channel panel has an EFFECTS section with Easy | Detailed tabs. Easy = six big macro knobs per channel: Compression, Reverb, Delay, Warmth, Presence, Width (each drives several parameters). Detailed = threshold/ratio/attack/release/sends + de-esser, saturation, gate.
 - Effects rack screen: Reverb A (plate, vocals/horns), Reverb B (room, drums/percussion), tempo-synced Delay (follows detected BPM, ducks under vocal), Doubler/Chorus (keys/guitar, mono-safe). Each with presets, 4 knobs (e.g., decay, pre-delay, tone, mix), on/off and the list of channels sending to it.
+- Every EQ display shows a LIVE spectrum (real-time analyser) of that channel: mini spectrum under the EQ curve on every strip, and a full live spectrum behind the bands in the selected-channel EQ.

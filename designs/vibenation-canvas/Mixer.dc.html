@@ -15,6 +15,7 @@ body{margin:0;background:#0B0806}
 a{color:#FF9A5A}a:hover{color:#FFC08F}
 button{font-family:inherit}
 button:focus-visible{outline:2px solid #F5EEE6;outline-offset:2px}
+@keyframes vnRta{0%{transform:scaleY(.35)}30%{transform:scaleY(1)}55%{transform:scaleY(.55)}80%{transform:scaleY(.85)}100%{transform:scaleY(.4)}}
 @keyframes vnPulse{0%,100%{box-shadow:0 0 0 0 rgba(61,139,255,.55)}50%{box-shadow:0 0 0 7px rgba(61,139,255,0)}}
 </style>
 </helmet>
@@ -64,8 +65,13 @@ button:focus-visible{outline:2px solid #F5EEE6;outline-offset:2px}
           <div style="{{c.bayStyle}}">
             <button onClick="{{c.pick}}" aria-label="Select {{c.name}}" style="width: 100%; padding: 0; border: 0; background: transparent; color: inherit; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 6px">
               <span style="font-size: 11px; font-weight: 700; line-height: 1.2; min-height: 28px; text-align: center; color: #F5EEE6">{{c.name}}</span>
-              <span style="width: 100%; height: 26px; border-radius: 7px; background: rgba(0,0,0,0.4); box-shadow: inset 0 1px 3px rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center">
-                <svg width="50" height="20" viewBox="0 0 54 22" aria-hidden="true"><path d="{{c.eq}}" fill="none" stroke="{{c.color}}" stroke-width="1.6"></path></svg>
+              <span style="width: 100%; height: 34px; border-radius: 7px; background: rgba(0,0,0,0.45); box-shadow: inset 0 1px 3px rgba(0,0,0,0.6); position: relative; overflow: hidden; display: block" role="img" aria-label="Live spectrum and EQ for {{c.name}}">
+                <span style="position: absolute; left: 3px; right: 3px; bottom: 2px; top: 4px; display: flex; align-items: flex-end; gap: 1px" aria-hidden="true">
+                  <sc-for list="{{c.spec}}" as="b" hint-placeholder-count="14">
+                    <span style="flex: 1; height: {{b.h}}; border-radius: 1px 1px 0 0; background: {{c.specColor}}; transform-origin: bottom; animation: vnRta {{b.d}} ease-in-out {{b.dl}} infinite"></span>
+                  </sc-for>
+                </span>
+                <svg width="100%" height="34" viewBox="0 0 54 22" preserveAspectRatio="none" style="position: absolute; inset: 0" aria-hidden="true"><path d="{{c.eq}}" fill="none" stroke="{{c.color}}" stroke-width="1.4" vector-effect="non-scaling-stroke"></path></svg>
               </span>
             </button>
             <span style="display: flex; gap: 3px" aria-label="{{c.lampsLabel}}">
@@ -150,12 +156,17 @@ button:focus-visible{outline:2px solid #F5EEE6;outline-offset:2px}
           </div>
         </div>
         <div style="border-radius: 16px; background: radial-gradient(120% 120% at 50% 0%, #1A120E, #080504); border: 1px solid rgba(255,236,220,0.06); padding: 10px; position: relative">
-          <svg viewBox="0 0 360 170" width="100%" role="img" aria-label="EQ: four numbered bands over the live spectrum">
+          <div style="position: absolute; left: 10px; right: 10px; top: 18px; bottom: 30px; display: flex; align-items: flex-end; gap: 2px" aria-hidden="true">
+            <sc-for list="{{selSpec}}" as="b" hint-placeholder-count="48">
+              <span style="flex: 1; height: {{b.h}}; border-radius: 2px 2px 0 0; background: linear-gradient(to top, {{selSpecLo}}, {{selSpecHi}}); transform-origin: bottom; animation: vnRta {{b.d}} ease-in-out {{b.dl}} infinite"></span>
+            </sc-for>
+          </div>
+          <span style="position: absolute; right: 16px; top: 14px; display: flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 999px; background: rgba(10,6,4,0.6); font-size: 10px; font-weight: 800; letter-spacing: 0.1em; color: #E9DED2"><span style="width: 6px; height: 6px; border-radius: 50%; background: #F5EEE6"></span>LIVE SPECTRUM</span>
+          <svg viewBox="0 0 360 170" width="100%" style="position: relative" role="img" aria-label="EQ: four numbered bands over the live spectrum">
             <defs>
               <linearGradient id="mxSpec" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8FA3D9" stop-opacity="0.35"></stop><stop offset="1" stop-color="#8FA3D9" stop-opacity="0"></stop></linearGradient>
             </defs>
             <g stroke="rgba(255,236,220,0.06)" stroke-width="1"><line x1="0" y1="85" x2="360" y2="85"></line><line x1="0" y1="45" x2="360" y2="45"></line><line x1="0" y1="125" x2="360" y2="125"></line><line x1="60" y1="0" x2="60" y2="170"></line><line x1="140" y1="0" x2="140" y2="170"></line><line x1="220" y1="0" x2="220" y2="170"></line><line x1="300" y1="0" x2="300" y2="170"></line></g>
-            <path d="M0 170 L0 132 C30 106 50 70 80 72 C110 74 130 58 160 66 C190 74 210 84 240 90 C270 96 300 110 330 122 L360 136 L360 170 Z" fill="url(#mxSpec)"></path>
             <path d="M0 170 L0 85 L28 85 C40 85 44 170 48 170 Z" fill="#E08A5A" fill-opacity="0.22"></path>
             <path d="M70 85 C90 85 100 100 110 100 C120 100 130 85 150 85 Z" fill="#E6C07A" fill-opacity="0.25"></path>
             <path d="M190 85 C215 85 222 93 230 93 C238 93 245 85 270 85 Z" fill="#B9A6FF" fill-opacity="0.32"></path>
@@ -277,6 +288,26 @@ class Component extends DCLogic {
     const ai = [2, 9, 11, 12, 14];
     const sel = this.state.sel;
     const st = this.state;
+    let seed = 11;
+    const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+    const SHAPE = {
+      drums: [0.95, 0.9, 0.7, 0.5, 0.45, 0.5, 0.55, 0.6, 0.55, 0.5, 0.45, 0.4, 0.35, 0.3],
+      bass: [0.9, 1, 0.95, 0.8, 0.6, 0.4, 0.3, 0.22, 0.18, 0.14, 0.1, 0.08, 0.06, 0.05],
+      keys: [0.3, 0.45, 0.65, 0.8, 0.85, 0.75, 0.6, 0.5, 0.4, 0.32, 0.25, 0.2, 0.15, 0.1],
+      gtr: [0.1, 0.2, 0.4, 0.65, 0.8, 0.85, 0.75, 0.6, 0.5, 0.4, 0.3, 0.2, 0.12, 0.08],
+      vox: [0.05, 0.12, 0.35, 0.6, 0.8, 0.85, 0.75, 0.7, 0.65, 0.55, 0.45, 0.4, 0.35, 0.25],
+      horn: [0.05, 0.1, 0.25, 0.5, 0.75, 0.85, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.12],
+      perc: [0.2, 0.35, 0.55, 0.7, 0.6, 0.55, 0.6, 0.65, 0.55, 0.45, 0.35, 0.3, 0.25, 0.2]
+    };
+    const specFor = (kind, n, quiet) => {
+      const base = SHAPE[kind];
+      const out = [];
+      for (let i = 0; i < n; i++) {
+        const v = base[Math.min(base.length - 1, Math.floor(i * base.length / n))];
+        out.push({ h: quiet ? '4%' : Math.round(Math.max(6, v * (70 + rnd() * 30))) + '%', d: (0.5 + rnd() * 0.9).toFixed(2) + 's', dl: (-rnd() * 1.4).toFixed(2) + 's' });
+      }
+      return out;
+    };
     const lamp = (on, c) => 'font-size: 8px; font-weight: 800; letter-spacing: 0.04em; padding: 2px 3px; border-radius: 4px; ' + (on ? 'background: ' + c + '; color: #140D09; box-shadow: 0 0 8px ' + c : 'background: rgba(255,236,220,0.05); color: #5E544B');
     const chans = raw.map((r, i) => {
       const n = i + 1;
@@ -289,6 +320,7 @@ class Component extends DCLogic {
       const toggle = (key) => () => { const arr = this.state[key].slice(); const k = arr.indexOf(n); if (k >= 0) arr.splice(k, 1); else arr.push(n); this.setState({ [key]: arr }); };
       const sm = (active, c, fg) => 'flex: 1; min-height: 26px; border-radius: 7px; font-size: 11px; font-weight: 800; cursor: pointer; border: 1px solid ' + (active ? c : 'rgba(255,236,220,0.1)') + '; background: ' + (active ? c : 'rgba(255,236,220,0.04)') + '; color: ' + (active ? fg : '#C9BDB1') + (active ? '; box-shadow: 0 0 10px ' + c : '');
       return {
+        spec: specFor(r[1], 14, r[4] === 0 || isMute), specColor: col + '66',
         n: n, name: r[0], color: col, db: isMute ? 'mute' : r[2], pos: 'calc(' + r[3] + '% - 14px)', meter: isMute ? '0%' : r[4] + '%', grDb: r[5] === '0' ? '0' : '−' + r[5], gr: Math.min(100, Number(r[5]) * 12) + '%',
         eq: eqs[i % 4], aria: r[0] + ' fader ' + r[2] + ' dB',
         lampEq: lamp(r[2] !== 'off', col), lampComp: lamp(r[5] !== '0', '#B9A6FF'), lampGate: lamp(r[1] === 'drums' && n <= 2, '#E9DED2'),
@@ -308,6 +340,7 @@ class Component extends DCLogic {
     const isHeld = held.indexOf(sel) >= 0;
     return {
       chans: chans,
+      selSpec: specFor(s[1], 48, false), selSpecLo: C[s[1]] + '22', selSpecHi: C[s[1]] + '88',
       sel: { n: sel, nn: String(sel).padStart(2, '0'), name: s[0], held: isHeld, auto: !isHeld, db: s[2], gr: s[5] === '0' ? '0 dB' : '−' + s[5] + ' dB', role: (isHeld ? 'HELD BY YOU' : 'CLAUDE MIXING') + ' · ' + s[1].toUpperCase(), lcdNum: '#8A3A12' },
       fine: st.fine,
       fineStyle: 'min-height: 34px; padding: 0 14px; border-radius: 10px; font-weight: 700; font-size: 12px; cursor: pointer; border: 1px solid ' + (st.fine ? '#F5EEE6' : 'rgba(255,236,220,0.12)') + '; background: ' + (st.fine ? '#F5EEE6' : 'rgba(255,236,220,0.04)') + '; color: ' + (st.fine ? '#140D09' : '#C9BDB1'),
