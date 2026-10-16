@@ -38,8 +38,14 @@ button:focus-visible{outline:2px solid #F5EEE6;outline-offset:2px}
     <div style="display: flex; align-items: center; gap: 10px; padding: 7px 14px 7px 10px; border-radius: 999px; background: linear-gradient(180deg, #2E7BFF, #1A5ED6); color: #FFFFFF; font-weight: 700; font-family: 'JetBrains Mono', monospace; font-size: 13px; box-shadow: 0 6px 24px rgba(31,102,224,0.45), inset 0 1px 0 rgba(255,255,255,0.25)">
       <span style="width: 9px; height: 9px; border-radius: 50%; background: #FFFFFF; animation: vnPulse 1.8s ease-out infinite"></span>LIVE · 01:12:48
     </div>
+    <div style="display: flex; align-items: center; gap: 6px; padding: 5px 10px 5px 6px; border-radius: 999px; background: rgba(255,236,220,0.05); border: 1px solid rgba(255,236,220,0.08)" aria-label="Live on 5 platforms">
+      <sc-for list="{{dests}}" as="d" hint-placeholder-count="5">
+        <span style="width: 22px; height: 22px; border-radius: 7px; background: {{d.bg}}; color: #FFFFFF; font-size: 9px; font-weight: 800; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px #120C09" title="{{d.name}}">{{d.ab}}</span>
+      </sc-for>
+      <span style="font-size: 12px; font-weight: 700; color: #E9DED2">on 5</span>
+    </div>
     <div style="display: flex; align-items: center; gap: 7px; padding: 7px 12px; border-radius: 999px; background: rgba(255,236,220,0.05); border: 1px solid rgba(255,236,220,0.08); font-family: 'JetBrains Mono', monospace; font-size: 13px">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#C9BDB1" stroke-width="2" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"></path><circle cx="12" cy="12" r="3"></circle></svg>214
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#C9BDB1" stroke-width="2" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"></path><circle cx="12" cy="12" r="3"></circle></svg>1,240
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#C9BDB1" stroke-width="2" aria-hidden="true" style="margin-left: 6px"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"></path></svg>86
     </div>
     <div style="display: flex; align-items: center; gap: 12px; padding: 7px 12px; border-radius: 999px; background: rgba(255,236,220,0.05); border: 1px solid rgba(255,236,220,0.08); font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #C9BDB1" aria-label="Stream health">
@@ -58,57 +64,71 @@ button:focus-visible{outline:2px solid #F5EEE6;outline-offset:2px}
 
     <main style="flex: 999 1 640px; min-width: 0; padding: 22px; display: flex; flex-direction: column; gap: 18px">
 
+      <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start">
+        <div style="flex: 999 1 560px; min-width: 0">
       <section aria-label="Program" style="border-radius: 22px; padding: 3px; background: linear-gradient(140deg, #5EA2FF, #1F66E0 55%, #2A4F9E); box-shadow: 0 0 0 1px rgba(61,139,255,0.25), 0 24px 70px rgba(31,102,224,0.22), 0 30px 60px rgba(0,0,0,0.5)">
-        <div style="border-radius: 19px; overflow: hidden; position: relative; aspect-ratio: 16 / 9; max-height: 470px; width: 100%; background: #070403">
-          <svg viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" style="position: absolute; inset: 0; width: 100%; height: 100%" role="img" aria-label="Live program: lead singer under warm stage lights">
-            <defs>
-              <linearGradient id="vnBg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1A0D08"></stop><stop offset="0.6" stop-color="#0C0604"></stop><stop offset="1" stop-color="#1C0F09"></stop></linearGradient>
-              <linearGradient id="vnBeamW" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFC27A" stop-opacity="0.55"></stop><stop offset="1" stop-color="#FF8A3D" stop-opacity="0"></stop></linearGradient>
-              <linearGradient id="vnBeamM" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FF6FA0" stop-opacity="0.32"></stop><stop offset="1" stop-color="#FF6FA0" stop-opacity="0"></stop></linearGradient>
-              <radialGradient id="vnFloor" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#FF9A4D" stop-opacity="0.55"></stop><stop offset="1" stop-color="#FF9A4D" stop-opacity="0"></stop></radialGradient>
-              <radialGradient id="vnHaze" cx="0.5" cy="0.4" r="0.6"><stop offset="0" stop-color="#FFB27A" stop-opacity="0.18"></stop><stop offset="1" stop-color="#FFB27A" stop-opacity="0"></stop></radialGradient>
-              <radialGradient id="vnBokeh" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#FFD9A8" stop-opacity="0.7"></stop><stop offset="1" stop-color="#FFD9A8" stop-opacity="0"></stop></radialGradient>
-            </defs>
-            <rect width="1600" height="900" fill="url(#vnBg)"></rect>
-            <polygon points="700,-20 900,-20 1180,900 420,900" fill="url(#vnBeamW)"></polygon>
-            <polygon points="180,-20 280,-20 620,900 200,900" fill="url(#vnBeamM)"></polygon>
-            <polygon points="1320,-20 1420,-20 1400,900 980,900" fill="url(#vnBeamM)"></polygon>
-            <rect width="1600" height="900" fill="url(#vnHaze)"></rect>
-            <ellipse cx="800" cy="840" rx="620" ry="120" fill="url(#vnFloor)"></ellipse>
-            <circle cx="120" cy="140" r="38" fill="url(#vnBokeh)"></circle><circle cx="1480" cy="110" r="52" fill="url(#vnBokeh)"></circle><circle cx="1360" cy="220" r="24" fill="url(#vnBokeh)"></circle><circle cx="260" cy="260" r="20" fill="url(#vnBokeh)"></circle>
-            <g fill="#050302">
-              <rect x="210" y="560" width="300" height="26" rx="6"></rect><rect x="236" y="586" width="12" height="190"></rect><rect x="472" y="586" width="12" height="190"></rect>
-              <circle cx="360" cy="440" r="46"></circle><path d="M280 560 C285 500 320 486 360 486 C400 486 435 500 440 560 Z"></path>
-              <circle cx="1270" cy="560" r="86"></circle><ellipse cx="1150" cy="520" rx="70" ry="16"></ellipse><ellipse cx="1400" cy="500" rx="80" ry="18"></ellipse>
-              <circle cx="1275" cy="400" r="42"></circle><path d="M1200 520 C1205 460 1240 446 1275 446 C1310 446 1345 460 1350 520 Z"></path>
-            </g>
-            <g fill="#030201">
-              <circle cx="800" cy="330" r="74"></circle>
-              <path d="M650 900 C655 640 720 470 800 470 C880 470 945 640 950 900 Z"></path>
-              <rect x="794" y="440" width="12" height="460"></rect>
-              <rect x="782" y="408" width="36" height="58" rx="18"></rect>
-            </g>
-            <path d="M745 300 C760 255 840 255 856 300" fill="none" stroke="#FFB27A" stroke-opacity="0.45" stroke-width="5"></path>
-          </svg>
-          <div style="position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0) 22%, rgba(0,0,0,0) 70%, rgba(0,0,0,0.55) 100%)" aria-hidden="true"></div>
-          <div style="position: absolute; left: 18px; top: 16px; display: flex; gap: 8px; align-items: center">
-            <span style="padding: 5px 11px; border-radius: 8px; background: #1F66E0; color: #FFFFFF; font-weight: 800; font-size: 12px; letter-spacing: 0.1em; box-shadow: 0 4px 16px rgba(31,102,224,0.6)">LIVE</span>
-            <span style="padding: 5px 12px; border-radius: 8px; background: rgba(10,6,4,0.55); backdrop-filter: blur(10px); border: 1px solid rgba(255,236,220,0.12); font-weight: 600; font-size: 13px">{{liveLabel}}</span>
-          </div>
-          <div style="position: absolute; right: 18px; top: 16px; padding: 5px 12px; border-radius: 8px; background: rgba(10,6,4,0.55); backdrop-filter: blur(10px); border: 1px solid rgba(255,236,220,0.12); font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #E9DED2">1080p60 · 9.0 Mbps</div>
-          <div style="position: absolute; left: 18px; right: 18px; bottom: 16px; display: flex; align-items: flex-end; gap: 14px">
-            <div style="display: flex; flex-direction: column; gap: 4px">
-              <span style="font-size: 11px; letter-spacing: 0.14em; color: #E9DED2; font-weight: 700">NOW PLAYING</span>
-              <span style="font-family: Sora, sans-serif; font-size: 22px; font-weight: 700; letter-spacing: -0.01em">Song 7 · second chorus</span>
+          <div style="border-radius: 19px; overflow: hidden; position: relative; aspect-ratio: 16 / 9; max-height: 470px; width: 100%; background: #070403">
+            <svg viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" style="position: absolute; inset: 0; width: 100%; height: 100%" role="img" aria-label="Live program: lead singer under warm stage lights">
+              <defs>
+                <linearGradient id="vnBg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1A0D08"></stop><stop offset="0.6" stop-color="#0C0604"></stop><stop offset="1" stop-color="#1C0F09"></stop></linearGradient>
+                <linearGradient id="vnBeamW" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFC27A" stop-opacity="0.55"></stop><stop offset="1" stop-color="#FF8A3D" stop-opacity="0"></stop></linearGradient>
+                <linearGradient id="vnBeamM" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FF6FA0" stop-opacity="0.32"></stop><stop offset="1" stop-color="#FF6FA0" stop-opacity="0"></stop></linearGradient>
+                <radialGradient id="vnFloor" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#FF9A4D" stop-opacity="0.55"></stop><stop offset="1" stop-color="#FF9A4D" stop-opacity="0"></stop></radialGradient>
+                <radialGradient id="vnHaze" cx="0.5" cy="0.4" r="0.6"><stop offset="0" stop-color="#FFB27A" stop-opacity="0.18"></stop><stop offset="1" stop-color="#FFB27A" stop-opacity="0"></stop></radialGradient>
+                <radialGradient id="vnBokeh" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#FFD9A8" stop-opacity="0.7"></stop><stop offset="1" stop-color="#FFD9A8" stop-opacity="0"></stop></radialGradient>
+              </defs>
+              <rect width="1600" height="900" fill="url(#vnBg)"></rect>
+              <polygon points="700,-20 900,-20 1180,900 420,900" fill="url(#vnBeamW)"></polygon>
+              <polygon points="180,-20 280,-20 620,900 200,900" fill="url(#vnBeamM)"></polygon>
+              <polygon points="1320,-20 1420,-20 1400,900 980,900" fill="url(#vnBeamM)"></polygon>
+              <rect width="1600" height="900" fill="url(#vnHaze)"></rect>
+              <ellipse cx="800" cy="840" rx="620" ry="120" fill="url(#vnFloor)"></ellipse>
+              <circle cx="120" cy="140" r="38" fill="url(#vnBokeh)"></circle><circle cx="1480" cy="110" r="52" fill="url(#vnBokeh)"></circle><circle cx="1360" cy="220" r="24" fill="url(#vnBokeh)"></circle><circle cx="260" cy="260" r="20" fill="url(#vnBokeh)"></circle>
+              <g fill="#050302">
+                <rect x="210" y="560" width="300" height="26" rx="6"></rect><rect x="236" y="586" width="12" height="190"></rect><rect x="472" y="586" width="12" height="190"></rect>
+                <circle cx="360" cy="440" r="46"></circle><path d="M280 560 C285 500 320 486 360 486 C400 486 435 500 440 560 Z"></path>
+                <circle cx="1270" cy="560" r="86"></circle><ellipse cx="1150" cy="520" rx="70" ry="16"></ellipse><ellipse cx="1400" cy="500" rx="80" ry="18"></ellipse>
+                <circle cx="1275" cy="400" r="42"></circle><path d="M1200 520 C1205 460 1240 446 1275 446 C1310 446 1345 460 1350 520 Z"></path>
+              </g>
+              <g fill="#030201">
+                <circle cx="800" cy="330" r="74"></circle>
+                <path d="M650 900 C655 640 720 470 800 470 C880 470 945 640 950 900 Z"></path>
+                <rect x="794" y="440" width="12" height="460"></rect>
+                <rect x="782" y="408" width="36" height="58" rx="18"></rect>
+              </g>
+              <path d="M745 300 C760 255 840 255 856 300" fill="none" stroke="#FFB27A" stroke-opacity="0.45" stroke-width="5"></path>
+            </svg>
+            <div style="position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0) 22%, rgba(0,0,0,0) 70%, rgba(0,0,0,0.55) 100%)" aria-hidden="true"></div>
+            <div style="position: absolute; left: 18px; top: 16px; display: flex; gap: 8px; align-items: center">
+              <span style="padding: 5px 11px; border-radius: 8px; background: #1F66E0; color: #FFFFFF; font-weight: 800; font-size: 12px; letter-spacing: 0.1em; box-shadow: 0 4px 16px rgba(31,102,224,0.6)">LIVE</span>
+              <span style="padding: 5px 12px; border-radius: 8px; background: rgba(10,6,4,0.55); backdrop-filter: blur(10px); border: 1px solid rgba(255,236,220,0.12); font-weight: 600; font-size: 13px">{{liveLabel}}</span>
             </div>
-            <span style="flex: 1"></span>
-            <div style="display: flex; gap: 3px; align-items: flex-end; height: 46px" aria-hidden="true">
-              <span style="width: 6px; height: 72%; border-radius: 3px; background: linear-gradient(to top, #F5EEE6, #FFD7A8)"></span>
-              <span style="width: 6px; height: 86%; border-radius: 3px; background: linear-gradient(to top, #F5EEE6, #FFD7A8)"></span>
+            <div style="position: absolute; right: 18px; top: 16px; padding: 5px 12px; border-radius: 8px; background: rgba(10,6,4,0.55); backdrop-filter: blur(10px); border: 1px solid rgba(255,236,220,0.12); font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #E9DED2">1080p60 · 9.0 Mbps</div>
+            <div style="position: absolute; left: 18px; right: 18px; bottom: 16px; display: flex; align-items: flex-end; gap: 14px">
+              <div style="display: flex; flex-direction: column; gap: 4px">
+                <span style="font-size: 11px; letter-spacing: 0.14em; color: #E9DED2; font-weight: 700">NOW PLAYING</span>
+                <span style="font-family: Sora, sans-serif; font-size: 22px; font-weight: 700; letter-spacing: -0.01em">Song 7 · second chorus</span>
+              </div>
+              <span style="flex: 1"></span>
+              <div style="display: flex; gap: 3px; align-items: flex-end; height: 46px" aria-hidden="true">
+                <span style="width: 6px; height: 72%; border-radius: 3px; background: linear-gradient(to top, #F5EEE6, #FFD7A8)"></span>
+                <span style="width: 6px; height: 86%; border-radius: 3px; background: linear-gradient(to top, #F5EEE6, #FFD7A8)"></span>
+              </div>
             </div>
           </div>
+        </section>
         </div>
-      </section>
+        <section aria-label="Vertical program for TikTok and Instagram" style="flex: 0 0 214px; display: flex; flex-direction: column; gap: 8px">
+          <div style="border-radius: 20px; padding: 2px; background: linear-gradient(160deg, #5EA2FF, #1F66E0 60%, #2A4F9E); box-shadow: 0 18px 50px rgba(31,102,224,0.2)">
+            <div style="border-radius: 18px; overflow: hidden; position: relative; aspect-ratio: 9 / 16; background: radial-gradient(80% 50% at 50% 35%, rgba(255,194,122,0.5), rgba(0,0,0,0) 70%), radial-gradient(90% 40% at 50% 100%, rgba(255,140,70,0.5), rgba(0,0,0,0) 70%), linear-gradient(180deg, #1A0D08, #0B0604)">
+              <svg viewBox="0 0 90 160" style="position: absolute; inset: 0; width: 100%; height: 100%" aria-hidden="true"><g fill="#030201"><circle cx="45" cy="62" r="13"></circle><path d="M18 160 C20 112 32 84 45 84 C58 84 70 112 72 160 Z"></path><rect x="44" y="76" width="2" height="84"></rect><rect x="42" y="70" width="6" height="11" rx="3"></rect></g></svg>
+              <span style="position: absolute; left: 10px; top: 10px; padding: 3px 8px; border-radius: 6px; background: #1F66E0; color: #FFFFFF; font-size: 10px; font-weight: 800; letter-spacing: 0.1em">LIVE 9:16</span>
+              <span style="position: absolute; left: 10px; right: 10px; bottom: 10px; padding: 6px 8px; border-radius: 8px; background: rgba(10,6,4,0.6); backdrop-filter: blur(8px); font-size: 11px; line-height: 1.35; color: #E9DED2">Claude reframes the live shot to follow the action</span>
+            </div>
+          </div>
+          <span style="font-size: 11px; color: #9C9084; text-align: center">Vertical · TikTok + Instagram</span>
+        </section>
+      </div>
 
       <div style="display: flex; align-items: center; gap: 10px">
         <span style="font-size: 11px; letter-spacing: 0.14em; color: #9C9084; font-weight: 700">CAMERAS</span>
@@ -256,13 +276,14 @@ button:focus-visible{outline:2px solid #F5EEE6;outline-offset:2px}
           <sc-if value="{{tabChat}}" hint-placeholder-val="{{ false }}">
             <div style="display: flex; flex-direction: column; gap: 4px">
               <div style="display: flex; align-items: center; gap: 8px; padding-bottom: 6px">
-                <span style="font-size: 11px; letter-spacing: 0.14em; color: #9C9084; font-weight: 700">YOUTUBE LIVE CHAT</span>
+                <span style="font-size: 11px; letter-spacing: 0.14em; color: #9C9084; font-weight: 700">LIVE CHAT · ALL PLATFORMS</span>
                 <span style="flex: 1"></span>
-                <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #9C9084">214 watching · 38 msgs/min</span>
+                <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #9C9084">1,240 watching · 5 platforms</span>
               </div>
               <sc-for list="{{chat}}" as="m" hint-placeholder-count="7">
                 <div style="{{m.rowStyle}}">
                   <div style="display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap">
+                    <span style="padding: 1px 5px; border-radius: 5px; background: {{m.pbg}}; color: #FFFFFF; font-size: 9px; font-weight: 800">{{m.p}}</span>
                     <span style="font-size: 12px; font-weight: 700; color: {{m.c}}">{{m.who}}</span>
                     <sc-if value="{{m.tag}}" hint-placeholder-val="{{ false }}">
                       <span style="padding: 1px 7px; border-radius: 999px; background: {{m.tagBg}}; color: #140D09; font-size: 10px; font-weight: 800">{{m.tag}}</span>
@@ -354,20 +375,22 @@ class Component extends DCLogic {
       { time: '21:39:05', kind: 'YOURS', kindColor: '#F5EEE6', text: 'You moved Vocal piano — held by you for the rest of the show.', why: 'Claude only steps in for feedback, clipping or a dead signal.', undo: false }
     ];
     const tabBtn = (on) => 'flex: 1; min-height: 34px; border-radius: 9px; border: 0; font-weight: 700; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; background: ' + (on ? 'rgba(255,236,220,0.12)' : 'transparent') + '; color: ' + (on ? '#F5EEE6' : '#9C9084');
+    const PB = { YT: '#C4302B', TW: '#7B4BD6', FB: '#2D63D8', TT: '#1F1F1F', IG: '#C23A7E' };
+    const dests = [['YouTube', 'YT'], ['Twitch', 'TW'], ['Facebook', 'FB'], ['TikTok', 'TT'], ['Instagram', 'IG']].map((d) => ({ name: d[0], ab: d[1], bg: PB[d[1]] }));
     const chat = [
-      { who: 'groovecat_88', c: '#E6C07A', text: 'can you guys do Superstition next?? 🎹', tag: 'SONG REQUEST', tagBg: '#FFB224', note: 'Flagged for the band' },
-      { who: 'maria.l', c: '#9FC7A8', text: 'that sax solo omg', tag: '', note: '' },
-      { who: 'jonah_beats', c: '#8FA3D9', text: 'watching from Lisbon, shout out to the drummer!', tag: 'SHOUT-OUT', tagBg: '#B9A6FF', note: 'Flagged for the singer between songs' },
-      { who: 'kenji', c: '#E58FB0', text: 'audio sounds amazing tonight', tag: '', note: '' },
-      { who: 'soulful_sam', c: '#E08A5A', text: 'Lose Control again pls 🙏', tag: 'SONG REQUEST', tagBg: '#FFB224', note: 'Flagged for the band' },
-      { who: 'ana.r', c: '#9FC7A8', text: 'first time here, this is so good', tag: '', note: '' },
-      { who: 'theo', c: '#C9BDB1', text: 'the keys tone 🔥', tag: '', note: '' }
-    ].map((m) => Object.assign({}, m, { rowStyle: 'display: flex; flex-direction: column; gap: 3px; padding: 9px 10px; border-radius: 12px; ' + (m.tag ? 'background: rgba(255,236,220,0.05); border: 1px solid rgba(255,236,220,0.08)' : 'background: transparent') }));
+      { p: 'YT', who: 'groovecat_88', c: '#E6C07A', text: 'can you guys do Superstition next?? 🎹', tag: 'SONG REQUEST', tagBg: '#FFB224', note: 'Flagged for the band' },
+      { p: 'IG', who: 'maria.l', c: '#9FC7A8', text: 'that sax solo omg', tag: '', note: '' },
+      { p: 'TW', who: 'jonah_beats', c: '#8FA3D9', text: 'watching from Lisbon, shout out to the drummer!', tag: 'SHOUT-OUT', tagBg: '#B9A6FF', note: 'Flagged for the singer between songs' },
+      { p: 'TT', who: 'kenji', c: '#E58FB0', text: 'audio sounds amazing tonight', tag: '', note: '' },
+      { p: 'FB', who: 'soulful_sam', c: '#E08A5A', text: 'Lose Control again pls 🙏', tag: 'SONG REQUEST', tagBg: '#FFB224', note: 'Flagged for the band' },
+      { p: 'TT', who: 'ana.r', c: '#9FC7A8', text: 'first time here, this is so good', tag: '', note: '' },
+      { p: 'YT', who: 'theo', c: '#C9BDB1', text: 'the keys tone 🔥', tag: '', note: '' }
+    ].map((m) => Object.assign({}, m, { pbg: PB[m.p], rowStyle: 'display: flex; flex-direction: column; gap: 3px; padding: 9px 10px; border-radius: 12px; ' + (m.tag ? 'background: rgba(255,236,220,0.05); border: 1px solid rgba(255,236,220,0.08)' : 'background: transparent') }));
     const open = s.open;
     return {
       open: open, closed: !open,
       liveLabel: liveCam.num + ' · ' + liveCam.name,
-      cams: cams, groups: groups, procs: procs, feed: feed, chat: chat,
+      cams: cams, groups: groups, procs: procs, feed: feed, chat: chat, dests: dests,
       tabClaude: s.tab === 'claude', tabChat: s.tab === 'chat',
       tabClaudeStyle: tabBtn(s.tab === 'claude'), tabChatStyle: tabBtn(s.tab === 'chat'),
       showClaude: () => this.setState({ tab: 'claude' }), showChat: () => this.setState({ tab: 'chat' }),

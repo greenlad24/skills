@@ -54,6 +54,32 @@ button:focus-visible{outline:2px solid #F5EEE6;outline-offset:2px}
           </div>
         </sc-for>
       </div>
+    
+      <div style="display: flex; flex-direction: column; gap: 12px">
+        <div style="display: flex; align-items: baseline; gap: 10px">
+          <span style="font-size: 11px; letter-spacing: 0.16em; color: #9C9084; font-weight: 700">DESTINATIONS</span>
+          <span style="color: #7D7268; font-size: 12px">{{destSummary}}</span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(min(250px, 100%), 1fr)); gap: 12px">
+          <sc-for list="{{dests}}" as="d" hint-placeholder-count="5">
+            <div style="{{d.cardStyle}}">
+              <div style="display: flex; align-items: center; gap: 10px">
+                <span style="width: 34px; height: 34px; border-radius: 10px; background: {{d.bg}}; color: #FFFFFF; font-size: 12px; font-weight: 800; display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 16px rgba(0,0,0,0.4)">{{d.ab}}</span>
+                <div style="display: flex; flex-direction: column; gap: 1px; min-width: 0">
+                  <span style="font-weight: 700; font-size: 15px">{{d.name}}</span>
+                  <span style="font-size: 12px; color: {{d.statusColor}}">{{d.status}}</span>
+                </div>
+              </div>
+              <div style="display: flex; gap: 6px; flex-wrap: wrap">
+                <span style="padding: 3px 8px; border-radius: 7px; background: rgba(255,236,220,0.06); font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #C9BDB1">{{d.format}}</span>
+                <span style="padding: 3px 8px; border-radius: 7px; background: rgba(255,236,220,0.06); font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #C9BDB1">{{d.rate}}</span>
+              </div>
+              <span style="font-size: 12px; color: #9C9084; line-height: 1.4; min-height: 34px">{{d.note}}</span>
+              <button onClick="{{d.toggle}}" style="{{d.btnStyle}}">{{d.btn}}</button>
+            </div>
+          </sc-for>
+        </div>
+      </div>
     </section>
 
     <aside style="flex: 1 1 380px; min-width: 0; display: flex; flex-direction: column; gap: 18px">
@@ -103,7 +129,7 @@ Subscribe: youtube.com/@MusicLiveLove</div>
           <dt style="color: #9C9084">Quality</dt><dd style="margin: 0; font-family: 'JetBrains Mono', monospace">1080p60 · 9 Mbps · AAC 128k</dd>
         </dl>
         <button style="min-height: 72px; border-radius: 18px; border: 0; background: linear-gradient(180deg, #3A86FF 0%, #1F66E0 60%, #1A57C2 100%); color: #FFFFFF; font-family: Sora, sans-serif; font-size: 22px; font-weight: 800; letter-spacing: -0.01em; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 12px; animation: vnGlow 2.6s ease-in-out infinite">
-          <span style="width: 14px; height: 14px; border-radius: 50%; background: #FFFFFF; box-shadow: 0 0 0 5px rgba(255,255,255,0.25)"></span>Go Live
+          <span style="width: 14px; height: 14px; border-radius: 50%; background: #FFFFFF; box-shadow: 0 0 0 5px rgba(255,255,255,0.25)"></span>{{goLabel}}
         </button>
         <a href="#" style="text-align: center; font-size: 13px; font-weight: 600">Start a private test stream first</a>
       </section>
@@ -125,8 +151,9 @@ Subscribe: youtube.com/@MusicLiveLove</div>
   </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1700}}'>
 class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { on: { YT: true, TW: true, FB: false, TT: false, IG: false } }; }
   renderVals() {
     const ok = 'M5 12l5 5L20 7';
     const warn = 'M12 7v6M12 17h.01';
@@ -148,7 +175,30 @@ class Component extends DCLogic {
       iconStyle: r[3] === 'ok' ? ico('rgba(245,238,230,0.1)', '#F5EEE6', '') : ico('#FFB224', '#1A1206', 'rgba(255,178,36,0.45)'),
       metaStyle: meta(r[3] === 'ok' ? '#C9BDB1' : '#FFB224')
     }));
+    const on = this.state.on;
+    const D = [
+      { ab: 'YT', name: 'YouTube', bg: '#C4302B', acct: '@MusicLiveLove', format: '16:9 · 1080p60', rate: '9 Mbps', note: 'Title, description and thumbnail written by Claude.', kind: 'oauth' },
+      { ab: 'TW', name: 'Twitch', bg: '#7B4BD6', acct: 'musicliveLove', format: '16:9 · 1080p60', rate: '6 Mbps', note: 'Twitch caps around 6 Mbps, so it gets its own encode.', kind: 'oauth' },
+      { ab: 'FB', name: 'Facebook', bg: '#2D63D8', acct: 'Music Live Love page', format: '16:9 · 1080p60', rate: '6 Mbps', note: 'Posts to your Page, not a personal profile.', kind: 'oauth' },
+      { ab: 'TT', name: 'TikTok', bg: '#1F1F1F', acct: 'stream key', format: '9:16 · 1080×1920', rate: '4 Mbps', note: 'Needs TikTok LIVE access (about 1,000 followers) and a stream key.', kind: 'key' },
+      { ab: 'IG', name: 'Instagram', bg: '#C23A7E', acct: 'stream key', format: '9:16 · 720×1280', rate: '4 Mbps', note: 'Professional account; Instagram issues a new key for each show.', kind: 'key' }
+    ];
+    const count = D.filter((d) => on[d.ab]).length;
+    const dests = D.map((d) => {
+      const c = !!on[d.ab];
+      return Object.assign({}, d, {
+        status: c ? 'Connected · ' + d.acct : 'Not connected',
+        statusColor: c ? '#C9BDB1' : '#7D7268',
+        btn: c ? 'Disconnect' : (d.kind === 'key' ? 'Connect · paste stream key' : 'Connect ' + d.name),
+        btnStyle: 'min-height: 42px; border-radius: 12px; font-weight: 700; font-size: 13px; cursor: pointer; ' + (c ? 'border: 1px solid rgba(255,236,220,0.12); background: transparent; color: #9C9084' : 'border: 0; background: #F5EEE6; color: #140D09'),
+        cardStyle: 'border-radius: 18px; padding: 14px; display: flex; flex-direction: column; gap: 10px; background: linear-gradient(180deg, rgba(36,27,21,0.8), rgba(20,15,11,0.8)); border: 1px solid ' + (c ? 'rgba(245,238,230,0.35)' : 'rgba(255,236,220,0.07)'),
+        toggle: () => { const n = Object.assign({}, this.state.on); n[d.ab] = !n[d.ab]; this.setState({ on: n }); }
+      });
+    });
     return {
+      dests: dests,
+      destSummary: count + ' of 5 connected · Claude writes a title and caption for each',
+      goLabel: 'Go Live on ' + count,
       checks: checks,
       alts: [
         'Friday Night Funk & Soul — Live Cover Band Arrangements (Not AI)',
