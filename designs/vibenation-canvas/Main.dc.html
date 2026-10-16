@@ -40,6 +40,7 @@ button:focus-visible{outline:2px solid #F5EEE6;outline-offset:2px}
     </div>
     <div style="display: flex; align-items: center; gap: 7px; padding: 7px 12px; border-radius: 999px; background: rgba(255,236,220,0.05); border: 1px solid rgba(255,236,220,0.08); font-family: 'JetBrains Mono', monospace; font-size: 13px">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#C9BDB1" stroke-width="2" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"></path><circle cx="12" cy="12" r="3"></circle></svg>214
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#C9BDB1" stroke-width="2" aria-hidden="true" style="margin-left: 6px"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"></path></svg>86
     </div>
     <div style="display: flex; align-items: center; gap: 12px; padding: 7px 12px; border-radius: 999px; background: rgba(255,236,220,0.05); border: 1px solid rgba(255,236,220,0.08); font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #C9BDB1" aria-label="Stream health">
       <span>9.0 Mbps</span><span>60 fps</span><span>CPU 38%</span><span>0 dropped</span>
@@ -190,6 +191,12 @@ button:focus-visible{outline:2px solid #F5EEE6;outline-offset:2px}
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
             </button>
           </div>
+          <div style="display: flex; gap: 2px; padding: 3px; border-radius: 12px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,236,220,0.06)" role="tablist" aria-label="Sidebar">
+            <button role="tab" aria-selected="{{tabClaude}}" onClick="{{showClaude}}" style="{{tabClaudeStyle}}">Claude</button>
+            <button role="tab" aria-selected="{{tabChat}}" onClick="{{showChat}}" style="{{tabChatStyle}}">Live chat <span style="padding: 1px 6px; border-radius: 999px; background: #FFB224; color: #1A1206; font-size: 10px; font-weight: 800">2 requests</span></button>
+          </div>
+          <sc-if value="{{tabClaude}}" hint-placeholder-val="{{ true }}">
+          <div style="display: flex; flex-direction: column; gap: 18px">
 
           <div style="position: relative; border-radius: 18px; padding: 1px; background: linear-gradient(140deg, rgba(185,166,255,0.9), rgba(185,166,255,0.15) 60%, rgba(255,138,61,0.4)); box-shadow: 0 12px 40px rgba(124,102,217,0.22)">
             <div style="border-radius: 17px; padding: 14px; background: linear-gradient(180deg, #1C1626, #15101C); display: flex; flex-direction: column; gap: 10px; overflow: hidden">
@@ -244,6 +251,32 @@ button:focus-visible{outline:2px solid #F5EEE6;outline-offset:2px}
             </sc-for>
             <a href="#" style="font-size: 13px; font-weight: 600">Open full log →</a>
           </div>
+          </div>
+          </sc-if>
+          <sc-if value="{{tabChat}}" hint-placeholder-val="{{ false }}">
+            <div style="display: flex; flex-direction: column; gap: 4px">
+              <div style="display: flex; align-items: center; gap: 8px; padding-bottom: 6px">
+                <span style="font-size: 11px; letter-spacing: 0.14em; color: #9C9084; font-weight: 700">YOUTUBE LIVE CHAT</span>
+                <span style="flex: 1"></span>
+                <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #9C9084">214 watching · 38 msgs/min</span>
+              </div>
+              <sc-for list="{{chat}}" as="m" hint-placeholder-count="7">
+                <div style="{{m.rowStyle}}">
+                  <div style="display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap">
+                    <span style="font-size: 12px; font-weight: 700; color: {{m.c}}">{{m.who}}</span>
+                    <sc-if value="{{m.tag}}" hint-placeholder-val="{{ false }}">
+                      <span style="padding: 1px 7px; border-radius: 999px; background: {{m.tagBg}}; color: #140D09; font-size: 10px; font-weight: 800">{{m.tag}}</span>
+                    </sc-if>
+                  </div>
+                  <span style="font-size: 13px; line-height: 1.45; color: #E9DED2">{{m.text}}</span>
+                  <sc-if value="{{m.note}}" hint-placeholder-val="{{ false }}">
+                    <span style="font-size: 11px; color: #CDBFFF">{{m.note}}</span>
+                  </sc-if>
+                </div>
+              </sc-for>
+              <span style="font-size: 12px; color: #7D7268; padding-top: 6px">Claude reads chat only to flag requests and shout-outs. It never posts.</span>
+            </div>
+          </sc-if>
         </div>
       </sc-if>
       <sc-if value="{{closed}}" hint-placeholder-val="{{ false }}">
@@ -264,7 +297,7 @@ button:focus-visible{outline:2px solid #F5EEE6;outline-offset:2px}
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":960}}'>
 class Component extends DCLogic {
-  constructor(props) { super(props); this.state = { open: true, live: 2 }; }
+  constructor(props) { super(props); this.state = { open: true, live: 2, tab: 'claude' }; }
   renderVals() {
     const s = this.state;
     const dot = (c) => 'width: 8px; height: 8px; border-radius: 50%; flex: none; background: ' + c + (c === '#B9A6FF' || c === '#FFB224' ? '; box-shadow: 0 0 8px ' + c : '');
@@ -320,11 +353,24 @@ class Component extends DCLogic {
       { time: '21:40:31', kind: 'ROLE', kindColor: '#B9A6FF', text: 'Ch 16 switched: harmonica → backing vocal.', why: 'Voice detected for 8 s; vocal preset crossfaded in 2 s.', undo: true },
       { time: '21:39:05', kind: 'YOURS', kindColor: '#F5EEE6', text: 'You moved Vocal piano — held by you for the rest of the show.', why: 'Claude only steps in for feedback, clipping or a dead signal.', undo: false }
     ];
+    const tabBtn = (on) => 'flex: 1; min-height: 34px; border-radius: 9px; border: 0; font-weight: 700; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; background: ' + (on ? 'rgba(255,236,220,0.12)' : 'transparent') + '; color: ' + (on ? '#F5EEE6' : '#9C9084');
+    const chat = [
+      { who: 'groovecat_88', c: '#E6C07A', text: 'can you guys do Superstition next?? 🎹', tag: 'SONG REQUEST', tagBg: '#FFB224', note: 'Flagged for the band' },
+      { who: 'maria.l', c: '#9FC7A8', text: 'that sax solo omg', tag: '', note: '' },
+      { who: 'jonah_beats', c: '#8FA3D9', text: 'watching from Lisbon, shout out to the drummer!', tag: 'SHOUT-OUT', tagBg: '#B9A6FF', note: 'Flagged for the singer between songs' },
+      { who: 'kenji', c: '#E58FB0', text: 'audio sounds amazing tonight', tag: '', note: '' },
+      { who: 'soulful_sam', c: '#E08A5A', text: 'Lose Control again pls 🙏', tag: 'SONG REQUEST', tagBg: '#FFB224', note: 'Flagged for the band' },
+      { who: 'ana.r', c: '#9FC7A8', text: 'first time here, this is so good', tag: '', note: '' },
+      { who: 'theo', c: '#C9BDB1', text: 'the keys tone 🔥', tag: '', note: '' }
+    ].map((m) => Object.assign({}, m, { rowStyle: 'display: flex; flex-direction: column; gap: 3px; padding: 9px 10px; border-radius: 12px; ' + (m.tag ? 'background: rgba(255,236,220,0.05); border: 1px solid rgba(255,236,220,0.08)' : 'background: transparent') }));
     const open = s.open;
     return {
       open: open, closed: !open,
       liveLabel: liveCam.num + ' · ' + liveCam.name,
-      cams: cams, groups: groups, procs: procs, feed: feed,
+      cams: cams, groups: groups, procs: procs, feed: feed, chat: chat,
+      tabClaude: s.tab === 'claude', tabChat: s.tab === 'chat',
+      tabClaudeStyle: tabBtn(s.tab === 'claude'), tabChatStyle: tabBtn(s.tab === 'chat'),
+      showClaude: () => this.setState({ tab: 'claude' }), showChat: () => this.setState({ tab: 'chat' }),
       sideStyle: 'flex: 0 0 ' + (open ? '350px' : '60px') + '; min-width: 0; border-left: 1px solid rgba(255,236,220,0.07); background: linear-gradient(180deg, rgba(20,14,11,0.85), rgba(14,10,8,0.85)); backdrop-filter: blur(18px)',
       toggleSide: () => this.setState({ open: !this.state.open })
     };

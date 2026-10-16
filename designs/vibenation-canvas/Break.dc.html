@@ -22,10 +22,11 @@ a{color:#FF8A3D}a:hover{color:#FFB27F}
 
   <div style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; padding-top: 120px; gap: 18px">
     <div style="display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-radius: 999px; background: rgba(42,22,16,0.7); border: 1px solid rgba(245,238,230,0.18); font-size: 15px; font-weight: 600; letter-spacing: 0.12em">
-      <span style="width: 8px; height: 8px; border-radius: 50%; background: #FFC371"></span>SHORT BREAK
+      <span style="width: 8px; height: 8px; border-radius: 50%; background: #FFC371"></span>{{pill}}
     </div>
-    <h1 style="margin: 0; font-size: 54px; font-weight: 600; letter-spacing: -0.02em">We’ll be back in</h1>
-    <div style="font-family: 'JetBrains Mono', monospace; font-size: 168px; font-weight: 700; line-height: 1; letter-spacing: -0.04em">{{time}}</div>
+    <h1 style="margin: 0; font-size: 54px; font-weight: 600; letter-spacing: -0.02em">{{headline}}</h1>
+    <sc-if value="{{showTime}}" hint-placeholder-val="{{ true }}"><div style="font-family: 'JetBrains Mono', monospace; font-size: 168px; font-weight: 700; line-height: 1; letter-spacing: -0.04em">{{time}}</div></sc-if>
+    <sc-if value="{{showSub}}" hint-placeholder-val="{{ false }}"><div style="font-family: Sora, sans-serif; font-size: 40px; font-weight: 700; color: #FFE3BF; text-align: center; max-width: 900px; line-height: 1.2">Subscribe to Music Live Love for the next show</div></sc-if>
     <div style="margin-top: 8px; font-size: 22px; color: #E9DCCD">[Band Name] · live cover band session</div>
   </div>
 
@@ -36,15 +37,22 @@ a{color:#FF8A3D}a:hover{color:#FFB27F}
       <span style="font-size: 18px; font-weight: 600">[break playlist track]</span>
     </div>
     <span style="flex: 1"></span>
-    <span style="font-size: 16px; color: #E9DCCD">Grab a drink — set two starts soon</span>
+    <span style="font-size: 16px; color: #E9DCCD">{{foot}}</span>
   </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"minutes":{"editor":"int","default":15,"min":1,"max":60,"unit":"min"},"c1":{"editor":"color","default":"#FF5E62","section":"Band colours"},"c2":{"editor":"color","default":"#FF9966","section":"Band colours"},"c3":{"editor":"color","default":"#FFC371","section":"Band colours"},"$preview":{"width":1280,"height":720}}'>
+<script type="text/x-dc" data-dc-script data-props='{"mode":{"editor":"enum","options":["Starting soon","Break","Thanks for watching"],"default":"Break"},"minutes":{"editor":"int","default":15,"min":1,"max":60,"unit":"min"},"c1":{"editor":"color","default":"#FF5E62","section":"Band colours"},"c2":{"editor":"color","default":"#FF9966","section":"Band colours"},"c3":{"editor":"color","default":"#FFC371","section":"Band colours"},"$preview":{"width":1280,"height":720}}'>
 class Component extends DCLogic {
   renderVals() {
     const m = this.props.minutes ?? 15;
+    const mode = this.props.mode ?? 'Break';
+    const M = {
+      'Starting soon': { pill: 'STARTING SOON', headline: 'The show starts in', foot: 'Grab a drink — the band is tuning up', showTime: true },
+      'Break': { pill: 'SHORT BREAK', headline: 'We’ll be back in', foot: 'Grab a drink — set two starts soon', showTime: true },
+      'Thanks for watching': { pill: 'THAT’S A WRAP', headline: 'Thanks for watching', foot: 'See you next week', showTime: false }
+    }[mode] || {};
     return {
+      pill: M.pill, headline: M.headline, foot: M.foot, showTime: M.showTime, showSub: !M.showTime,
       time: String(m).padStart(2, '0') + ':00',
       c1: this.props.c1 ?? '#FF5E62', c2: this.props.c2 ?? '#FF9966', c3: this.props.c3 ?? '#FFC371'
     };
