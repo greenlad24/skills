@@ -63,3 +63,7 @@
 - Stream simultaneously to YouTube, Twitch, Facebook, TikTok and Instagram. Each platform has its own CONNECT button on the Go Live screen (OAuth for YouTube/Twitch/Facebook; stream key for TikTok/Instagram).
 - Two outputs: 16:9 1080p60 (YouTube ~9 Mbps; Twitch/Facebook ~6 Mbps, separate encode) and 9:16 vertical (TikTok 1080×1920, Instagram 720×1280) that Claude auto-reframes from the landscape cameras to follow the action.
 - Constraints: TikTok needs LIVE access (~1,000 followers) and a stream key; Instagram needs a professional account and issues a new key per broadcast; Facebook streams to the Page. Claude writes a title/caption per platform. Chat from all platforms is merged in the sidebar with platform badges; Claude only flags requests/shout-outs.
+
+## Effects (user decision)
+- Engineer view channel panel has an EFFECTS section with Easy | Detailed tabs. Easy = six big macro knobs per channel: Compression, Reverb, Delay, Warmth, Presence, Width (each drives several parameters). Detailed = threshold/ratio/attack/release/sends + de-esser, saturation, gate.
+- Effects rack screen: Reverb A (plate, vocals/horns), Reverb B (room, drums/percussion), tempo-synced Delay (follows detected BPM, ducks under vocal), Doubler/Chorus (keys/guitar, mono-safe). Each with presets, 4 knobs (e.g., decay, pre-delay, tone, mix), on/off and the list of channels sending to it.

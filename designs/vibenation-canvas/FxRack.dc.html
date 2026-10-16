@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>VibeNation — Effects rack</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&amp;family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=JetBrains+Mono:wght@500;600;700&amp;display=swap">
+<style>
+body{margin:0;background:#0B0806}
+a{color:#FF9A5A}a:hover{color:#FFC08F}
+button{font-family:inherit}
+button:focus-visible{outline:2px solid #F5EEE6;outline-offset:2px}
+</style>
+</helmet>
+<div style="min-height: 980px; color: #F5EEE6; font-family: 'DM Sans', system-ui, sans-serif; font-size: 14px; padding: 26px 28px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px; background: radial-gradient(900px 520px at 10% -10%, rgba(255,122,61,0.13), rgba(255,122,61,0) 60%), radial-gradient(700px 500px at 100% 100%, rgba(127,209,195,0.08), rgba(127,209,195,0) 60%), linear-gradient(180deg, #120C09 0%, #0B0806 100%)">
+
+  <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+    <a href="Mixer.dc.html" style="color: #9C9084; text-decoration: none; font-weight: 600">← Mix</a>
+    <h1 style="margin: 0; font-family: Sora, sans-serif; font-size: 30px; font-weight: 800; letter-spacing: -0.02em">Effects rack</h1>
+    <span style="color: #9C9084">Shared effects every channel can send to. Tempo follows the band: <b style="color: #F5EEE6; font-family: 'JetBrains Mono', monospace">118 BPM</b> (detected)</span>
+    <span style="flex: 1"></span>
+    <span style="display: flex; align-items: center; gap: 8px; padding: 7px 14px; border-radius: 999px; background: rgba(185,166,255,0.1); border: 1px solid rgba(185,166,255,0.35); color: #CDBFFF; font-weight: 600; font-size: 13px"><span style="width: 8px; height: 8px; border-radius: 50%; background: #B9A6FF; box-shadow: 0 0 10px #B9A6FF"></span>Claude tuning · touch a knob to take it over</span>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 16px">
+    <sc-for list="{{units}}" as="u" hint-placeholder-count="4">
+      <section aria-label="{{u.name}}" style="border-radius: 22px; padding: 18px; display: flex; flex-direction: column; gap: 14px; background: linear-gradient(180deg, rgba(36,27,21,0.85), rgba(20,15,11,0.85)); border: 1px solid rgba(255,236,220,0.07); box-shadow: inset 0 1px 0 rgba(255,236,220,0.05), 0 24px 60px rgba(0,0,0,0.4)">
+        <div style="display: flex; align-items: center; gap: 10px">
+          <span style="width: 10px; height: 34px; border-radius: 5px; background: {{u.c}}; box-shadow: 0 0 14px {{u.c}}"></span>
+          <div style="display: flex; flex-direction: column; gap: 1px">
+            <span style="font-family: Sora, sans-serif; font-weight: 700; font-size: 17px">{{u.name}}</span>
+            <span style="font-size: 12px; color: #9C9084">{{u.type}}</span>
+          </div>
+          <span style="flex: 1"></span>
+          <button onClick="{{u.toggle}}" aria-pressed="{{u.on}}" style="{{u.powerStyle}}">{{u.power}}</button>
+        </div>
+
+        <div style="display: flex; flex-wrap: wrap; gap: 6px">
+          <sc-for list="{{u.presets}}" as="p" hint-placeholder-count="3">
+            <button onClick="{{p.pick}}" style="{{p.style}}">{{p.name}}</button>
+          </sc-for>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px">
+          <sc-for list="{{u.knobs}}" as="k" hint-placeholder-count="4">
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 6px" role="img" aria-label="{{k.label}} {{k.v}}">
+              <div style="width: 58px; height: 58px; border-radius: 50%; background: {{k.arc}}; display: flex; align-items: center; justify-content: center">
+                <div style="width: 45px; height: 45px; border-radius: 50%; background: radial-gradient(circle at 40% 30%, #32271F, #0F0A08); box-shadow: 0 5px 12px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,236,220,0.1); position: relative; transform: rotate({{k.rot}})">
+                  <span style="position: absolute; left: 21px; top: 5px; width: 3px; height: 12px; border-radius: 2px; background: #F5EEE6"></span>
+                </div>
+              </div>
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700">{{k.v}}</span>
+              <span style="font-size: 10px; letter-spacing: 0.08em; color: #9C9084; font-weight: 700">{{k.label}}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <span style="font-size: 10px; letter-spacing: 0.12em; color: #7D7268; font-weight: 700">SENDS FROM</span>
+          <div style="display: flex; flex-wrap: wrap; gap: 6px">
+            <sc-for list="{{u.sends}}" as="sd" hint-placeholder-count="3">
+              <span style="padding: 4px 9px; border-radius: 999px; background: rgba(255,236,220,0.06); font-size: 12px; color: #E9DED2">{{sd.n}} <span style="font-family: 'JetBrains Mono', monospace; color: #9C9084">{{sd.db}}</span></span>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 8px; padding-top: 2px; border-top: 1px solid rgba(255,236,220,0.06)">
+          <span style="font-size: 12px; color: #C9BDB1; padding-top: 10px">{{u.extra}}</span>
+        </div>
+      </section>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1240,"height":980}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { off: {}, preset: { 0: 'Vocal plate', 1: 'Drum room', 2: '¼ note', 3: 'Doubler' } }; }
+  renderVals() {
+    const st = this.state;
+    const knob = (label, v, p, c) => {
+      const deg = Math.round(p * 270);
+      return { label: label, v: v, arc: 'conic-gradient(from 225deg, ' + c + ' 0deg ' + deg + 'deg, rgba(255,236,220,0.08) ' + deg + 'deg 270deg, transparent 270deg 360deg)', rot: Math.round(-135 + deg) + 'deg' };
+    };
+    const U = [
+      { name: 'Reverb A', type: 'Plate · for vocals and horns', c: '#E6C07A', presets: ['Vocal plate', 'Bright plate', 'Dark plate'],
+        k: [['DECAY', '1.5 s', 0.45], ['PRE-DELAY', '30 ms', 0.3], ['TONE', '8 kHz', 0.6], ['MIX', '100%', 1]],
+        sends: [['Vocal centre', '−12'], ['Vocal piano', '−14'], ['Sax', '−15'], ['Harmonica', '−18']], extra: 'Ducks under the lead vocal · low cut 300 Hz' },
+      { name: 'Reverb B', type: 'Room · for drums and percussion', c: '#E08A5A', presets: ['Drum room', 'Live room', 'Small club'],
+        k: [['DECAY', '0.8 s', 0.25], ['PRE-DELAY', '10 ms', 0.12], ['TONE', '6 kHz', 0.5], ['MIX', '100%', 1]],
+        sends: [['Snare', '−16'], ['Kick', '−24'], ['Congas', '−18']], extra: 'Keeps drums dry and tight for funk · low cut 200 Hz' },
+      { name: 'Delay', type: 'Tempo-synced · locked to 118 BPM', c: '#7FD1C3', presets: ['¼ note', '⅛ dotted', 'Slapback'],
+        k: [['TIME', '¼ · 508 ms', 0.5], ['FEEDBACK', '35%', 0.35], ['TONE', '4 kHz', 0.45], ['MIX', '100%', 1]],
+        sends: [['Vocal centre', '−18'], ['Sax', '−20']], extra: 'Ducks under the vocal so echoes fill the gaps · low cut 400 Hz' },
+      { name: 'Doubler / Chorus', type: 'Width for keys and guitar', c: '#8FA3D9', presets: ['Doubler', 'Rhodes chorus', 'Off'],
+        k: [['DEPTH', '25%', 0.25], ['RATE', '0.6 Hz', 0.3], ['SPREAD', '60%', 0.6], ['MIX', '40%', 0.4]],
+        sends: [['Piano L/R', '−10'], ['Guitar amp', '−16']], extra: 'Mono-safe: checked against phone speakers' }
+    ];
+    const units = U.map((u, i) => {
+      const on = !st.off[i];
+      return {
+        name: u.name, type: u.type, c: u.c, extra: u.extra, on: on,
+        power: on ? 'On' : 'Off',
+        powerStyle: 'min-height: 32px; min-width: 52px; border-radius: 999px; font-weight: 800; font-size: 12px; cursor: pointer; ' + (on ? 'border: 0; background: ' + u.c + '; color: #140D09; box-shadow: 0 0 12px ' + u.c : 'border: 1px solid rgba(255,236,220,0.15); background: transparent; color: #9C9084'),
+        toggle: () => { const o = Object.assign({}, this.state.off); o[i] = !o[i]; this.setState({ off: o }); },
+        presets: u.presets.map((p) => ({ name: p,
+          style: 'min-height: 32px; padding: 0 12px; border-radius: 999px; font-size: 12px; font-weight: 700; cursor: pointer; ' + (st.preset[i] === p ? 'border: 1px solid ' + u.c + '; background: rgba(255,236,220,0.08); color: #F5EEE6' : 'border: 1px solid rgba(255,236,220,0.1); background: transparent; color: #9C9084'),
+          pick: () => { const n = Object.assign({}, this.state.preset); n[i] = p; this.setState({ preset: n }); } })),
+        knobs: u.k.map((k) => knob(k[0], k[1], on ? k[2] : 0, u.c)),
+        sends: u.sends.map((x) => ({ n: x[0], db: x[1] }))
+      };
+    });
+    return { units: units };
+  }
+}
+</script>
+</body>
+</html>
