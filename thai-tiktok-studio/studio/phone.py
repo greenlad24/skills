@@ -247,3 +247,123 @@ def captions_page(posts: list, lang: str) -> str:
                                 steps="".join(f"<li>{s}</li>" for s in T["steps"]),
                                 cards="".join(cards) or f'<p class="empty">{T["empty"]}</p>',
                                 copy=T["copy"], copied=T["copied"])
+
+
+# --------------------------------------------------------------------------- finished video → your phone
+# Posting from the TikTok app itself (instead of through the API) usually gets more views, so a
+# finished video can be sent to the phone in its original quality: scan, tap Save, post in TikTok.
+_VIDEOS: dict = {}   # token → (project_id, render file name, expires_at)
+
+
+def video_token(pid: str, name: str) -> str:
+    now = time.time()
+    for t, (_, _, exp) in list(_VIDEOS.items()):
+        if exp < now:
+            _VIDEOS.pop(t, None)
+    for t, (p, n, exp) in _VIDEOS.items():
+        if p == pid and n == name and exp - now > 3600:
+            return t
+    t = secrets.token_urlsafe(16)
+    _VIDEOS[t] = (pid, name, now + TOKEN_TTL)
+    return t
+
+
+def video_for(token: str):
+    """→ (project_id, render name) or None when the link is unknown / expired."""
+    item = _VIDEOS.get(token or "")
+    if not item or item[2] < time.time():
+        return None
+    return item[0], item[1]
+
+
+VID_TEXT = {
+    "th": {"title": "📱 บันทึกวิดีโอลงมือถือ", "sub": "คุณภาพเต็ม ไม่ถูกบีบอัด — โพสต์เองจากแอป TikTok",
+           "save": "⬇ บันทึกวิดีโอ", "share": "📤 บันทึกลงรูปภาพ / แชร์ไป TikTok", "saving": "กำลังโหลดวิดีโอ…",
+           "size": "ขนาดไฟล์", "caption": "💬 แคปชัน + แฮชแท็ก", "copy": "📋 คัดลอกแคปชัน",
+           "copied": "✓ คัดลอกแล้ว — ไปวางใน TikTok ได้เลย",
+           "ios": ["กด <b>บันทึกวิดีโอ</b> แล้วกด <b>ดาวน์โหลด</b>",
+                   "แตะไอคอน ⬇ ในแถบ Safari → แตะวิดีโอ → แชร์ → <b>บันทึกวิดีโอ</b> (ลงแอปรูปภาพ)",
+                   "เปิด TikTok → <b>+</b> → <b>อัปโหลด</b> → เลือกวิดีโอ",
+                   "วางแคปชันที่คัดลอกไว้ เพิ่มตะกร้าสินค้า แล้วกด <b>โพสต์</b>"],
+           "android": ["กด <b>บันทึกวิดีโอ</b> — วิดีโอจะอยู่ใน <b>ดาวน์โหลด</b> / แกลเลอรี",
+                       "เปิด TikTok → <b>+</b> → <b>อัปโหลด</b> → เลือกวิดีโอ",
+                       "วางแคปชันที่คัดลอกไว้ เพิ่มตะกร้าสินค้า แล้วกด <b>โพสต์</b>"],
+           "tip": "มือถือกับคอมต้องใช้ Wi‑Fi เดียวกัน · เปิดหน้านี้ไว้จนโหลดเสร็จ"},
+    "en": {"title": "📱 Save the video to your phone", "sub": "Full quality, not compressed — post it yourself from the TikTok app",
+           "save": "⬇ Save video", "share": "📤 Save to Photos / share to TikTok", "saving": "Loading the video…",
+           "size": "File size", "caption": "💬 Caption + hashtags", "copy": "📋 Copy caption",
+           "copied": "✓ Copied — paste it in TikTok",
+           "ios": ["Tap <b>Save video</b>, then <b>Download</b>",
+                   "Tap the ⬇ icon in Safari's bar → tap the video → Share → <b>Save Video</b> (to Photos)",
+                   "Open TikTok → <b>+</b> → <b>Upload</b> → pick the video",
+                   "Paste the copied caption, add the product basket and tap <b>Post</b>"],
+           "android": ["Tap <b>Save video</b> — it goes to <b>Downloads</b> / your gallery",
+                       "Open TikTok → <b>+</b> → <b>Upload</b> → pick the video",
+                       "Paste the copied caption, add the product basket and tap <b>Post</b>"],
+           "tip": "Phone and computer must be on the same Wi‑Fi · keep this page open until it finishes"},
+}
+
+VIDEO_PAGE = """<!doctype html><html lang="{lang}"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>{title}</title>
+<link rel="icon" href="data:,">
+<style>
+*{{box-sizing:border-box}}
+body{{margin:0;background:#f3f4f8;color:#14141c;font:17px/1.55 -apple-system,Roboto,"Noto Sans Thai","Sukhumvit Set",sans-serif}}
+.wrap{{padding:16px;max-width:560px;margin:0 auto}}h1{{font-size:23px;line-height:1.3;margin:4px 0}}.muted{{color:#5b5e6e;font-size:15px}}
+video{{display:block;width:100%;max-height:58vh;background:#000;border-radius:16px;margin:12px 0}}
+.btn{{display:block;width:100%;min-height:60px;padding:16px;margin:0 0 10px;border:0;border-radius:16px;font:inherit;font-weight:700;
+font-size:19px;color:#fff;background:#e3164a;text-align:center;text-decoration:none;box-shadow:0 4px 14px rgba(227,22,74,.28)}}
+.btn.alt{{background:#0b7a76;box-shadow:none}}.btn.ok{{background:#10b981}}.btn:active{{transform:scale(.98)}}
+.card{{background:#fff;border:1px solid #e2e4ec;border-radius:18px;padding:14px;margin:14px 0}}
+textarea{{width:100%;border:1px solid #ddd;border-radius:12px;padding:10px;font:inherit;font-size:16px;min-height:110px}}
+ol{{margin:6px 0;padding-left:22px}}li{{margin:6px 0}}#st{{font-weight:700;color:#0b7a76;min-height:1.4em}}
+</style></head><body><div class="wrap">
+<h1>{title}</h1><div class="muted">{sub}</div>
+<video src="{src}" controls playsinline preload="metadata"></video>
+<button class="btn alt" id="share" hidden>{share}</button>
+<a class="btn" id="save" href="{dl}" download="{fname}">{save}</a>
+<div class="muted">{size}: {mb} MB · {fname}</div><div id="st" aria-live="polite"></div>
+{caption_html}
+<div class="card"><ol id="steps">{steps}</ol></div>
+<p class="muted">{tip}</p></div>
+<script>
+var cap = document.getElementById("cap");
+function copyCap(){{cap.focus();cap.select();cap.setSelectionRange(0,99999);var ok=false;
+try{{ok=document.execCommand("copy")}}catch(e){{}}if(!ok&&navigator.clipboard){{navigator.clipboard.writeText(cap.value)}}
+var b=document.getElementById("cb");b.textContent={copied};b.className="btn ok";}}
+var ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+document.getElementById("steps").innerHTML = ios ? {ios} : {android};
+// On a secure (https) page the phone's share sheet can save straight to Photos or open TikTok.
+try {{
+  var probe = new File([new Blob(["x"], {{type: "video/mp4"}})], "x.mp4", {{type: "video/mp4"}});
+  if (navigator.canShare && navigator.canShare({{files: [probe]}})) {{
+    var sh = document.getElementById("share"); sh.hidden = false;
+    sh.onclick = function () {{
+      var st = document.getElementById("st"); st.textContent = {saving};
+      fetch("{src}").then(function (r) {{ return r.blob(); }}).then(function (b) {{
+        st.textContent = "";
+        return navigator.share({{files: [new File([b], "{fname}", {{type: "video/mp4"}})]}});
+      }}).catch(function () {{ st.textContent = ""; }});
+    }};
+  }}
+}} catch (e) {{}}
+</script></body></html>"""
+
+
+def video_page(token: str, name: str, size_bytes: int, caption: str, lang: str) -> str:
+    import html
+    import json
+    from urllib.parse import quote
+    T = VID_TEXT.get(lang, VID_TEXT["th"])
+    src = f"/m/v/{token}/{quote(name)}"
+    js = lambda v: json.dumps(v, ensure_ascii=False).replace("</", "<\\/")
+    li = lambda xs: "".join(f"<li>{x}</li>" for x in xs)
+    cap_html = ""
+    if caption:
+        cap_html = (f'<div class="card"><b>{T["caption"]}</b><textarea id="cap" readonly>{html.escape(caption)}</textarea>'
+                    f'<button class="btn alt" id="cb" onclick="copyCap()">{T["copy"]}</button></div>')
+    return VIDEO_PAGE.format(lang=lang, title=T["title"], sub=T["sub"], src=src, dl=src + "?download=1",
+                             fname=html.escape(name), save=T["save"], share=T["share"], size=T["size"],
+                             mb=f"{size_bytes / 1e6:.1f}", caption_html=cap_html, steps=li(T["android"]),
+                             tip=T["tip"], copied=js(T["copied"]), saving=js(T["saving"]),
+                             ios=js(li(T["ios"])), android=js(li(T["android"])))

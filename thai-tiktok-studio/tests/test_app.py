@@ -205,3 +205,31 @@ def test_captions_on_phone(client):
     page = c.get("/" + path).get_data(as_text=True)
     assert "ราวแขวนดีมาก" in page and "#tiktokshop" in page and "copy(0)" in page
     assert c.get("/m/c/not-a-token").status_code == 404
+
+
+def test_finished_video_to_phone_full_quality(client):
+    c, tmp = client
+    r = c.post("/api/projects", data={"text": "ที่นอน"}, content_type="multipart/form-data").get_json()
+    pid = r["project"]["id"]
+    wait_job(c, r["job"]["id"])
+    from studio import projects
+    rd = projects.pdir(pid) / "renders"
+    rd.mkdir(exist_ok=True)
+    data = bytes(range(256)) * 400
+    (rd / "V1_calm_120000.mp4").write_bytes(data)
+    assert c.post(f"/api/projects/{pid}/renders/nope.mp4/phone-link").status_code == 404
+    link = c.post(f"/api/projects/{pid}/renders/V1_calm_120000.mp4/phone-link").get_json()
+    assert link["qr"].startswith("data:image/png;base64,") and "/m/v/" in link["url"]
+    path = "/m/v/" + link["url"].split("/m/v/")[1].split("?")[0]
+    phone = {"REMOTE_ADDR": "192.168.1.50"}
+    page = c.get(path, environ_base=phone)
+    html = page.get_data(as_text=True)
+    assert page.status_code == 200 and "บันทึกวิดีโอ" in html and "V1_calm_120000.mp4" in html
+    f = c.get(path + "/V1_calm_120000.mp4?download=1", environ_base=phone)
+    assert f.status_code == 200 and f.data == data                      # byte-for-byte original
+    assert "attachment" in f.headers["Content-Disposition"]
+    part = c.get(path + "/V1_calm_120000.mp4", environ_base=phone, headers={"Range": "bytes=0-99"})
+    assert part.status_code == 206 and part.data == data[:100]          # resumable on the phone
+    assert c.get(path + "/other.mp4", environ_base=phone).status_code == 404   # only this one video
+    assert c.get("/m/v/not-a-token", environ_base=phone).status_code == 404
+    assert c.get(f"/files/{pid}/renders/V1_calm_120000.mp4", environ_base=phone).status_code == 403

@@ -234,6 +234,20 @@ def new_post(v: dict, dt: datetime) -> dict:
             "pub_token": secrets.token_urlsafe(18), "updated": time.time()}
 
 
+def caption_for(project_id: str, render: str) -> str:
+    """Caption + hashtags for a finished video: the scheduled post's (you may have edited it), else a fresh one."""
+    for p in sorted(load()["posts"], key=lambda x: x.get("updated", 0), reverse=True):
+        if p["project_id"] == project_id and p["render"] == render and p["status"] != "cancelled":
+            return full_text(p)
+    m = RENDER_RE.match(render)
+    plan = projects.load_json(projects.pdir(project_id) / "plan.json") or {}
+    video = next((v for v in plan.get("videos", []) if m and v["id"] == m.group(1)), None)
+    if not video:
+        return ""
+    cap = make_caption(video, plan.get("research", {}))
+    return full_text(cap)
+
+
 # ------------------------------------------------------------------ publishing via PostPeer
 def _render_path(p: dict) -> Path:
     return projects.pdir(p["project_id"]) / "renders" / p["render"]

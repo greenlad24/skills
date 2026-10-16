@@ -383,6 +383,43 @@ def captions_link():
     return jsonify({"url": url, "qr": phone.qr_data_uri(url), "hours": phone.TOKEN_TTL // 3600})
 
 
+@app.post("/api/projects/<pid>/renders/<name>/phone-link")
+def video_phone_link(pid, name):
+    """QR that opens a page on the phone to save this finished video in full quality."""
+    from . import phone
+    if not (projects.pdir(pid) / "renders" / name).is_file() or "/" in name or name.startswith("."):
+        abort(404)
+    token = phone.video_token(pid, name)
+    host = request.host if SERVER_MODE else f"{phone.lan_ip()}:{PORT}"
+    url = f"{'https' if SERVER_MODE else 'http'}://{host}/m/v/{token}?lang={_ui_lang()}"
+    return jsonify({"url": url, "qr": phone.qr_data_uri(url), "hours": phone.TOKEN_TTL // 3600})
+
+
+@app.get("/m/v/<token>")
+def video_phone_page(token):
+    from . import phone, scheduler
+    lang = _ui_lang()
+    got = phone.video_for(token)
+    f = projects.pdir(got[0]) / "renders" / got[1] if got else None
+    if not f or not f.is_file():
+        return phone.expired_page(lang), 404
+    return phone.video_page(token, f.name, f.stat().st_size, scheduler.caption_for(got[0], f.name), lang)
+
+
+@app.get("/m/v/<token>/<name>")
+def video_phone_file(token, name):
+    """The original file, byte for byte (no re-encoding), with resume support for big files."""
+    from . import phone
+    got = phone.video_for(token)
+    if not got or got[1] != name:
+        abort(404)
+    f = projects.pdir(got[0]) / "renders" / name
+    if not f.is_file():
+        abort(404)
+    return send_file(f, mimetype="video/mp4", conditional=True, download_name=name,
+                     as_attachment=request.args.get("download") == "1")
+
+
 @app.get("/m/c/<token>")
 def captions_page(token):
     from . import phone, scheduler

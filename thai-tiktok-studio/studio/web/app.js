@@ -844,7 +844,7 @@ function renderMake(body) {
         <div class="renders">${p.renders.map((r) => `<figure class="render"><label class="chk rsel"><input type="checkbox" class="rchk" value="${esc(r.name)}"><span class="chk-box" aria-hidden="true"></span></label>
         <video src="${F("renders/" + r.name)}" controls preload="metadata" playsinline></video>
         <figcaption class="muted small">${esc(r.name)}</figcaption>
-        <a class="btn secondary wide" href="${F("renders/" + r.name)}?download=1" download>⬇ ${t("make.download")}</a>
+        <button class="btn secondary wide" data-save-dev="${esc(r.name)}">⬇ ${t("make.download")}</button>
         <button class="btn ghost danger wide" data-del="${esc(r.name)}">🗑 ${t("make.delete")}</button></figure>`).join("")}</div>
         <div class="row"><a class="btn secondary big" href="#/schedule">📅 ${t("make.schedule")}</a><button class="btn ghost localonly" id="btnRendersFolder">📂 ${t("make.folder")}</button></div>`
       : `<div class="empty small"><div class="empty-art sm" aria-hidden="true">🎬</div><p class="muted">${t("make.none")}</p></div>`}</section>`;
@@ -866,6 +866,7 @@ function renderMake(body) {
   $$(".rchk", body).forEach((c) => (c.onchange = sync));
   const all = $("#rAll"); if (all) all.onchange = () => { $$(".rchk", body).forEach((c) => (c.checked = all.checked)); sync(); };
   $$("[data-del]", body).forEach((b) => (b.onclick = () => deleteRenders([b.dataset.del])));
+  $$("[data-save-dev]", body).forEach((b) => (b.onclick = () => showVideoToPhone(P(), b.dataset.saveDev)));
   const ds = $("#btnDelSel"); if (ds) ds.onclick = () => deleteRenders(sel());
   const rf = $("#btnRendersFolder"); if (rf) rf.onclick = () => api(P() + "/reveal", { method: "POST", json: { sub: "renders" } }).catch((e) => errToast(e));
 }
@@ -1185,6 +1186,24 @@ async function showPhoneLink() {
   }, 3000);
 }
 
+/* ---------------- a finished video → your phone (full quality, to post from the TikTok app) ---------------- */
+async function showVideoToPhone(base, name) {
+  let r;
+  try { r = await api(base + "/renders/" + encodeURIComponent(name) + "/phone-link", { method: "POST" }); } catch (e) { return errToast(e); }
+  const file = base.replace("/api/projects/", "/files/") + "/renders/" + encodeURIComponent(name);
+  openModal(() => {
+    setModal(`<div class="ob phone-modal"><h2>📱 ${t("vphone.title")}</h2>
+      <p class="muted">${t("vphone.why")}</p>
+      <img src="${r.qr}" alt="${tt("vphone.qrAlt")}" class="qr">
+      <ol class="big-steps"><li>${t(state.health.server ? "phone.s1web" : "phone.s1")}</li><li>${t("vphone.s2")}</li><li>${t("vphone.s3")}</li></ol>
+      <details><summary>${t("phone.link")}</summary><p class="muted small breakall">${esc(r.url)}</p></details>
+      <p class="tip">${t("vphone.tip", { h: r.hours })}</p>
+      <a class="btn secondary wide" href="${file}?download=1" download>💻 ${t("vphone.here")}</a>
+      <button class="btn primary big wide" id="vpDone">${t("phone.done")}</button></div>`);
+    $("#vpDone").onclick = closeModal;
+  });
+}
+
 /* ---------------- Tool 3: TikTok post scheduler (PostPeer + Cloudinary) ---------------- */
 const POST_ST = { planned: "", queued: "g", posted: "g", missed: "r", cancelled: "", failed: "r" };
 async function showScheduler() {
@@ -1277,6 +1296,7 @@ function postRow(p) {
       <div class="row pbtns">
         ${bad ? `<button class="btn primary small" data-act="retry">↻ ${t("sched.retry")}</button>` : ""}
         ${["posted", "cancelled"].includes(p.status) ? "" : `<button class="btn ghost small" data-act="edit">✏️ ${t("sched.edit")}</button>`}
+        <button class="btn ghost small" data-act="phone">📱 ${t("vphone.btn")}</button>
         ${p.error ? `<button class="btn ghost small" data-act="details">🔎 ${t("sched.details")}</button>` : ""}</div>
       <div class="pedit hidden">
         <div class="when-row">
@@ -1426,6 +1446,7 @@ function wireScheduler() {
       const act = b.dataset.act;
       if (act === "edit") { $(".pedit", el).classList.toggle("hidden"); return; }
       if (act === "details") { const e = $(".perr", el); if (e) e.classList.toggle("hidden"); return; }
+      if (act === "phone") { const p = state.sched.posts.find((x) => x.id === id); if (p) showVideoToPhone("/api/projects/" + encodeURIComponent(p.project_id), p.render); return; }
       try {
         if (act === "retry") {
           await api(`/api/schedule/${id}/retry`, { method: "POST" });

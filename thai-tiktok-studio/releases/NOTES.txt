@@ -1,2 +1,2 @@
-1.9.11 — เปลี่ยนเวลาโพสต์ได้แล้ว: เลือกวันที่และเวลาแยกกัน (ทุก 15 นาที) พร้อมปุ่มลัด 12:15 · 18:00 · 21:00
-1.9.11 — Change a post's time, not only the date: separate date and time (15-minute steps) with quick 12:15 · 18:00 · 21:00 buttons
+1.9.12 — บันทึกลงเครื่อง → มีคิวอาร์ส่งวิดีโอไปมือถือแบบคุณภาพเต็ม (ไฟล์เดียวกันทุกไบต์) พร้อมแคปชันให้คัดลอก โพสต์เองจากแอป TikTok ได้วิวมากกว่า · ปุ่ม 📱 ส่งไปมือถือ ในหน้าตั้งเวลาโพสต์ด้วย
+1.9.12 — Save to device now shows a QR code: scan it to save the video on your phone in full quality (the exact same file) with the caption ready to copy, then post from the TikTok app for better reach · also a 📱 To my phone button on each scheduled post
