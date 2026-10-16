@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>VibeNation Camera — framing, landscape</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&amp;family=DM+Sans:opsz,wght@9..40,400;9..40,600;9..40,700&amp;family=JetBrains+Mono:wght@600;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#FF9A5A}a:hover{color:#FFC08F}
+button{font-family:inherit}
+@keyframes vnPulse{0%,100%{opacity:1}50%{opacity:.45}}
+</style>
+</helmet>
+<div style="width: 844px; height: 390px; box-sizing: border-box; background: #050302; color: #F5EEE6; font-family: 'DM Sans', system-ui, sans-serif; display: flex">
+
+  <div style="width: 693px; height: 390px; flex: none; position: relative; overflow: hidden; background: #070403" role="img" aria-label="Full camera image, exactly what goes on air">
+    <svg viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" style="position: absolute; inset: 0; width: 100%; height: 100%" aria-hidden="true">
+      <defs>
+        <linearGradient id="pBg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1A0D08"></stop><stop offset="0.6" stop-color="#0C0604"></stop><stop offset="1" stop-color="#1C0F09"></stop></linearGradient>
+        <linearGradient id="pBeam" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFC27A" stop-opacity="0.55"></stop><stop offset="1" stop-color="#FF8A3D" stop-opacity="0"></stop></linearGradient>
+        <radialGradient id="pFloor" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#FF9A4D" stop-opacity="0.5"></stop><stop offset="1" stop-color="#FF9A4D" stop-opacity="0"></stop></radialGradient>
+      </defs>
+      <rect width="1600" height="900" fill="url(#pBg)"></rect>
+      <polygon points="700,-20 900,-20 1180,900 420,900" fill="url(#pBeam)"></polygon>
+      <ellipse cx="800" cy="840" rx="620" ry="120" fill="url(#pFloor)"></ellipse>
+      <g fill="#030201"><circle cx="800" cy="330" r="74"></circle><path d="M650 900 C655 640 720 470 800 470 C880 470 945 640 950 900 Z"></path><rect x="794" y="440" width="12" height="460"></rect><rect x="782" y="408" width="36" height="58" rx="18"></rect></g>
+    </svg>
+  </div>
+
+  <div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 8px; padding: 10px 10px 10px 12px; background: linear-gradient(180deg, #120C09, #0B0806); border-left: 4px solid {{tally}}">
+    <sc-if value="{{live}}" hint-placeholder-val="{{ true }}">
+      <span style="align-self: flex-start; display: flex; align-items: center; gap: 6px; padding: 5px 9px; border-radius: 7px; background: #1F66E0; color: #FFFFFF; font-weight: 800; font-size: 11px; letter-spacing: 0.1em; box-shadow: 0 4px 14px rgba(31,102,224,0.5)"><span style="width: 7px; height: 7px; border-radius: 50%; background: #FFFFFF; animation: vnPulse 1.4s ease-in-out infinite"></span>ON AIR</span>
+    </sc-if>
+    <sc-if value="{{notLive}}" hint-placeholder-val="{{ false }}">
+      <span style="align-self: flex-start; padding: 5px 9px; border-radius: 7px; border: 1px solid rgba(255,236,220,0.15); color: #C9BDB1; font-weight: 800; font-size: 11px; letter-spacing: 0.1em">STANDBY</span>
+    </sc-if>
+    <div style="display: flex; flex-direction: column; gap: 1px">
+      <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #9C9084; font-weight: 700">CAM 2</span>
+      <span style="font-family: Sora, sans-serif; font-size: 14px; font-weight: 700; line-height: 1.2">Lead vocal</span>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 5px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #C9BDB1">
+      <span>WB 4300K · lock</span>
+      <span>ISO 400 · 1/100</span>
+      <span>86% · 38°C</span>
+      <span>12 Mb · strong</span>
+    </div>
+    <span style="flex: 1"></span>
+    <button onClick="{{toggleGuides}}" style="min-height: 40px; border-radius: 10px; border: 1px solid rgba(255,236,220,0.12); background: rgba(255,236,220,0.04); color: #F5EEE6; font-weight: 600; font-size: 12px; cursor: pointer">{{guidesLabel}}</button>
+    <button onClick="{{toggle}}" aria-label="Hold to unlock settings" style="min-height: 40px; border-radius: 10px; border: 1px solid rgba(255,236,220,0.12); background: rgba(255,236,220,0.04); color: #F5EEE6; font-weight: 600; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>Hold
+    </button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":844,"height":390}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { live: true, guides: false }; }
+  renderVals() {
+    const live = this.state.live;
+    return {
+      live: live, notLive: !live,
+      tally: live ? '#3D8BFF' : '#231C17',
+      guidesLabel: this.state.guides ? 'Guides on' : 'Guides off',
+      toggleGuides: () => this.setState({ guides: !this.state.guides }),
+      toggle: () => this.setState({ live: !this.state.live })
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>VibeNation design report</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&amp;family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&amp;family=JetBrains+Mono:wght@500&amp;display=swap">
+<style>
+body{margin:0;background:#0F0C0A}
+a{color:#FF9A5A}a:hover{color:#FFC08F}
+.rp h1{font-family:Sora,sans-serif;font-size:44px;line-height:1.1;letter-spacing:-0.02em;margin:0 0 24px}
+.rp h2{font-family:Sora,sans-serif;font-size:26px;line-height:1.25;letter-spacing:-0.01em;margin:56px 0 16px}
+.rp h3{font-family:Sora,sans-serif;font-size:19px;margin:32px 0 10px}
+.rp p,.rp li{font-size:16px;line-height:1.7;color:#E9E1D8}
+.rp p{margin:0 0 16px}
+.rp ul,.rp ol{margin:0 0 16px;padding-left:22px}
+.rp b{color:#FFFFFF}
+.rp .tb{overflow-x:auto;margin:8px 0 24px;border:1px solid #3B3029;border-radius:12px}
+.rp table{border-collapse:collapse;width:100%;font-size:14px;line-height:1.5}
+.rp th{background:#18130F;text-align:left;padding:10px 12px;color:#ADA195;font-weight:600;border-bottom:1px solid #3B3029}
+.rp td{padding:10px 12px;border-bottom:1px solid #231C17;vertical-align:top;color:#E9E1D8}
+.rp .sw{display:inline-block;width:14px;height:14px;border-radius:4px;vertical-align:-2px;margin-right:6px;border:1px solid #3B3029}
+.rp .callout{border-radius:12px;border:1px solid #B9A6FF;background:#17131F;padding:16px 18px;margin:0 0 24px}
+.rp .mono{font-family:'JetBrains Mono',monospace;font-size:13px}
+.rp img{display:block;width:220px;border-radius:8px;border:1px solid #3B3029}
+</style>
+</helmet>
+<div style="background: #0F0C0A; color: #F5EEE6; font-family: 'IBM Plex Sans', system-ui, sans-serif; padding: 64px 24px 96px">
+<article class="rp" style="max-width: 860px; margin: 0 auto">
+<div style="font-size: 12px; letter-spacing: 0.12em; color: #ADA195; font-weight: 600; margin-bottom: 12px">VIBENATION · DESIGN REPORT</div>
+<h1>Build VibeNation as a watch-and-override cockpit</h1>
+
+<div class="callout">
+<p style="margin: 0"><b>Your decisions, applied throughout:</b> on air is <b>blue</b> and red means errors only. Claude runs the whole show in AUTO. Engineer mode is the default view. There is <b>no manual-mode button</b>: any control you touch is held by you for the rest of the stream, and Claude only steps back in on it for an emergency (feedback, clipping, a dead signal). The Show screen has <b>one picture, the live program</b>; clicking a camera puts it on air, and Claude’s next-shot reasoning lives in the sidebar. You tap Go Live, unless a broadcast is already scheduled on YouTube. All phones broadcast in landscape, and their screens show the full camera image with nothing covering it. Output is 1080p60 and the break slate counts down from 15:00.</p>
+</div>
+
+<p>VibeNation should feel like StreamYard but behave like a control room run by Claude. That means one “Show” screen built around a large program monitor, a row of phone-camera tiles you can click to cut, all 16 channel faders, and a right-hand AI activity sidebar that collapses to an icon rail. A mode badge says what the AI is running. The one action a human takes by default is tapping <b>Go Live</b> once the AI’s pre-flight passes, unless a broadcast is already scheduled on the band’s YouTube channel, in which case the app starts it on time by itself.</p>
+<p>This split is what the evidence supports. The tools reviewers call easiest ship a preset stage, one-click layouts and a single Go Live button rather than an empty canvas (<a href="https://www.youtube.com/watch?v=MDx8fKnU3Sk">V: 135k, 3 channels</a>). The most-praised mixer apps show “only what this show uses” (<a href="https://www.youtube.com/watch?v=bGcOnbUFjA0">V: 353k</a>). Trust in automation comes from visible status, explanations, cheap undo and clear rules about who is in control (<a href="https://www.microsoft.com/en-us/haxtoolkit/library/pattern/">Microsoft HAX guidelines</a>). The product also goes one step past the market: no streaming product reviewed shows <i>why</i> its auto-switcher cut (<a href="https://www.youtube.com/watch?v=4HRtjeAQDks">3 channels</a>), so Claude’s reasoning is always readable in the sidebar.</p>
+<p>The colour system follows your decisions: <b>on air is blue, warnings are amber, red means errors only</b>, and lilac marks Claude’s activity, all on VibeNation’s own “warm dark studio” surface with a single ember brand accent. The band’s name, logo and stream-graphic colours are settings, shown as “Band Name” placeholders. Every semantic colour passes WCAG contrast on the canvas (5.9:1 to 10.8:1).</p>
+
+<h2>Easy tools ship a stage, not a blank canvas</h2>
+<p>The strongest signal from 39 tutorial and review transcripts is that “easy” means “pre-built.” StreamYard’s studio is a stage with sources in a “backstage” tray underneath, one-click layout buttons and one Go Live button (<a href="https://www.youtube.com/watch?v=MDx8fKnU3Sk">V: 135k</a>). Restream “walks you right into the studio” (<a href="https://www.youtube.com/watch?v=fNn6HbDIrlE">2 channels</a>). Mevo got a reviewer “up and running in less than five minutes,” tapping phones to switch angles live (<a href="https://www.youtube.com/watch?v=0ksEvsSH0oc">V: 450k</a>).</p>
+<p>The pain points mirror this. OBS opens to a black canvas and a scene/source model the 6.3M-view beginner guide skips as too advanced (<a href="https://www.youtube.com/watch?v=DTk99mHDX_I">V: 6.3M</a>). ATEM hides preview/program mode in a separate setup app (<a href="https://www.youtube.com/watch?v=C4ERujxrXk4">V: 337k</a>). Mevo and StreamYard silently default to 480p and 720p (<a href="https://www.youtube.com/watch?v=jqGbyMnrpG4">2 channels</a>). Phone switchers take audio from the wrong device (<a href="https://www.youtube.com/watch?v=MlobdIgwxj0">V: 142k, vendor</a>). Each trap becomes a rule: never show an empty canvas, never hide a show-critical mode in settings, default to the real target (1080p60), and keep one audio source of truth — the mixer.</p>
+<p>Because the AI runs everything, the information architecture inverts the usual studio. The primary screen is a dashboard the human <i>watches</i>, with every control live so a touch takes it over. IBM’s “human on the loop” model fits: the AI acts autonomously while a human monitors and can override (<a href="https://www.youtube.com/watch?v=9iS-YYLIXiw">IBM Technology</a>; <a href="https://smashingmagazine.com/2026/02/designing-agentic-ai-practical-ux-patterns/">Smashing “Autonomy Dial”</a>).</p>
+<div class="tb"><table>
+<thead><tr><th>Area</th><th>Default view</th><th>On demand</th><th>Evidence</th></tr></thead>
+<tbody>
+<tr><td><b>Show</b> (home)</td><td>Live program (blue border), click-to-cut camera tiles with health, all 16 faders, LIVE timer, viewers, stream health, AUTO badge</td><td>Number-key cuts, layout buttons, Simple mode (6 group faders)</td><td>StreamYard stage [V: 135k]; ATEM/vMix multiview [V: 286k]</td></tr>
+<tr><td><b>Cameras</b></td><td>Onboarding QR, backstage tray of joining phones, per-phone health</td><td>Framing presets, WB/exposure values (locked per stream), re-pair</td><td>VDO.Ninja QR [V: 427k]; Mevo Go [V: 325k]</td></tr>
+<tr><td><b>Mix</b></td><td>Engineer mode: 16 inputs, buses, FX, EQ/dynamics editors, AI change cards, “held by you” badges</td><td>Simple mode: section strips, meters, mute</td><td>Mixing Station [V: 353k]; Ui24R [V: 185k]</td></tr>
+<tr><td><b>Show flow</b></td><td>Pre-flight checklist, Go Live tap (auto-start only for a scheduled broadcast), break slate (15:00), end/outro</td><td>Run-of-show, break length, private test stream</td><td>StreamYard go-live [V: 135k]; YouTube test streams [V: 414k]</td></tr>
+<tr><td><b>AI sidebar</b></td><td>56 px rail: process dots, AUTO badge, held-controls count</td><td>340 px panel: Director thinking, processes, activity feed; full log</td><td>HAX G11/G17/G18; Kole Jain sidebar [V: 361k]</td></tr>
+<tr><td><b>After show</b></td><td>Upload/recording progress, “don’t close yet”, learning summary</td><td>Per-decision log, replay A/B</td><td>Switcher post-stop [V: 142k, vendor]</td></tr>
+</tbody></table></div>
+
+<h2>The Show screen: one live picture, click any camera to cut</h2>
+<h3>Program only — Claude’s thinking lives in the sidebar</h3>
+<p>Pro switchers show preview and program side by side with CUT, AUTO and a T-bar (<a href="https://www.youtube.com/watch?v=sFH-dT2s02w">V: 286k</a>; <a href="https://www.youtube.com/watch?v=C4ERujxrXk4">ATEM, 337k</a>). Consumer apps skip preview and cut on tap (<a href="https://www.youtube.com/watch?v=MlobdIgwxj0">3 channels: Mevo, Switcher, Cinamaker</a>). VibeNation follows the consumer pattern, by your decision: <b>one large program monitor</b> and a row of camera tiles. Clicking a tile puts it on air immediately, and Claude keeps directing from the shot you picked — the same override rule Ecamm uses, where a manual cut “picks up where you left off” (<a href="https://www.youtube.com/watch?v=4HRtjeAQDks">UNVERIFIED, 22k</a>). The highest-engagement Dribbble studio concept uses this skeleton: a large program view with labelled controls beneath (<a href="https://dribbble.com/shots/22597564-OBS-Studio-concept-with-AI-and-happy-song">uixNinja, 537 / 203k</a>).</p>
+<p>The program monitor and the live tile carry a <b>3 px blue border and a blue “LIVE” pill</b>, replacing the red pill every Dribbble streaming shot uses (<a href="https://dribbble.com/shots/18627261-GoLive-Streaming-App">GoLive, 522 / 166k</a>). Blue removes the collision where red would mean both “live” and “broken.” Musicians who expect a red tally see the word “LIVE” beside the blue.</p>
+<p>Claude’s next-shot intention is shown in the sidebar as <b>“Director is thinking”</b>: “Piano solo starting — planning to cut to CAM 3 on the next downbeat.” That gives HAX feedforward (“convey the consequences before”) without putting buttons on screen. No product reviewed explains its auto-switching: Ecamm’s is “kind of a dumb switching situation” on timers, and Mevo’s Auto Director is a priority star plus a dwell slider (<a href="https://www.youtube.com/watch?v=jqGbyMnrpG4">V: 117k, sponsored</a>). Copy Mevo’s simple settings (priority camera, minimum/maximum dwell) into the Director’s settings.</p>
+<p>Camera tiles are 16:9 with the phone’s name (“CAM 3 · Keys”) and corner health chips in frosted pills (<a href="https://dribbble.com/shots/26952820-Live-Camera-Monitoring-Mobile-UI-Sentry">Sentry, 191 / 38.8k</a>). Hotkeys mirror pro switchers: 1–9 cut to a camera (<a href="https://www.youtube.com/watch?v=LxkmWXR6dVs">3 channels</a>). Add a Fade to Black that also fades audio, so there is never a hot mic after you think you are off air.</p>
+
+<h3>Camera onboarding: scan, choose a role, lock</h3>
+<p>The easiest join flows need no account: scan a QR code, allow permissions, pick the rear camera, start (<a href="https://www.youtube.com/watch?v=86S0tV1QeCE">V: 427k</a>). Mevo Go adds a role choice, a hold-to-unlock lock so bystanders can’t change settings, and focus/exposure locks (<a href="https://www.youtube.com/watch?v=nPBdWM7Z158">V: 325k</a>). Switcher lets the director set zoom, focus and exposure remotely (<a href="https://www.youtube.com/watch?v=MlobdIgwxj0">V: 142k, vendor</a>).</p>
+<p>VibeNation shows one QR code: iPhone opens the Safari camera page, Android opens the native app. The phone asks for role, name and a “plug in power” confirmation. <b>Every phone broadcasts in landscape.</b> The camera screen shows the <b>full 16:9 image edge to edge with nothing on top of it</b>, so you can frame each camera exactly as it will air; the ON AIR tally, camera name, locks and health sit in the spare strip beside the image, never over it. Framing guides are off by default. White balance and exposure are set once at pre-flight and locked for the stream; the AI cannot change them mid-show.</p>
+
+<h3>Health shows on the tile only when something is wrong</h3>
+<p>Geckoboard warns that “if your entire dashboard is red and green, then the significance of those colors is greatly reduced” (<a href="https://www.youtube.com/watch?v=t3cAUt7sOQg">V: 296k</a>). Each tile shows nothing when healthy, an amber chip (“Battery 18%”, “Wi-Fi weak”, “54 fps”) or a red chip (“Disconnected”) only on a problem. Clicking opens battery, Wi-Fi, bitrate, fps, temperature and the locked WB/exposure values. When a phone drops, the AI cuts away first and alerts second (Mevo’s “auto wide on disconnect”).</p>
+
+<h3>Go-live, break and end</h3>
+<p>The best observed flow is StreamYard’s: device check, a confirmation restating quality and recording, a LIVE badge with a timer, and a two-step End (<a href="https://www.youtube.com/watch?v=MDx8fKnU3Sk">V: 135k</a>). A private test stream is the standard rehearsal (<a href="https://www.youtube.com/watch?v=6cVEfihXNnk">V: 414k</a>). VibeNation’s pre-flight ticks itself off item by item: server, YouTube channel connected, scheduled broadcasts checked, 1080p60 encoder, each phone connected and charged, all 16 channels arriving with headroom, recording on, director and mixer armed. Go Live stays disabled, with the blocking item named, until everything passes.</p>
+<p><b>No scheduled broadcast (the common case):</b> you tap the big blue Go Live; the app creates the broadcast, shows “Going live in 5 · Cancel”, plays the starting-soon slate, then cuts to the opening shot. <b>A broadcast already scheduled (rare):</b> the app binds to it and counts down “Going live automatically in 4:12 · Hold · Go now”, starting by itself on time. Ending: in AUTO the AI announces “Ending in 0:30 · Keep live” first; a human End takes two steps.</p>
+<p>The break slate reads “We’ll be back in…” above a 15:00 countdown in band colours. Stage mics fade down and break music fades up, so there is no hot mic. At 0:00 Claude returns to the cameras when it hears the band start. You can extend (+5 min) or end the break early.</p>
+
+<h2>The mixing station opens on all 16 channels</h2>
+<p>Engineers praise Mixing Station for the same layout on every console, user-set “channels per layer” and “fit channels” (<a href="https://www.youtube.com/watch?v=bGcOnbUFjA0">V: 353k</a>; <a href="https://www.youtube.com/watch?v=iGphpo6D8Pg">2 channels</a>). The browser-based Ui24R proves a web mixer is credible: “astoundingly stable” with many clients (<a href="https://www.youtube.com/watch?v=uThRC8GMmD8">V: 158k</a>; <a href="https://www.youtube.com/watch?v=np5pDM1a5eQ">185k</a>).</p>
+<p><b>Engineer mode is the default.</b> All 16 inputs, buses, FX returns and the master sit on one fit-to-width layer, named and coloured by section. Tapping a strip opens a two-tier view: mini HPF, gate, EQ and compressor graphs, each opening a full editor. Double-tap resets, long-press opens typed entry (<a href="https://www.youtube.com/watch?v=np5pDM1a5eQ">2 channels</a>). The EQ copies FabFilter Pro-Q: drag nodes plus an overlay of competing channels’ curves (<a href="https://www.youtube.com/watch?v=tejnPHku378">V: 127k</a>). Dynamics get big draggable threshold lines (<a href="https://www.youtube.com/watch?v=uThRC8GMmD8">V: 158k</a>). Sends-on-fader tints the background in the bus colour so you never forget you are on an in-ear mix. Ship an Outdoor high-contrast theme for daylight shows.</p>
+<p><b>Simple mode</b> (one toggle away) shows one strip per section — Drums, Bass, Keys, Guitar, Horns/Solo, Vocals — plus Room and the master with a LUFS readout against the −16 LUFS / −1 dBTP target. The Dribbble model is X-Vox: colour-coded modules and one big macro knob (<a href="https://dribbble.com/shots/20314717-Neumorphic-Audio-Plugin">Voicu Apostol, 397 / 117k</a>).</p>
+<p>Every AI mixer tool reviewers liked made its change visible and editable. Sonible’s smart band can be made “more extreme, less extreme, inverted” (<a href="https://www.youtube.com/watch?v=I2FHV3li314">V: 102k</a>); Neutron users compare manual and auto snapshots (<a href="https://www.youtube.com/watch?v=zOxo81pijoU">V: 162k</a>). So each AI change is a card: plain-language sentence, the reason (often what the listener heard), before/after, an amount slider (−100% to 150%) and Undo. A muted channel leaves the AI’s calculations. Preamp gain is read-only, labelled “set at soundcheck”, and the AI never writes to the mixer.</p>
+
+<h2>Every AI move lands in the sidebar with a reason</h2>
+<p>Kole Jain calls the sidebar “the spine of your product”: icons with short titles that survive collapse, badges, and toasts rather than modals (<a href="https://www.youtube.com/watch?v=B7k5rOgmOGY">V: 361k</a>). Collapsed rails need tooltips and fixed item heights (<a href="https://www.youtube.com/watch?v=FuoP3HS3FB8">V: 102k</a>). The row anatomy — name, time, right-aligned status chip — comes from an AI observability design (<a href="https://dribbble.com/shots/27408472-AI-Agent-Observability-Platform-UI-Design">Yuri Gokoryan, 133 / 29.3k</a>).</p>
+<p>The sidebar sits on the right and never moves the program monitor. Collapsed, it is a <b>56 px rail</b>: the AUTO badge, one status dot per process (neutral when fine, amber warning, red error) and a white count of controls held by you. Expanded, it is a <b>340 px panel</b>:</p>
+<ol>
+<li><b>Director is thinking</b> — Claude’s current intention and reasoning, with a progress line.</li>
+<li><b>Running</b> — one line per process (audio link, cameras, mix engine, listener, director, YouTube ingest), collapsing to “All systems OK” when healthy.</li>
+<li><b>Activity</b> — newest first: time, agent, one-line sentence, the reason, a confidence word (“sure / likely / guessing”), and Undo or Before/after.</li>
+</ol>
+<p>“Open full log” shows the raw trace, the GitHub Copilot pattern of summary in view with the session log one click away (<a href="https://www.youtube.com/watch?v=1GVBRhDI5No">GitHub, 75k</a>). Bursts coalesce (“Mixer: 6 small fader moves, last 10 s”), and the panel never auto-opens during the show.</p>
+
+<h3>Override rule: your touch holds for the rest of the stream</h3>
+<div class="tb"><table>
+<thead><tr><th>You do</th><th>What Claude does</th></tr></thead>
+<tbody>
+<tr><td>Move a fader, knob or EQ</td><td>That control is <b>held by you for the rest of the stream</b>. A white “YOU” badge appears and the feed logs it. Claude never adjusts it again this stream.</td></tr>
+<tr><td>Emergency on a held control (feedback, clipping, dead signal)</td><td>The only exception: the smallest safe fix, a red card explaining why, and the control stays yours afterwards.</td></tr>
+<tr><td>Click a camera tile</td><td>It goes on air immediately. Claude keeps directing from that shot after a dwell window.</td></tr>
+<tr><td>Mute</td><td>Always wins and holds for the stream; the channel leaves the AI’s calculations.</td></tr>
+<tr><td>Undo on an AI card</td><td>Values ramp back; the control becomes held by you.</td></tr>
+<tr><td>New stream</td><td>All holds clear; Claude starts from the learned mix.</td></tr>
+</tbody></table></div>
+
+<h3>Alerts: four tiers, never blocking the show</h3>
+<div class="tb"><table>
+<thead><tr><th>Tier</th><th>Examples</th><th>Shown as</th><th>Claude</th></tr></thead>
+<tbody>
+<tr><td><span class="sw" style="background:#D7261E"></span><b>Critical</b></td><td>Stream down, master silent or clipping, live phone disconnected</td><td>Red banner across the top, visible with the sidebar collapsed</td><td>Falls to a safe state (wide shot, last good mix or break slate), then asks for help</td></tr>
+<tr><td><span class="sw" style="background:#FFB224"></span><b>Warning</b></td><td>Low battery, weak Wi-Fi, fps under 60, low AI confidence</td><td>Amber chip on the tile or strip, amber rail dot, pinned feed item</td><td>Works around it and logs it</td></tr>
+<tr><td><span class="sw" style="background:#ADA195"></span><b>Info</b></td><td>Cuts, fader moves, break started</td><td>Feed only</td><td>Acts</td></tr>
+<tr><td><span class="sw" style="background:#3B3029"></span><b>Debug</b></td><td>Model calls, parameter traces</td><td>Full log only</td><td>—</td></tr>
+</tbody></table></div>
+<p>Never rely on colour alone: every status pairs colour with an icon and a word.</p>
+
+<h2>Blue means on air, red means broken, ember never touches status</h2>
+<p>The warm base is well supported on Dribbble: terracotta and copper on near-black (<a href="https://dribbble.com/shots/26554251-Hyper-Desktop-Vtube-App-Streaming-UI">Erik Padamans, 301 / 68.9k</a>), a single warm accent carrying a whole identity (<a href="https://dribbble.com/shots/24463314-Rtt-01-music-plugin">Riotters, 344 / 79.7k</a>). Blue now means on air, so Claude gets its own hue, lilac. The brand ember and warning amber are close in brightness (1.30:1), so brand orange is never used for state. Contrast is WCAG 2.x against #0F0C0A.</p>
+<div class="tb"><table>
+<thead><tr><th>Token</th><th>Hex</th><th>Use</th><th>Contrast</th></tr></thead>
+<tbody>
+<tr><td>bg/canvas</td><td class="mono"><span class="sw" style="background:#0F0C0A"></span>#0F0C0A</td><td>App background</td><td>—</td></tr>
+<tr><td>bg/panel</td><td class="mono"><span class="sw" style="background:#18130F"></span>#18130F</td><td>Sidebar, panels</td><td>16.0:1</td></tr>
+<tr><td>bg/raised</td><td class="mono"><span class="sw" style="background:#231C17"></span>#231C17</td><td>Cards, tiles, strips</td><td>14.6:1</td></tr>
+<tr><td>text/primary</td><td class="mono"><span class="sw" style="background:#F5EEE6"></span>#F5EEE6</td><td>Body, numbers</td><td>16.9:1</td></tr>
+<tr><td>text/secondary</td><td class="mono"><span class="sw" style="background:#ADA195"></span>#ADA195</td><td>Meta, labels, healthy dots</td><td>7.7:1</td></tr>
+<tr><td><b>onair/blue</b></td><td class="mono"><span class="sw" style="background:#3D8BFF"></span>#3D8BFF</td><td>Program border, phone tally</td><td>5.9:1</td></tr>
+<tr><td>onair/fill</td><td class="mono"><span class="sw" style="background:#1F66E0"></span>#1F66E0</td><td>LIVE pill, Go Live button</td><td>white on fill 5.2:1</td></tr>
+<tr><td><b>warn/amber</b></td><td class="mono"><span class="sw" style="background:#FFB224"></span>#FFB224</td><td>Warnings</td><td>10.8:1</td></tr>
+<tr><td><b>error/red</b></td><td class="mono"><span class="sw" style="background:#FF5A52"></span>#FF5A52</td><td>Errors only</td><td>6.4:1</td></tr>
+<tr><td>error/fill</td><td class="mono"><span class="sw" style="background:#D7261E"></span>#D7261E</td><td>Critical banner</td><td>white on fill 5.0:1</td></tr>
+<tr><td>ai/lilac</td><td class="mono"><span class="sw" style="background:#B9A6FF"></span>#B9A6FF</td><td>AUTO badge, AI dots, thinking</td><td>9.3:1</td></tr>
+<tr><td>brand/ember</td><td class="mono"><span class="sw" style="background:#FF8A3D"></span>#FF8A3D</td><td>Logo, slates only</td><td>8.3:1</td></tr>
+<tr><td>brand/gradient</td><td class="mono"><span class="sw" style="background:linear-gradient(90deg,#FF5E62,#FFC371)"></span>#FF5E62 → #FFC371</td><td>Default break slate, master cap</td><td>slate text 15.0:1</td></tr>
+</tbody></table></div>
+<p><b>Surfaces:</b> a warm near-black ground lit by a soft ember glow, frosted-glass panels with a 1 px inner highlight, 18–24 px radii, soft deep shadows, LED-segment meters and real fader caps. Claude’s thinking card carries a lilac gradient edge.</p>
+<p><b>Type:</b> Sora for the wordmark, titles and break slate; DM Sans for UI text (14 px body, 13 px meta); JetBrains Mono for timecode, dB, fps, bitrate and LUFS; 11 px uppercase tracked section labels; 160 px numerals for the on-stream countdown.</p>
+<p><b>Components:</b> ProgramMonitor, CameraTile (name, health dot, WB/EXP lock chip, tally border), ChannelStrip (Engineer and Simple), ArcKnob, SegmentedMeter, AIChangeCard, ProcessRow, DirectorThinking, ModeBadge, HeldBadge, HoldToConfirmButton, CountdownSlate, CriticalBanner. Touch targets at least 44 px; motion 150–200 ms; only the LIVE pill and the lilac “AI acting” dot pulse.</p>
+
+<h2>Moodboard: 21 Dribbble shots, re-coloured to your rules</h2>
+<p>Likes / views at capture on 2026-10-16. Every red LIVE element becomes blue in VibeNation, and light themes invert to the warm dark base.</p>
+<div class="tb"><table>
+<thead><tr><th>Shot</th><th>Designer · likes / views</th><th>Borrow</th></tr></thead>
+<tbody>
+<tr><td><img src="/_blob/291146baf02dd220c7a9545cd699a49b" alt="OBS Studio concept with AI"></td><td><a href="https://dribbble.com/shots/22597564-OBS-Studio-concept-with-AI-and-happy-song">OBS Studio concept with AI</a><br>uixNinja · 537 / 203k</td><td>Program top-centre with a labelled control band below; chat column becomes the AI sidebar</td></tr>
+<tr><td><img src="/_blob/03dfdf0b3ac53f6add12c9f7a1dd4b2f" alt="Hyper Vtube streaming UI"></td><td><a href="https://dribbble.com/shots/26554251-Hyper-Desktop-Vtube-App-Streaming-UI">Hyper Vtube Streaming UI</a><br>Erik Padamans · 301 / 68.9k</td><td>Warm terracotta/copper on black, one primary action</td></tr>
+<tr><td><img src="/_blob/dca182de44b3c24143d6c528fb9ebe4e" alt="GoLive streaming app"></td><td><a href="https://dribbble.com/shots/18627261-GoLive-Streaming-App">GoLive Streaming App</a><br>Vektora · 522 / 166k</td><td>LIVE and viewer pills on tile corners — made blue</td></tr>
+<tr><td><img src="/_blob/b0db4f156aa95d1fd963baf2b48831ed" alt="Recofy studio suite"></td><td><a href="https://dribbble.com/shots/22724098-Video-Audio-Studio-Suite-Recofy-Dashboard">Recofy Studio Suite</a><br>Vladyslav Kara · 130 / 45.9k</td><td>Format readout in the monitor header, stereo meters at the edge</td></tr>
+<tr><td><img src="/_blob/2d1dd41ad1aa379561ed3d8889c69334" alt="Parimatch multi-view"></td><td><a href="https://dribbble.com/shots/15978860-Parimatch-Multi-view">Parimatch Multi-view</a><br>Flatstudio · 141 / 38.1k</td><td>Side-by-side live panels and an “Add” slot for “+ Add phone”</td></tr>
+<tr><td><img src="/_blob/a832004d51a21f2b4dcc88126a6ddc3e" alt="Podcast studio dashboard"></td><td><a href="https://dribbble.com/shots/27023226-Podcast-Studio-Web-App-Dashboard">Podcast Studio Dashboard</a><br>Design Monks · 120 / 20.6k</td><td>56 px icon rail and big-number KPIs</td></tr>
+<tr><td><img src="/_blob/db0634ad9c482e2cec7979a9170a19ac" alt="Sentry camera monitoring"></td><td><a href="https://dribbble.com/shots/26952820-Live-Camera-Monitoring-Mobile-UI-Sentry">Sentry Camera Monitoring</a><br>Phenomenon · 191 / 38.8k</td><td>Frosted health chips on feeds, event list — tiles and the phone app</td></tr>
+<tr><td><img src="/_blob/ed5b8e77815ef6f7780ff326ec8fdac5" alt="Audio EQ dashboard"></td><td><a href="https://dribbble.com/shots/19695957-Audio-equalizer-dashboard-concept">Audio EQ dashboard</a><br>Layo · 526 / 142k</td><td>Tick-ring knobs and “• Connected” status text</td></tr>
+<tr><td><img src="/_blob/3885e9f7740559049c02d04b9279a820" alt="Ofspace audio plugin"></td><td><a href="https://dribbble.com/shots/6138741-Audio-Plugin">Audio Plugin (Puremix)</a><br>Ofspace · 329 / 58.8k</td><td>Colour-coded bands, tall meters with dB flags, arc knobs</td></tr>
+<tr><td><img src="/_blob/60c100cc7cd2ab02e9386087848a5de7" alt="X-Vox neumorphic plugin"></td><td><a href="https://dribbble.com/shots/20314717-Neumorphic-Audio-Plugin">X-Vox Neumorphic Plugin</a><br>Voicu Apostol · 397 / 117k</td><td>The Simple/Engineer template: modules, one big macro knob, LED meters</td></tr>
+<tr><td><img src="/_blob/3983a8d69c61b254ff09f595a67ac4ff" alt="KNORR VST"></td><td><a href="https://dribbble.com/shots/22677931-KNORR-VST-Plugin-Concept">KNORR VST</a><br>Timothy Boros · 344 / 48.6k</td><td>XY “vibe” macro pad, puck re-hued away from blue</td></tr>
+<tr><td><img src="/_blob/6dfc6100d019a9bc5b4bc0c6d06e1d1f" alt="Rtt-01 plugin"></td><td><a href="https://dribbble.com/shots/24463314-Rtt-01-music-plugin">Rtt-01 plugin</a><br>Riotters · 344 / 79.7k</td><td>One warm accent on black carrying the brand</td></tr>
+<tr><td><img src="/_blob/298a2dfd1e911cb8cdd94ff4c0e7244e" alt="Fusion 002 saturator"></td><td><a href="https://dribbble.com/shots/24845241-Multiband-Saturator-VST-Plugin-GUI">Fusion 002 Saturator</a><br>Julian Behrens · 111 / 17.2k</td><td>Warm gradient for the master cap and slates only</td></tr>
+<tr><td><img src="/_blob/1b916875cdd94ea4d336d99ae16d1fbb" alt="Creator audio mixer"></td><td><a href="https://dribbble.com/shots/25785310-Audio-Mixer-Interface-for-B2C-Creator-SaaS">Creator Audio Mixer</a><br>Serhii Huba · 17 / 6.8k (below threshold)</td><td>Icon-labelled faders, structure only</td></tr>
+<tr><td><img src="/_blob/5b62c14bd0bcc2dc8c51ef6da442673b" alt="Custom DAW"></td><td><a href="https://dribbble.com/shots/4960678-Custom-DAW">Custom DAW</a><br>Carlos R Andujar · 72 / 13.5k</td><td>Engineer strip row with master at right, consistent track colours</td></tr>
+<tr><td><img src="/_blob/fbf30e05e32cf06b86865ded8c89609f" alt="AI policy dashboard"></td><td><a href="https://dribbble.com/shots/27388009-AI-Dashboard-Design-for-Control-AI-Policy-Platform">AI Policy Dashboard</a><br>Fuselab · 1.1k / 332k</td><td>Glow on the active AI node, re-hued lilac</td></tr>
+<tr><td><img src="/_blob/57f0087ebae8f83a65104c82d6d21fc3" alt="AI agent tracker"></td><td><a href="https://dribbble.com/shots/26490547-AI-Agent-Tracker">AI Agent Tracker</a><br>Dmitry Sergushkin · 106 / 37.9k</td><td>Collapsible stepper for a decision’s steps</td></tr>
+<tr><td><img src="/_blob/9d22671d5a6fd57b947ca2faffda5d2c" alt="AI agent observability"></td><td><a href="https://dribbble.com/shots/27408472-AI-Agent-Observability-Platform-UI-Design">AI Agent Observability</a><br>Yuri Gokoryan · 133 / 29.3k</td><td>The sidebar row: name · time · status chip</td></tr>
+<tr><td><img src="/_blob/44a4687c92ea8eecf23781e6227bd77e" alt="Two-level sidebar"></td><td><a href="https://dribbble.com/shots/25861394-Two-level-Sidebar">Two-level Sidebar</a><br>Louis Nguyen · 89 / 56.4k</td><td>Rail and panel side by side, status survives collapse</td></tr>
+<tr><td><img src="/_blob/b183fdbac1bdf8e4b6a144a21ab2485a" alt="Collapsed sidebar"></td><td><a href="https://dribbble.com/shots/5663851-Collapsed-side-bar">Collapsed side bar</a><br>Canva · 120 / 66.3k</td><td>Collapse motion and a pin toggle</td></tr>
+<tr><td><img src="/_blob/b2274ca9574f4e5e2c39deec640c4efe" alt="Dark dashboard"></td><td><a href="https://dribbble.com/shots/18483961-Dark-Dashboard-Exploration-03">Dark Dashboard 03</a><br>widelab · 1.1k / 462k</td><td>Panel one step lighter than canvas, segmented view switcher</td></tr>
+</tbody></table></div>
+
+<h2>Conclusion</h2>
+<p>In an AI-run show the human’s job is supervision, and the evidence on supervision is about status, explanation and reversibility rather than layout. That makes the sidebar the product’s core: Claude’s stated intention, a readable diary of decisions, and undo. With Engineer mode as the default and a simple “your touch holds for the stream” rule, the full mixing depth is always there without adding a single mode to manage. Blue for on air solved a problem the research could not: red meaning both “live” and “broken.” The remaining palette risk is brand orange drifting into status use next to amber.</p>
+<p>Three things are unproven and need rehearsal data: how readable Claude’s reasoning is at show speed, how often “emergency” overrides of held controls fire, and phone battery/thermal alerts, which have no observed precedent. Log every control you take over and every manual cut during rehearsals — each one shows where Claude’s AUTO default is not yet trusted.</p>
+</article>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":15000}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

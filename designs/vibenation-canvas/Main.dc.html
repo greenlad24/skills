@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>VibeNation — Show</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&amp;family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=JetBrains+Mono:wght@500;600;700&amp;display=swap">
+<style>
+body{margin:0;background:#0B0806}
+a{color:#FF9A5A}a:hover{color:#FFC08F}
+button{font-family:inherit}
+button:focus-visible{outline:2px solid #F5EEE6;outline-offset:2px}
+@keyframes vnPulse{0%,100%{box-shadow:0 0 0 0 rgba(61,139,255,.55)}50%{box-shadow:0 0 0 7px rgba(61,139,255,0)}}
+@keyframes vnThink{0%{transform:translateX(-100%)}100%{transform:translateX(250%)}}
+@keyframes vnBreath{0%,100%{opacity:.55}50%{opacity:1}}
+</style>
+</helmet>
+<div style="min-height: 960px; color: #F5EEE6; font-family: 'DM Sans', system-ui, sans-serif; font-size: 14px; display: flex; flex-direction: column; background: radial-gradient(900px 520px at 8% -10%, rgba(255,122,61,0.16), rgba(255,122,61,0) 60%), radial-gradient(800px 600px at 100% 110%, rgba(185,166,255,0.08), rgba(185,166,255,0) 60%), linear-gradient(180deg, #120C09 0%, #0B0806 100%)">
+
+  <header style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 14px 22px; border-bottom: 1px solid rgba(255,236,220,0.07); background: rgba(18,12,9,0.6); backdrop-filter: blur(16px)">
+    <div style="display: flex; align-items: center; gap: 10px">
+      <div style="width: 34px; height: 34px; border-radius: 10px; background: radial-gradient(circle at 30% 25%, #FFD08A 0%, #FF8A3D 45%, #C8401F 100%); box-shadow: 0 6px 20px rgba(255,122,61,0.35), inset 0 1px 0 rgba(255,255,255,0.35); display: flex; align-items: center; justify-content: center">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1A0E08" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M3 13c2.5-6 4.5-6 6 0s3.5 6 6 0 3.5-6 6 0"></path></svg>
+      </div>
+      <span style="font-family: Sora, sans-serif; font-weight: 800; font-size: 19px; letter-spacing: -0.02em">VibeNation</span>
+    </div>
+    <div style="height: 26px; width: 1px; background: rgba(255,236,220,0.1)"></div>
+    <div style="display: flex; flex-direction: column; gap: 1px">
+      <span style="font-weight: 600; font-size: 14px">[Band Name] · Friday Session</span>
+      <span style="color: #9C9084; font-size: 12px">youtube.com/@[channel] · 1080p60</span>
+    </div>
+    <div style="flex: 1 1 40px"></div>
+    <div style="display: flex; align-items: center; gap: 10px; padding: 7px 14px 7px 10px; border-radius: 999px; background: linear-gradient(180deg, #2E7BFF, #1A5ED6); color: #FFFFFF; font-weight: 700; font-family: 'JetBrains Mono', monospace; font-size: 13px; box-shadow: 0 6px 24px rgba(31,102,224,0.45), inset 0 1px 0 rgba(255,255,255,0.25)">
+      <span style="width: 9px; height: 9px; border-radius: 50%; background: #FFFFFF; animation: vnPulse 1.8s ease-out infinite"></span>LIVE · 01:12:48
+    </div>
+    <div style="display: flex; align-items: center; gap: 7px; padding: 7px 12px; border-radius: 999px; background: rgba(255,236,220,0.05); border: 1px solid rgba(255,236,220,0.08); font-family: 'JetBrains Mono', monospace; font-size: 13px">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#C9BDB1" stroke-width="2" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"></path><circle cx="12" cy="12" r="3"></circle></svg>214
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px; padding: 7px 14px; border-radius: 999px; background: rgba(185,166,255,0.1); border: 1px solid rgba(185,166,255,0.35); color: #CDBFFF; font-weight: 600; font-size: 13px">
+      <span style="width: 8px; height: 8px; border-radius: 50%; background: #B9A6FF; box-shadow: 0 0 10px #B9A6FF; animation: vnBreath 2.4s ease-in-out infinite"></span>AUTO · Claude is running the show
+    </div>
+    <div style="display: flex; gap: 2px; padding: 3px; border-radius: 12px; background: rgba(255,236,220,0.05); border: 1px solid rgba(255,236,220,0.08)" role="group" aria-label="Density">
+      <button style="min-height: 34px; padding: 0 12px; border-radius: 9px; border: 0; background: transparent; color: #9C9084; font-weight: 600; cursor: pointer">Simple</button>
+      <button style="min-height: 34px; padding: 0 12px; border-radius: 9px; border: 0; background: #F5EEE6; color: #140D09; font-weight: 700; cursor: pointer">Engineer</button>
+    </div>
+  </header>
+
+  <div style="display: flex; flex-wrap: wrap; flex: 1 1 auto; min-height: 0">
+
+    <main style="flex: 999 1 640px; min-width: 0; padding: 22px; display: flex; flex-direction: column; gap: 18px">
+
+      <section aria-label="Program" style="border-radius: 22px; padding: 3px; background: linear-gradient(140deg, #5EA2FF, #1F66E0 55%, #2A4F9E); box-shadow: 0 0 0 1px rgba(61,139,255,0.25), 0 24px 70px rgba(31,102,224,0.22), 0 30px 60px rgba(0,0,0,0.5)">
+        <div style="border-radius: 19px; overflow: hidden; position: relative; aspect-ratio: 16 / 9; max-height: 470px; width: 100%; background: #070403">
+          <svg viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" style="position: absolute; inset: 0; width: 100%; height: 100%" role="img" aria-label="Live program: lead singer under warm stage lights">
+            <defs>
+              <linearGradient id="vnBg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1A0D08"></stop><stop offset="0.6" stop-color="#0C0604"></stop><stop offset="1" stop-color="#1C0F09"></stop></linearGradient>
+              <linearGradient id="vnBeamW" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFC27A" stop-opacity="0.55"></stop><stop offset="1" stop-color="#FF8A3D" stop-opacity="0"></stop></linearGradient>
+              <linearGradient id="vnBeamM" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FF6FA0" stop-opacity="0.32"></stop><stop offset="1" stop-color="#FF6FA0" stop-opacity="0"></stop></linearGradient>
+              <radialGradient id="vnFloor" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#FF9A4D" stop-opacity="0.55"></stop><stop offset="1" stop-color="#FF9A4D" stop-opacity="0"></stop></radialGradient>
+              <radialGradient id="vnHaze" cx="0.5" cy="0.4" r="0.6"><stop offset="0" stop-color="#FFB27A" stop-opacity="0.18"></stop><stop offset="1" stop-color="#FFB27A" stop-opacity="0"></stop></radialGradient>
+              <radialGradient id="vnBokeh" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#FFD9A8" stop-opacity="0.7"></stop><stop offset="1" stop-color="#FFD9A8" stop-opacity="0"></stop></radialGradient>
+            </defs>
+            <rect width="1600" height="900" fill="url(#vnBg)"></rect>
+            <polygon points="700,-20 900,-20 1180,900 420,900" fill="url(#vnBeamW)"></polygon>
+            <polygon points="180,-20 280,-20 620,900 200,900" fill="url(#vnBeamM)"></polygon>
+            <polygon points="1320,-20 1420,-20 1400,900 980,900" fill="url(#vnBeamM)"></polygon>
+            <rect width="1600" height="900" fill="url(#vnHaze)"></rect>
+            <ellipse cx="800" cy="840" rx="620" ry="120" fill="url(#vnFloor)"></ellipse>
+            <circle cx="120" cy="140" r="38" fill="url(#vnBokeh)"></circle><circle cx="1480" cy="110" r="52" fill="url(#vnBokeh)"></circle><circle cx="1360" cy="220" r="24" fill="url(#vnBokeh)"></circle><circle cx="260" cy="260" r="20" fill="url(#vnBokeh)"></circle>
+            <g fill="#050302">
+              <rect x="210" y="560" width="300" height="26" rx="6"></rect><rect x="236" y="586" width="12" height="190"></rect><rect x="472" y="586" width="12" height="190"></rect>
+              <circle cx="360" cy="440" r="46"></circle><path d="M280 560 C285 500 320 486 360 486 C400 486 435 500 440 560 Z"></path>
+              <circle cx="1270" cy="560" r="86"></circle><ellipse cx="1150" cy="520" rx="70" ry="16"></ellipse><ellipse cx="1400" cy="500" rx="80" ry="18"></ellipse>
+              <circle cx="1275" cy="400" r="42"></circle><path d="M1200 520 C1205 460 1240 446 1275 446 C1310 446 1345 460 1350 520 Z"></path>
+            </g>
+            <g fill="#030201">
+              <circle cx="800" cy="330" r="74"></circle>
+              <path d="M650 900 C655 640 720 470 800 470 C880 470 945 640 950 900 Z"></path>
+              <rect x="794" y="440" width="12" height="460"></rect>
+              <rect x="782" y="408" width="36" height="58" rx="18"></rect>
+            </g>
+            <path d="M745 300 C760 255 840 255 856 300" fill="none" stroke="#FFB27A" stroke-opacity="0.45" stroke-width="5"></path>
+          </svg>
+          <div style="position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0) 22%, rgba(0,0,0,0) 70%, rgba(0,0,0,0.55) 100%)" aria-hidden="true"></div>
+          <div style="position: absolute; left: 18px; top: 16px; display: flex; gap: 8px; align-items: center">
+            <span style="padding: 5px 11px; border-radius: 8px; background: #1F66E0; color: #FFFFFF; font-weight: 800; font-size: 12px; letter-spacing: 0.1em; box-shadow: 0 4px 16px rgba(31,102,224,0.6)">LIVE</span>
+            <span style="padding: 5px 12px; border-radius: 8px; background: rgba(10,6,4,0.55); backdrop-filter: blur(10px); border: 1px solid rgba(255,236,220,0.12); font-weight: 600; font-size: 13px">{{liveLabel}}</span>
+          </div>
+          <div style="position: absolute; right: 18px; top: 16px; padding: 5px 12px; border-radius: 8px; background: rgba(10,6,4,0.55); backdrop-filter: blur(10px); border: 1px solid rgba(255,236,220,0.12); font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #E9DED2">1080p60 · 9.0 Mbps</div>
+          <div style="position: absolute; left: 18px; right: 18px; bottom: 16px; display: flex; align-items: flex-end; gap: 14px">
+            <div style="display: flex; flex-direction: column; gap: 4px">
+              <span style="font-size: 11px; letter-spacing: 0.14em; color: #E9DED2; font-weight: 700">NOW PLAYING</span>
+              <span style="font-family: Sora, sans-serif; font-size: 22px; font-weight: 700; letter-spacing: -0.01em">Song 7 · second chorus</span>
+            </div>
+            <span style="flex: 1"></span>
+            <div style="display: flex; gap: 3px; align-items: flex-end; height: 46px" aria-hidden="true">
+              <span style="width: 6px; height: 72%; border-radius: 3px; background: linear-gradient(to top, #F5EEE6, #FFD7A8)"></span>
+              <span style="width: 6px; height: 86%; border-radius: 3px; background: linear-gradient(to top, #F5EEE6, #FFD7A8)"></span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div style="display: flex; align-items: center; gap: 10px">
+        <span style="font-size: 11px; letter-spacing: 0.14em; color: #9C9084; font-weight: 700">CAMERAS</span>
+        <span style="color: #7D7268; font-size: 12px">Click any camera to put it on air — Claude keeps directing from there</span>
+      </div>
+      <section aria-label="Cameras" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 14px; margin-top: -6px">
+        <sc-for list="{{cams}}" as="cam" hint-placeholder-count="5">
+          <button onClick="{{cam.take}}" aria-label="Put {{cam.num}} on air" style="{{cam.tileStyle}}">
+            <div style="aspect-ratio: 16 / 9; border-radius: 12px; background: {{cam.bg}}; position: relative; overflow: hidden">
+              <svg viewBox="0 0 160 90" style="position: absolute; inset: 0; width: 100%; height: 100%" aria-hidden="true"><g fill="#050302" opacity="0.92"><circle cx="{{cam.fx}}" cy="40" r="11"></circle><path d="{{cam.body}}"></path></g></svg>
+              <span style="{{cam.badgeStyle}}">{{cam.badge}}</span>
+              <span style="position: absolute; left: 8px; top: 8px; padding: 2px 7px; border-radius: 6px; background: rgba(10,6,4,0.55); font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700; color: #F5EEE6">{{cam.num}}</span>
+              <sc-if value="{{cam.warn}}" hint-placeholder-val="{{ false }}">
+                <span style="position: absolute; left: 8px; bottom: 8px; padding: 3px 8px; border-radius: 6px; background: #FFB224; color: #1A1206; font-size: 11px; font-weight: 800; box-shadow: 0 4px 12px rgba(255,178,36,0.35)">{{cam.warnText}}</span>
+              </sc-if>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; padding: 10px 4px 2px">
+              <span style="font-weight: 600; font-size: 13px; color: #F5EEE6">{{cam.name}}</span>
+              <span style="flex: 1"></span>
+              <span style="width: 7px; height: 7px; border-radius: 50%; background: {{cam.dot}}"></span>
+            </div>
+          </button>
+        </sc-for>
+      </section>
+
+      <section aria-label="Mix" style="border-radius: 22px; background: linear-gradient(180deg, rgba(36,27,21,0.75), rgba(22,16,12,0.75)); border: 1px solid rgba(255,236,220,0.07); box-shadow: inset 0 1px 0 rgba(255,236,220,0.05), 0 20px 50px rgba(0,0,0,0.35); padding: 18px 20px; display: flex; flex-wrap: wrap; gap: 22px; align-items: stretch">
+        <div style="display: flex; flex-direction: column; gap: 6px; width: 180px">
+          <span style="font-size: 11px; letter-spacing: 0.14em; color: #9C9084; font-weight: 700">MIX · 16 CHANNELS</span>
+          <span style="color: #C9BDB1; font-size: 13px; line-height: 1.45">Claude is mixing. Touch a fader and it’s yours for the rest of the show.</span>
+          <span style="flex: 1"></span>
+          <div style="border-radius: 16px; padding: 12px 14px; background: rgba(255,236,220,0.04); border: 1px solid rgba(255,236,220,0.07); display: flex; flex-direction: column; gap: 2px">
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 30px; font-weight: 700; letter-spacing: -0.03em">−16.2</span>
+            <span style="color: #9C9084; font-size: 11px">LUFS · target −16</span>
+            <div style="margin-top: 8px; height: 5px; border-radius: 3px; background: rgba(255,236,220,0.07); position: relative" aria-hidden="true">
+              <div style="position: absolute; left: 0; width: 78%; top: 0; bottom: 0; border-radius: 3px; background: linear-gradient(90deg, #6E6258, #F5EEE6)"></div>
+              <div style="position: absolute; left: 80%; top: -3px; bottom: -3px; width: 2px; background: #FF8A3D"></div>
+            </div>
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #C9BDB1; margin-top: 6px">TP −1.4 dBTP</span>
+          </div>
+        </div>
+        <div style="flex: 1 1 560px; min-width: 0; display: grid; grid-template-columns: repeat(16, minmax(34px, 1fr)); gap: 4px; overflow-x: auto">
+          <sc-for list="{{groups}}" as="g" hint-placeholder-count="16">
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 8px 2px; border-radius: 12px; background: {{g.stripBg}}">
+              <span style="width: 18px; height: 3px; border-radius: 2px; background: {{g.color}}; box-shadow: 0 0 8px {{g.color}}"></span>
+              <div style="height: 132px; display: flex; gap: 3px; align-items: flex-end">
+                <div style="width: 5px; height: 100%; border-radius: 3px; background: rgba(255,236,220,0.06); position: relative; overflow: hidden" aria-hidden="true">
+                  <div style="position: absolute; left: 0; right: 0; bottom: 0; height: {{g.meter}}; background: linear-gradient(to top, #8F8378 0%, #E9DED2 68%, #FFB224 90%, #FF5A52 100%)"></div>
+                  <div style="position: absolute; inset: 0; background: repeating-linear-gradient(to top, rgba(11,8,6,0) 0 3px, rgba(11,8,6,0.9) 3px 4px)"></div>
+                </div>
+                <div style="width: 22px; height: 100%; position: relative" role="img" aria-label="{{g.aria}}">
+                  <div style="position: absolute; left: 9px; width: 4px; top: 4px; bottom: 4px; background: rgba(0,0,0,0.55); border-radius: 2px; box-shadow: inset 0 1px 2px rgba(0,0,0,0.6)"></div>
+                  <div style="position: absolute; left: 0; right: 0; height: 26px; bottom: {{g.pos}}; border-radius: 5px; background: linear-gradient(180deg, #FAF5EF 0%, #D9CFC5 48%, #B8ADA2 52%, #E6DDD3 100%); box-shadow: 0 3px 8px rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center">
+                    <span style="width: 14px; height: 2px; background: #3A2E26; border-radius: 1px"></span>
+                  </div>
+                </div>
+              </div>
+              <span style="font-size: 10px; font-weight: 700; text-align: center; line-height: 1.15; min-height: 23px; color: #E9DED2">{{g.name}}</span>
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #9C9084">{{g.db}}</span>
+              <span style="{{g.tagStyle}}">{{g.tag}}</span>
+            </div>
+          </sc-for>
+        </div>
+      </section>
+    </main>
+
+    <aside aria-label="Claude activity" style="{{sideStyle}}">
+      <sc-if value="{{open}}" hint-placeholder-val="{{ true }}">
+        <div style="display: flex; flex-direction: column; gap: 18px; padding: 18px">
+          <div style="display: flex; align-items: center; gap: 10px">
+            <div style="width: 30px; height: 30px; border-radius: 9px; background: radial-gradient(circle at 30% 25%, #E5DBFF, #B9A6FF 50%, #7C66D9); box-shadow: 0 0 18px rgba(185,166,255,0.45); display: flex; align-items: center; justify-content: center">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1B1430" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M6 18l2.5-2.5M15.5 8.5L18 6"></path></svg>
+            </div>
+            <div style="display: flex; flex-direction: column">
+              <span style="font-family: Sora, sans-serif; font-weight: 700; font-size: 15px">Claude</span>
+              <span style="color: #9C9084; font-size: 12px">Director + mixer · all on Auto</span>
+            </div>
+            <span style="flex: 1"></span>
+            <button onClick="{{toggleSide}}" aria-label="Collapse sidebar" style="width: 40px; height: 40px; border-radius: 12px; border: 1px solid rgba(255,236,220,0.1); background: rgba(255,236,220,0.04); color: #C9BDB1; cursor: pointer; display: flex; align-items: center; justify-content: center">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+            </button>
+          </div>
+
+          <div style="position: relative; border-radius: 18px; padding: 1px; background: linear-gradient(140deg, rgba(185,166,255,0.9), rgba(185,166,255,0.15) 60%, rgba(255,138,61,0.4)); box-shadow: 0 12px 40px rgba(124,102,217,0.22)">
+            <div style="border-radius: 17px; padding: 14px; background: linear-gradient(180deg, #1C1626, #15101C); display: flex; flex-direction: column; gap: 10px; overflow: hidden">
+              <span style="font-size: 11px; letter-spacing: 0.14em; color: #CDBFFF; font-weight: 700">DIRECTOR IS THINKING</span>
+              <span style="font-size: 14px; line-height: 1.5; color: #F1ECFF">Piano solo is starting — keys up 6 dB and melodic, vocal silent for 4 bars. Planning to cut to <b style="color: #FFFFFF">CAM 3 · Keys</b> on the next downbeat.</span>
+              <div style="height: 3px; border-radius: 2px; background: rgba(185,166,255,0.15); overflow: hidden; position: relative" aria-hidden="true">
+                <div style="position: absolute; top: 0; bottom: 0; width: 40%; background: linear-gradient(90deg, rgba(185,166,255,0), #B9A6FF, rgba(185,166,255,0)); animation: vnThink 1.6s ease-in-out infinite"></div>
+              </div>
+              <div style="display: flex; gap: 6px; flex-wrap: wrap">
+                <span style="padding: 3px 9px; border-radius: 999px; background: rgba(185,166,255,0.12); color: #D9CFFF; font-size: 11px; font-weight: 600">heard: keys solo</span>
+                <span style="padding: 3px 9px; border-radius: 999px; background: rgba(185,166,255,0.12); color: #D9CFFF; font-size: 11px; font-weight: 600">confidence: likely</span>
+              </div>
+            </div>
+          </div>
+
+          <div style="border-radius: 18px; background: rgba(255,236,220,0.035); border: 1px solid rgba(255,236,220,0.07); padding: 6px 14px">
+            <sc-for list="{{procs}}" as="p" hint-placeholder-count="7">
+              <div style="display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid rgba(255,236,220,0.05)">
+                <span style="{{p.dot}}"></span>
+                <span style="font-size: 13px; color: #E9DED2">{{p.name}}</span>
+                <span style="flex: 1"></span>
+                <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: {{p.metaColor}}">{{p.meta}}</span>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 0">
+            <span style="font-size: 11px; letter-spacing: 0.14em; color: #9C9084; font-weight: 700; margin-bottom: 10px">ACTIVITY</span>
+            <sc-for list="{{feed}}" as="f" hint-placeholder-count="4">
+              <div style="display: flex; gap: 12px">
+                <div style="display: flex; flex-direction: column; align-items: center; width: 10px">
+                  <span style="width: 9px; height: 9px; border-radius: 50%; margin-top: 6px; background: {{f.kindColor}}; box-shadow: 0 0 0 3px #0F0A08"></span>
+                  <span style="flex: 1; width: 1px; background: rgba(255,236,220,0.1)"></span>
+                </div>
+                <div style="flex: 1; padding-bottom: 16px; display: flex; flex-direction: column; gap: 4px">
+                  <div style="display: flex; gap: 8px; align-items: baseline">
+                    <span style="font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: {{f.kindColor}}">{{f.kind}}</span>
+                    <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #7D7268">{{f.time}}</span>
+                  </div>
+                  <span style="font-size: 13px; line-height: 1.45; color: #F5EEE6">{{f.text}}</span>
+                  <sc-if value="{{f.why}}" hint-placeholder-val="{{ true }}">
+                    <span style="font-size: 12px; color: #9C9084; line-height: 1.45">{{f.why}}</span>
+                  </sc-if>
+                  <sc-if value="{{f.undo}}" hint-placeholder-val="{{ true }}">
+                    <div style="display: flex; gap: 6px; margin-top: 2px">
+                      <button style="min-height: 30px; padding: 0 12px; border-radius: 999px; border: 1px solid rgba(255,236,220,0.12); background: rgba(255,236,220,0.04); color: #F5EEE6; font-size: 12px; cursor: pointer">Undo</button>
+                      <button style="min-height: 30px; padding: 0 12px; border-radius: 999px; border: 1px solid rgba(255,236,220,0.12); background: rgba(255,236,220,0.04); color: #F5EEE6; font-size: 12px; cursor: pointer">Before / after</button>
+                    </div>
+                  </sc-if>
+                </div>
+              </div>
+            </sc-for>
+            <a href="#" style="font-size: 13px; font-weight: 600">Open full log →</a>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{closed}}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 16px 0">
+          <button onClick="{{toggleSide}}" aria-label="Expand sidebar" style="width: 40px; height: 40px; border-radius: 12px; border: 1px solid rgba(255,236,220,0.1); background: rgba(255,236,220,0.04); color: #C9BDB1; cursor: pointer; display: flex; align-items: center; justify-content: center">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg>
+          </button>
+          <span style="width: 10px; height: 10px; border-radius: 50%; background: #B9A6FF; box-shadow: 0 0 10px #B9A6FF"></span>
+          <sc-for list="{{procs}}" as="p" hint-placeholder-count="7">
+            <span style="{{p.dot}}" role="img" aria-label="{{p.name}}"></span>
+          </sc-for>
+          <span style="margin-top: 6px; min-width: 22px; padding: 2px 6px; border-radius: 999px; background: #F5EEE6; color: #140D09; font-size: 11px; font-weight: 800; text-align: center" aria-label="3 controls held by you">3</span>
+        </div>
+      </sc-if>
+    </aside>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { open: true, live: 2 }; }
+  renderVals() {
+    const s = this.state;
+    const dot = (c) => 'width: 8px; height: 8px; border-radius: 50%; flex: none; background: ' + c + (c === '#B9A6FF' || c === '#FFB224' ? '; box-shadow: 0 0 8px ' + c : '');
+    const scenes = {
+      1: 'radial-gradient(70% 90% at 50% 100%, rgba(255,140,70,0.55), rgba(0,0,0,0) 60%), linear-gradient(180deg,#2A1810,#0D0705)',
+      2: 'radial-gradient(60% 80% at 50% 20%, rgba(255,194,122,0.6), rgba(0,0,0,0) 65%), linear-gradient(180deg,#2B160D,#0B0604)',
+      3: 'radial-gradient(70% 80% at 30% 30%, rgba(255,111,160,0.38), rgba(0,0,0,0) 65%), linear-gradient(180deg,#22121A,#0A0507)',
+      4: 'radial-gradient(70% 80% at 70% 30%, rgba(255,160,90,0.4), rgba(0,0,0,0) 65%), linear-gradient(180deg,#24150D,#0B0604)',
+      5: 'radial-gradient(90% 70% at 50% 0%, rgba(255,210,150,0.35), rgba(0,0,0,0) 60%), linear-gradient(180deg,#1B120D,#090605)'
+    };
+    const bodies = { 1: 'M40 90 C42 66 52 56 64 56 C76 56 86 66 88 90 Z M96 90 C98 70 106 62 116 62 C126 62 134 70 136 90 Z', 2: 'M58 90 C60 62 70 52 80 52 C90 52 100 62 102 90 Z', 3: 'M44 90 C46 64 56 54 68 54 C80 54 90 64 92 90 Z M20 70 h120 v6 h-120 Z', 4: 'M76 90 C78 64 88 54 98 54 C108 54 118 64 120 90 Z M30 64 a14 6 0 1 0 28 0 a14 6 0 1 0 -28 0', 5: 'M10 90 C12 76 18 72 26 72 C34 72 40 76 42 90 Z M50 90 C52 74 60 70 68 70 C76 70 82 74 84 90 Z M94 90 C96 76 102 72 110 72 C118 72 124 76 126 90 Z M134 90 C136 78 142 74 148 74 C154 74 158 78 160 90 Z' };
+    const fx = { 1: 64, 2: 80, 3: 68, 4: 98, 5: 68 };
+    const cams = [
+      { id: 1, num: 'CAM 1', name: 'Wide stage' }, { id: 2, num: 'CAM 2', name: 'Lead vocal' }, { id: 3, num: 'CAM 3', name: 'Keys' },
+      { id: 4, num: 'CAM 4', name: 'Drums', warn: true, warnText: 'Battery 18%' }, { id: 5, num: 'CAM 5', name: 'Crowd · iPhone' }
+    ].map((c) => {
+      const isLive = c.id === s.live;
+      return Object.assign({}, c, {
+        bg: scenes[c.id], body: bodies[c.id], fx: fx[c.id],
+        tileStyle: 'text-align: left; padding: 8px; border-radius: 18px; cursor: pointer; background: linear-gradient(180deg, rgba(40,30,23,0.8), rgba(24,18,14,0.8)); border: ' + (isLive ? '2px solid #3D8BFF; box-shadow: 0 0 0 4px rgba(61,139,255,0.18), 0 14px 30px rgba(31,102,224,0.25)' : '1px solid rgba(255,236,220,0.08); box-shadow: 0 10px 24px rgba(0,0,0,0.3)'),
+        badge: isLive ? 'LIVE' : '',
+        badgeStyle: 'position: absolute; right: 8px; top: 8px; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; color: #FFFFFF; background: ' + (isLive ? '#1F66E0' : 'transparent'),
+        warn: !!c.warn,
+        dot: c.warn ? '#FFB224' : '#8F8378',
+        take: () => this.setState({ live: c.id })
+      });
+    });
+    const liveCam = cams.find((c) => c.id === s.live);
+    const SC = { drums: '#E08A5A', perc: '#D9A066', gtr: '#E6C07A', keys: '#9FC7A8', vox: '#F5EEE6', bass: '#8FA3D9', horn: '#E58FB0' };
+    const groups = [
+      ['Kick', 'drums', '+2.0', 62, 84, 'you'], ['Snare', 'drums', '−8.5', 44, 70, 'ai'], ['OH', 'drums', '−23', 18, 22, ''], ['Ac DI', 'gtr', 'off', 2, 0, ''],
+      ['Gtr amp', 'gtr', '−12', 36, 58, ''], ['Piano L', 'keys', '−9.5', 41, 61, ''], ['Piano R', 'keys', '−9.5', 41, 60, ''], ['Gtr DI', 'gtr', '−13', 34, 49, ''],
+      ['Vox C', 'vox', '−2.0', 56, 80, 'ai'], ['Vox P', 'vox', '−2.3', 55, 66, 'you'], ['Tbone', 'horn', '−6.0', 48, 72, 'ai'], ['Bass DI', 'bass', '−10', 40, 74, 'ai'],
+      ['Congas', 'perc', '−16', 30, 46, ''], ['Synth B', 'bass', '−9.8', 41, 68, 'ai'], ['Sax', 'horn', '−2.1', 56, 0, ''], ['Harm', 'horn', '−10', 40, 0, 'you']
+    ].map((r) => ({
+      name: r[0], color: SC[r[1]], db: r[2], pos: 'calc(' + r[3] + '% - 13px)', meter: r[4] + '%', aria: r[0] + ' fader ' + r[2] + ' dB',
+      tag: r[5] === 'you' ? 'YOU' : r[5] === 'ai' ? 'AI' : '·',
+      tagStyle: r[5] === 'you' ? 'font-size: 9px; font-weight: 800; letter-spacing: 0.06em; padding: 1px 5px; border-radius: 5px; background: #F5EEE6; color: #140D09' : r[5] === 'ai' ? 'font-size: 9px; font-weight: 800; letter-spacing: 0.06em; padding: 1px 5px; border-radius: 5px; background: rgba(185,166,255,0.16); color: #CDBFFF' : 'font-size: 9px; color: rgba(0,0,0,0); padding: 1px 5px',
+      stripBg: r[5] === 'you' ? 'rgba(245,238,230,0.06)' : 'transparent'
+    }));
+    const procs = [
+      { name: 'Venue audio link', meta: '16 ch · 48k', c: '#8F8378' },
+      { name: 'Cameras', meta: '5 / 5', c: '#8F8378' },
+      { name: 'Mix engine', meta: '3.1 ms', c: '#8F8378' },
+      { name: 'Listener (hearing)', meta: 'every 8 s', c: '#B9A6FF' },
+      { name: 'Director', meta: 'auto', c: '#B9A6FF' },
+      { name: 'YouTube ingest', meta: '9.0 Mbps', c: '#8F8378' },
+      { name: 'CAM 4 battery', meta: '18%', c: '#FFB224', amber: true }
+    ].map((p) => Object.assign({}, p, { dot: dot(p.c), metaColor: p.amber ? '#FFB224' : '#9C9084' }));
+    const feed = [
+      { time: '21:42:02', kind: 'DIRECTOR', kindColor: '#B9A6FF', text: 'Cut to CAM 2 for the chorus.', why: 'Vocal back after the verse break; held the wide for 12 s.', undo: false },
+      { time: '21:41:52', kind: 'MIX', kindColor: '#B9A6FF', text: 'Bass DI −2 dB at 250 Hz.', why: 'Listener: “low end a little muddy against the kick.” Clarity 71 → 78.', undo: true },
+      { time: '21:40:31', kind: 'ROLE', kindColor: '#B9A6FF', text: 'Ch 16 switched: harmonica → backing vocal.', why: 'Voice detected for 8 s; vocal preset crossfaded in 2 s.', undo: true },
+      { time: '21:39:05', kind: 'YOURS', kindColor: '#F5EEE6', text: 'You moved Vocal piano — held by you for the rest of the show.', why: 'Claude only steps in for feedback, clipping or a dead signal.', undo: false }
+    ];
+    const open = s.open;
+    return {
+      open: open, closed: !open,
+      liveLabel: liveCam.num + ' · ' + liveCam.name,
+      cams: cams, groups: groups, procs: procs, feed: feed,
+      sideStyle: 'flex: 0 0 ' + (open ? '350px' : '60px') + '; min-width: 0; border-left: 1px solid rgba(255,236,220,0.07); background: linear-gradient(180deg, rgba(20,14,11,0.85), rgba(14,10,8,0.85)); backdrop-filter: blur(18px)',
+      toggleSide: () => this.setState({ open: !this.state.open })
+    };
+  }
+}
+</script>
+</body>
+</html>

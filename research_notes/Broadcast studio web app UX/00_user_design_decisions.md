@@ -30,3 +30,10 @@
 - Clicking any camera tile puts it on air immediately; the AI keeps directing from the picked shot.
 - The AI's next-shot reasoning lives in the sidebar ("Director is thinking") / backend, not as on-screen controls.
 - Green "preview" colour is therefore no longer used on the Show screen.
+
+## Phones (user decision)
+- All phones broadcast HORIZONTALLY (landscape) only.
+- The phone camera screen shows the FULL 16:9 image edge to edge with NOTHING overlaid, so each camera can be framed exactly; tally/status/locks live in the spare strip beside the image. Framing guides off by default.
+
+## Visual direction
+- "Warm studio glass": warm near-black with ember ambient glow, frosted-glass panels, 18–24 px radii, LED-segment meters, real fader caps, lilac gradient-edged Claude thinking card. Type: Sora / DM Sans / JetBrains Mono.

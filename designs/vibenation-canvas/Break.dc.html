@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Break slate</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#FF8A3D}a:hover{color:#FFB27F}
+</style>
+</helmet>
+<div style="width: 1280px; height: 720px; box-sizing: border-box; position: relative; overflow: hidden; background: #140B08; color: #F5EEE6; font-family: Sora, sans-serif">
+  <div style="position: absolute; inset: 0; background: radial-gradient(70% 90% at 50% 115%, {{c3}} 0%, {{c2}} 30%, {{c1}} 52%, rgba(20,11,8,0) 78%); opacity: 0.9" aria-hidden="true"></div>
+  <div style="position: absolute; left: 50%; bottom: -330px; width: 760px; height: 760px; margin-left: -380px; border-radius: 50%; border: 2px solid rgba(255,195,113,0.35)" aria-hidden="true"></div>
+  <div style="position: absolute; left: 50%; bottom: -230px; width: 560px; height: 560px; margin-left: -280px; border-radius: 50%; border: 2px solid rgba(255,195,113,0.25)" aria-hidden="true"></div>
+
+  <div style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; padding-top: 120px; gap: 18px">
+    <div style="display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-radius: 999px; background: rgba(42,22,16,0.7); border: 1px solid rgba(245,238,230,0.18); font-size: 15px; font-weight: 600; letter-spacing: 0.12em">
+      <span style="width: 8px; height: 8px; border-radius: 50%; background: #FFC371"></span>SHORT BREAK
+    </div>
+    <h1 style="margin: 0; font-size: 54px; font-weight: 600; letter-spacing: -0.02em">We’ll be back in</h1>
+    <div style="font-family: 'JetBrains Mono', monospace; font-size: 168px; font-weight: 700; line-height: 1; letter-spacing: -0.04em">{{time}}</div>
+    <div style="margin-top: 8px; font-size: 22px; color: #E9DCCD">[Band Name] · live from [Venue]</div>
+  </div>
+
+  <div style="position: absolute; left: 48px; right: 48px; bottom: 40px; display: flex; align-items: center; gap: 16px">
+    <div style="width: 56px; height: 56px; border-radius: 12px; border: 1px dashed rgba(245,238,230,0.5); display: flex; align-items: center; justify-content: center; font-size: 11px; color: #E9DCCD">LOGO</div>
+    <div style="display: flex; flex-direction: column; gap: 2px">
+      <span style="font-size: 13px; color: #E9DCCD; letter-spacing: 0.1em; font-weight: 600">NOW PLAYING</span>
+      <span style="font-size: 18px; font-weight: 600">[break playlist track]</span>
+    </div>
+    <span style="flex: 1"></span>
+    <span style="font-size: 16px; color: #E9DCCD">Grab a drink — set two starts soon</span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"minutes":{"editor":"int","default":15,"min":1,"max":60,"unit":"min"},"c1":{"editor":"color","default":"#FF5E62","section":"Band colours"},"c2":{"editor":"color","default":"#FF9966","section":"Band colours"},"c3":{"editor":"color","default":"#FFC371","section":"Band colours"},"$preview":{"width":1280,"height":720}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const m = this.props.minutes ?? 15;
+    return {
+      time: String(m).padStart(2, '0') + ':00',
+      c1: this.props.c1 ?? '#FF5E62', c2: this.props.c2 ?? '#FF9966', c3: this.props.c3 ?? '#FFC371'
+    };
+  }
+}
+</script>
+</body>
+</html>
