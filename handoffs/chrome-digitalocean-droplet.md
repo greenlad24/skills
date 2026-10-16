@@ -7,7 +7,7 @@ Your job: fill in the "Create Droplet" form for ONE always-on build server, then
 - Do NOT click the final **Create Droplet** button. Stop on the review screen and tell the user the exact monthly price shown.
 - Do NOT enter, view or change any payment / billing details.
 - Do NOT create a GPU droplet, a database, Spaces or anything else. One droplet only.
-- If a setting below is not available, or the price differs from ~$56/mo by more than $10, stop and report what you see instead of picking an alternative.
+- If a setting below is not available, or the price differs from ~$28/mo by more than $6, stop and report what you see instead of picking an alternative.
 - If DigitalOcean asks for a password for the droplet, do not set one. SSH key only (see step 7).
 
 ## Steps
@@ -16,14 +16,14 @@ Your job: fill in the "Create Droplet" form for ONE always-on build server, then
 3. **Image:** OS → **Ubuntu** → **24.04 (LTS) x64**.
 4. **Droplet type:** **Basic**.
 5. **CPU options:** **Premium AMD** (NVMe SSD).
-6. **Size:** **4 vCPU · 8 GB RAM · 160 GB NVMe SSD** (slug `s-4vcpu-8gb-amd`). Expected price ≈ $56/month — read the actual price on the page.
+6. **Size:** **2 vCPU · 4 GB RAM · 80 GB NVMe SSD** (Premium AMD, slug `s-2vcpu-4gb-amd`). Expected price ≈ $28/month — read the actual price on the page.
 7. **Authentication:** **SSH Key**.
    - If a key is already listed in the account, tick it and tell the user its name.
    - If no key exists, click **New SSH Key**, then STOP and ask the user to paste their public key (the contents of `~/.ssh/id_ed25519.pub`). Never invent or generate a key yourself.
 8. **Additional options:**
    - ✅ **Monitoring** (free).
    - ✅ **IPv6** (free).
-   - **Backups:** turn ON, **weekly** (≈ +20% ≈ $11/month). If the user said no backups, leave off.
+   - **Backups:** turn ON, **weekly** (≈ +20% ≈ $5–6/month). If the user said no backups, leave off.
 9. **Quantity:** 1.
 10. **Hostname:** `vibenation-build`
 11. **Tags:** `vibenation`, `build`
