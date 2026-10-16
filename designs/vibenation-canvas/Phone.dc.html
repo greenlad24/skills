@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>VibeNation Camera — framing, landscape</title>
+<title>VibeNation Camera — landscape</title>
 <script src="./support.js"></script>
 </head>
 <body>
@@ -14,12 +14,17 @@
 body{margin:0}
 a{color:#FF9A5A}a:hover{color:#FFC08F}
 button{font-family:inherit}
+button:focus-visible{outline:2px solid #F5EEE6;outline-offset:2px}
 @keyframes vnPulse{0%,100%{opacity:1}50%{opacity:.45}}
 </style>
 </helmet>
-<div style="width: 844px; height: 390px; box-sizing: border-box; background: #050302; color: #F5EEE6; font-family: 'DM Sans', system-ui, sans-serif; display: flex">
+<div style="width: 844px; height: 390px; box-sizing: border-box; position: relative; overflow: hidden; background: #000000; color: #F5EEE6; font-family: 'DM Sans', system-ui, sans-serif">
 
-  <div style="width: 693px; height: 390px; flex: none; position: relative; overflow: hidden; background: #070403" role="img" aria-label="Full camera image, exactly what goes on air">
+  <div style="position: absolute; left: 0; top: 0; bottom: 0; width: 75px; display: flex; align-items: center; justify-content: center" aria-hidden="true">
+    <span style="width: 4px; height: 70%; border-radius: 2px; background: {{tally}}; box-shadow: 0 0 18px {{tally}}"></span>
+  </div>
+
+  <div style="position: absolute; left: 75px; top: 0; width: 694px; height: 390px; overflow: hidden; background: #070403" role="img" aria-label="Full camera image, exactly what goes on air">
     <svg viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" style="position: absolute; inset: 0; width: 100%; height: 100%" aria-hidden="true">
       <defs>
         <linearGradient id="pBg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1A0D08"></stop><stop offset="0.6" stop-color="#0C0604"></stop><stop offset="1" stop-color="#1C0F09"></stop></linearGradient>
@@ -33,42 +38,69 @@ button{font-family:inherit}
     </svg>
   </div>
 
-  <div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 8px; padding: 10px 10px 10px 12px; background: linear-gradient(180deg, #120C09, #0B0806); border-left: 4px solid {{tally}}">
-    <sc-if value="{{live}}" hint-placeholder-val="{{ true }}">
-      <span style="align-self: flex-start; display: flex; align-items: center; gap: 6px; padding: 5px 9px; border-radius: 7px; background: #1F66E0; color: #FFFFFF; font-weight: 800; font-size: 11px; letter-spacing: 0.1em; box-shadow: 0 4px 14px rgba(31,102,224,0.5)"><span style="width: 7px; height: 7px; border-radius: 50%; background: #FFFFFF; animation: vnPulse 1.4s ease-in-out infinite"></span>ON AIR</span>
-    </sc-if>
-    <sc-if value="{{notLive}}" hint-placeholder-val="{{ false }}">
-      <span style="align-self: flex-start; padding: 5px 9px; border-radius: 7px; border: 1px solid rgba(255,236,220,0.15); color: #C9BDB1; font-weight: 800; font-size: 11px; letter-spacing: 0.1em">STANDBY</span>
-    </sc-if>
-    <div style="display: flex; flex-direction: column; gap: 1px">
-      <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #9C9084; font-weight: 700">CAM 2</span>
-      <span style="font-family: Sora, sans-serif; font-size: 14px; font-weight: 700; line-height: 1.2">Lead vocal</span>
-    </div>
-    <div style="display: flex; flex-direction: column; gap: 5px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #C9BDB1">
-      <span>WB 4300K · lock</span>
-      <span>ISO 400 · 1/100</span>
-      <span>86% · 38°C</span>
-      <span>12 Mb · strong</span>
-    </div>
-    <span style="flex: 1"></span>
-    <button onClick="{{toggleGuides}}" style="min-height: 40px; border-radius: 10px; border: 1px solid rgba(255,236,220,0.12); background: rgba(255,236,220,0.04); color: #F5EEE6; font-weight: 600; font-size: 12px; cursor: pointer">{{guidesLabel}}</button>
-    <button onClick="{{toggle}}" aria-label="Hold to unlock settings" style="min-height: 40px; border-radius: 10px; border: 1px solid rgba(255,236,220,0.12); background: rgba(255,236,220,0.04); color: #F5EEE6; font-weight: 600; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>Hold
+  <div style="position: absolute; right: 0; top: 0; bottom: 0; width: 75px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px">
+    <button onClick="{{toggle}}" aria-label="{{handleLabel}}" aria-expanded="{{open}}" style="width: 44px; height: 88px; border-radius: 22px; border: 1px solid rgba(255,236,220,0.14); background: rgba(255,236,220,0.06); color: #F5EEE6; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="{{chevron}}"></path></svg>
+      <span style="width: 6px; height: 6px; border-radius: 50%; background: {{statusDot}}"></span>
     </button>
   </div>
+
+  <sc-if value="{{open}}" hint-placeholder-val="{{ false }}">
+    <div style="position: absolute; right: 0; top: 0; bottom: 0; width: 300px; box-sizing: border-box; padding: 16px 16px 16px 18px; display: flex; flex-direction: column; gap: 12px; background: rgba(16,11,8,0.82); backdrop-filter: blur(22px); border-left: 1px solid rgba(255,236,220,0.1); box-shadow: -20px 0 50px rgba(0,0,0,0.55); border-radius: 22px 0 0 22px">
+      <div style="display: flex; align-items: center; gap: 10px">
+        <sc-if value="{{live}}" hint-placeholder-val="{{ true }}">
+          <span style="display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 8px; background: #1F66E0; color: #FFFFFF; font-weight: 800; font-size: 11px; letter-spacing: 0.1em; box-shadow: 0 4px 14px rgba(31,102,224,0.5)"><span style="width: 7px; height: 7px; border-radius: 50%; background: #FFFFFF; animation: vnPulse 1.4s ease-in-out infinite"></span>ON AIR</span>
+        </sc-if>
+        <sc-if value="{{notLive}}" hint-placeholder-val="{{ false }}">
+          <span style="padding: 5px 10px; border-radius: 8px; border: 1px solid rgba(255,236,220,0.15); color: #C9BDB1; font-weight: 800; font-size: 11px; letter-spacing: 0.1em">STANDBY</span>
+        </sc-if>
+        <div style="display: flex; flex-direction: column">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #9C9084; font-weight: 700">CAM 2</span>
+          <span style="font-family: Sora, sans-serif; font-size: 15px; font-weight: 700">Lead vocal</span>
+        </div>
+        <span style="flex: 1"></span>
+        <button onClick="{{toggle}}" aria-label="Close drawer" style="width: 40px; height: 40px; border-radius: 12px; border: 1px solid rgba(255,236,220,0.12); background: rgba(255,236,220,0.04); color: #C9BDB1; cursor: pointer; display: flex; align-items: center; justify-content: center">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+        </button>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+        <sc-for list="{{stats}}" as="s" hint-placeholder-count="6">
+          <div style="border-radius: 12px; background: rgba(255,236,220,0.05); border: 1px solid rgba(255,236,220,0.06); padding: 8px 10px; display: flex; flex-direction: column; gap: 1px">
+            <span style="font-size: 10px; color: #9C9084; font-weight: 700; letter-spacing: 0.06em">{{s.k}}</span>
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; color: {{s.c}}">{{s.v}}</span>
+          </div>
+        </sc-for>
+      </div>
+      <span style="flex: 1"></span>
+      <div style="display: flex; gap: 8px">
+        <button onClick="{{toggleGuides}}" style="flex: 1; min-height: 44px; border-radius: 12px; border: 1px solid rgba(255,236,220,0.12); background: rgba(255,236,220,0.04); color: #F5EEE6; font-weight: 700; font-size: 12px; cursor: pointer">{{guidesLabel}}</button>
+        <button style="flex: 1; min-height: 44px; border-radius: 12px; border: 1px solid rgba(255,236,220,0.12); background: rgba(255,236,220,0.04); color: #F5EEE6; font-weight: 700; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>Hold to unlock
+        </button>
+      </div>
+    </div>
+  </sc-if>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":844,"height":390}}'>
+<script type="text/x-dc" data-dc-script data-props='{"startOpen":{"editor":"boolean","default":false},"$preview":{"width":844,"height":390}}'>
 class Component extends DCLogic {
-  constructor(props) { super(props); this.state = { live: true, guides: false }; }
+  constructor(props) { super(props); this.state = { open: !!props.startOpen, live: true, guides: false }; }
   renderVals() {
-    const live = this.state.live;
+    const s = this.state;
     return {
-      live: live, notLive: !live,
-      tally: live ? '#3D8BFF' : '#231C17',
-      guidesLabel: this.state.guides ? 'Guides on' : 'Guides off',
-      toggleGuides: () => this.setState({ guides: !this.state.guides }),
-      toggle: () => this.setState({ live: !this.state.live })
+      open: s.open, live: s.live, notLive: !s.live,
+      tally: s.live ? '#3D8BFF' : '#2A211B',
+      statusDot: '#FFB224',
+      chevron: s.open ? 'M9 6l6 6-6 6' : 'M15 6l-6 6 6 6',
+      handleLabel: s.open ? 'Close drawer' : 'Open drawer',
+      guidesLabel: s.guides ? 'Guides on' : 'Guides off',
+      stats: [
+        { k: 'WHITE BAL.', v: '4300 K · lock', c: '#F5EEE6' }, { k: 'EXPOSURE', v: 'ISO 400 · 1/100', c: '#F5EEE6' },
+        { k: 'BATTERY', v: '86%', c: '#F5EEE6' }, { k: 'TEMP', v: '41 °C', c: '#FFB224' },
+        { k: 'WI-FI', v: 'Strong', c: '#F5EEE6' }, { k: 'BITRATE', v: '12 Mbps', c: '#F5EEE6' }
+      ],
+      toggle: () => this.setState({ open: !this.state.open }),
+      toggleGuides: () => this.setState({ guides: !this.state.guides })
     };
   }
 }
