@@ -18,6 +18,22 @@ export interface CameraState {
   error?: string; // red chip text, e.g. "Disconnected"
 }
 
+export interface EqBand {
+  kind: 'hpf' | 'lpf' | 'bell' | 'lshelf' | 'hshelf' | 'off';
+  f: number;
+  gain: number;
+  q: number;
+}
+
+export interface CompSettings {
+  thresh: number;
+  ratio: number;
+  attack: number;
+  release: number;
+  makeup: number;
+  mix: number;
+}
+
 export interface ChannelState {
   n: number;
   name: string;
@@ -33,13 +49,36 @@ export interface ChannelState {
   /** Claude touched this channel in the last 30 s. */
   aiRecent: boolean;
   role?: string; // for role-switching channels: "Congas", "Trombone", "Backing vocal"…
+  // Real mix engine values (present once the audio engine is connected).
+  pan?: number; // -100..100
+  trim?: number; // digital input trim set by soundcheck calibration (never the MR18 preamp)
+  eq?: EqBand[];
+  eqBase?: EqBand[]; // starting preset, for A/B compare
+  comp?: CompSettings | null;
+  sends?: { plate: number | null; room: number | null; delay: number | null };
+  noHpf?: boolean;
+}
+
+export interface AudioStatus {
+  connected: boolean;
+  source: 'recording' | 'venue';
+  name: string; // recording name
+  sets: string[];
+  set: string | null;
+  playing: boolean;
+  position: number; // seconds
+  length: number;
+  calibrating: boolean;
+  leveller: boolean;
 }
 
 export interface MasterState {
   lufsI: number;
   lufsS: number;
+  lufsM?: number;
   truePeak: number;
   limiterGr: number;
+  drive?: number; // leveller drive into the limiter, dB
 }
 
 export type FeedKind = 'DIRECTOR' | 'MIX' | 'ROLE' | 'YOURS' | 'EMERGENCY' | 'SHOW';
@@ -110,6 +149,7 @@ export interface ShowState {
   /** Last value of every 'control' action (EQ bands, effect knobs, presets), by id. */
   controls: Record<string, number | string>;
   demo: boolean;
+  audio: AudioStatus | null;
 }
 
 /** Lightweight high-rate update (meters) sent between full state pushes. */
@@ -118,6 +158,10 @@ export interface MeterFrame {
   ch: number[]; // meter 0..1 per channel
   gr: number[];
   master: MasterState;
+  /** Per-channel spectrum, 32 log bands 30 Hz–16 kHz in dBFS (real engine only). */
+  spec?: number[][];
+  masterSpec?: number[];
+  peakDb?: number[];
 }
 
 export type ServerMessage = { type: 'state'; state: ShowState } | MeterFrame;
@@ -134,4 +178,10 @@ export type ClientAction =
   | { type: 'destination'; p: Platform; on: boolean }
   | { type: 'golive' }
   | { type: 'end' }
-  | { type: 'slate'; slate: ShowState['slate'] };
+  | { type: 'slate'; slate: ShowState['slate'] }
+  | { type: 'pan'; ch: number; pan: number }
+  | { type: 'eq'; ch: number; band: number; kind?: EqBand['kind']; f?: number; gain?: number; q?: number }
+  | { type: 'comp'; ch: number; thresh?: number; ratio?: number; attack?: number; release?: number; makeup?: number; mix?: number }
+  | { type: 'send'; ch: number; fx: 'plate' | 'room' | 'delay'; db: number | null }
+  | { type: 'transport'; action: 'play' | 'pause' | 'seek' | 'load'; seconds?: number; set?: string }
+  | { type: 'calibrate' };

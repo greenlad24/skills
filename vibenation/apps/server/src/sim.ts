@@ -3,6 +3,7 @@
 // later milestones; the held-by-you rules here are the real rules.
 
 import { CHANNELS, type ClientAction, type FeedItem, type ShowState, type MeterFrame, type ChatMessage } from '@vibenation/shared';
+import { AudioLink } from './audio.js';
 
 type Listener = (msg: { type: 'state'; state: ShowState } | MeterFrame) => void;
 
@@ -30,6 +31,7 @@ export class DemoShow {
   private aiTouched = new Map<number, number>(); // ch -> last AI touch time
   private lastCut = now();
   private undo = new Map<string, () => void>();
+  readonly audio: AudioLink;
 
   constructor() {
     const t = now();
@@ -70,9 +72,24 @@ export class DemoShow {
       held: [],
       controls: {},
       demo: true,
+      audio: null,
     };
     this.feed({ kind: 'SHOW', text: 'Demo show running.', why: 'Fake cameras and audio until the real engines are connected.' });
     this.refreshProcs();
+    this.audio = new AudioLink(
+      (patch) => {
+        this.state.audio = patch.audio;
+        if (patch.channels) this.state.channels = this.state.channels.map(patch.channels);
+        if (patch.bpm) this.state.bpm = patch.bpm;
+        this.refreshProcs();
+        this.push();
+      },
+      (frame) => {
+        this.state.master = { ...this.state.master, ...frame.master };
+        for (const fn of this.listeners) fn(frame);
+      },
+      (msg) => console.log(msg),
+    );
     setInterval(() => this.meters(), 100);
     setInterval(() => this.claudeTick(), 6000);
   }
@@ -111,9 +128,11 @@ export class DemoShow {
     const s = this.state;
     const camWarn = s.cams.find((c) => c.warn);
     s.procs = [
-      { name: 'Mixer audio link', meta: '16 ch · 48k', level: 'ok' },
+      s.audio
+        ? { name: 'Mixer audio link', meta: s.audio.source === 'recording' ? `test recording · ${s.audio.playing ? 'playing' : 'paused'}` : '16 ch · 48k', level: s.audio.playing ? 'ok' : 'warn' }
+        : { name: 'Mix engine', meta: 'not connected', level: 'error' },
       { name: 'Cameras', meta: `${s.cams.filter((c) => c.connected).length} / ${s.cams.length}`, level: 'ok' },
-      { name: 'Mix engine', meta: '3.1 ms', level: 'ok' },
+      ...(s.audio ? [{ name: 'Mix engine', meta: `${s.master.lufsI.toFixed(1)} LUFS · TP ${s.master.truePeak.toFixed(1)}`, level: (s.master.truePeak > -1 ? 'warn' : 'ok') as 'warn' | 'ok' }] : []),
       { name: 'Listener (hearing)', meta: 'every 8 s', level: 'ai' },
       { name: 'Director', meta: s.vmodeHeld ? 'auto · vertical yours' : 'auto', level: 'ai' },
       { name: 'YouTube ingest', meta: `${s.health.mbps.toFixed(1)} Mbps`, level: 'ok' },
@@ -124,6 +143,8 @@ export class DemoShow {
   private meters() {
     const t = now() / 1000;
     const s = this.state;
+    for (const c of s.channels) c.aiRecent = (this.aiTouched.get(c.n) ?? 0) > now() - 30_000;
+    if (this.audio.connected) return; // real meters come from the audio engine
     const anySolo = s.channels.some((c) => c.solo);
     for (const c of s.channels) {
       const silent = c.mute || (anySolo && !c.solo) || c.n === 15 && Math.sin(t / 20) < 0;
@@ -154,7 +175,7 @@ export class DemoShow {
       this.lastCut = now();
       this.feed({ kind: 'DIRECTOR', text: `Cut to ${next.num} · ${next.name}.`, why: pick(['Phrase ended on the downbeat; held the last shot 14 s.', 'Solo detected on this player.', 'Vocal came back in after the break.']) , confidence: 'likely' });
       this.state.thinking = { text: `Holding ${next.num} through this phrase, then looking for the next solo.`, heard: pick(['groove locked', 'vocal phrase', 'keys solo']), confidence: 'likely' };
-    } else {
+    } else if (!this.audio.connected) {
       const free = s.channels.filter((c) => !c.held && !c.mute && !this.state.held.includes(`ch${c.n}.fader`));
       if (free.length) {
         const c = pick(free);
@@ -175,6 +196,11 @@ export class DemoShow {
 
   apply(a: ClientAction) {
     const s = this.state;
+    if (a.type === 'control') {
+      const cmd = controlToEngine(a.id, a.value);
+      if (cmd) this.audio.command(cmd);
+    }
+    const forwarded = this.audio.forward(a);
     switch (a.type) {
       case 'take': {
         const cam = s.cams.find((c) => c.id === a.cam);
@@ -187,7 +213,7 @@ export class DemoShow {
       case 'fader': {
         const c = s.channels[a.ch - 1];
         if (!c) return;
-        c.fader = clamp(Math.round(a.db * 10) / 10, -60, 10);
+        if (!forwarded) c.fader = clamp(Math.round(a.db * 10) / 10, -60, 10);
         this.hold(`ch${a.ch}.fader`, a.ch);
         break;
       }
@@ -195,7 +221,7 @@ export class DemoShow {
       case 'solo': {
         const c = s.channels[a.ch - 1];
         if (!c) return;
-        c[a.type] = a.on;
+        if (!forwarded) c[a.type] = a.on;
         this.hold(`ch${a.ch}.${a.type}`, a.ch);
         break;
       }
@@ -239,8 +265,34 @@ export class DemoShow {
       case 'slate':
         s.slate = a.slate;
         break;
+      case 'pan':
+      case 'eq':
+      case 'comp':
+      case 'send':
+        this.hold(`ch${a.ch}.${a.type}`, a.ch);
+        break;
     }
     this.refreshProcs();
     this.push();
   }
+}
+
+/** Map a UI control id to an audio-engine command (null = UI-only for now). */
+export function controlToEngine(id: string, value: number | string): Record<string, unknown> | null {
+  const v = Number(value);
+  let m = /^ch(\d+)\.eq\.(\d+)\.(gain|freq|q)$/.exec(id);
+  if (m) return { type: 'eq', ch: Number(m[1]), band: Number(m[2]) - 1, [m[3] === 'freq' ? 'f' : m[3]]: v };
+  m = /^ch(\d+)\.comp\.(thresh|ratio|attack|release)$/.exec(id);
+  if (m) return { type: 'comp', ch: Number(m[1]), [m[2]]: v };
+  m = /^ch(\d+)\.fx\.(plate|delay4)$/.exec(id);
+  if (m) return { type: 'send', ch: Number(m[1]), fx: m[2] === 'plate' ? 'plate' : 'delay', db: v };
+  // Easy macros (0–100): one knob drives the matching send or compressor amount.
+  m = /^ch(\d+)\.fx\.(verb|delay|comp)$/.exec(id);
+  if (m) {
+    const ch = Number(m[1]);
+    if (m[2] === 'verb') return { type: 'send', ch, fx: 'plate', db: v <= 0 ? null : -40 + v * 0.4 };
+    if (m[2] === 'delay') return { type: 'send', ch, fx: 'delay', db: v <= 0 ? null : -40 + v * 0.4 };
+    return { type: 'comp', ch, thresh: -6 - v * 0.3, ratio: 1.5 + v * 0.045 };
+  }
+  return null;
 }

@@ -1,0 +1,34 @@
+// vn.lib - shared building blocks for the VibeNation LV2 suite.
+declare name "vn.lib";
+import("stdfaust.lib");
+
+// one-pole coefficient for time constant tau (s): y += (x - y) * k1(tau)
+k1(tau) = 1 - exp(-1 / (max(tau, 1e-6) * ma.SR));
+
+// one-pole smoother with time constant tau
+lag(tau) = _ : (+ ~ (*(1 - k)) ) : *(k) with { k = k1(tau); };
+// parameter smoother (20 ms)
+psm = lag(0.02);
+
+// asymmetric follower: moves toward x with coef ka when x > state, kr otherwise
+follow(ka, kr, x) = loop ~ _ with { loop(s) = s + (x - s) * select2(x > s, kr, ka); };
+
+// dB helpers with floors
+lin2db(x) = 20 * log10(max(x, 1e-9));
+db2lin(x) = pow(10, x / 20);
+
+// smooth "soft-plus" knee: 0 below -w/2, x above +w/2, quadratic in between
+softover(w, x) = select2(x > w/2, select2(x > -w/2, 0, (x + w/2)^2 / (2*w)), x);
+
+// one-pole DC blocker at ~8 Hz
+dcb = fi.dcblockerat(8);
+
+// RBJ-style 2nd-order sections via Faust's analog-matched filters
+hpf2(fc) = fi.highpass(2, fc);
+lpf2(fc) = fi.lowpass(2, fc);
+
+// clamp
+clampx(lo, hi) = max(lo) : min(hi);
+
+// dry/wet with % control
+mixpc(pc, dry, wet) = dry * (1 - m) + wet * m with { m = pc / 100; };

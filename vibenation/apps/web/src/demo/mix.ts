@@ -1,7 +1,7 @@
 // Demo data for the Mix screen: EQ bands, effect settings, Claude change cards and
 // spectrum shapes per section. Replaced by real DSP state in the audio milestone.
 
-import { CHANNELS, type Section } from '@vibenation/shared';
+import { CHANNELS, type EqBand, type Section } from '@vibenation/shared';
 
 export const SECTION_COLOR: Record<Section, string> = {
   drums: '#E08A5A', perc: '#D9A066', gtr: '#E6C07A', keys: '#9FC7A8', vox: '#F5EEE6', bass: '#8FA3D9', horn: '#E58FB0',
@@ -47,9 +47,13 @@ export function specFor(kind: Section, n: number, seedBase: number): SpecBar[] {
 
 // ---- EQ ----
 
-export type BandType = 'HPF' | 'LOW' | 'BELL' | 'SHELF';
+export type BandType = 'HPF' | 'LPF' | 'LOW' | 'BELL' | 'SHELF';
 export interface Band { type: BandType; f: number; g: number; q: number }
-export const BAND_COLOR = ['#E08A5A', '#E6C07A', '#B9A6FF', '#7FD1C3'];
+export const BAND_COLOR = ['#E08A5A', '#E6C07A', '#B9A6FF', '#7FD1C3', '#E58FB0', '#8FA3D9', '#9FC7A8', '#D9A066'];
+
+const KIND_TO_TYPE: Record<EqBand['kind'], BandType> = { hpf: 'HPF', lpf: 'LPF', lshelf: 'LOW', hshelf: 'SHELF', bell: 'BELL', off: 'BELL' };
+/** Real engine bands -> UI bands. */
+export const fromEngine = (eq: EqBand[]): Band[] => eq.filter((b) => b.kind !== 'off').map((b) => ({ type: KIND_TO_TYPE[b.kind], f: b.f, g: b.gain, q: b.q }));
 
 type EqPreset = { a: Band[]; b: Band[] };
 const hpf = (f: number): Band => ({ type: 'HPF', f, g: 0, q: 0.7 });

@@ -39,6 +39,16 @@ app.get('/ws', { websocket: true }, (socket) => {
   socket.on('close', off);
 });
 
+// Listen to the master mix (MP3) — same login as the app.
+app.get('/api/audio/stream.mp3', async (req, reply) => {
+  const upstream = await show.audio.stream().catch(() => null);
+  if (!upstream?.ok || !upstream.body) return reply.code(503).send({ error: 'Audio engine not running.' });
+  const { Readable } = await import('node:stream');
+  const body = Readable.fromWeb(upstream.body as import('node:stream/web').ReadableStream);
+  req.raw.on('close', () => body.destroy());
+  return reply.header('content-type', 'audio/mpeg').header('cache-control', 'no-store').send(body);
+});
+
 const webDist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/dist');
 if (existsSync(webDist)) {
   await app.register(fastifyStatic, { root: webDist });

@@ -1,0 +1,15 @@
+[Unit]
+Description=VibeNation audio engine (mix, meters, listen stream)
+After=vibenation-modhost.service
+Requires=vibenation-modhost.service
+
+[Service]
+WorkingDirectory=/root/vibenation/vibenation/services/audio
+ExecStart=/root/vibenation/vibenation/services/audio/.venv/bin/python -m vn_audio.server
+Restart=always
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+Environment=VN_STEMS=/root/vibenation-media/stems-2026-04-04
+
+[Install]
+WantedBy=multi-user.target

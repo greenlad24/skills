@@ -1,6 +1,7 @@
 import type { Platform } from '@vibenation/shared';
 import { useElapsed, useShow } from '../store';
 import { go, useRoute, type Route } from '../route';
+import { Transport } from './Transport';
 
 export const PLATFORM_BG: Record<Platform, string> = { YT: '#C4302B', TW: '#7B4BD6', FB: '#2D63D8', TT: '#1F1F1F', IG: '#C23A7E' };
 const PLATFORM_NAME: Record<Platform, string> = { YT: 'YouTube', TW: 'Twitch', FB: 'Facebook', TT: 'TikTok', IG: 'Instagram' };
@@ -69,7 +70,9 @@ export function Header() {
         <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--ai)', boxShadow: '0 0 10px var(--ai)', animation: 'vnBreath 2.4s ease-in-out infinite' }} />
         AUTO · Claude is running the show{heldCount > 0 && <span style={{ color: 'var(--text-1)' }}> · {heldCount} held by you</span>}
       </div>
-      {s.demo && <span style={{ padding: '4px 10px', borderRadius: 999, border: '1px dashed rgba(255,236,220,0.25)', color: 'var(--text-meta)', fontSize: 11, fontWeight: 700, letterSpacing: '0.1em' }}>DEMO DATA</span>}
+      {s.audio ? <Transport a={s.audio} /> : (
+        <span role="status" style={{ padding: '4px 10px', borderRadius: 999, background: 'rgba(255,90,82,0.12)', border: '1px solid rgba(255,90,82,0.4)', color: 'var(--error)', fontSize: 11, fontWeight: 700, letterSpacing: '0.1em' }}>MIX ENGINE OFFLINE</span>
+      )}
     </header>
   );
 }

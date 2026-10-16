@@ -1,0 +1,14 @@
+[Unit]
+Description=VibeNation plugin host (mod-host)
+After=vibenation-jack.service
+Requires=vibenation-jack.service
+
+[Service]
+ExecStartPre=/bin/sleep 1
+ExecStart=/usr/local/bin/mod-host -n -p 5555 -f 5556
+Restart=always
+RestartSec=2
+Environment=LV2_PATH=/usr/local/lib/lv2:/usr/lib/lv2:/usr/lib/x86_64-linux-gnu/lv2
+
+[Install]
+WantedBy=multi-user.target

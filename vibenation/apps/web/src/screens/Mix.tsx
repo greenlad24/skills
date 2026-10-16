@@ -1,7 +1,7 @@
 import { useCallback, useState, type CSSProperties } from 'react';
 import type { ChannelState } from '@vibenation/shared';
-import { useShow } from '../store';
-import { changesFor, easyFor, eqFor, knobsFor, type Band, type KnobKey, type MacroKey } from '../demo/mix';
+import { send, useShow } from '../store';
+import { changesFor, easyFor, eqFor, fromEngine, knobsFor, type Band, type KnobKey, type MacroKey } from '../demo/mix';
 import { Strip } from '../components/mix/Strip';
 import { MasterStrip } from '../components/mix/Meters';
 import { ChangeCards, SelectedPanel, type ChMix } from '../components/mix/SelectedPanel';
@@ -19,6 +19,15 @@ const initMix = (c: ChannelState): ChMix => {
   return { a: eq.a, bands: eq.b, easy: easyFor(c.section), knobs: knobsFor(c.section), changes: changesFor(c.n, c.section) };
 };
 
+/** Overlay the real engine values (EQ, compressor, sends) on the UI's per-channel state. */
+const withEngine = (c: ChannelState, m: ChMix): ChMix => {
+  if (!c.eq) return m;
+  const knobs = { ...m.knobs };
+  if (c.comp) Object.assign(knobs, { thresh: c.comp.thresh, ratio: c.comp.ratio, attack: c.comp.attack, release: c.comp.release });
+  if (c.sends) Object.assign(knobs, { plate: c.sends.plate ?? -30, delay: c.sends.delay ?? -30 });
+  return { ...m, bands: fromEngine(c.eq), a: c.eqBase ? fromEngine(c.eqBase) : m.a, knobs };
+};
+
 const KNOB_ID: Record<KnobKey, string> = { thresh: 'comp.thresh', ratio: 'comp.ratio', attack: 'comp.attack', release: 'comp.release', plate: 'fx.plate', delay: 'fx.delay4' };
 
 export function MixScreen() {
@@ -33,12 +42,13 @@ export function MixScreen() {
   if (!s) return null;
   const chans = s.channels;
   const cur = chans.find((c) => c.n === sel) ?? chans[0];
-  const mixOf = (c: ChannelState) => mixes[c.n] ?? initMix(c);
+  const mixOf = (c: ChannelState) => withEngine(c, mixes[c.n] ?? initMix(c));
   const mix = mixOf(cur);
   const n = cur.n;
   const patch = (p: Partial<ChMix>) => setMixes((m) => ({ ...m, [n]: { ...(m[n] ?? initMix(cur)), ...p } }));
 
   const onBand = (i: number, p: Partial<Band>) => {
+    if (cur.eq) { send({ type: 'eq', ch: n, band: i, ...(p.f !== undefined && { f: p.f }), ...(p.g !== undefined && { gain: p.g }), ...(p.q !== undefined && { q: p.q }) }); return; }
     patch({ bands: mix.bands.map((b, k) => (k === i ? { ...b, ...p } : b)) });
     for (const key of Object.keys(p) as (keyof Band)[]) {
       if (key === 'type') continue;
@@ -46,7 +56,15 @@ export function MixScreen() {
     }
   };
   const onEasy = (k: MacroKey, v: number) => { patch({ easy: { ...mix.easy, [k]: v } }); sendControl(`ch${n}.fx.${k}`, v); };
-  const onKnob = (k: KnobKey, v: number) => { patch({ knobs: { ...mix.knobs, [k]: v } }); sendControl(`ch${n}.${KNOB_ID[k]}`, v); };
+  const onKnob = (k: KnobKey, v: number) => {
+    if (cur.eq) {
+      if (k === 'plate' || k === 'delay') send({ type: 'send', ch: n, fx: k, db: v <= -30 ? null : v });
+      else send({ type: 'comp', ch: n, [k]: v });
+      return;
+    }
+    patch({ knobs: { ...mix.knobs, [k]: v } });
+    sendControl(`ch${n}.${KNOB_ID[k]}`, v);
+  };
   const onUndo = (id: string) => {
     patch({ changes: mix.changes.map((c) => (c.id === id ? { ...c, undone: true } : c)) });
     sendControl(`ch${n}.change.${id}.undo`, 1);

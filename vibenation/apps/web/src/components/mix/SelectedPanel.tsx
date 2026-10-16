@@ -3,6 +3,8 @@ import type { ChannelState } from '@vibenation/shared';
 import { go } from '../../route';
 import { EXTRAS, KNOBS, MACROS, macroSub, type Band, type ChangeCard, type KnobKey, type MacroKey } from '../../demo/mix';
 import { EqGraph, EqTable } from './EqPanel';
+import { useMeters } from '../../store';
+import type { Section } from '@vibenation/shared';
 import { Knob } from './Knob';
 import { LcdGr } from './Meters';
 import { faderText } from './Fader';
@@ -61,7 +63,7 @@ export function SelectedPanel({ c, mix, bpm, ab, setAb, onBand, onEasy, onKnob }
           <button onClick={() => setPost(true)} aria-pressed={post} style={{ ...segBtn(post, 'rgba(255,236,220,0.12)', 28, '0 9px'), color: post ? 'var(--text-1)' : 'var(--text-meta)', fontWeight: post ? 700 : 600 }}>Post</button>
         </div>
       </div>
-      <EqGraph section={c.section} bands={bands} editable={ab === 'B'} post={post} onBand={onBand} />
+      <LiveEq n={c.n} section={c.section} bands={bands} editable={ab === 'B'} post={post} onBand={onBand} />
       <EqTable bands={bands} />
       {ab === 'A' && <span style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.4, marginTop: -6 }}>Showing the EQ before Claude's changes. Switch to B to edit.</span>}
 
@@ -154,4 +156,10 @@ export function ChangeCards({ changes, ab, setAb, onUndo, onAmount }: {
       ))}
     </section>
   );
+}
+
+/** EQ graph fed with the channel's real spectrum when the audio engine is running. */
+function LiveEq(p: { n: number; section: Section; bands: Band[]; editable: boolean; post: boolean; onBand: (i: number, patch: Partial<Band>) => void }) {
+  const m = useMeters();
+  return <EqGraph section={p.section} bands={p.bands} editable={p.editable} post={p.post} onBand={p.onBand} live={m?.spec?.[p.n - 1]} />;
 }
