@@ -18,4 +18,4 @@
 - The app connects automatically to the band's YouTube channel (OAuth) and checks for scheduled live streams (YouTube scheduled broadcasts). If one is scheduled, it binds the stream to that broadcast and STARTS IT AUTOMATICALLY at the scheduled time (rare case). Otherwise it creates the broadcast when the user taps Go Live.
 
 ## Name (user decision)
-- The app is called "Vibe Nation". (Sunrise Jam is the band/show; Vibe Nation is the product.)
+- The app is called "Vibe Nation". NO mention of "Sunrise Jam" anywhere in the app or its design docs. The band/show name, logo and colours on stream graphics are user settings (generic placeholders in designs). Vibe Nation has its own identity, not a band-derived "sunrise" brand.
