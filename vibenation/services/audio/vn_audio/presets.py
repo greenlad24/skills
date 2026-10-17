@@ -99,7 +99,7 @@ STRIPS: list[Strip] = [
     Strip(13, 'Congas 2', -16.0, 50,
           eq=[('hpf', 90, 0, 0.7), ('bell', 350, -2.5, 1.2), ('bell', 4500, 2.5, 1.0)],
           comp=Comp(-20, 4, 15, 80, 2, peak=True), room=-18),
-    Strip(14, 'Synth bass', -9.8, 0,
+    Strip(14, 'Synth bass', -6.8, 0,  # +3 dB (user, 17 Oct 2026: more synth bass)
           eq=[('bell', 55, 1.5, 1.0), ('bell', 300, -3.0, 1.0), ('bell', 1500, 1.5, 1.0)],
           comp=Comp(-20, 3, 20, 150, 2), no_hpf=True),
     Strip(15, 'Saxophone', -2.1, -25,
