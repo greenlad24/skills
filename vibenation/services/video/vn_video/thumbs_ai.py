@@ -5,7 +5,9 @@ References live OUTSIDE the repo (real faces + the venue): $VN_THUMB_REFS, defau
 /home/vibe/vibenation-media/thumbnail-refs/{performers/<name>/*.jpg, stage/*.jpg, finish/R604.jpg}.
 Needs OPENAI_API_KEY (Keys screen). Costs money per image: the caller states the cost first.
 
-CLI: python -m vn_video.thumbs_ai --performers jesse,alyona [--frame live.jpg] [--n 2] --out DIR
+One character per thumbnail: the hero from their sheets; the band behind is anonymous.
+
+CLI: python -m vn_video.thumbs_ai --performer jesse [--frame live.jpg] [--n 2] --out DIR
 Prints JSON: {"files": [...], "model": ..., "usage": {...}, "est_usd": ...}
 """
 
@@ -44,10 +46,10 @@ PERFORMER_BINDING = (
 PROMPT = """A real candid photograph of a live funk & soul band performing, for a YouTube thumbnail.
 
 PEOPLE
-{bindings}
-{lead} is the hero: singing mid-belt into a vocal microphone, mouth open, eyes closed or intensely engaged, head and shoulders large in frame (head about a third of the image height), placed on the left or right third. The microphone is close to the face in the foreground.{others}
+{binding}
+{lead} is the only main subject and the hero: singing mid-belt into a vocal microphone, mouth open, eyes closed or intensely engaged, head and shoulders large in frame (head about a third of the image height), placed on the left or right third. The microphone is close to the face in the foreground.{others}
 {frame}
-PLACE — must be this venue's actual stage, from the attached stage photos: the large semicircular geometric lattice backdrop glowing teal-green, raw grey concrete walls, the bamboo-stick ceiling and black steel truss, wooden stage floor. Show the lattice backdrop partly, softly out of focus behind the performers; it must be recognisably this stage, not a generic one. No crowd, no bar, no drinks, no extra props.
+PLACE — must be this venue's actual stage, from the attached stage photos: the large semicircular geometric lattice backdrop glowing teal-green, raw grey concrete walls, the bamboo-stick ceiling and black steel truss, wooden stage floor. Show the lattice backdrop partly, softly out of focus behind the performers; it must be recognisably this stage, not a generic one. Use the stage photos for the room and stage only: the people in them are strangers and must NOT appear or be copied (no similar faces, heads, beards, clothes or poses). No crowd, no bar, no drinks, no extra props.
 
 LOOK — warm, bright stage light on the faces with soft falloff; shallow depth of field; natural, textured skin with pores and imperfections (no beauty smoothing, no waxy AI skin); believable hands, fingers and instrument grips. Colour finish like the attached R604 reference photo: deep warm brown-black shadows, soft golden highlights, restrained saturation, fine film grain. Use R604 for colour and tone only — do not add its drink, flowers or glass.
 
@@ -61,27 +63,24 @@ def performer_refs(name: str) -> list[str]:
     return files
 
 
-def build(performers: list[str], frame: str | None) -> tuple[str, list[str]]:
-    files: list[str] = []
-    bindings = []
-    for p in performers:
-        mine = performer_refs(p)
-        first = len(files) + 1
-        files += mine
-        refs = ' and '.join(f'image {i}' for i in range(first, first + len(mine)))
-        bindings.append(PERFORMER_BINDING.format(refs=refs, name=p.capitalize()))
+BAND = (' Behind them, the rest of the band (bass, electric guitar, keys, drums) plays in soft focus: anonymous ordinary '
+        'musicians, smaller in frame, faces soft or partly turned away. They must not resemble the person in the identity '
+        'references or anyone else; there is only one recognisable person in the image.')
+
+
+def build(performer: str, frame: str | None) -> tuple[str, list[str]]:
+    files = performer_refs(performer)
+    refs = ' and '.join(f'image {i}' for i in range(1, len(files) + 1))
+    binding = PERFORMER_BINDING.format(refs=refs, name=performer.capitalize())
     stage = sorted(glob.glob(os.path.join(REFS, 'stage', '*.jpg')))
     files += stage
     files.append(os.path.join(REFS, 'finish', 'R604.jpg'))
     frame_txt = ''
     if frame:
         files.append(frame)
-        frame_txt = (f'\nTONIGHT — image {len(files)} is a real frame from tonight\'s show: match the performers\' outfits, '
-                     'hair and instruments from it, but not its framing or lighting.\n')
-    lead, rest = performers[0].capitalize(), [p.capitalize() for p in performers[1:]]
-    others = (f' Behind and beside them, {", ".join(rest)} {"plays" if len(rest) == 1 else "play"} in softer focus, '
-              'clearly a real band playing together.') if rest else ' Other band members may be glimpsed in soft focus behind.'
-    return PROMPT.format(bindings='\n'.join(bindings), lead=lead, others=others, frame=frame_txt), files
+        frame_txt = (f'\nTONIGHT — image {len(files)} is a real frame from tonight\'s show: match the featured performer\'s outfit, '
+                     'hair and instrument from it, but not its framing or lighting.\n')
+    return PROMPT.format(binding=binding, lead=performer.capitalize(), others=BAND, frame=frame_txt), files
 
 
 async def pick_model(s: aiohttp.ClientSession) -> str:
@@ -143,13 +142,13 @@ def est_usd(u: dict) -> float:
 
 def main() -> None:
     a = argparse.ArgumentParser()
-    a.add_argument('--performers', required=True, help='comma list, lead singer first (e.g. jesse,alyona)')
+    a.add_argument('--performer', required=True, help='the one featured guest (e.g. jesse)')
     a.add_argument('--frame', help='a real frame from tonight (outfits, instruments)')
     a.add_argument('--n', type=int, default=2)
     a.add_argument('--out', required=True)
     a.add_argument('--dry-run', action='store_true', help='print the prompt and inputs, spend nothing')
     args = a.parse_args()
-    prompt, files = build([p.strip() for p in args.performers.split(',') if p.strip()], args.frame)
+    prompt, files = build(args.performer.strip(), args.frame)
     if args.dry_run:
         print(prompt)
         print('\ninputs:', *[f'  image {i + 1}: {os.path.relpath(f, REFS) if f.startswith(REFS) else f}' for i, f in enumerate(files)], sep='\n')

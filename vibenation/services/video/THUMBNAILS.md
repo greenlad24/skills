@@ -24,6 +24,7 @@ Their weakest covers (58k–106k) break it: gimmicks (text, split screens, costu
 ## Rules
 - No text, no logo, no venue name, no signs, no location, ever.
 - Only approved performers are drawn from sheets: Jesse, Alyona (sheet name "aliona"), Greg (the usual Saturday guests). The lead singer is listed first. Never give a sheet's likeness to anyone else.
+- The stage photos contain real strangers; the prompt says to use them for the room only, and the review checks no background player copies them (2.5-sunburst did on 17 Oct).
 - References stay off GitHub: `/home/vibe/vibenation-media/thumbnail-refs/` (mode 700) holds `performers/<name>/`, `stage/` (crops with no map, names or app UI) and `finish/R604.jpg`.
 - Every AI image is reviewed before use: likeness matches the sheets; hands, mics and instruments are physically right; the stage is recognisable; no text. A failed candidate is regenerated or dropped, never "fixed" with a filter. The user approves or swaps it on Go Live.
 - Model: `gpt-image-2.5-sunburst` (picked over `gpt-image-2` in a side-by-side test: brighter, closer to the formula, about $0.16 an image against $0.32). The cost is stated before generating.
