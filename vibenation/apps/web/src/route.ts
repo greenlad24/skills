@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 
-export type Route = 'show' | 'mix' | 'fx' | 'golive' | 'slate';
-const ROUTES: Route[] = ['show', 'mix', 'fx', 'golive', 'slate'];
+export type Route = 'show' | 'mix' | 'fx' | 'golive' | 'slate' | 'apps';
+const ROUTES: Route[] = ['show', 'mix', 'fx', 'golive', 'slate', 'apps'];
 
 const read = (): Route => {
   const r = location.hash.replace(/^#\/?/, '') as Route;

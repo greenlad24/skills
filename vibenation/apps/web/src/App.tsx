@@ -8,6 +8,7 @@ import { MixScreen } from './screens/Mix';
 import { FxScreen } from './screens/Fx';
 import { GoLiveScreen } from './screens/GoLive';
 import { SlateScreen } from './screens/Slate';
+import { AppsScreen } from './screens/Apps';
 
 export function App() {
   const [authed, setAuthed] = useState<boolean | null>(null);
@@ -36,6 +37,7 @@ export function App() {
       {route === 'fx' && <FxScreen />}
       {route === 'golive' && <GoLiveScreen />}
       {route === 'slate' && <SlateScreen />}
+      {route === 'apps' && <AppsScreen />}
     </div>
   );
 }

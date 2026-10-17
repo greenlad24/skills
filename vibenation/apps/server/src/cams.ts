@@ -15,11 +15,11 @@ const LK_SECRET = process.env.LIVEKIT_API_SECRET ?? '';
 export const ROOM = 'show';
 
 const sign = (s: string) => createHmac('sha256', SECRET).update(s).digest('base64url');
-function makeSigned(kind: string, payload: string, ttlS: number) {
+export function makeSigned(kind: string, payload: string, ttlS: number) {
   const body = `${kind}.${payload}.${Math.floor(Date.now() / 1000) + ttlS}`;
   return `${Buffer.from(body).toString('base64url')}.${sign(body)}`;
 }
-function readSigned(kind: string, token: string | undefined): string | null {
+export function readSigned(kind: string, token: string | undefined): string | null {
   if (!token) return null;
   const [b, sig] = token.split('.');
   if (!b || !sig) return null;

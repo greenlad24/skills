@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type FormEvent } from 'react';
 import { Logo } from '../components/Header';
-import { cameraError, goFullscreen, isIOS, isStandalone, openCamera } from './device';
+import { cameraError, goFullscreen, isAndroid, isIOS, isStandalone, openCamera } from './device';
 import { CamSession, joinShow, savedCam } from './session';
 import { CamScreen } from './CamScreen';
 
@@ -62,6 +62,11 @@ export function CamPage() {
               Turn the phone sideways and put it on a tripod. The back camera streams in 1080p; the phone microphone is never used.
               {isIOS() && !isStandalone() && ' For full screen: Share › Add to Home Screen, then open it from there.'}
             </span>
+            {isAndroid() && (
+              <span style={{ color: 'var(--text-meta)', fontSize: 12, lineHeight: 1.45 }}>
+                Better on Android: <a href={`/dl/vibenation-camera.apk?k=${encodeURIComponent(k)}`} download>get the VibeNation Camera app</a>, then scan this QR code again from inside the app.
+              </span>
+            )}
             {error && <span role="alert" style={{ color: 'var(--error)', fontSize: 13, lineHeight: 1.4 }}>{error}</span>}
             <button disabled={busy} style={{ minHeight: 48, borderRadius: 12, border: 0, background: 'var(--text-1)', color: '#140D09', fontWeight: 700, fontSize: 15, cursor: busy ? 'default' : 'pointer' }}>
               {busy ? 'Starting camera…' : 'Start camera'}

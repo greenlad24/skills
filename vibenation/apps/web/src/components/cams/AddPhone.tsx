@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
+import { go } from '../../route';
 
 /** "+ Add phone" tile for the end of the camera grid. Opens the QR invite. */
 export function AddPhoneTile() {
@@ -61,7 +62,7 @@ function InviteModal({ onClose }: { onClose: () => void }) {
           <ol style={{ margin: 0, paddingLeft: 18, color: 'var(--text-soft)', fontSize: 14, lineHeight: 1.6 }}>
             <li>Scan the code with the phone’s camera.</li>
             <li><b>iPhone:</b> open in Safari, turn sideways.</li>
-            <li><b>Android:</b> install the VibeNation Camera app or use Chrome.</li>
+            <li><b>Android:</b> use Chrome, or the VibeNation Camera app (<button onClick={() => { onClose(); go('apps'); }} style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', font: 'inherit', fontWeight: 600, color: '#FF9A5A', textDecoration: 'underline' }}>get it in Apps</button>).</li>
             <li>Name the camera (e.g. “Drums”) and tap Start camera.</li>
           </ol>
           <span style={{ color: 'var(--text-meta)', fontSize: 12, lineHeight: 1.45 }}>Phones stream landscape 1080p over Wi-Fi. Keep them charging; the phone microphone is never used. The link works for 24 hours.</span>

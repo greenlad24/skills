@@ -61,4 +61,9 @@ export interface HealthResponse {
   version: string;
   uptimeS: number;
 }
+
+/** GET /api/apps — phone camera apps on the Apps screen. android is null until the APK is built. */
+export interface AppsInfo {
+  android: { version: string | null; sizeMB: number; builtAt: string; url: string; expiresInS: number } | null;
+}
 export * from './state.js';

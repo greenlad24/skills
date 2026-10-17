@@ -4,7 +4,7 @@ VibeNation is built to use these, but each one needs you to sign in or create a 
 
 | # | What | Why | Where | What to paste |
 |---|---|---|---|---|
-| 1 | DigitalOcean API token | Creates and destroys the GPU show server for each show (~$0.76/h) | cloud.digitalocean.com → API → Tokens → Generate (scopes: droplet, ssh_key, reserved_ip: read+write) | `DIGITALOCEAN_TOKEN=` |
+| 1 | DigitalOcean API token | Creates and destroys the GPU show server for each show (~$0.76/h) | cloud.digitalocean.com → API → Tokens → Generate (custom scopes: droplet, ssh_key, sizes, regions, tag — step by step in `handoffs/chrome-digitalocean-token.md`) | `DIGITALOCEAN_TOKEN=` |
 | 2 | Google OAuth client (YouTube) | Go live on @MusicLiveLove, set title/description/tags/thumbnail, read chat | console.cloud.google.com → new project "VibeNation" → enable "YouTube Data API v3" → OAuth consent screen (External, add your Google account as test user) → Credentials → OAuth client ID → Web application → redirect URI `https://app.jeeznews.com/api/oauth/youtube/callback` | `YOUTUBE_CLIENT_ID=` and `YOUTUBE_CLIENT_SECRET=` — then press "Connect YouTube" in the app |
 | 3 | Custom thumbnails on YouTube | Thumbnail upload needs a verified channel | youtube.com/verify (phone verification) | nothing to paste |
 | 4 | OpenAI API key | Thumbnail images (GPT Image) from a live camera frame | platform.openai.com → API keys (needs API billing; a ChatGPT plan doesn't cover the API) | `OPENAI_API_KEY=` |
