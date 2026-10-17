@@ -159,7 +159,7 @@ export interface Thinking {
 }
 
 export interface ShowState {
-  showName: string; // user setting; placeholder "[Band Name] · Friday Session"
+  showName: string; // user setting; default "MusicLiveLove · Live Session"
   onAir: boolean;
   liveSince: number | null; // epoch ms
   slate: null | 'Starting soon' | 'Break' | 'Thanks for watching';

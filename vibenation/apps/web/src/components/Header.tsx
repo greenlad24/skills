@@ -34,7 +34,7 @@ export function Header() {
       <div style={{ height: 26, width: 1, background: 'rgba(255,236,220,0.1)' }} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
         <span style={{ fontWeight: 600, fontSize: 14 }}>{s.showName}</span>
-        <span style={{ color: 'var(--text-meta)', fontSize: 12 }}>youtube.com/@MusicLiveLove · 1080p60</span>
+        <span style={{ color: 'var(--text-meta)', fontSize: 12 }}>youtube.com/@MusicLiveLove · 1080p30</span>
       </div>
       <nav aria-label="Screens" style={{ display: 'flex', gap: 2, padding: 3, borderRadius: 12, background: 'rgba(255,236,220,0.05)', border: '1px solid rgba(255,236,220,0.08)' }}>
         {NAV.map(([r, label]) => (

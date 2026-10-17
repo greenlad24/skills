@@ -30,7 +30,7 @@ export function SlateArt({ mode, time, colours }: { mode: SlateMode; time: strin
         ) : (
           <div style={{ fontSize: 40, fontWeight: 700, color: '#FFE3BF', textAlign: 'center', maxWidth: 900, lineHeight: 1.2 }}>Subscribe to Music Live Love for the next show</div>
         )}
-        <div style={{ marginTop: 8, fontSize: 22, color: '#E9DCCD' }}>[Band Name] · live cover band session</div>
+        <div style={{ marginTop: 8, fontSize: 22, color: '#E9DCCD' }}>MusicLiveLove · live cover band session</div>
       </div>
 
       <div style={{ position: 'absolute', left: 48, right: 48, bottom: 40, display: 'flex', alignItems: 'center', gap: 16 }}>

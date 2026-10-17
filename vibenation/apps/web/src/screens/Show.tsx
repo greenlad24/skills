@@ -73,7 +73,7 @@ function Program({ label, song, mbps, camId, cam }: { label: string; song: strin
           <span style={{ padding: '5px 11px', borderRadius: 8, background: 'var(--on-air-fill)', color: '#FFFFFF', fontWeight: 800, fontSize: 12, letterSpacing: '0.1em', boxShadow: '0 4px 16px rgba(31,102,224,0.6)' }}>LIVE</span>
           <span style={{ ...overlay, fontWeight: 600, fontSize: 13 }}>{label}</span>
         </div>
-        <div style={{ ...overlay, position: 'absolute', right: 18, top: 16, fontFamily: 'var(--font-mono)', fontSize: 12, color: '#E9DED2' }}>1080p60 · {mbps.toFixed(1)} Mbps</div>
+        <div style={{ ...overlay, position: 'absolute', right: 18, top: 16, fontFamily: 'var(--font-mono)', fontSize: 12, color: '#E9DED2' }}>1080p30 · {mbps.toFixed(1)} Mbps</div>
         <div style={{ position: 'absolute', left: 18, right: 18, bottom: 16, display: 'flex', alignItems: 'flex-end', gap: 14 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <span style={{ fontSize: 11, letterSpacing: '0.14em', color: '#E9DED2', fontWeight: 700 }}>NOW PLAYING</span>

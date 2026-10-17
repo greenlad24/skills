@@ -36,9 +36,9 @@ export interface DestinationInfo {
 }
 
 export const DESTINATIONS: DestinationInfo[] = [
-  { p: 'YT', name: 'YouTube', acct: '@MusicLiveLove', format: '16:9 · 1080p60', rate: '9 Mbps', note: 'Title, description and thumbnail written by Claude.', kind: 'oauth' },
-  { p: 'TW', name: 'Twitch', acct: 'musicliveLove', format: '16:9 · 1080p60', rate: '6 Mbps', note: 'Twitch caps around 6 Mbps, so it gets its own encode.', kind: 'oauth' },
-  { p: 'FB', name: 'Facebook', acct: 'Music Live Love page', format: '16:9 · 1080p60', rate: '6 Mbps', note: 'Posts to your Page, not a personal profile.', kind: 'oauth' },
+  { p: 'YT', name: 'YouTube', acct: '@MusicLiveLove', format: '16:9 · 1080p30', rate: '9 Mbps', note: 'Title, description and thumbnail written by Claude.', kind: 'oauth' },
+  { p: 'TW', name: 'Twitch', acct: 'musicliveLove', format: '16:9 · 1080p30', rate: '6 Mbps', note: 'Twitch caps around 6 Mbps, so it gets its own encode.', kind: 'oauth' },
+  { p: 'FB', name: 'Facebook', acct: 'Music Live Love page', format: '16:9 · 1080p30', rate: '6 Mbps', note: 'Posts to your Page, not a personal profile.', kind: 'oauth' },
   { p: 'TT', name: 'TikTok', acct: 'stream key', format: '9:16 · 1080×1920', rate: '4 Mbps', note: 'Needs TikTok LIVE access (about 1,000 followers) and a stream key.', kind: 'key' },
   { p: 'IG', name: 'Instagram', acct: 'stream key', format: '9:16 · 720×1280', rate: '4 Mbps', note: 'Professional account; Instagram issues a new key for each show.', kind: 'key' },
 ];
@@ -56,7 +56,7 @@ export const PACKAGE = {
   tags: ['live cover band', 'funk cover', 'soul cover', 'not ai', 'live band arrangement', 'r&b live session'],
   thumbFrom: 'CAM 2',
   channel: '@MusicLiveLove',
-  quality: '1080p60 · 9 Mbps · AAC 128k',
+  quality: '1080p30 · 9 Mbps · AAC 128k',
 };
 
 export const PLAYBOOK = {

@@ -51,7 +51,7 @@ export class DemoShow {
   constructor() {
     const t = now();
     this.state = {
-      showName: '[Band Name] · Friday Session',
+      showName: 'MusicLiveLove · Live Session',
       onAir: false,
       liveSince: null,
       slate: null,

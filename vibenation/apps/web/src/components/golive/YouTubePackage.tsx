@@ -113,7 +113,7 @@ export function YouTubePackage({ channel }: { channel: string | null }) {
 
       <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '7px 18px', fontSize: 12 }}>
         <dt style={{ color: 'var(--text-meta)' }}>Channel</dt><dd style={{ margin: 0, fontWeight: 600 }}>{channel ?? '@MusicLiveLove (not connected yet)'}</dd>
-        <dt style={{ color: 'var(--text-meta)' }}>Quality</dt><dd className="vn-mono" style={{ margin: 0 }}>1080p60 · 9 Mbps · AAC 128k</dd>
+        <dt style={{ color: 'var(--text-meta)' }}>Quality</dt><dd className="vn-mono" style={{ margin: 0 }}>1080p30 · 9 Mbps · AAC 128k</dd>
       </dl>
     </>
   );

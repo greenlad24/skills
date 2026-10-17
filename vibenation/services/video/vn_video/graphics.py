@@ -31,8 +31,8 @@ MODES = {
 @dataclass
 class Info:
     """Band/show settings used on the graphics (user settings in the web app)."""
-    show_name: str = '[Band Name] · live cover band session'
-    channel: str = 'Music Live Love'
+    show_name: str = 'MusicLiveLove · live cover band session'
+    channel: str = 'MusicLiveLove'
     song: str = ''
     colors: tuple[str, str, str] = ('#FF5E62', '#FF9966', '#FFC371')
     now_playing: str = ''          # break playlist track, optional

@@ -88,7 +88,7 @@ export const youtube = {
     })));
   },
 
-  /** Create a broadcast + a 1080p60 stream and bind them. Auto start/stop follow the encoder. */
+  /** Create a broadcast + a 1080p30 stream (60 with VN_STREAM_FPS=60 on a GPU server) and bind them. Auto start/stop follow the encoder. */
   async create(opts: { title: string; description: string; privacy: 'public' | 'unlisted' | 'private'; tags?: string[] }): Promise<Broadcast> {
     const b = await yt<BroadcastItem>('POST', '/liveBroadcasts?part=snippet,status,contentDetails', {
       snippet: { title: opts.title.slice(0, 100), description: opts.description.slice(0, 5000), scheduledStartTime: new Date().toISOString() },
@@ -97,7 +97,7 @@ export const youtube = {
     });
     const s = await yt<StreamItem>('POST', '/liveStreams?part=snippet,cdn,contentDetails', {
       snippet: { title: `VibeNation ${new Date().toISOString().slice(0, 16)}` },
-      cdn: { ingestionType: 'rtmp', resolution: '1080p', frameRate: '60fps' },
+      cdn: { ingestionType: 'rtmp', resolution: '1080p', frameRate: process.env.VN_STREAM_FPS === '60' ? '60fps' : '30fps' },
       contentDetails: { isReusable: false },
     });
     await yt('POST', `/liveBroadcasts/bind?id=${b.id}&part=id,contentDetails&streamId=${s.id}`);
@@ -113,7 +113,7 @@ export const youtube = {
     if (b.ingest) return b;
     const s = await yt<StreamItem>('POST', '/liveStreams?part=snippet,cdn,contentDetails', {
       snippet: { title: `VibeNation ${new Date().toISOString().slice(0, 16)}` },
-      cdn: { ingestionType: 'rtmp', resolution: '1080p', frameRate: '60fps' }, contentDetails: { isReusable: false },
+      cdn: { ingestionType: 'rtmp', resolution: '1080p', frameRate: process.env.VN_STREAM_FPS === '60' ? '60fps' : '30fps' }, contentDetails: { isReusable: false },
     });
     await yt('POST', `/liveBroadcasts/bind?id=${b.id}&part=id,contentDetails&streamId=${s.id}`);
     return { ...b, streamId: s.id, ingest: await ingestFor(s.id) };
