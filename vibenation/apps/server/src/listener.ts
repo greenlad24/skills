@@ -22,6 +22,7 @@ Answer JSON only: {"vocal": "clear"|"buried"|"too loud"|"no vocal", "harsh": "no
 export class Listener {
   verdicts: Verdict[] = [];
   lastError = '';
+  private pausedUntil = 0; // after a quota error: no point asking again until it resets
   get enabled() { return Boolean(key()); }
 
   constructor(private playing: () => boolean) {
@@ -30,12 +31,13 @@ export class Listener {
 
   status() {
     if (!this.enabled) return 'off (no Gemini key)';
-    if (this.lastError) return 'error';
+    if (Date.now() < this.pausedUntil) return 'paused: Gemini quota used up (turn on billing in Google AI Studio)';
+    if (this.lastError) return `error: ${this.lastError.slice(0, 60)}`;
     return this.verdicts.length ? `every 20 s · ${this.verdicts[this.verdicts.length - 1].vocal}` : 'starting';
   }
 
   async listen() {
-    if (!this.enabled || !this.playing()) return;
+    if (!this.enabled || !this.playing() || Date.now() < this.pausedUntil) return;
     try {
       const wav = Buffer.from(await (await fetch(`${AUDIO}/clip.wav?seconds=6`)).arrayBuffer());
       const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`, {
@@ -48,6 +50,7 @@ export class Listener {
         signal: AbortSignal.timeout(30_000),
       });
       const j = (await r.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[]; error?: { message: string } };
+      if (r.status === 429) this.pausedUntil = Date.now() + 30 * 60_000; // quota: retry in 30 min
       if (!r.ok) throw new Error(j.error?.message ?? `HTTP ${r.status}`);
       const text = j.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
       const v = JSON.parse(text) as Omit<Verdict, 't'>;
