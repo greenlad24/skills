@@ -166,12 +166,30 @@ def cmd_create(dry: bool, retry_min: int) -> None:
     cmd_provision(ip)
 
 
+# Only these settings go to the show server. Everything else in .env (DigitalOcean token,
+# platform OAuth secrets, API keys the show server doesn't use) stays on the build server.
+SHOW_ENV_KEYS = {'PORT'}
+SHOW_ENV_PREFIXES = ('VN_', 'LIVEKIT_', 'GEMINI_')
+
+
+def _sent(key: str) -> bool:
+    return key in SHOW_ENV_KEYS or key.startswith(SHOW_ENV_PREFIXES)
+
+
+def show_env() -> str:
+    path = os.path.join(ROOT, '.env')
+    lines = open(path).read().splitlines() if os.path.exists(path) else []
+    return ''.join(l + '\n' for l in lines if '=' in l and _sent(l.split('=', 1)[0].strip()))
+
+
 def cmd_provision(ip: str) -> None:
-    # Code (no secrets except the runtime .env), our plugins, then the services.
+    # Code (never the build server's .env), a filtered .env, our plugins, then the services.
     rsync = ['rsync', '-az', '--delete', '-e', f'ssh -i {SSH_KEY} -o StrictHostKeyChecking=accept-new',
-             '--exclude', 'node_modules', '--exclude', '.venv', '--exclude', 'data', '--exclude', 'apps/android',
+             '--exclude', '/.env', '--exclude', 'node_modules', '--exclude', '.venv', '--exclude', 'data', '--exclude', 'apps/android',
              '--exclude', 'services/audio/plugins/build', '--exclude', 'services/audio/plugins/.gen']
     subprocess.run([*rsync, ROOT + '/', f'root@{ip}:/opt/vibenation/'], check=True)
+    subprocess.run(['ssh', '-i', SSH_KEY, '-o', 'StrictHostKeyChecking=accept-new', f'root@{ip}',
+                    'umask 077 && cat > /opt/vibenation/.env'], input=show_env(), text=True, check=True)
     subprocess.run(['rsync', '-az', '-e', f'ssh -i {SSH_KEY}', '/usr/local/lib/lv2/', f'root@{ip}:/usr/local/lib/lv2/'], check=True)
     r = ssh(ip, 'bash /opt/vibenation/infra/showserver/provision.sh', check=False)
     print(r.stdout[-3000:])

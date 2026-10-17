@@ -15,7 +15,7 @@ Status as of 17 Oct 2026. ✅ done · ❌ to do · ➖ not needed for the first 
 - ❌ **Auto-destroy safety net.** A timer on the build server destroys every `vibenation-show` droplet after a hard limit (2 h for tests), even if the Claude session dies or the provisioning hangs.
 
 ### Secrets
-- ❌ **Don't send the build server's `.env` to the show server.** Right now the rsync copies it, including the DigitalOcean token, the web login and the session secret. Send a show-only `.env` instead: LiveKit keys and the session secret, never `DIGITALOCEAN_TOKEN`.
+- ✅ **The build server's `.env` stays here.** The rsync skips it; the show server gets a filtered `.env` (only `PORT`, `VN_*`, `LIVEKIT_*`, `GEMINI_*`, mode 600). Tested: the DigitalOcean token, YouTube, OpenAI and other keys are not sent.
 - ✅ No GitHub credentials go to the show server (code is pushed over SSH).
 - ✅ SSH key: `~/.ssh/vibenation_show` is created and registered on first `create`.
 
