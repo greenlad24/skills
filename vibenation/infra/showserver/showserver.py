@@ -2,13 +2,13 @@
 """Create / provision / check / destroy the per-show GPU server on DigitalOcean.
 
 The show server runs the live mix engine, the camera server and the GPU video encodes
-(NVENC). It exists only for a show (~$0.76/h for an RTX 4000 Ada in TOR1) and is
+(NVENC). It exists only for a show (~$0.76/h for an RTX 4000 Ada; TOR1 first, then the next region with capacity) and is
 destroyed afterwards. The build server pushes the code to it over SSH (no GitHub
 credentials ever live on the show server).
 
 usage:
   showserver.py plan                 # print what would be created and the price
-  showserver.py create [--dry-run]   # create + wait for SSH + provision + verify NVENC
+  showserver.py create [--dry-run] [--retry <min>]  # first free region; create + provision + verify NVENC
   showserver.py status               # list running show servers (and their cost so far)
   showserver.py provision <ip>       # (re)push code and services to a running server
   showserver.py destroy              # destroy every show server (tag vibenation-show)
@@ -29,7 +29,8 @@ import urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, '..', '..'))  # vibenation/
 TAG = 'vibenation-show'
-REGION = os.environ.get('VN_SHOW_REGION', 'tor1')
+# Tried in order; a full region (or one without this GPU/image) refuses the create, which costs nothing.
+REGIONS = [r.strip() for r in os.environ.get('VN_SHOW_REGIONS', os.environ.get('VN_SHOW_REGION', 'tor1,nyc2,atl1,ric1,sfo3,mkc1,mem1')).split(',') if r.strip()]
 SIZE = os.environ.get('VN_SHOW_SIZE', 'gpu-4000adax1-20gb')
 IMAGE = os.environ.get('VN_SHOW_IMAGE', 'gpu-h100x1-base')  # DigitalOcean AI/ML-ready image (NVIDIA drivers)
 API = 'https://api.digitalocean.com/v2'
@@ -45,7 +46,13 @@ def load_env() -> None:
                 os.environ.setdefault(k, v)
 
 
-def api(method: str, path: str, body: dict | None = None) -> dict:
+class ApiError(Exception):
+    def __init__(self, code: int, message: str):
+        super().__init__(f'{code} {message}')
+        self.code, self.message = code, message
+
+
+def api(method: str, path: str, body: dict | None = None, fatal: bool = True) -> dict:
     token = os.environ.get('DIGITALOCEAN_TOKEN')
     if not token:
         sys.exit('DIGITALOCEAN_TOKEN is not set in vibenation/.env')
@@ -56,15 +63,22 @@ def api(method: str, path: str, body: dict | None = None) -> dict:
             raw = r.read()
             return json.loads(raw) if raw else {}
     except urllib.error.HTTPError as e:
-        sys.exit(f'DigitalOcean API {method} {path}: {e.code} {e.read().decode()[:400]}')
+        raw = e.read().decode()
+        try:
+            msg = json.loads(raw).get('message', raw)
+        except ValueError:
+            msg = raw
+        if not fatal:
+            raise ApiError(e.code, str(msg)[:400]) from None
+        sys.exit(f'DigitalOcean API {method} {path}: {e.code} {str(msg)[:400]}')
 
 
 def price() -> float | None:
     sizes = api('GET', '/sizes?per_page=200')['sizes']
     for s in sizes:
         if s['slug'] == SIZE:
-            if REGION not in s.get('regions', []):
-                print(f'warning: {SIZE} is not offered in {REGION} right now; regions: {s.get("regions")}')
+            free = s.get('regions', [])
+            print(f'Regions with free capacity right now (API): {", ".join(free) if free else "none listed"}')
             return float(s['price_hourly'])
     return None
 
@@ -97,13 +111,29 @@ def ssh(ip: str, cmd: str, check: bool = True) -> subprocess.CompletedProcess:
 
 def cmd_plan() -> None:
     p = price()
-    print(f'Would create: 1 × {SIZE} in {REGION}, image {IMAGE}, tag {TAG}.')
+    print(f'Would create: 1 × {SIZE}, first free region of {", ".join(REGIONS)}, image {IMAGE}, tag {TAG}.')
     print(f'Price: ${p:.2f}/hour' if p else 'Price: size not found (check VN_SHOW_SIZE)')
     if p:
         print(f'A 4-hour show (incl. setup) ≈ ${p * 4:.2f}.')
 
 
-def cmd_create(dry: bool) -> None:
+def try_regions(key: int, user_data: str) -> dict | None:
+    """One pass over REGIONS. Returns the new droplet, or None if every region refused."""
+    for region in REGIONS:
+        try:
+            d = api('POST', '/droplets', {'name': f'vibenation-show-{time.strftime("%Y%m%d-%H%M")}', 'region': region, 'size': SIZE,
+                                          'image': IMAGE, 'ssh_keys': [key], 'tags': [TAG], 'user_data': user_data,
+                                          'monitoring': True}, fatal=False)['droplet']
+            print(f'{region}: created.')
+            return d
+        except ApiError as e:
+            if e.code != 422:  # 422 = this region can't take it (capacity, size or image); anything else is real
+                sys.exit(f'DigitalOcean API POST /droplets ({region}): {e}')
+            print(f'{region}: not available ({e.message})')
+    return None
+
+
+def cmd_create(dry: bool, retry_min: int) -> None:
     if droplets():
         sys.exit('A show server already exists (run status / destroy).')
     cmd_plan()
@@ -111,9 +141,14 @@ def cmd_create(dry: bool) -> None:
         return
     key = ensure_ssh_key()
     user_data = open(os.path.join(HERE, 'cloud-init.yaml')).read()
-    d = api('POST', '/droplets', {'name': f'vibenation-show-{time.strftime("%Y%m%d-%H%M")}', 'region': REGION, 'size': SIZE,
-                                  'image': IMAGE, 'ssh_keys': [key], 'tags': [TAG], 'user_data': user_data, 'monitoring': True})['droplet']
-    print(f'Created droplet {d["id"]}; waiting for it to boot…')
+    deadline = time.time() + retry_min * 60
+    while (d := try_regions(key, user_data)) is None:
+        if time.time() >= deadline:
+            sys.exit('No region has capacity right now (nothing was created or charged). Try again later, '
+                     'or retry automatically with: showserver.py create --retry <minutes>')
+        print('All regions full; trying again in 5 minutes…')
+        time.sleep(300)
+    print(f'Created droplet {d["id"]} in {d["region"]["slug"]}; waiting for it to boot…')
     ip = None
     for _ in range(120):
         d = api('GET', f'/droplets/{d["id"]}')['droplet']
@@ -171,7 +206,8 @@ if __name__ == '__main__':
     args = sys.argv[1:] or ['plan']
     {'plan': cmd_plan, 'status': cmd_status, 'destroy': cmd_destroy}.get(args[0], lambda: None)()
     if args[0] == 'create':
-        cmd_create('--dry-run' in args)
+        retry = int(args[args.index('--retry') + 1]) if '--retry' in args else 0
+        cmd_create('--dry-run' in args, retry)
     elif args[0] == 'provision':
         cmd_provision(args[1])
     elif args[0] not in ('plan', 'status', 'destroy'):
