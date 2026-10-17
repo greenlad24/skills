@@ -25,7 +25,7 @@ export interface StreamPackage {
   createdAt: number;
 }
 
-const SYSTEM = `You write the YouTube live-stream package for "Music Live Love" (@MusicLiveLove), a live funk, soul and R&B cover band: real musicians, no AI, re-arranging songs live.
+const SYSTEM = `You write the YouTube live-stream package for "MusicLiveLove" (one word; @MusicLiveLove), a live funk, soul and R&B cover band: real musicians, no AI, re-arranging songs live.
 Channel title style: "LIVE: Funk & Soul Cover Band — <hook> | Real Musicians (Not AI)"; single songs: "Song – Artist | Live <Genre> Cover Band Arrangement (Not AI)".
 Hard rules: never mention any location (no city, country, island, venue or region names); never mention "Sunrise Jam"; no community/Skool links; the only link is the subscribe link https://youtube.com/@MusicLiveLove. No hashtags inside titles. Titles ≤ 100 characters and click-optimised but honest.
 Answer JSON only: {"titles": [5 ranked titles], "description": "<SEO description: 2 short paragraphs with keywords (live funk band, soul covers, R&B, live music stream, real musicians), the line-up if given, a 'Chapters' block starting '00:00 Starting soon' (song chapters are added live), and the subscribe link>", "tags": [15-25 tags], "platforms": {"twitch": "<Twitch title ≤140 chars>", "facebook": "<Facebook post text, 1-2 sentences>", "tiktok": "<TikTok LIVE title ≤32 chars>", "instagram": "<Instagram caption, 1 sentence>"}, "thumbnailText": "<2-4 punchy words for the thumbnail>"}`;
