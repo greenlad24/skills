@@ -274,6 +274,17 @@ def cmd_provision(ip: str) -> None:
     print('NVENC check:', ssh(ip, 'cat /opt/vibenation/data/nvenc-check.txt', check=False).stdout.strip())
 
 
+def cmd_status_json() -> None:
+    """For the app's Show server card."""
+    out = []
+    for d in droplets():
+        a = age_min(d)
+        out.append({'name': d['name'], 'ip': public_ip(d), 'region': d['region']['slug'], 'status': d['status'],
+                    'size': d['size_slug'], 'up_min': round(a, 1), 'ttl_min': ttl_min(d),
+                    'price_hourly': d['size'].get('price_hourly')})
+    print(json.dumps({'servers': out, 'connected': os.path.exists(APP_DROPIN)}))
+
+
 def cmd_status() -> None:
     ds = droplets()
     if not ds:
@@ -336,5 +347,7 @@ if __name__ == '__main__':
         cmd_connect(args[1])
     elif args[0] == 'disconnect':
         cmd_disconnect()
+    elif args[0] == 'status-json':
+        cmd_status_json()
     elif args[0] not in ('plan', 'status', 'destroy', 'reap'):
         sys.exit(__doc__)

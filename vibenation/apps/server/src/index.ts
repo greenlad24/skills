@@ -15,6 +15,7 @@ import { registerDestinations } from './golive.js';
 import { registerLearning } from './learning.js';
 import { registerApps } from './apps.js';
 import { registerKeys } from './keys.js';
+import { registerShowServer } from './showserver.js';
 
 const PORT = Number(process.env.PORT ?? 8080);
 // Bind to localhost only; Caddy in front handles HTTPS once ports are approved.
@@ -39,6 +40,7 @@ registerPackage(app);
 registerDestinations(app);
 registerApps(app);
 registerKeys(app);
+registerShowServer(app);
 registerLearning(app, (p) => { show.director.playbook = p.director; });
 
 app.get('/ws', { websocket: true }, (socket) => {

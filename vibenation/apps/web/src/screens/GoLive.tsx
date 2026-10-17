@@ -6,6 +6,7 @@ import { Preflight } from '../components/golive/Preflight';
 import { Destinations } from '../components/golive/Destinations';
 import { YouTubePackage } from '../components/golive/YouTubePackage';
 import { GoLiveButton } from '../components/golive/GoLiveButton';
+import { ShowServer } from '../components/golive/ShowServer';
 
 const COUNTDOWN_S = 5;
 const linkBtn = { background: 'none', border: 0, padding: 0, cursor: 'pointer', fontWeight: 600, color: '#FF9A5A', textDecoration: 'underline' } as const;
@@ -65,6 +66,7 @@ export function GoLiveScreen() {
 
       <aside style={{ flex: '1 1 380px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 18 }}>
         <section aria-label="Go live" style={{ borderRadius: 24, background: 'linear-gradient(180deg, rgba(40,30,23,0.85), rgba(20,15,11,0.85))', border: '1px solid rgba(255,236,220,0.08)', boxShadow: 'inset 0 1px 0 rgba(255,236,220,0.06), 0 30px 70px rgba(0,0,0,0.5)', padding: 22, display: 'flex', flexDirection: 'column', gap: 18 }}>
+          <ShowServer />
           <YouTubePackage channel={s.youtube.channel} />
           <GoLiveButton onAir={s.onAir} liveSince={s.liveSince} count={count} blocker={blocker} countdown={countdown} onGo={() => start('public')} onCancel={() => setCountdown(null)} />
           {s.golive.message && <span role="status" style={{ fontSize: 13, textAlign: 'center', color: s.golive.phase === 'error' ? 'var(--error)' : 'var(--text-soft)' }}>{s.golive.message}</span>}
