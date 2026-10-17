@@ -497,6 +497,11 @@ class Engine:
             band = (c.get('kind', kind), float(c.get('f', f)), max(-15.0, min(15.0, float(c.get('gain', gain)))), float(c.get('q', q)))
             s.eq = [*s.eq, band] if i >= len(s.eq) else [band if j == i else b for j, b in enumerate(s.eq)]
             g.apply_strip(n)
+        elif t == 'gate' and s and s.gate:
+            for k in ('thresh', 'range', 'attack', 'hold', 'release'):
+                if k in c:
+                    setattr(s.gate, k, float(c[k]))
+            g.apply_strip(n)
         elif t == 'comp' and s and s.comp:
             for k in ('thresh', 'ratio', 'attack', 'release', 'makeup', 'mix'):
                 if k in c:
