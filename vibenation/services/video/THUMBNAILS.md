@@ -24,7 +24,8 @@ Their weakest covers (58k–106k) break it: gimmicks (text, split screens, costu
 ## Rules
 - No text, no logo, no venue name, no signs, no location, ever.
 - Only approved performers are drawn from sheets: Jesse, Alyona (sheet name "aliona"), Greg (the usual Saturday guests). The lead singer is listed first. Never give a sheet's likeness to anyone else.
-- The stage photos contain real strangers; the prompt says to use them for the room only, and the review checks no background player copies them (2.5-sunburst did on 17 Oct).
+- **Stage reference = `stage/plate-empty-stage.png` only:** the venue's stage with every person and instrument removed (made once with gpt-image-2). The original stage photos had real strangers on them, and the models copied them.
+- **Layout:** `--layout <id>` copies a viral thumbnail's framing exactly (`layouts/index.json`, Scary Pockets' top 20). The reference is image 1 (the image to edit), letterboxed into the 3:2 canvas, and its 16:9 band is cut back out 1:1.
 - References stay off GitHub: `/home/vibe/vibenation-media/thumbnail-refs/` (mode 700) holds `performers/<name>/`, `stage/` (crops with no map, names or app UI) and `finish/R604.jpg`.
-- Every AI image is reviewed before use: likeness matches the sheets; hands, mics and instruments are physically right; the stage is recognisable; no text. A failed candidate is regenerated or dropped, never "fixed" with a filter. The user approves or swaps it on Go Live.
-- Model: `gpt-image-2.5-sunburst` (picked over `gpt-image-2` in a side-by-side test: brighter, closer to the formula, about $0.16 an image against $0.32). The cost is stated before generating.
+- Every AI image is reviewed before use: everyone is on the stage, lattice backdrop behind them (never the lounge, bar or crowd); likeness matches the sheets; hands, mics and instruments are physically right; the stage is recognisable; no text. A failed candidate is regenerated or dropped, never "fixed" with a filter. The user approves or swaps it on Go Live.
+- Model: `gpt-image-2` by default (the user's choice); `VN_THUMB_MODEL=gpt-image-2.5-sunburst` for comparison tests. About $0.29 vs $0.13 per image. The cost is stated before generating.
