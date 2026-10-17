@@ -28,37 +28,45 @@ export interface Playbook {
 
 export const DEFAULT_PLAYBOOK: Playbook = { version: 1, minDwellS: 4, maxWideS: 12, maxShotS: 16, soloLiftDb: 6, holdDrumsInGrooveS: 10, manualHoldS: 8 };
 
-/** Guess a camera's subject from its name ("Lead vocal", "Keys", "Drums", "Wide stage", "Crowd"). */
-export function subjectOf(c: CameraState): Subject {
+/** Which mixer channels a camera shows, read from its name. A name can list several people
+ *  ("Piano, Gtr and Vox P", "Vox C, Drummer"); channel names from the mixer work too.
+ *  "Wide", "stage", "band" or "front" = the whole band. */
+const NAME_CHANNELS: [RegExp, number[]][] = [
+  [/vox\s*c|vocal\s*c|centre|center/, [9]],
+  [/vox\s*p|vocal\s*p/, [10]],
+  [/piano|keys?\b|rhodes|organ/, [6, 7]],
+  [/gtr|guitar/, [4, 5, 8]],
+  [/drum|kit\b|kick|snare/, [1, 2, 3]],
+  [/bass/, [12, 14]],
+  [/sax|horn|trombone|trumpet|harmonica|flute|brass/, [11, 15, 16]],
+  [/conga|perc/, [11, 13]],
+];
+export function channelsOf(c: CameraState): { wide: boolean; chans: Set<number> } {
   const n = c.name.toLowerCase();
-  if (/wide|stage|band|front/.test(n)) return 'wide';
-  if (/vocal|vox|sing|lead/.test(n)) return 'vocal';
-  if (/key|piano|rhodes|organ/.test(n)) return 'keys';
-  if (/drum|kit/.test(n)) return 'drums';
-  if (/guitar|gtr/.test(n)) return 'guitar';
-  if (/bass/.test(n)) return 'bass';
-  if (/sax|horn|trombone|trumpet|harmonica|flute/.test(n)) return 'horns';
-  if (/conga|perc/.test(n)) return 'perc';
-  if (/crowd|audience|room/.test(n)) return 'crowd';
+  const chans = new Set<number>();
+  for (const [re, chs] of NAME_CHANNELS) if (re.test(n)) chs.forEach((x) => chans.add(x));
+  if (!chans.has(9) && !chans.has(10) && /vocal|vox|sing|lead/.test(n)) { chans.add(9); chans.add(10); }
+  const wide = /wide|stage|band|front|crowd|audience/.test(n) || chans.size === 0;
+  return { wide, chans };
+}
+export function subjectOf(c: CameraState): Subject {
+  const { wide, chans } = channelsOf(c);
+  if (wide) return 'wide';
+  for (const [subj, chs] of Object.entries(SUBJECT_CHANNELS) as [Subject, number[]][]) if (chs.some((x) => chans.has(x))) return subj;
   return 'wide';
 }
-
-/** Which subject a soloing channel belongs to (the engine names the channel). */
-const SUBJECT_OF_CH: Record<number, Subject> = Object.fromEntries(
-  (Object.entries(SUBJECT_CHANNELS) as [Subject, number[]][]).flatMap(([subj, chs]) => chs.map((ch) => [ch, subj])),
-) as Record<number, Subject>;
 
 // Floors so cuts feel like a human director following the performer, not a metronome.
 const MIN_DWELL_S = 8;     // never cut sooner (playbook may ask for longer)
 const SETTLE_S = 2;        // a new focus must hold this long before it causes a cut
-const SINGER_MAX_S = 25;   // then one breather on the wide...
-const BREATHER_S = 8;      // ...for this long, then back to the singer if still singing
+const SINGER_MAX_S = 25;   // then one breather on the band (solos are held up to 60 s)
 
 export class Director {
   playbook: Playbook = loadPlaybook().director ?? { ...DEFAULT_PLAYBOOK };
   private lastCut = Date.now();
   private manualUntil = 0;
-  private focus: { subject: Subject; since: number; why: string } | null = null;
+  private focus: { key: string; ch: number | null; since: number; why: string } | null = null;
+  private stable: number | null = null; // the last confirmed performer
   reason = '';
 
   constructor(
@@ -77,11 +85,11 @@ export class Director {
 
   /** Who is performing now, from the audio engine's arrangement follower (the same decisions
    *  the mix uses): a solo, else the lead vocal (pauses between phrases count as singing), else the band. */
-  private performer(): { subject: Subject; why: string } {
+  private performer(): { ch: number | null; why: string } {
     const a = this.audio.history.at(-1)?.arrangement;
-    if (a?.solo) return { subject: SUBJECT_OF_CH[a.solo] ?? 'wide', why: `solo on ch${a.solo}` };
-    if (a?.lead) return { subject: 'vocal', why: 'lead vocal singing' };
-    return { subject: 'wide', why: 'band playing, vocal resting' };
+    if (a?.solo) return { ch: a.solo, why: `solo on ch${a.solo}` };
+    if (a?.lead) return { ch: a.lead, why: `ch${a.lead} singing lead` };
+    return { ch: null, why: 'band playing, vocal resting' };
   }
 
   private tick() {
@@ -92,36 +100,34 @@ export class Director {
     const now = Date.now();
     // Track the performer with a settle time, so a breath or a fill never causes a cut.
     const p = this.performer();
-    if (!this.focus || this.focus.subject !== p.subject) this.focus = { ...p, since: now };
-    const settled = (now - this.focus.since) / 1000 >= SETTLE_S;
+    const key = String(p.ch);
+    if (!this.focus || this.focus.key !== key) this.focus = { key, ch: p.ch, since: now, why: p.why };
     if (now < this.manualUntil) return;
+    const settled = (now - this.focus.since) / 1000 >= SETTLE_S;
     const held = (now - this.lastCut) / 1000;
     if (held < Math.max(MIN_DWELL_S, this.playbook.minDwellS)) return;
+    const info = new Map(cams.map((c) => [c.id, channelsOf(c)]));
     const live = cams.find((c) => c.id === s.liveCam);
-    const liveSubject = live ? subjectOf(live) : 'wide';
-    const camFor = (subj: Subject) => cams.find((c) => subjectOf(c) === subj);
-    const wide = camFor('wide') ?? cams.find((c) => subjectOf(c) !== 'vocal');
-    const want = settled ? this.focus.subject : liveSubject;
+    const covers = (c: CameraState | undefined, ch: number) => !!c && info.get(c.id)!.chans.has(ch);
+    // The camera that shows a performer best: the fewest other people in its name.
+    const camFor = (ch: number) => cams.filter((c) => covers(c, ch)).sort((a, b) => info.get(a.id)!.chans.size - info.get(b.id)!.chans.size)[0];
+    const wideCam = cams.find((c) => info.get(c.id)!.wide);
+    const other = cams.find((c) => c.id !== s.liveCam);
+    if (settled) this.stable = this.focus.ch;
+    if (!settled) return; // a performer change is being confirmed: hold the shot
+    const want = this.stable;
 
     let target: CameraState | undefined;
     let why = '';
-    if (want !== liveSubject && camFor(want)) {
-      // Follow the performer (solo player, singer, or back to the band).
+    if (want !== null && !covers(live, want) && camFor(want)) {
       target = camFor(want);
       why = this.focus.why;
-    } else if (want === 'vocal' && liveSubject === 'vocal' && held > SINGER_MAX_S && wide && wide.id !== s.liveCam) {
-      target = wide;
-      why = `singer held ${Math.round(held)} s: a breather on the band`;
-    } else if (want === 'vocal' && liveSubject !== 'vocal' && held > BREATHER_S && camFor('vocal')) {
-      target = camFor('vocal');
-      why = 'back to the singer';
-    } else if (want === 'wide' && liveSubject === 'wide' && held > Math.max(this.playbook.maxWideS, 15)) {
-      // Long instrumental: show a featured player now and then, if there's a camera for one.
-      const feature = cams.find((c) => !['wide', 'vocal', 'crowd'].includes(subjectOf(c)));
-      if (feature) { target = feature; why = `instrumental: featuring ${subjectOf(feature)}`; }
-    } else if (want === 'wide' && liveSubject !== 'wide' && liveSubject !== this.focus.subject && held > this.playbook.maxShotS && wide) {
-      target = wide;
-      why = 'back to the band';
+    } else if (want !== null && covers(live, want) && held > (this.focus.why.startsWith('solo') ? 60 : SINGER_MAX_S)) {
+      target = wideCam && wideCam.id !== s.liveCam ? wideCam : other;
+      why = `held ${Math.round(held)} s on the performer: a breather on the band`;
+    } else if (want === null && held > Math.max(this.playbook.maxWideS, 15)) {
+      target = wideCam && wideCam.id !== s.liveCam && !info.get(s.liveCam)?.wide ? wideCam : other;
+      why = 'instrumental: changing angle';
     }
     if (target && target.id !== s.liveCam) {
       this.lastCut = now;
