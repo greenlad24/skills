@@ -153,6 +153,11 @@ class Engine:
         if not self.leveller_on or now - self.last_level < 1.0 or not self.running():
             return
         self.last_level = now
+        if self.limiter_gr > 4:
+            # The limiter is crushing peaks (weak inputs driven hard): back the drive off whatever the loudness says.
+            self.graph.master_gain = round(max(-10.0, self.graph.master_gain - 1.0), 2)
+            self.graph.apply_drive()
+            return
         s = m['lufsS'] - self.graph.master_gain  # loudness before the leveller's own drive
         median = sorted(self.st_hist)[len(self.st_hist) // 2] if len(self.st_hist) >= 5 else None
         if median is not None and s < median - 10:
