@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 
 from livekit import api, rtc
@@ -157,9 +158,12 @@ class Cams:
             await stream.aclose()
 
     def apply_quality(self):
-        """Full resolution for the cameras in use; lowest layer for the rest."""
+        """Full resolution for the cameras in use; lowest layer for the rest — unless VN_VIDEO_ALL_HIGH
+        (default on): then every camera stays at full resolution, so a cut is sharp from its first frame
+        (no layer switch on air). The c-16 show server has the headroom (measured 17 Oct 2026)."""
+        all_high = os.environ.get('VN_VIDEO_ALL_HIGH', '1') == '1'
         for cam in self.cams.values():
-            q = rtc.VideoQuality.VIDEO_QUALITY_HIGH if cam.id in self.wanted else rtc.VideoQuality.VIDEO_QUALITY_LOW
+            q = rtc.VideoQuality.VIDEO_QUALITY_HIGH if all_high or cam.id in self.wanted else rtc.VideoQuality.VIDEO_QUALITY_LOW
             if cam.publication and cam.quality != q:
                 try:
                     cam.publication.set_video_quality(q)

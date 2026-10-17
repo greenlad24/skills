@@ -59,6 +59,7 @@ async def cam(n: int, url: str, key: str, secret: str, room_name: str, w: int, h
 async def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--cams', type=int, default=3)
+    ap.add_argument('--first', type=int, default=1, help='first camera number (use 7+ next to real phones: same numbers would replace them)')
     ap.add_argument('--size', default='640x360')
     ap.add_argument('--fps', type=int, default=15)
     ap.add_argument('--room', default=os.environ.get('VN_VIDEO_ROOM', 'show'),
@@ -71,7 +72,7 @@ async def main():
     if not (await lk.room.list_rooms(api.ListRoomsRequest(names=[a.room]))).rooms:
         await lk.room.create_room(api.CreateRoomRequest(name=a.room, empty_timeout=12 * 3600, max_participants=20))
     await lk.aclose()
-    await asyncio.gather(*(cam(n, url, key, secret, a.room, w, h, a.fps) for n in range(1, a.cams + 1)))
+    await asyncio.gather(*(cam(n, url, key, secret, a.room, w, h, a.fps) for n in range(a.first, a.first + a.cams)))
 
 
 if __name__ == '__main__':
