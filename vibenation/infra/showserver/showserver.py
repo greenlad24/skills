@@ -309,6 +309,23 @@ def cmd_status() -> None:
               f'  auto-destroy in {max(0, ttl_min(d) - a):.0f} min')
 
 
+MULTITRACK_HOME = os.path.expanduser('~/vibenation-media/multitrack')  # never in git
+
+
+def pull_recordings(d: dict) -> None:
+    """Copy the show's multitrack (16 MP3s per take) home before the server is deleted."""
+    ip = public_ip(d)
+    if not ip:
+        return
+    os.makedirs(MULTITRACK_HOME, exist_ok=True)
+    r = subprocess.run(['rsync', '-a', '--timeout=60', '-e', f'ssh -i {SSH_KEY} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10',
+                        f'root@{ip}:/opt/vibenation/data/multitrack/', MULTITRACK_HOME + '/'], capture_output=True, text=True)
+    if r.returncode == 0:
+        print(f'Multitrack saved to {MULTITRACK_HOME}')
+    else:
+        print(f'Multitrack NOT copied ({r.stderr.strip()[:120]})')
+
+
 def cmd_reap() -> None:
     """Run by the vibenation-showserver-reaper timer: destroy show servers past their time-to-live."""
     ds = droplets()
@@ -317,6 +334,7 @@ def cmd_reap() -> None:
     for d in ds:
         a, ttl = age_min(d), ttl_min(d)
         if a >= ttl:
+            pull_recordings(d)
             api('DELETE', f'/droplets/{d["id"]}')
             print(f'Destroyed {d["name"]} ({d["region"]["slug"]}): up {a:.0f} min, limit {ttl} min.')
         else:
@@ -329,6 +347,8 @@ def cmd_destroy() -> None:
         print('Nothing to destroy.')
         return
     cmd_disconnect()
+    for d in ds:
+        pull_recordings(d)
     api('DELETE', f'/droplets?tag_name={TAG}')
     print(f'Destroyed {len(ds)} show server(s).')
 

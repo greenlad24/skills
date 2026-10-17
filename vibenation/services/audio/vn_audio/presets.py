@@ -73,7 +73,7 @@ STRIPS: list[Strip] = [
           comp=Comp(-20, 4, 15, 50, 3, peak=True), room=-15),
     Strip(3, 'Overheads', -14.4, 0,
           eq=[('hpf', 180, 0, 0.7)], comp=Comp(-22, 4, 15, 120, 1)),
-    Strip(4, 'Acoustic DI', -14.0, -20,
+    Strip(4, 'Acoustic DI', -18.0, -20,  # user 17 Oct 2026: supporting channels (4, 8, 13, 15, 16) sit 4 dB back
           eq=[('hpf', 100, 0, 0.7), ('bell', 250, -2.5, 1.2), ('bell', 1000, -3.0, 4.0), ('hshelf', 12000, 1.5, 0.7)],
           comp=Comp(-20, 3, 5, 150, 2), plate=-24),
     Strip(5, 'Guitar amp', -12.0, -30,
@@ -85,7 +85,7 @@ STRIPS: list[Strip] = [
     Strip(7, 'Piano R', -6.0, 60,
           eq=[('hpf', 35, 0, 0.7), ('bell', 200, 1.0, 0.8), ('bell', 500, -2.0, 2.0), ('bell', 1500, -1.5, 1.0), ('bell', 3000, -2.0, 1.1), ('bell', 4500, -1.5, 0.8)],
           comp=Comp(-22, 2, 30, 200, 1), plate=-14, floor=-13),
-    Strip(8, 'Guitar DI', -13.0, 30,
+    Strip(8, 'Guitar DI', -17.0, 30,
           eq=[('hpf', 120, 0, 0.7), ('bell', 4000, -2.0, 4.0), ('lpf', 9000, 0, 0.7)],
           comp=Comp(-20, 4, 10, 100, 2, mix=0.5), room=-20),
     Strip(9, 'Vocal centre', -2.0, 0, eq=list(VOCAL_EQ), comp=Comp(-26, 3, 12, 150, 3), plate=-8, delay=-18, rider=0.0),
@@ -96,16 +96,16 @@ STRIPS: list[Strip] = [
     Strip(12, 'Bass DI', -10.0, 0,
           eq=[('bell', 250, -2.0, 1.5), ('bell', 800, 2.0, 1.0), ('bell', 2500, 1.5, 1.0), ('lpf', 6000, 0, 0.7)],
           comp=Comp(-24, 4, 15, 150, 5), no_hpf=True),
-    Strip(13, 'Congas 2', -16.0, 50,
+    Strip(13, 'Congas 2', -20.0, 50,
           eq=[('hpf', 90, 0, 0.7), ('bell', 350, -2.5, 1.2), ('bell', 4500, 2.5, 1.0)],
           comp=Comp(-20, 4, 15, 80, 2, peak=True), room=-18),
     Strip(14, 'Synth bass', -9.3, 0,  # user 17 Oct 2026: strong but defined synth bass, a little less sub
           eq=[('bell', 55, 0.0, 1.0), ('bell', 250, -2.0, 1.0), ('bell', 1000, 3.0, 1.0), ('bell', 35, -5.0, 1.0)],  # 1 kHz = definition; 35 Hz cut = no boom
           comp=Comp(-22, 4, 20, 150, 2), no_hpf=True),
-    Strip(15, 'Saxophone', -2.1, -25,
+    Strip(15, 'Saxophone', -6.1, -25,
           eq=[('hpf', 120, 0, 0.7), ('bell', 400, -2.5, 1.2), ('bell', 2100, -1.5, 4.0), ('bell', 4000, -1.5, 4.0), ('hshelf', 8000, 2.0, 0.7)],
           comp=Comp(-27, 3, 10, 120, 3), plate=-10, delay=-20, rider=0.0),
-    Strip(16, 'Harmonica', -10.0, 25,
+    Strip(16, 'Harmonica', -14.0, 25,
           eq=[('hpf', 120, 0, 0.7), ('bell', 250, 1.0, 1.0), ('bell', 1200, -2.0, 1.5), ('bell', 3500, -3.0, 1.5), ('lpf', 9000, 0, 0.7)],
           comp=Comp(-18, 3, 20, 150, 2), room=-12, rider=0.0),
 ]
@@ -120,7 +120,7 @@ VOCALS = {9, 10}  # lead + second vocal: never pulled down by the band offset
 # The keeper only moves what masks a voice (keys, guitars, horns, percussion). Drums and bass stay
 # where the band put them (user: drums prominent, more synth bass).
 OFFSET_EXEMPT = VOCALS | {1, 2, 3, 12, 14}
-TARGET_LAR = 5.0  # lead vocal over band, dB (band rule: vocals on top; research +3..+7)
+TARGET_LAR = 2.0  # lead vocal over the band, dB (user, 17 Oct 2026: +5 was too much; sit the singer in the band like the reference)
 CEILING_DBTP = -1.0
 # Drum balance as each drum's share of the whole mix (post-fader power while that drum plays, dB),
 # measured from the meters on the user's approved mix (17 Oct 2026). Soundcheck sets the drum

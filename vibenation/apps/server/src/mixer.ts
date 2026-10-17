@@ -1,5 +1,7 @@
-// Claude's mixer loop. Every 1–3 minutes (sooner on an alert) it summarises what the
-// mix is doing, asks Claude for a few small changes, clamps every change to hard
+// Claude's mixer loop. Mix F holds all night (user, 17 Oct 2026: no balance moves). Claude is asked
+// only when the line-up changes (a new singer or instrument comes in, the lead or a solo changes) and
+// it has settled for 20 s, or on an emergency alert. It summarises what the
+// mix is doing, asks Claude for a few small changes (placing the newcomer in the musical map), clamps every change to hard
 // bounds in code, skips anything a human holds, applies the rest and logs each one
 // with its reason and an undo. Fast moves (riders, leveller, limiter) stay in the
 // deterministic engine; Claude only sets their targets.
@@ -37,6 +39,7 @@ interface Reply {
 
 const BASE = Object.fromEntries(CHANNELS.map((c) => [c.n, c]));
 const LOCKED_FADERS = new Set([1, 2, 3, 9, 10]); // kick, snare, OH, vocals: ±1 dB once balanced (band rule)
+const FADER_RANGE_DB = 2; // every other channel: Mix F all night, ±2 dB at most (user, 17 Oct 2026: no big swings)
 const LOCKED_EQ = new Set([1, 14]); // kick and synth bass tone: set with the user, Claude doesn't re-carve it
 const PIANO = new Set([6, 7]);
 const NO_HPF = new Set([1, 12, 14]);
@@ -49,14 +52,15 @@ export const MIXER_SYSTEM = `You are the broadcast mix engineer for VibeNation, 
 You never touch the MR18 preamp gain (you have no access to it). Fast moves (vocal/solo riders on ch 9, 10, 15, 16 that even out each player's level, master loudness leveller, true-peak limiter) are automatic; you make small, deliberate, explainable adjustments every few minutes, like a calm A1 who listens, then nudges.
 
 Band rules (always obey):
-- Vocals on top: the lead vocal (whichever of ch 9 / 10 the arrangement follower names) must stay intelligible; backing vocals sit about 5 dB under it automatically. Target lead-vocal-to-band ratio (LAR) +3 to +7 dB, ideally about +5.
+- Vocals on top: the lead vocal (whichever of ch 9 / 10 the arrangement follower names) must stay intelligible; backing vocals sit about 3 dB under it automatically. Target lead-vocal-to-band ratio (LAR) about +2 dB: clear but sitting in the band, like the reference (user, 17 Oct 2026).
 - No high-pass filter ever on kick (1), bass DI (12) or synth bass (14). Kick and bass work hand in hand; bass impressive but never overshadowing.
 - Synth bass (14) is a feature of this band's sound (user preference): full, defined and lean in the sub (Scary Pockets-style), fader floor -12 dB.
 - Piano (6+7, a stereo pair: always move both the same) is rich and clearly audible (user wants more piano), sits in the low-mids behind the singer: fader floor -9 dB.
 - Harmonica (16) can be very sharp: soften, never harsh. Sax (15) clear, never honky or harsh.
 - Drums are prominent (band preference): punchy kick and snare that drive the groove, just under the vocals. Never make them smaller with EQ, compression or sends; if something fights them, move that instead.
-- Kick and synth bass EQ are locked (set with the band); other EQ bands move at most ±3 dB from their preset.
-- Kick, snare, overheads and vocal faders are locked within ±1 dB of their balance; use EQ, compression targets, rider targets and sends there instead.
+- Kick and synth bass EQ are locked (set with the band); other EQ bands move at most ±1.5 dB from their preset (a little EQ, never a re-carve).
+- Mix F is the balance for the whole evening: no balance moves while the line-up is the same. You are called because the line-up changed (someone came in, the lead or a solo changed): place that channel at its right spot in the musical map (like the reference), with small moves only.
+- Kick, snare, overheads and vocal faders are locked within ±1 dB of their balance; every other fader within ±2 dB of Mix F.
 - Prefer cuts over boosts; one problem, one move. If nothing is clearly wrong, change nothing — an empty list is a good answer.
 - Never chase loudness with faders: the master leveller holds -16 LUFS. If the limiter works more than 3-4 dB, the fix is upstream balance/EQ.
 - Reverb/delay are the main creative dials per song section (ballad more plate, fast funk drier). Vocal plate on ch 9 never below -14 dB while singing.
@@ -75,6 +79,8 @@ export class MixerLoop {
   lastError = '';
   calls = 0;
   private history: { t: number; text: string }[] = [];
+  private lineup = '';          // line-up Claude last mixed for
+  private pending: { sig: string; since: number } | null = null;
 
   constructor(private host: MixerHost) {
     setInterval(() => this.tick(), 5_000);
@@ -85,7 +91,7 @@ export class MixerLoop {
     if (this.busy) return 'listening…';
     const a = this.host.state.audio;
     if (!a?.playing) return 'waiting for music';
-    return `next check ${Math.max(0, Math.round((this.nextAt - Date.now()) / 1000))} s`;
+    return this.pending ? 'line-up changed: listening…' : 'holding Mix F (acts when the line-up changes)';
   }
 
   private alert(frames: EngineFrame[]): string | null {
@@ -100,17 +106,31 @@ export class MixerLoop {
     const { state, audio } = this.host;
     if (!this.enabled || this.busy || !audio.connected || !state.audio?.playing) return;
     const alert = this.alert(audio.history);
-    const due = Date.now() >= this.nextAt || (alert && Date.now() - this.lastRun > 45_000);
+    const sig = this.signature(audio.history);
+    if (sig !== null && sig !== this.lineup && (!this.pending || this.pending.sig !== sig)) this.pending = { sig, since: Date.now() };
+    if (sig === this.lineup) this.pending = null;
+    const settled = !!this.pending && Date.now() - this.pending.since >= 20_000;
+    const due = (settled && Date.now() - this.lastRun > 30_000) || (alert && Date.now() - this.lastRun > 45_000);
     if (!due || audio.history.length < 200) return;
     this.busy = true;
     this.host.changed();
     try {
+      if (settled && this.pending) this.lineup = this.pending.sig;
+      this.pending = null;
       await this.run(alert);
     } finally {
       this.busy = false;
       this.lastRun = Date.now();
       this.host.changed();
     }
+  }
+
+  /** Who is playing: open channels + lead + solo, from the engine's arrangement (null before the first frame). */
+  private signature(frames: EngineFrame[]): string | null {
+    const a = frames[frames.length - 1]?.arrangement;
+    if (!a) return null;
+    const open = Array.from({ length: 16 }, (_, i) => i + 1).filter((n) => !a.muted.includes(n));
+    return `${open.join(',')}|lead ${a.lead ?? '-'}|solo ${a.solo ?? '-'}`;
   }
 
   /** Summary of the last ~30 s that Claude reads. */
@@ -125,7 +145,7 @@ export class MixerLoop {
     const stVals = frames.map((f) => f.master.lufsS);
     lines.push(`Song position: ${state.audio?.set ?? ''} ${Math.round(state.audio?.position ?? 0)} s. Song: ${state.song}. Tempo ~${Math.round(state.bpm)} BPM.`);
     if (alert) lines.push(`ALERT: ${alert}.`);
-    lines.push(`Vocals-on-top keeper: keys, guitars, horns and percussion currently offset ${(m as unknown as { bandOffset?: number }).bandOffset ?? 0} dB (automatic, holds LAR near +5; you don't need to fight it with faders).`);
+    lines.push(`Vocals-on-top keeper: keys, guitars, horns and percussion currently offset ${(m as unknown as { bandOffset?: number }).bandOffset ?? 0} dB (automatic, holds LAR near +2; you don't need to fight it with faders).`);
     lines.push(`Master: integrated ${m.lufsI} LUFS (target -16), short-term range ${Math.min(...stVals).toFixed(1)}..${Math.max(...stVals).toFixed(1)}, true peak max ${Math.max(...frames.map((f) => f.master.truePeak)).toFixed(1)} dBTP, limiter max ${Math.max(...frames.map((f) => f.master.limiterGr)).toFixed(1)} dB, leveller drive ${m.drive} dB.`);
 
     // Lead-to-accompaniment ratio from post-fader channel power.
@@ -210,8 +230,8 @@ export class MixerLoop {
     if (c.action === 'fader') {
       if (this.host.isHeld(`ch${n}.fader`)) return null;
       const base = BASE[n].fader;
-      const lo = LOCKED_FADERS.has(n) ? base - 1 : base - 12;
-      const hi = LOCKED_FADERS.has(n) ? base + 1 : base + 6;
+      const lo = LOCKED_FADERS.has(n) ? base - 1 : base - FADER_RANGE_DB;
+      const hi = LOCKED_FADERS.has(n) ? base + 1 : base + FADER_RANGE_DB;
       let v = clamp(ch.fader + clamp(Number(c.value) - ch.fader, -1.5, 1.5), lo, hi);
       if (PIANO.has(n)) v = Math.max(v, -9); // user: more piano
       if (n === 14) v = Math.max(v, -12); // synth bass floor (user preference; F balance sits at -9.3)
@@ -228,7 +248,7 @@ export class MixerLoop {
       const base = ch.eqBase?.[i]?.gain ?? b.gain;
       const baseF = ch.eqBase?.[i]?.f ?? b.f;
       // At most ±3 dB from the preset band, and the frequency stays near the preset's (it used to drift a step per move).
-      const gain = c.gain === undefined || b.kind === 'hpf' || b.kind === 'lpf' ? b.gain : r1(clamp(b.gain + clamp(Number(c.gain) - b.gain, -1, 1), base - 3, base + 3));
+      const gain = c.gain === undefined || b.kind === 'hpf' || b.kind === 'lpf' ? b.gain : r1(clamp(b.gain + clamp(Number(c.gain) - b.gain, -1, 1), base - 1.5, base + 1.5));
       const f = c.f === undefined ? b.f : Math.round(clamp(Number(c.f), baseF / 1.26, baseF * 1.26));
       if (Math.abs(gain - b.gain) < 0.2 && Math.abs(f - b.f) < 1) return null;
       cmd = { type: 'eq', ch: n, band: i, gain, f };

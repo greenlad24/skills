@@ -148,9 +148,10 @@ class Engine:
 
     def _level(self, m: dict) -> None:
         """Master loudness leveller (after master_me): rides short-term loudness toward -16 LUFS,
-        up at most 1 dB/s and down 3 dB/s, within -10..+20 dB of drive. A brake freezes it when
-        the music drops more than 10 dB under its 5-minute median (song ends, talk, breaks), and
-        it never lifts anything quieter than -30 LUFS."""
+        slowly (up 0.2 dB/s, down 0.5 dB/s, ±1.5 dB dead band) within -10..MAX_DRIVE_DB of drive, so
+        the mix never swings (user, 17 Oct 2026). A brake freezes it when the music drops more than
+        6 dB under its 5-minute median (song ends, talk, breaks), and it never lifts anything quieter
+        than -24 LUFS (a quiet song stays quiet). It backs off at once if the limiter crushes peaks."""
         now = time.time()
         if not self.leveller_on or now - self.last_level < 1.0 or not self.running():
             return
@@ -158,23 +159,23 @@ class Engine:
         recent = max((g for t, g in self.limiter_hist if now - t < 3.0), default=0.0)
         if recent > 4 or self.graph.master_gain > P.MAX_DRIVE_DB:
             # The limiter is crushing peaks (weak inputs driven hard): back the drive off whatever the loudness says.
-            self.graph.master_gain = round(max(-10.0, min(P.MAX_DRIVE_DB, self.graph.master_gain - 1.0)), 2)
+            self.graph.master_gain = round(max(-10.0, min(P.MAX_DRIVE_DB, self.graph.master_gain - 0.5)), 2)
             self.graph.apply_drive()
             return
         s = m['lufsS'] - self.graph.master_gain  # loudness before the leveller's own drive
         median = sorted(self.st_hist)[len(self.st_hist) // 2] if len(self.st_hist) >= 5 else None
-        if median is not None and s < median - 10:
+        if median is not None and s < median - 6:
             return  # brake: song end, talk or break — hold the drive, don't learn from it
         if s > -45:
             self.st_hist.append(s)
-        if median is None or m['lufsS'] < -30:
+        if median is None or m['lufsS'] < -24:
             return
         err = P.TARGET_LUFS - m['lufsS']
-        if abs(err) < 0.5:
+        if abs(err) < 1.5:
             return
         if err > 0 and recent > 2:  # louder would only mean more limiting: fix it upstream
             return
-        step = max(-3.0, min(1.0, err * 0.3))
+        step = max(-0.5, min(0.2, err * 0.1))
         g = max(-10.0, min(P.MAX_DRIVE_DB, self.graph.master_gain + step))
         if abs(g - self.graph.master_gain) >= 0.05:
             self.graph.master_gain = round(g, 2)
@@ -187,7 +188,8 @@ class Engine:
 
     def _ride(self, f: dict) -> None:
         """Vocal/solo rider: keeps a channel near its own running level (+ Claude's offset),
-        only while the source itself is playing. Up 1 dB/s, down 3 dB/s, within ±3 dB."""
+        only while the source itself is playing. Up 0.5 dB/s, down 1 dB/s, within ±2 dB (gentle:
+        the balance must not audibly move)."""
         g = self.graph
         for n, s in g.strips.items():
             if s.rider is None:
@@ -205,10 +207,10 @@ class Engine:
             ref = sorted(self.ride_ref[i])[len(self.ride_ref[i]) // 2]
             if short < ref - 15:
                 continue  # a breath or a pause, not a quiet phrase
-            want = max(-3.0, min(3.0, ref + s.rider - short))
+            want = max(-2.0, min(2.0, ref + s.rider - short))
             if abs(want - ride) < 0.5:
                 continue
-            new = ride + max(-0.3, min(0.1, want - ride))
+            new = ride + max(-0.1, min(0.05, want - ride))
             g.ride[n] = round(new, 2)
             self.ride[i] = round(new, 1)
             g.apply_gain(n)
@@ -336,7 +338,8 @@ class Engine:
     def _keep_vocals_on_top(self, f: dict) -> None:
         """Holds the lead-vocal-to-band ratio near +5 dB by moving one shared offset on all
         non-vocal channels (their balance against each other stays as set). Only learns while
-        a vocal is actually singing; moves at most 0.5 dB every 2 s, range -12..+3 dB."""
+        a vocal is actually singing; moves at most 0.25 dB every 2 s, range -3..+2 dB (Mix F holds:
+        a wider range swung the whole band by 12 dB on the 17 Oct live test)."""
         g = self.graph
         p = [10 ** ((f['rms'][i] + g.gain_db(i + 1)) / 10) * (0 if g.mute[i + 1] else 1) for i in range(16)]
         lead = self.arr.lead if self.arr.lead_singing() else None
@@ -353,7 +356,7 @@ class Engine:
         err = P.TARGET_LAR - lar
         if abs(err) < 1.0:
             return
-        new = max(-12.0, min(3.0, g.band_offset - max(-0.5, min(0.5, err * 0.25))))
+        new = max(-3.0, min(2.0, g.band_offset - max(-0.25, min(0.25, err * 0.25))))
         if abs(new - g.band_offset) >= 0.05:
             g.band_offset = round(new, 2)
             for k in g.strips:
@@ -409,6 +412,17 @@ class Engine:
             self.save()
             self.broadcast(self.state())
 
+    def _venue_checked_recently(self) -> bool:
+        try:
+            return time.time() - os.path.getmtime(os.path.join(DATA, 'venue_soundcheck')) < 12 * 3600
+        except OSError:
+            return False
+
+    def _mark_venue_checked(self) -> None:
+        os.makedirs(DATA, exist_ok=True)
+        with open(os.path.join(DATA, 'venue_soundcheck'), 'w') as fh:
+            fh.write(time.strftime('%Y-%m-%d %H:%M:%S'))
+
     def running(self) -> bool:
         """Audio is flowing from the current source."""
         return self.player.playing if self.source == 'recording' else self.venue.status()['connected']
@@ -429,9 +443,13 @@ class Engine:
             self.mh.connect_ports(new[n - 1], f'{a}:raw_{n}')
         if source == 'venue':
             self.player.pause()
-            if not self.calibrated_session:  # first live audio of the session: soundcheck calibration
+            if not self.calibrated_session and not self._venue_checked_recently():
+                # First live audio of the evening: soundcheck. After an engine restart the venue
+                # trims saved in mix_state.json stay (re-measuring mid-show made the mix swing).
                 self.calibrated_session = True
                 self.start_calibration()
+                self._mark_venue_checked()
+            self.calibrated_session = True
         self.source = source
         self.analyzer.loud.reset_integrated()
         log.info('source -> %s', source)

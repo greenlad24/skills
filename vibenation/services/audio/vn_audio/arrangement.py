@@ -5,17 +5,21 @@ Every analyzer frame (10/s) this decides, per channel, a small "arrangement offs
 graph adds to the fader (and so to the post-fader sends):
 
   lead vocal     0 dB    the singing voice that carries the song (most continuous + loudest)
-  backing vocal  -5 dB   any other voice singing at the same time
-  solo           +3 dB   a melodic instrument that takes over while no lead vocal sings
-  muted          (off)   any channel but the drums whose player has been silent for 8 s (user rule:
+  backing vocal  -3 dB   any other voice singing at the same time
+  solo           +2 dB   a melodic instrument that takes over while no lead vocal sings
+                         (user rule: the balance stays almost the same all night, so these moves are small)
+  muted          (off)   a supporting channel (CORE excluded) whose player has been silent for 8 s (user rule:
                          "not playing = muted until playing consistently"): no bleed, no mud.
+                         CORE channels (guitar amp, piano, vocals, bass DI, synth bass) are never muted
+                         unless silent for 10 minutes, and open again on the first played frame.
                          It opens when the player plays consistently (5 of the last 6 frames)
                          or at once on a strong entry (within 6 dB of the working level).
                          Vocal mics (user rule): open on the first sung frame, close only after
                          5 minutes with nobody singing.
 
 Pure logic, no audio: testable offline on the stems (tools/arrangement_sim.py).
-Moves are smooth (no clicks) and asymmetric: opening is fast, closing is slow.
+Moves are smooth (no clicks): opening from mute is fast, closing is a slow fade, and balance moves
+glide at 0.5 dB/s so nobody hears them (user, 17 Oct 2026).
 """
 
 from __future__ import annotations
@@ -30,11 +34,13 @@ PAIRS = {6: (6, 7)}                   # a stereo pair moves together
 AUTOMUTE = tuple(range(4, 17))        # everything but kick, snare, overheads
 LINE = (4, 6, 7, 8, 12, 14)           # DI/line inputs: no bleed, so any signal means playing
 
-BACKING_DB = -5.0
-SOLO_DB = 3.0
+BACKING_DB = -3.0
+SOLO_DB = 2.0
 MUTE_DB = -60.0
 MUTE_AFTER_S = 8.0
 VOICE_MUTE_AFTER_S = 300.0            # vocal mics stay open 5 min after the last singing
+CORE = (5, 6, 7, 9, 10, 12, 14)       # user rule: never auto-muted unless silent this long (drums never)
+CORE_MUTE_AFTER_S = 600.0
 STRONG_DB = -26.0                     # within 6 dB of the -20 dBFS working level: open at once
 LEAD_SWITCH_S = 2.0                   # a new lead must win for this long (hysteresis)
 SOLO_START_S = 3.0
@@ -42,7 +48,8 @@ VOCAL_REST_S = 4.0                    # a solo needs the lead vocal resting this
 PHRASE_GAP_S = 3.0                    # gaps between sung phrases shorter than this still count as singing
 SOLO_END_S = 1.5
 UP_DB_PER_FRAME = 30.0                # open: -60 -> 0 in 0.2 s
-DOWN_DB_PER_FRAME = 3.0               # close: a 2 s fade
+DOWN_DB_PER_FRAME = 1.0               # close: a 6 s fade
+GLIDE_DB_PER_FRAME = 0.05             # balance moves (lead/backing/solo): 0.5 dB/s, unnoticeable
 
 
 @dataclass
@@ -51,12 +58,12 @@ class ChannelState:
     ref: deque = field(default_factory=lambda: deque(maxlen=60 * FPS))       # 60 s of active levels
     silent_s: float = 99.0
     offset: float = 0.0
-    muted: bool = True                                                        # until it plays
+    muted: bool = True                                                        # until it plays (CORE: open from the start)
 
 
 class Arrangement:
     def __init__(self) -> None:
-        self.ch = {n: ChannelState() for n in range(1, 17)}
+        self.ch = {n: ChannelState(silent_s=0.0, muted=False) if n in CORE else ChannelState() for n in range(1, 17)}
         self.lead: int | None = None
         self.challenger: tuple[int, float] | None = None   # (channel, seconds winning)
         self.solo: int | None = None
@@ -81,9 +88,9 @@ class Arrangement:
             voice = n in self.voices
             if c.muted:
                 recent = list(c.hist)[-6:]
-                if (voice and p) or sum(1 for q, _ in recent if q) >= 5 or (p and level.get(n, -120.0) > STRONG_DB):
+                if ((voice or n in CORE) and p) or sum(1 for q, _ in recent if q) >= 5 or (p and level.get(n, -120.0) > STRONG_DB):
                     c.muted = False
-            elif c.silent_s >= (VOICE_MUTE_AFTER_S if voice else MUTE_AFTER_S):
+            elif c.silent_s >= (CORE_MUTE_AFTER_S if n in CORE else VOICE_MUTE_AFTER_S if voice else MUTE_AFTER_S):
                 c.muted = True
         self._follow_lead(dt)
         self._follow_solo(dt)
@@ -175,7 +182,12 @@ class Arrangement:
             if n in self.held:
                 continue
             want = want_db[self.role(n)]
-            step = UP_DB_PER_FRAME if want > c.offset else DOWN_DB_PER_FRAME
+            if want > c.offset and c.offset < -20:
+                step = UP_DB_PER_FRAME    # opening from mute: fast, the first notes count
+            elif want == MUTE_DB:
+                step = DOWN_DB_PER_FRAME  # closing: a slow fade
+            else:
+                step = GLIDE_DB_PER_FRAME # lead/backing/solo moves glide: a musician shouldn't hear them
             new = c.offset + max(-step, min(step, want - c.offset))
             if abs(new - c.offset) >= 0.01:
                 c.offset = round(new, 2)

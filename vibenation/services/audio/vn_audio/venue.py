@@ -24,6 +24,8 @@ import samplerate
 log = logging.getLogger('vn_audio.venue')
 CHANNELS = 16
 TARGET_FILL_S = 0.25  # buffer kept between network and JACK
+REC_DIR = os.environ.get('VN_MULTITRACK_DIR', os.path.join(os.path.dirname(__file__), '..', '..', '..', 'data', 'multitrack'))
+REC_FILE_S = 3600     # a new file every hour (and on every reconnect)
 ENV_FILE = os.path.join(os.path.dirname(__file__), '..', '..', '..', '.env')  # vibenation/.env (also /opt/vibenation/.env)
 
 
@@ -42,6 +44,81 @@ def venue_passphrase() -> str:
         log.error('VN_VENUE_PASSPHRASE must be 10-79 characters; venue feed NOT encrypted')
         return ''
     return v
+
+
+class Multitrack:
+    """Records the raw venue feed (all 16 channels, exactly as received) so a show can be remixed
+    afterwards: one mono 192 kb/s MP3 per channel (about 1.3 GB an hour for all 16), in a folder per
+    take (venue-YYYYMMDD-HHMMSS/ch01-kick.mp3 ...). One ffmpeg encodes them all; a writer thread feeds
+    it, so the live audio never waits on the disk."""
+
+    NAMES = ('kick', 'snare', 'overheads', 'acoustic-di', 'guitar-amp', 'piano-l', 'piano-r', 'guitar-di',
+             'vocal-centre', 'vocal-piano', 'congas-1', 'bass-di', 'congas-2', 'synth-bass', 'saxophone', 'harmonica')
+
+    def __init__(self, sr: int, folder: str = REC_DIR):
+        self.sr, self.folder = sr, folder
+        self.q: deque = deque(maxlen=3000)  # ~60 s of 20 ms chunks if the disk stalls
+        self.ev = threading.Event()
+        self.proc: subprocess.Popen | None = None
+        self.opened = 0.0
+        self.path: str | None = None
+        self.frames = 0
+        self.error: str | None = None
+        self.new_take = True
+        threading.Thread(target=self._writer, name='multitrack', daemon=True).start()
+
+    def push(self, x: np.ndarray) -> None:
+        self.q.append(x)
+        self.ev.set()
+
+    def cut(self) -> None:
+        """Next audio starts a new take (the feed dropped)."""
+        self.new_take = True
+
+    def _close(self) -> None:
+        if self.proc is not None:
+            try:
+                self.proc.stdin.close()
+                self.proc.wait(10)
+            except Exception:  # noqa: BLE001
+                self.proc.kill()
+            self.proc = None
+
+    def _open(self) -> None:
+        self._close()
+        self.path = os.path.join(self.folder, time.strftime('venue-%Y%m%d-%H%M%S'))
+        os.makedirs(self.path, exist_ok=True)
+        split = ''.join(f'[s{i}]' for i in range(CHANNELS))
+        graph = f'[0:a]asplit={CHANNELS}{split};' + ';'.join(f'[s{i}]pan=mono|c0=c{i}[a{i}]' for i in range(CHANNELS))
+        cmd = ['ffmpeg', '-hide_banner', '-loglevel', 'error', '-f', 'f32le', '-ar', str(self.sr), '-ac', str(CHANNELS), '-i', '-',
+               '-filter_complex', graph]
+        for i in range(CHANNELS):
+            cmd += ['-map', f'[a{i}]', '-c:a', 'libmp3lame', '-b:a', '192k', os.path.join(self.path, f'ch{i + 1:02d}-{self.NAMES[i]}.mp3')]
+        self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        self.opened = time.time()
+        self.new_take = False
+        log.info('multitrack: recording %s', self.path)
+
+    def _writer(self) -> None:
+        while True:
+            self.ev.wait(1.0)
+            self.ev.clear()
+            while self.q:
+                x = self.q.popleft()
+                try:
+                    if self.proc is None or self.proc.poll() is not None or self.new_take or time.time() - self.opened > REC_FILE_S:
+                        self._open()
+                    self.proc.stdin.write(np.ascontiguousarray(x, dtype=np.float32).tobytes())
+                    self.frames += len(x)
+                    self.error = None
+                except Exception as e:  # noqa: BLE001 - a full disk must never touch the live audio
+                    if self.error != str(e):
+                        log.warning('multitrack: %s', e)
+                    self.error = str(e)
+                    self.proc = None
+
+    def status(self) -> dict:
+        return {'take': os.path.basename(self.path) if self.path else None, 'minutes': round(self.frames / self.sr / 60, 1), 'error': self.error}
 
 
 class VenueReceiver:
@@ -64,6 +141,7 @@ class VenueReceiver:
         self.last_data = 0.0
         self.underruns = 0
         self.sender: str | None = None
+        self.rec = Multitrack(self.sr) if os.environ.get('VN_MULTITRACK', '1') != '0' else None
         self.client.set_process_callback(self._process)
         self.client.activate()
         threading.Thread(target=self._run, name='venue-srt', daemon=True).start()
@@ -116,10 +194,14 @@ class VenueReceiver:
                     log.info('venue feed connected')
                 self.connected = True
                 self.last_data = time.time()
+                if self.rec is not None:
+                    self.rec.push(x)
                 self._push(x)
             proc.wait()
             if self.connected:
                 log.warning('venue feed lost; listening again')
+            if self.rec is not None:
+                self.rec.cut()
             self.connected = False
             with self.lock:
                 self.buf.clear()
@@ -167,4 +249,5 @@ class VenueReceiver:
             'underruns': self.underruns,
             'port': self.port,
             'encrypted': bool(self.passphrase),
+            'recording': self.rec.status() if self.rec is not None else None,
         }

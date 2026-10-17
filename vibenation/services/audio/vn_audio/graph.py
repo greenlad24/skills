@@ -301,8 +301,8 @@ class MixGraph:
         for k, v in data.get('fx', {}).items():
             if k in self.fx:
                 self.fx[k].update(v)
-        self.master_gain = float(data.get('master_gain', 0.0))
-        self.band_offset = float(data.get('band_offset', 0.0))
+        self.master_gain = min(P.MAX_DRIVE_DB, float(data.get('master_gain', 0.0)))
+        self.band_offset = max(-3.0, min(2.0, float(data.get('band_offset', 0.0))))  # same range as the keeper
 
     def snapshot(self) -> dict:
         return {
