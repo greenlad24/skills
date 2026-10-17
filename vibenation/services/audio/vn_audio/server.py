@@ -27,6 +27,7 @@ from .analyzer import Analyzer, wav_bytes
 from .graph import COMP, LIMITER, MCOMP, MTAPE, MixGraph, port
 from .modhost import ModHost
 from .player import StemPlayer
+from .venue import VenueReceiver
 
 log = logging.getLogger('vn_audio')
 STEMS = os.environ.get('VN_STEMS', '/root/vibenation-media/stems-2026-04-04')
@@ -41,6 +42,8 @@ class Engine:
         self.player = StemPlayer(STEMS)
         log.info('player ready %.1f s', time.time() - t0)
         self.analyzer = Analyzer()
+        self.venue = VenueReceiver(port=int(os.environ.get('VN_VENUE_PORT', '9000')))
+        self.source = 'recording'  # or 'venue'
         self.mh = ModHost.launch()
         log.info('plugin host up %.1f s', time.time() - t0)
         self.gr = [0.0] * 16
@@ -79,9 +82,11 @@ class Engine:
             self.mh.connect_ports(self.graph.strip_out(n), f'{a}:ch_{n}')
         for n, src in enumerate(self.player.port_names, 1):
             self.mh.connect_ports(src, f'{a}:raw_{n}')
+        threading.Thread(target=self._auto_source, name='auto-source', daemon=True).start()
         self.mh.connect_ports(port(MTAPE, 'out_l'), f'{a}:pre_l')
         self.mh.connect_ports(port(MTAPE, 'out_r'), f'{a}:pre_r')
         self.leveller_on = True
+        self.auto_venue = True
         # Soundcheck calibration: digital trims so each source's active level sits near -20 dBFS RMS.
         self.calibrating_until = 0.0
         self.active: list[deque] = [deque(maxlen=600) for _ in range(16)]
@@ -134,7 +139,7 @@ class Engine:
         the music drops more than 10 dB under its 5-minute median (song ends, talk, breaks), and
         it never lifts anything quieter than -30 LUFS."""
         now = time.time()
-        if not self.leveller_on or now - self.last_level < 1.0 or not self.player.playing:
+        if not self.leveller_on or now - self.last_level < 1.0 or not self.running():
             return
         self.last_level = now
         s = m['lufsS'] - self.graph.master_gain  # loudness before the leveller's own drive
@@ -249,7 +254,7 @@ class Engine:
                 if self.dead_alerted[i]:
                     self.dead_alerted[i] = False
                     self.broadcast({'type': 'alert', 'level': 'info', 'ch': n, 'text': f'{st.name} is back.'})
-            elif band_on and self.last_heard[i] and now - self.last_heard[i] > 20 and not self.dead_alerted[i] and n in (9, 10, 15) and self.player.playing:
+            elif band_on and self.last_heard[i] and now - self.last_heard[i] > 20 and not self.dead_alerted[i] and n in (9, 10, 15) and self.running():
                 self.dead_alerted[i] = True
                 self.broadcast({'type': 'alert', 'level': 'error', 'ch': n, 'text': f'{st.name} has no signal at all (not even stage bleed) for 20 s while the band plays — check the mic, cable or wireless pack.'})
 
@@ -290,7 +295,7 @@ class Engine:
         self.calibrating_until = time.time() + minutes * 60
 
     def _calibrate(self, raw: list[float]) -> None:
-        if not self.player.playing or time.time() > self.calibrating_until:
+        if not self.running() or time.time() > self.calibrating_until:
             return
         for i, v in enumerate(raw):
             if v > -50:  # the source itself is playing (not hiss or stage bleed)
@@ -325,6 +330,45 @@ class Engine:
             self.save()
             self.broadcast(self.state())
 
+    def running(self) -> bool:
+        """Audio is flowing from the current source."""
+        return self.player.playing if self.source == 'recording' else self.venue.status()['connected']
+
+    def set_source(self, source: str) -> None:
+        """Switch the whole mix between the test recording and the live venue feed."""
+        if source == self.source or source not in ('recording', 'venue'):
+            return
+        old = self.player.port_names if self.source == 'recording' else self.venue.port_names
+        new = self.venue.port_names if source == 'venue' else self.player.port_names
+        self.graph.set_source(old, new)
+        a = self.analyzer.client.name
+        for n in range(1, 17):
+            try:
+                self.mh.cmd(f'disconnect {old[n - 1]} {a}:raw_{n}')
+            except Exception:  # noqa: BLE001
+                pass
+            self.mh.connect_ports(new[n - 1], f'{a}:raw_{n}')
+        if source == 'venue':
+            self.player.pause()
+            if not self.calibrated_session:  # first live audio of the session: soundcheck calibration
+                self.calibrated_session = True
+                self.start_calibration()
+        self.source = source
+        self.analyzer.loud.reset_integrated()
+        log.info('source -> %s', source)
+        self.broadcast(self.state())
+
+    def _auto_source(self) -> None:
+        """When the venue laptop starts sending, the mix follows it automatically."""
+        while True:
+            time.sleep(1)
+            on = self.venue.status()['connected']
+            if on and self.source != 'venue' and self.auto_venue:
+                self.set_source('venue')
+            elif not on and self.source == 'venue' and time.time() - self.venue.last_data > 10:
+                self.broadcast({'type': 'alert', 'level': 'error', 'ch': 0, 'text': 'Venue feed lost for 10 s — check the venue laptop and its network. Mix holds; switching back when it returns.'})
+                self.venue.last_data = time.time()  # alert at most every 10 s
+
     def save(self) -> None:
         os.makedirs(DATA, exist_ok=True)
         tmp = self.state_file + '.tmp'
@@ -340,7 +384,8 @@ class Engine:
             self.loop.call_soon_threadsafe(_offer, q, data)
 
     def state(self) -> dict:
-        return {'type': 'engine', 'mix': self.graph.snapshot(), 'transport': self.player.status(), 'leveller': self.leveller_on,
+        tr = self.player.status() if self.source == 'recording' else {**self.player.status(), 'source': 'venue', 'name': 'MR18 venue feed', 'playing': self.venue.status()['connected']}
+        return {'type': 'engine', 'mix': self.graph.snapshot(), 'transport': tr, 'venue': self.venue.status(), 'leveller': self.leveller_on,
                 'calibrating': self.calibrating_until > time.time()}
 
     # ---------- commands ----------
@@ -400,6 +445,9 @@ class Engine:
                 self.analyzer.loud.reset_integrated()
         elif t == 'param_get':  # diagnostics: read any plugin port through our mod-host connection
             return {'value': self.mh.cmd(f"param_get {int(c['inst'])} {c['symbol']}")}
+        elif t == 'source':
+            self.auto_venue = c.get('source') == 'venue'
+            self.set_source(str(c.get('source')))
         elif t == 'calibrate':
             self.start_calibration(float(c.get('minutes', 20)))
         elif t == 'leveller':

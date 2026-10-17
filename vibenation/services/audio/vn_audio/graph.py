@@ -187,6 +187,20 @@ class MixGraph:
         self.apply_fader(n)
         self.apply_sends(n)
 
+    def input_port(self, n: int) -> str:
+        """First plugin input of a strip (where the source plugs in)."""
+        return port(GATE + n, 'in') if self.strips[n].gate else port(EQ + n, 'in')
+
+    def set_source(self, old: list[str], new: list[str]) -> None:
+        """Re-plug all 16 strips from one source (recording / venue) to another."""
+        for n in range(1, 17):
+            try:
+                self.mh.cmd(f'disconnect {old[n - 1]} {self.input_port(n)}')
+            except Exception:  # noqa: BLE001 - may already be disconnected
+                pass
+            self.mh.connect_ports(new[n - 1], self.input_port(n))
+        self.sources = new
+
     def strip_out(self, n: int) -> str:
         k = len(self.strips[n].inserts)
         return port(INS + 10 * n + k - 1, 'out') if k else port(COMP + n, 'out')
