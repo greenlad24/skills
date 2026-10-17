@@ -99,9 +99,9 @@ STRIPS: list[Strip] = [
     Strip(13, 'Congas 2', -16.0, 50,
           eq=[('hpf', 90, 0, 0.7), ('bell', 350, -2.5, 1.2), ('bell', 4500, 2.5, 1.0)],
           comp=Comp(-20, 4, 15, 80, 2, peak=True), room=-18),
-    Strip(14, 'Synth bass', -4.8, 0,  # user 17 Oct 2026: more, and clear, synth bass
-          eq=[('bell', 55, 2.5, 1.0), ('bell', 250, -2.0, 1.0), ('bell', 1000, 3.0, 1.0)],  # 1 kHz = definition on phones
-          comp=Comp(-20, 3, 20, 150, 2), no_hpf=True),
+    Strip(14, 'Synth bass', -7.3, 0,  # user 17 Oct 2026: strong but defined synth bass, a little less sub
+          eq=[('bell', 55, 0.0, 1.0), ('bell', 250, -2.0, 1.0), ('bell', 1000, 3.0, 1.0), ('bell', 35, -5.0, 1.0)],  # 1 kHz = definition; 35 Hz cut = no boom
+          comp=Comp(-22, 4, 20, 150, 2), no_hpf=True),
     Strip(15, 'Saxophone', -2.1, -25,
           eq=[('hpf', 120, 0, 0.7), ('bell', 400, -2.5, 1.2), ('bell', 2100, -1.5, 4.0), ('bell', 4000, -1.5, 4.0), ('hshelf', 8000, 2.0, 0.7)],
           comp=Comp(-27, 3, 10, 120, 3), plate=-10, delay=-20, rider=0.0),

@@ -48,7 +48,7 @@ export const CHANNELS: ChannelDef[] = [
   { n: 11, name: 'Congas 1', short: 'Congas', section: 'perc', fader: -16 },
   { n: 12, name: 'Bass DI', short: 'Bass DI', section: 'bass', fader: -10, noHpf: true },
   { n: 13, name: 'Congas 2', short: 'Congas 2', section: 'perc', fader: -16 },
-  { n: 14, name: 'Synth bass', short: 'Synth B', section: 'bass', fader: -4.8, noHpf: true }, // +3 dB (user, 17 Oct 2026)
+  { n: 14, name: 'Synth bass', short: 'Synth B', section: 'bass', fader: -7.3, noHpf: true }, // +3 dB (user, 17 Oct 2026)
   { n: 15, name: 'Saxophone', short: 'Sax', section: 'horn', fader: -2.1 },
   { n: 16, name: 'Harmonica', short: 'Harm', section: 'horn', fader: -10 },
 ];
