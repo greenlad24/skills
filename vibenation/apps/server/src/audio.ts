@@ -38,6 +38,7 @@ export class AudioLink {
   strips: Record<string, EngineStrip> = {};
   /** Last ~30 s of measurement frames (10 per second) for the mixer loop. */
   history: EngineFrame[] = [];
+  private stateAt = Date.now();
   onAlert?: (a: { level: 'error' | 'info'; ch: number; text: string }) => void;
   private base: Record<string, EngineStrip> = {};
 
@@ -78,6 +79,13 @@ export class AudioLink {
   }
 
   private applyState(s: EngineState) {
+    // The mixer judges only music that is playing now: start its history afresh on a stop,
+    // a set change or a jump (seek), so paused silence or another song never mixes in.
+    const was = this.status as Partial<AudioStatus> | undefined;
+    const t = s.transport as Partial<AudioStatus>;
+    const expected = (was?.position ?? 0) + (was?.playing ? (Date.now() - this.stateAt) / 1000 : 0);
+    if (was && (!t.playing || t.set !== was.set || Math.abs((t.position ?? 0) - expected) > 5)) this.history = [];
+    this.stateAt = Date.now();
     this.strips = s.mix.strips;
     if (s.mix.base) this.base = s.mix.base;
     this.status = { connected: true, ...s.transport, calibrating: s.calibrating, leveller: s.leveller };
@@ -98,8 +106,10 @@ export class AudioLink {
   }
 
   private applyFrame(f: EngineFrame) {
-    this.history.push(f);
-    if (this.history.length > 300) this.history.shift();
+    if (this.status?.playing) {
+      this.history.push(f);
+      if (this.history.length > 300) this.history.shift();
+    }
     const post = f.peak.map((p, i) => {
       const s = this.strips[String(i + 1)];
       return s ? p + s.fader : p;

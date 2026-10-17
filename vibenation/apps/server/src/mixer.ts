@@ -153,7 +153,8 @@ export class MixerLoop {
     for (const c of chans) {
       const i = c.n - 1;
       const active = frames.filter((f) => f.singing?.[i] ?? f.raw[i] > -55).length / n;
-      if (active < 0.05 || c.mute) continue;
+      // Drum hits are too short for the sustained-level test: always report the kit.
+      if ((active < 0.05 && c.section !== 'drums') || c.mute) continue;
       const lvl = dbOf(avg((f) => pw(f.rms[i] + c.fader)));
       const gr = avg((f) => f.gr[i]);
       const ride = avg((f) => f.ride?.[i] ?? 0);
