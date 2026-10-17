@@ -8,13 +8,15 @@ credentials ever live on the show server).
 
 usage:
   showserver.py plan                 # print what would be created and the price
-  showserver.py create [--dry-run] [--retry <min>] [--ttl <min>]
+  showserver.py create [--dry-run] [--retry <min>] [--ttl <min>] [--size S] [--image I] [--regions a,b]
                                      # first free region; create + provision + verify NVENC;
                                      # auto-destroyed after --ttl minutes (default 120)
   showserver.py status               # list running show servers (and their cost so far)
   showserver.py provision <ip>       # (re)push code and services to a running server
   showserver.py destroy              # destroy every show server (tag vibenation-show)
   showserver.py reap                 # destroy show servers past their time-to-live (run by a timer)
+  showserver.py connect <ip>         # point the web app at a show server (SSH tunnel); create does this
+  showserver.py disconnect           # back to the build server's own engine; destroy does this
 
 Needs DIGITALOCEAN_TOKEN in vibenation/.env (never committed).
 """
@@ -183,6 +185,7 @@ def cmd_create(dry: bool, retry_min: int, ttl: int) -> None:
         time.sleep(10)
     print(f'Show server up at {ip}. Provisioning…')
     cmd_provision(ip)
+    cmd_connect(ip)
 
 
 # Only these settings go to the show server. Everything else in .env (DigitalOcean token,
@@ -195,10 +198,58 @@ def _sent(key: str) -> bool:
     return key in SHOW_ENV_KEYS or key.startswith(SHOW_ENV_PREFIXES)
 
 
+# Tonight's topology: phones keep using LiveKit on the build server (HTTPS, already working);
+# the show server's video service subscribes to it over the internet and encodes on the GPU.
+SHOW_OVERRIDES = {'LIVEKIT_URL': 'wss://app.jeeznews.com', 'VN_VIDEO_PROFILE': 'gpu'}
+# The build server's web app reaches the show server's engines through an SSH tunnel on these ports.
+TUNNEL = {'VN_AUDIO_URL': (18091, 8091), 'VN_VIDEO_URL': (18092, 8092)}
+TUNNEL_UNIT = '/etc/systemd/system/vibenation-showtunnel.service'
+APP_DROPIN = '/etc/systemd/system/vibenation.service.d/show-server.conf'
+
+
 def show_env() -> str:
     path = os.path.join(ROOT, '.env')
     lines = open(path).read().splitlines() if os.path.exists(path) else []
-    return ''.join(l + '\n' for l in lines if '=' in l and _sent(l.split('=', 1)[0].strip()))
+    keep = [l for l in lines if '=' in l and _sent(l.split('=', 1)[0].strip()) and l.split('=', 1)[0].strip() not in SHOW_OVERRIDES]
+    return ''.join(l + '\n' for l in keep) + ''.join(f'{k}={v}\n' for k, v in SHOW_OVERRIDES.items())
+
+
+def _sudo_write(path: str, text: str) -> None:
+    subprocess.run(['sudo', 'mkdir', '-p', os.path.dirname(path)], check=True)
+    subprocess.run(['sudo', 'tee', path], input=text, text=True, check=True, stdout=subprocess.DEVNULL)
+
+
+def cmd_connect(ip: str) -> None:
+    """Point the build server's web app at the show server: SSH tunnel + VN_AUDIO_URL/VN_VIDEO_URL."""
+    forwards = ' '.join(f'-L 127.0.0.1:{lp}:127.0.0.1:{rp}' for lp, rp in TUNNEL.values())
+    _sudo_write(TUNNEL_UNIT, f"""[Unit]
+Description=VibeNation: SSH tunnel to the show server ({ip})
+After=network-online.target
+
+[Service]
+User=vibe
+ExecStart=/usr/bin/ssh -i {SSH_KEY} -N -o ServerAliveInterval=10 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -o StrictHostKeyChecking=accept-new {forwards} root@{ip}
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+""")
+    _sudo_write(APP_DROPIN, '[Service]\n' + ''.join(f'Environment={k}=http://127.0.0.1:{lp}\n' for k, (lp, _) in TUNNEL.items()))
+    subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
+    subprocess.run(['sudo', 'systemctl', 'enable', '--now', 'vibenation-showtunnel'], check=True)
+    subprocess.run(['sudo', 'systemctl', 'restart', 'vibenation'], check=True)
+    print(f'Connected: the app now drives the show server at {ip} (audio :{TUNNEL["VN_AUDIO_URL"][0]}, video :{TUNNEL["VN_VIDEO_URL"][0]}).')
+    print(f'Venue laptop: set server = {ip} in sender.ini.')
+
+
+def cmd_disconnect() -> None:
+    """Back to the build server's own engine (the stems)."""
+    subprocess.run(['sudo', 'systemctl', 'disable', '--now', 'vibenation-showtunnel'], check=False, capture_output=True)
+    subprocess.run(['sudo', 'rm', '-f', TUNNEL_UNIT, APP_DROPIN], check=False)
+    subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=False)
+    subprocess.run(['sudo', 'systemctl', 'restart', 'vibenation'], check=False)
+    print('Disconnected: the app uses the build server\'s own engine again.')
 
 
 def cmd_provision(ip: str) -> None:
@@ -209,6 +260,11 @@ def cmd_provision(ip: str) -> None:
     subprocess.run([*rsync, ROOT + '/', f'root@{ip}:/opt/vibenation/'], check=True)
     subprocess.run(['ssh', '-i', SSH_KEY, '-o', 'StrictHostKeyChecking=accept-new', f'root@{ip}',
                     'umask 077 && cat > /opt/vibenation/.env'], input=show_env(), text=True, check=True)
+    # The tuned mix (faders, EQ, compressors) — data/ is otherwise excluded.
+    mix = os.path.join(ROOT, 'data', 'mix_state.json')
+    if os.path.exists(mix):
+        subprocess.run(['ssh', '-i', SSH_KEY, f'root@{ip}', 'mkdir -p /opt/vibenation/data'], check=True)
+        subprocess.run(['rsync', '-az', '-e', f'ssh -i {SSH_KEY}', mix, f'root@{ip}:/opt/vibenation/data/mix_state.json'], check=True)
     subprocess.run(['rsync', '-az', '-e', f'ssh -i {SSH_KEY}', '/usr/local/lib/lv2/', f'root@{ip}:/usr/local/lib/lv2/'], check=True)
     r = ssh(ip, 'bash /opt/vibenation/infra/showserver/provision.sh', check=False)
     print(r.stdout[-3000:])
@@ -249,6 +305,7 @@ def cmd_destroy() -> None:
     if not ds:
         print('Nothing to destroy.')
         return
+    cmd_disconnect()
     api('DELETE', f'/droplets?tag_name={TAG}')
     print(f'Destroyed {len(ds)} show server(s).')
 
@@ -256,6 +313,18 @@ def cmd_destroy() -> None:
 if __name__ == '__main__':
     load_env()
     args = sys.argv[1:] or ['plan']
+    # --size / --image / --regions override the defaults (e.g. a cheap CPU rehearsal server).
+    for flag in ('--size', '--image', '--regions'):
+        if flag in args:
+            i = args.index(flag)
+            val = args[i + 1]
+            del args[i:i + 2]
+            if flag == '--size':
+                SIZE = val
+            elif flag == '--image':
+                IMAGE = val
+            else:
+                REGIONS = [r.strip() for r in val.split(',') if r.strip()]
     {'plan': cmd_plan, 'status': cmd_status, 'destroy': cmd_destroy, 'reap': cmd_reap}.get(args[0], lambda: None)()
     if args[0] == 'create':
         retry = int(args[args.index('--retry') + 1]) if '--retry' in args else 0
@@ -263,5 +332,9 @@ if __name__ == '__main__':
         cmd_create('--dry-run' in args, retry, ttl)
     elif args[0] == 'provision':
         cmd_provision(args[1])
+    elif args[0] == 'connect':
+        cmd_connect(args[1])
+    elif args[0] == 'disconnect':
+        cmd_disconnect()
     elif args[0] not in ('plan', 'status', 'destroy', 'reap'):
         sys.exit(__doc__)
