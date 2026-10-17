@@ -99,7 +99,7 @@ STRIPS: list[Strip] = [
     Strip(13, 'Congas 2', -16.0, 50,
           eq=[('hpf', 90, 0, 0.7), ('bell', 350, -2.5, 1.2), ('bell', 4500, 2.5, 1.0)],
           comp=Comp(-20, 4, 15, 80, 2, peak=True), room=-18),
-    Strip(14, 'Synth bass', -7.3, 0,  # user 17 Oct 2026: strong but defined synth bass, a little less sub
+    Strip(14, 'Synth bass', -9.3, 0,  # user 17 Oct 2026: strong but defined synth bass, a little less sub
           eq=[('bell', 55, 0.0, 1.0), ('bell', 250, -2.0, 1.0), ('bell', 1000, 3.0, 1.0), ('bell', 35, -5.0, 1.0)],  # 1 kHz = definition; 35 Hz cut = no boom
           comp=Comp(-22, 4, 20, 150, 2), no_hpf=True),
     Strip(15, 'Saxophone', -2.1, -25,
@@ -113,7 +113,7 @@ STRIPS: list[Strip] = [
 # Stream master: light glue, gentle equal-loudness EQ, true-peak limiter.
 # Tuned 17 Oct 2026 by A/B on the same passage: the old top end measured ~8 dB dark (air -24.6 vs ~-19).
 # No mid cuts: they took the piano's body away (user, 17 Oct 2026: "lacking the piano").
-MASTER_EQ: list[Band] = [('hpf', 20, 0, 0.7), ('lshelf', 100, 3.5, 0.7), ('bell', 3000, 0.5, 0.8), ('hshelf', 6000, 5.0, 0.7)]
+MASTER_EQ: list[Band] = [('hpf', 30, 0, 0.7), ('lshelf', 100, 0.5, 0.7), ('bell', 250, -2.0, 1.0), ('bell', 3000, 0.5, 0.8), ('hshelf', 6000, 6.5, 0.7)]  # F: toward Scary Pockets (user's choice 17 Oct 2026)
 MASTER_COMP = Comp(-14, 2, 30, 200, 0)
 TARGET_LUFS = -16.0
 VOCALS = {9, 10}  # lead + second vocal: never pulled down by the band offset
@@ -161,5 +161,5 @@ for _s in STRIPS:
 
 # Master colour + glue + tape (before the x42 true-peak limiter).
 MASTER_CONSOLE = {'drive': 0, 'colour': 40, 'crosstalk': 0}
-MASTER_BUS = {'threshold': -18, 'ratio': 1, 'attack': 3, 'release': 4, 'sc_hpf': 90, 'makeup': 0, 'mix': 60}  # parallel 'New York' glue: density without losing punch
+MASTER_BUS = {'threshold': -20, 'ratio': 1, 'attack': 3, 'release': 4, 'sc_hpf': 90, 'makeup': 0, 'mix': 80}  # parallel 'New York' glue: density without losing punch
 MASTER_TAPE = {'speed': 1, 'drive': 0, 'saturation': 30, 'bias': 50, 'bump': 40, 'wow': 0, 'flutter': 0, 'mix': 50}

@@ -51,7 +51,7 @@ You never touch the MR18 preamp gain (you have no access to it). Fast moves (voc
 Band rules (always obey):
 - Vocals on top: the lead vocal (whichever of ch 9 / 10 the arrangement follower names) must stay intelligible; backing vocals sit about 5 dB under it automatically. Target lead-vocal-to-band ratio (LAR) +3 to +7 dB, ideally about +5.
 - No high-pass filter ever on kick (1), bass DI (12) or synth bass (14). Kick and bass work hand in hand; bass impressive but never overshadowing.
-- Synth bass (14) is a feature of this band's sound (user preference): full and present, fader floor -11 dB.
+- Synth bass (14) is a feature of this band's sound (user preference): full, defined and lean in the sub (Scary Pockets-style), fader floor -12 dB.
 - Piano (6+7, a stereo pair: always move both the same) is rich and clearly audible (user wants more piano), sits in the low-mids behind the singer: fader floor -9 dB.
 - Harmonica (16) can be very sharp: soften, never harsh. Sax (15) clear, never honky or harsh.
 - Drums are prominent (band preference): punchy kick and snare that drive the groove, just under the vocals. Never make them smaller with EQ, compression or sends; if something fights them, move that instead.
@@ -214,7 +214,7 @@ export class MixerLoop {
       const hi = LOCKED_FADERS.has(n) ? base + 1 : base + 6;
       let v = clamp(ch.fader + clamp(Number(c.value) - ch.fader, -1.5, 1.5), lo, hi);
       if (PIANO.has(n)) v = Math.max(v, -9); // user: more piano
-      if (n === 14) v = Math.max(v, -11); // synth bass floor (user preference)
+      if (n === 14) v = Math.max(v, -12); // synth bass floor (user preference; F balance sits at -9.3)
       v = r1(v);
       if (Math.abs(v - ch.fader) < 0.2) return null;
       cmd = { type: 'fader', ch: n, db: v };
