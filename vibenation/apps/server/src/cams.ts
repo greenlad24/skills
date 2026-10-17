@@ -58,6 +58,17 @@ async function ensureRoom(app: FastifyInstance) {
   }
 }
 
+/** The name a phone joined with ("CAM 1 · Drums" -> "Drums"), from the LiveKit room. */
+async function lkName(identity: string): Promise<string | null> {
+  try {
+    const ps = await new RoomServiceClient(LK_HTTP, LK_KEY, LK_SECRET).listParticipants(ROOM);
+    const p = ps.find((x) => x.identity === identity);
+    return p?.name ? p.name.split(' · ').slice(1).join(' · ') || p.name : null;
+  } catch {
+    return null;
+  }
+}
+
 async function lkToken(identity: string, name: string, publish: boolean) {
   const at = new AccessToken(LK_KEY, LK_SECRET, { identity, name, ttl: '12h' });
   at.addGrant({ room: ROOM, roomJoin: true, canPublish: publish, canSubscribe: !publish, canPublishData: publish });
@@ -121,11 +132,20 @@ export function registerCams(app: FastifyInstance, host: CamHost) {
     const send = (c: CamCommand) => socket.send(JSON.stringify(c));
     sockets.set(id, { send });
     send({ type: 'tally', live: host.liveCam() === id });
+    // After a server restart the phone reconnects here without re-joining: rebuild its real
+    // camera entry (identity + name from the LiveKit room) so it doesn't land on a demo camera.
+    const real = () => host.cams().find((c) => c.id === id && c.identity);
+    if (!real()) {
+      void lkName(`cam-${id}`).then((n) => {
+        if (real()) return;
+        host.upsertCam({ id, num: `CAM ${id}`, name: n ?? `Camera ${id}`, device: 'android', connected: true, battery: 100, charging: false, identity: `cam-${id}` });
+      });
+    }
     socket.on('message', (raw: Buffer) => {
       let s: CamStatus;
       try { s = JSON.parse(String(raw)); } catch { return; }
       if (s.type !== 'status') return;
-      const cur = host.cams().find((c) => c.id === id);
+      const cur = real();
       if (!cur) return;
       const battery = Math.round(s.battery ?? cur.battery);
       const warn = !s.landscape && s.landscape !== undefined ? 'Turn to landscape'
@@ -137,7 +157,7 @@ export function registerCams(app: FastifyInstance, host: CamHost) {
     });
     socket.on('close', () => {
       sockets.delete(id);
-      const cur = host.cams().find((c) => c.id === id);
+      const cur = real();
       if (cur) host.upsertCam({ ...cur, connected: false, error: 'Disconnected', warn: undefined });
     });
   });
