@@ -24,6 +24,7 @@ from aiohttp import WSMsgType, web
 
 from . import presets as P
 from .analyzer import Analyzer, wav_bytes
+from .arrangement import Arrangement
 from .graph import COMP, LIMITER, MCOMP, MTAPE, MixGraph, port
 from .modhost import ModHost
 from .player import StemPlayer
@@ -61,6 +62,7 @@ class Engine:
         self.ride_ref: list[deque] = [deque(maxlen=600) for _ in range(16)]  # 60 s of active levels
         self.st_hist: deque = deque(maxlen=300)  # 5 min of *music* short-term loudness for the leveller brake
         self.limiter_gr = 0.0
+        self.arr = Arrangement()  # lead/backing vocals, solos, auto-mute of idle channels
         self.mh.feedback(self._feedback)
         a = self.analyzer.client.name
         self.graph = MixGraph(
@@ -126,11 +128,12 @@ class Engine:
         self._level(m)
         self._calibrate(f['raw'])
         self._ride(f)
+        self._follow_arrangement(f)
         self._keep_vocals_on_top(f)
         self._watch_howl(f.get('howl', []))
         self._watch_clip_and_dead(f)
         frame = {'type': 'meters', **f, 'gr': self.gr, 'ride': self.ride, 'master': {**m, 'limiterGr': self.limiter_gr, 'busGr': self.bus_gr, 'drive': round(self.graph.master_gain, 1), 'bandOffset': round(self.graph.band_offset, 1)},
-                 'singing': [self.playing(n, f) for n in range(1, 17)]}
+                 'singing': [self.playing(n, f) for n in range(1, 17)], 'arrangement': self.arr.summary()}
         self.broadcast(frame)
 
     def _level(self, m: dict) -> None:
@@ -258,15 +261,31 @@ class Engine:
                 self.dead_alerted[i] = True
                 self.broadcast({'type': 'alert', 'level': 'error', 'ch': n, 'text': f'{st.name} has no signal at all (not even stage bleed) for 20 s while the band plays — check the mic, cable or wireless pack.'})
 
+    def _follow_arrangement(self, f: dict) -> None:
+        """Lead/backing vocals, solos and auto-mute (see arrangement.py). Only while the music runs;
+        channels a human muted or soloed are left alone."""
+        if not self.running():
+            return
+        g = self.graph
+        self.arr.held = {n for n in g.strips if g.mute[n] or g.solo[n]}
+        playing = {n: self.playing(n, f) for n in g.strips}
+        level = {n: f['raw'][n - 1] + g.strips[n].trim for n in g.strips}
+        raw = {n: f['raw'][n - 1] for n in g.strips}
+        for n, off in self.arr.frame(playing, level, raw).items():
+            g.arr[n] = off
+            g.apply_fader(n)
+            g.apply_sends(n)
+
     def _keep_vocals_on_top(self, f: dict) -> None:
         """Holds the lead-vocal-to-band ratio near +5 dB by moving one shared offset on all
         non-vocal channels (their balance against each other stays as set). Only learns while
         a vocal is actually singing; moves at most 0.5 dB every 2 s, range -12..+3 dB."""
         g = self.graph
         p = [10 ** ((f['rms'][i] + g.gain_db(i + 1)) / 10) * (0 if g.mute[i + 1] else 1) for i in range(16)]
-        voc = sum(p[i - 1] for i in P.VOCALS)
-        band = sum(p) - voc
-        sing = any(self.playing(i, f) for i in P.VOCALS) and voc > 1e-9 and band > 1e-9
+        lead = self.arr.lead if self.arr.lead_singing() else None
+        voc = p[lead - 1] if lead else 0.0
+        band = sum(p) - sum(p[i - 1] for i in self.arr.voices)  # backing voices count for neither side
+        sing = lead is not None and self.playing(lead, f) and voc > 1e-9 and band > 1e-9
         if sing:
             self.lar_hist.append(10 * math.log10(voc / band))
         now = time.time()

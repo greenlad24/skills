@@ -48,7 +48,7 @@ export const MIXER_SYSTEM = `You are the broadcast mix engineer for VibeNation, 
 You never touch the MR18 preamp gain (you have no access to it). Fast moves (vocal/solo riders on ch 9, 10, 15, 16 that even out each player's level, master loudness leveller, true-peak limiter) are automatic; you make small, deliberate, explainable adjustments every few minutes, like a calm A1 who listens, then nudges.
 
 Band rules (always obey):
-- Vocals on top: lead vocal (ch 9) and second vocal (ch 10) must stay intelligible. Target lead-vocal-to-band ratio (LAR) +3 to +7 dB, ideally about +5.
+- Vocals on top: the lead vocal (whichever of ch 9 / 10 the arrangement follower names) must stay intelligible; backing vocals sit about 5 dB under it automatically. Target lead-vocal-to-band ratio (LAR) +3 to +7 dB, ideally about +5.
 - No high-pass filter ever on kick (1), bass DI (12) or synth bass (14). Kick and bass work hand in hand; bass impressive but never overshadowing.
 - Synth bass (14) is a feature of this band's sound (user preference): full and present, fader floor -11 dB.
 - Piano (6+7, a stereo pair: always move both the same) is rich, sits in the low-mids behind the singer and is never low: fader floor -13 dB.
@@ -136,6 +136,11 @@ export class MixerLoop {
       if ((f.singing?.[8] || f.singing?.[9]) && band > 0) lar.push(dbOf(voc / band));
     }
     lar.sort((a, b) => a - b);
+    const arr = frames.at(-1)?.arrangement;
+    if (arr) {
+      const nm = (n: number) => `ch${n} ${chans[n - 1]?.name ?? ''}`;
+      lines.push(`Arrangement now (automatic, don't fight it): lead vocal ${arr.lead ? nm(arr.lead) : 'none'}; backing ${arr.backing.map(nm).join(', ') || 'none'} (auto -5 dB under the lead); solo ${arr.solo ? nm(arr.solo) + ' (auto +3 dB)' : 'none'}; auto-muted while idle: ${arr.muted.map((n) => `ch${n}`).join(', ') || 'none'} (they open by themselves when played).`);
+    }
     lines.push(lar.length > 20 ? `Vocal-to-band ratio (LAR) median ${lar[lar.length >> 1].toFixed(1)} dB, range ${lar[Math.floor(lar.length * 0.1)].toFixed(1)}..${lar[Math.floor(lar.length * 0.9)].toFixed(1)}.` : 'Vocals mostly silent in this window (LAR n/a).');
 
     // Master tonal balance in 8 groups of 4 bands (30 Hz – 16 kHz), relative to the mean.

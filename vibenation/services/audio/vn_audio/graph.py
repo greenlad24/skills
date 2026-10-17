@@ -67,6 +67,7 @@ class MixGraph:
         self.global_trim = 0.0  # unused (kept for saved-state compatibility)
         self.band_offset = 0.0  # "vocals on top": shared offset on every non-vocal channel (dB)
         self.ride: dict[int, float] = {}  # current rider gain per channel (dB)
+        self.arr: dict[int, float] = {}  # arrangement offset per channel (dB): lead/backing/solo/auto-mute, not saved
         self.master_gain = 0.0  # limiter input drive, dB (set by the loudness leveller)
         self.fx = {k: dict(v) for k, v in P.FX.items()}
         self.bpm = 118.0
@@ -219,9 +220,10 @@ class MixGraph:
         self.mh.param(COMP + n, 'g_out', lin(self.ride.get(n, 0.0)))
 
     def gain_db(self, n: int) -> float:
-        """Effective channel gain: the fader plus the band offset on non-vocal channels."""
+        """Effective channel gain: the fader, the band offset on non-vocal channels, and the
+        arrangement offset (lead/backing/solo/auto-mute)."""
         s = self.strips[n]
-        return s.fader + (0.0 if n in P.VOCALS else self.band_offset)
+        return s.fader + (0.0 if n in P.VOCALS else self.band_offset) + self.arr.get(n, 0.0)
 
     def apply_fader(self, n: int) -> None:
         s = self.strips[n]
