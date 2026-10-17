@@ -87,7 +87,7 @@ export class GoLive {
         unlocked.length ? `${unlocked.length} unlocked` : 'locked', unlocked.length ? 'warn' : 'ok');
       const low = live.filter((c) => c.battery < 50 && !c.charging);
       add('power', 'Camera power', low.length ? `${low.map((c) => `${c.num} at ${c.battery}%`).join(', ')} — plug in` : 'All phones charging or above 50%', low.length ? low.map((c) => `${c.num} ${c.battery}%`).join(' · ') : 'ok', low.length ? 'warn' : 'ok');
-      const slow = live.filter((c) => (c.fps ?? 60) < 50);
+      const slow = live.filter((c) => (c.fps ?? 60) < 25); // the show runs 1080p30
       if (slow.length) add('fps', 'Camera frame rate', `${slow.map((c) => `${c.num} ${Math.round(c.fps ?? 0)} fps`).join(', ')} — check Wi-Fi and heat`, `${slow.length} slow`, 'warn');
     }
 
@@ -127,7 +127,8 @@ export class GoLive {
       const keys = loadKeys();
       if (s.destinations.YT && s.ready.YT) {
         const pkg = this.h.pkg();
-        const scheduled = (await youtube.upcoming()).find((b) => b.scheduledStart && Math.abs(Date.parse(b.scheduledStart) - Date.now()) < 2 * 3600_000);
+        // Never reuse a broadcast whose title breaks the hard rules (old name, any location).
+        const scheduled = (await youtube.upcoming()).find((b) => b.scheduledStart && Math.abs(Date.parse(b.scheduledStart) - Date.now()) < 2 * 3600_000 && !/sunrise\s*jam|thailand|samui|island/i.test(b.title));
         const b = scheduled ? await youtube.bind(scheduled.id)
           : await youtube.create({ title: pkg?.titles[0] ?? 'LIVE: Funk & Soul Cover Band | Real Musicians (Not AI)', description: pkg?.description ?? 'Subscribe: https://youtube.com/@MusicLiveLove', privacy, tags: pkg?.tags });
         if (!b.ingest) throw new Error('YouTube did not return a stream key.');

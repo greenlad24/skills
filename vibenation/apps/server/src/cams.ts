@@ -151,7 +151,7 @@ export function registerCams(app: FastifyInstance, host: CamHost) {
       const warn = !s.landscape && s.landscape !== undefined ? 'Turn to landscape'
         : battery < 25 && !s.charging ? `Battery ${battery}%`
         : (s.temp ?? 0) >= 45 ? `Hot ${s.temp} °C`
-        : s.fps !== undefined && s.fps < 50 ? `${Math.round(s.fps)} fps`
+        : s.fps !== undefined && s.fps < 25 ? `${Math.round(s.fps)} fps` // the show runs 1080p30 (c-16 cpu profile)
         : undefined;
       host.upsertCam({ ...cur, connected: true, battery, charging: !!s.charging, temp: s.temp, wifi: s.wifi, kbps: s.kbps, fps: s.fps, width: s.width, height: s.height, wb: s.wb, exposure: s.exposure, locked: s.locked, warn, error: undefined });
     });
