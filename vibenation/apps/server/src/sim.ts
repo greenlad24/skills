@@ -2,7 +2,7 @@
 // reviewed before the real audio/video engines exist. Replaced piece by piece in
 // later milestones; the held-by-you rules here are the real rules.
 
-import { CHANNELS, type ClientAction, type FeedItem, type ShowState, type MeterFrame, type ChatMessage } from '@vibenation/shared';
+import { CHANNELS, type CameraState, type ClientAction, type FeedItem, type ShowState, type MeterFrame, type ChatMessage } from '@vibenation/shared';
 import { AudioLink } from './audio.js';
 import { MixerLoop } from './mixer.js';
 
@@ -29,6 +29,9 @@ const DEMO_CHAT: Omit<ChatMessage, 'id'>[] = [
 export class DemoShow {
   state: ShowState;
   private listeners = new Set<Listener>();
+  private realCams = new Map<number, CameraState>();
+  private demoCams: CameraState[] = [];
+  private camWatchers: (() => void)[] = [];
   private aiTouched = new Map<number, number>(); // ch -> last AI touch time
   private lastCut = now();
   private undo = new Map<string, () => void>();
@@ -113,6 +116,31 @@ export class DemoShow {
 
   private push() {
     for (const fn of this.listeners) fn({ type: 'state', state: this.state });
+    for (const fn of this.camWatchers) fn();
+  }
+
+  // ---- real phone cameras (CamHost) ----
+  cams() { return this.state.cams; }
+  liveCam() { return this.state.liveCam; }
+  onCamsChanged(fn: () => void) { this.camWatchers.push(fn); }
+  upsertCam(c: CameraState) {
+    const isNew = !this.realCams.has(c.id);
+    this.realCams.set(c.id, c);
+    this.syncCams();
+    if (isNew) this.feed({ kind: 'SHOW', text: `${c.num} · ${c.name} joined.`, why: c.device === 'iphone' ? 'iPhone camera page' : 'Android camera app' });
+    this.refreshProcs();
+    this.push();
+  }
+  camGone(id: number) {
+    this.realCams.delete(id);
+    this.syncCams();
+    this.push();
+  }
+  private syncCams() {
+    if (!this.demoCams.length) this.demoCams = this.state.cams.filter((c) => !c.identity);
+    const real = [...this.realCams.values()].sort((a, b) => a.id - b.id);
+    this.state.cams = real.length ? real : this.demoCams;
+    if (!this.state.cams.some((c) => c.id === this.state.liveCam)) this.state.liveCam = this.state.cams[0]?.id ?? 0;
   }
 
   private feed(f: Omit<FeedItem, 'id' | 't'>, undo?: () => void) {

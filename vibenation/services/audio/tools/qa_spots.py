@@ -55,13 +55,14 @@ async def main(dur=45, per_set=6):
                     # vocal (ch 9+10) vs everything else, post-fader RMS power
                     lar = []
                     for f in frames:
-                        p = [pw(f['rms'][i] + faders[i + 1]) for i in range(16)]
+                        off = f['master'].get('bandOffset', 0.0)
+                        p = [pw(f['rms'][i] + faders[i + 1] + (0 if i in (8, 9) else off)) for i in range(16)]
                         voc, band = p[8] + p[9], sum(p) - p[8] - p[9]
                         if voc > pw(-50) and band > 0:
                             lar.append(10 * math.log10(voc / band))
                     lar_s = f'{sorted(lar)[len(lar) // 2]:+.1f}' if lar else '  n/a'
                     rows.append((set_name, int(pos), last['lufsI'], min(st_vals), max(st_vals), tp, lim, lar_s, gr, ride, last.get('drive')))
-                    print(f"{set_name} {int(pos)//60:3d}:{int(pos)%60:02d}  I {last['lufsI']:6.1f}  S {min(st_vals):6.1f}..{max(st_vals):6.1f}  TP {tp:5.1f}  lim {lim:4.1f}  LAR {lar_s}  drive {last.get('drive')}", flush=True)
+                    print(f"{set_name} {int(pos)//60:3d}:{int(pos)%60:02d}  I {last['lufsI']:6.1f}  S {min(st_vals):6.1f}..{max(st_vals):6.1f}  TP {tp:5.1f}  lim {lim:4.1f}  LAR {lar_s}  drive {last.get('drive')}  band {last.get('bandOffset')}  bus {last.get('busGr')}", flush=True)
                     print('     GR  ', gr, flush=True)
                     print('     ride', ride, flush=True)
         await http.post(URL + '/cmd', json={'type': 'transport', 'action': 'pause'})

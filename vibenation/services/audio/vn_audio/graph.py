@@ -31,7 +31,9 @@ URI = {
     'room': 'urn:dragonfly:room',
     'delay': 'http://calf.sourceforge.net/plugins/VintageDelay',
     'meq': LSP + 'para_equalizer_x8_stereo',
-    'mcomp': LSP + 'compressor_stereo',
+    'mcomp': 'https://vibenation.app/lv2/vn_vca_bus',
+    'mconsole': 'https://vibenation.app/lv2/vn_console',
+    'mtape': 'https://vibenation.app/lv2/vn_tape_stereo',
     'limiter': 'http://gareus.org/oss/lv2/dpl#stereo',
 }
 
@@ -39,7 +41,8 @@ URI = {
 GATE, EQ, COMP = 100, 200, 300
 MIXER, SEND = 1000, {'plate': 1010, 'room': 1011, 'delay': 1012}
 FXI = {'plate': 1020, 'room': 1021, 'delay': 1022}
-RETURNS, MEQ, MCOMP, LIMITER = 1030, 1040, 1041, 1042
+RETURNS, MEQ, MCOMP, LIMITER, MCONSOLE, MTAPE = 1030, 1040, 1041, 1042, 1043, 1044
+INS = 500  # character inserts: 500 + 10*n + k
 RETURN_SLOT = {'plate': 1, 'room': 2, 'delay': 3}
 
 EQ_TYPE = {'off': 0, 'bell': 1, 'hpf': 2, 'hshelf': 3, 'lpf': 4, 'lshelf': 5}
@@ -61,7 +64,8 @@ class MixGraph:
         self.strips = {s.n: copy.deepcopy(s) for s in P.STRIPS}
         self.mute = {n: False for n in self.strips}
         self.solo = {n: False for n in self.strips}
-        self.global_trim = 0.0  # overall gain staging (dB) applied to every channel after its compressor
+        self.global_trim = 0.0  # unused (kept for saved-state compatibility)
+        self.band_offset = 0.0  # "vocals on top": shared offset on every non-vocal channel (dB)
         self.ride: dict[int, float] = {}  # current rider gain per channel (dB)
         self.master_gain = 0.0  # limiter input drive, dB (set by the loudness leveller)
         self.fx = {k: dict(v) for k, v in P.FX.items()}
@@ -80,6 +84,9 @@ class MixGraph:
         mh.add(URI['returns'], RETURNS)
         mh.add(URI['meq'], MEQ)
         mh.add(URI['mcomp'], MCOMP)
+        mh.add(URI['mconsole'], MCONSOLE)
+        mh.add(URI['mtape'], MTAPE)
+        mh.monitor(MCOMP, 'gr')
         mh.add(URI['limiter'], LIMITER)
 
         for n, s in self.strips.items():
@@ -93,6 +100,12 @@ class MixGraph:
             if s.gate:
                 mh.connect_ports(port(GATE + n, 'out'), port(EQ + n, 'in'))
             mh.connect_ports(port(EQ + n, 'out'), port(COMP + n, 'in'))
+            prev = port(COMP + n, 'out')
+            for k, (kind, _params) in enumerate(s.inserts):
+                inst = INS + 10 * n + k
+                mh.add(P.INSERT_URI[kind], inst)
+                mh.connect_ports(prev, port(inst, 'in'))
+                prev = port(inst, 'out')
             out = self.strip_out(n)
             mh.connect_ports(out, port(MIXER, f'in_{n}l'))
             mh.connect_ports(out, port(MIXER, f'in_{n}r'))
@@ -115,9 +128,11 @@ class MixGraph:
         for side in ('l', 'r'):
             mh.connect_ports(port(MIXER, f'out_{side}'), port(MEQ, f'in_{side}'))
             mh.connect_ports(port(RETURNS, f'out_{side}'), port(MEQ, f'in_{side}'))
-            mh.connect_ports(port(MEQ, f'out_{side}'), port(MCOMP, f'in_{side}'))
-        mh.connect_ports(port(MCOMP, 'out_l'), port(LIMITER, 'inL'))
-        mh.connect_ports(port(MCOMP, 'out_r'), port(LIMITER, 'inR'))
+            mh.connect_ports(port(MEQ, f'out_{side}'), port(MCONSOLE, f'in_{side}'))
+            mh.connect_ports(port(MCONSOLE, f'out_{side}'), port(MCOMP, f'in_{side}'))
+            mh.connect_ports(port(MCOMP, f'out_{side}'), port(MTAPE, f'in_{side}'))
+        mh.connect_ports(port(MTAPE, 'out_l'), port(LIMITER, 'inL'))
+        mh.connect_ports(port(MTAPE, 'out_r'), port(LIMITER, 'inR'))
         for pair in self.outputs:
             mh.connect_ports(port(LIMITER, 'outL'), pair[0])
             mh.connect_ports(port(LIMITER, 'outR'), pair[1])
@@ -172,21 +187,31 @@ class MixGraph:
         self.apply_sends(n)
 
     def strip_out(self, n: int) -> str:
-        return port(COMP + n, 'out')
+        k = len(self.strips[n].inserts)
+        return port(INS + 10 * n + k - 1, 'out') if k else port(COMP + n, 'out')
+
+    def apply_inserts(self, n: int) -> None:
+        for k, (_kind, params) in enumerate(self.strips[n].inserts):
+            for sym, v in params.items():
+                self.mh.param(INS + 10 * n + k, sym, v)
 
     def apply_gain(self, n: int) -> None:
-        """Gain staging around the compressor: the per-channel trim sets the level the
-        compressor sees (so thresholds mean the same on every source); after it, the level
-        is handed back (global trim - trim) so the recording's own balance and the band's
-        faders keep their meaning. The rider adds its current ride on top."""
+        """Gain staging: the per-channel trim (soundcheck calibration) brings every source to
+        the same working level, so compressor thresholds and the band's faders mean the same
+        on every channel. The rider adds its current ride after the compressor."""
         s = self.strips[n]
         self.mh.param(COMP + n, 'g_in', lin(s.trim))
-        self.mh.param(COMP + n, 'g_out', lin(self.global_trim - s.trim + self.ride.get(n, 0.0)))
+        self.mh.param(COMP + n, 'g_out', lin(self.ride.get(n, 0.0)))
+
+    def gain_db(self, n: int) -> float:
+        """Effective channel gain: the fader plus the band offset on non-vocal channels."""
+        s = self.strips[n]
+        return s.fader + (0.0 if n in P.VOCALS else self.band_offset)
 
     def apply_fader(self, n: int) -> None:
         s = self.strips[n]
         mh = self.mh
-        mh.param(MIXER, f'cg_{n}', min(3.98107, lin(s.fader)))
+        mh.param(MIXER, f'cg_{n}', min(3.98107, lin(self.gain_db(n))))
         mh.param(MIXER, f'cp_{n}l', s.pan)
         mh.param(MIXER, f'cp_{n}r', s.pan)
         mh.param(MIXER, f'cm_{n}', 1 if self.mute[n] else 0)
@@ -198,7 +223,7 @@ class MixGraph:
         for k, inst in SEND.items():
             db = getattr(s, k)
             on = db is not None and not self.mute[n]
-            self.mh.param(inst, f'cg_{n}', min(3.98107, lin(s.fader + db)) if on else 0)
+            self.mh.param(inst, f'cg_{n}', min(3.98107, lin(self.gain_db(n) + db)) if on else 0)
 
     def apply_fx(self) -> None:
         mh, fx = self.mh, self.fx
@@ -218,8 +243,10 @@ class MixGraph:
 
     def apply_master(self) -> None:
         self._eq(MEQ, P.MASTER_EQ, stereo=True)
-        self._comp(MCOMP, P.MASTER_COMP)
         mh = self.mh
+        for inst, params in ((MCONSOLE, P.MASTER_CONSOLE), (MCOMP, P.MASTER_BUS), (MTAPE, P.MASTER_TAPE)):
+            for sym, v in params.items():
+                mh.param(inst, sym, v)
         mh.param(LIMITER, 'threshold', P.CEILING_DBTP)
         mh.param(LIMITER, 'truepeak', 1)
         mh.param(LIMITER, 'release', 0.12)
@@ -252,15 +279,17 @@ class MixGraph:
             if k in self.fx:
                 self.fx[k].update(v)
         self.master_gain = float(data.get('master_gain', 0.0))
-        self.global_trim = float(data.get('global_trim', 0.0))
+        self.band_offset = float(data.get('band_offset', 0.0))
 
     def snapshot(self) -> dict:
         return {
             'strips': {n: {**asdict(s), 'mute': self.mute[n], 'solo': self.solo[n]} for n, s in self.strips.items()},
             'base': {s.n: asdict(s) for s in P.STRIPS},
+            'master': {'console': P.MASTER_CONSOLE, 'bus': P.MASTER_BUS, 'tape': P.MASTER_TAPE},
             'fx': self.fx,
             'master_gain': self.master_gain,
             'global_trim': self.global_trim,
+            'band_offset': self.band_offset,
             'bpm': self.bpm,
         }
 

@@ -24,7 +24,7 @@ from aiohttp import WSMsgType, web
 
 from . import presets as P
 from .analyzer import Analyzer
-from .graph import COMP, LIMITER, MCOMP, MixGraph, port
+from .graph import COMP, LIMITER, MCOMP, MTAPE, MixGraph, port
 from .modhost import ModHost
 from .player import StemPlayer
 
@@ -44,7 +44,10 @@ class Engine:
         self.mh = ModHost.launch()
         log.info('plugin host up %.1f s', time.time() - t0)
         self.gr = [0.0] * 16
+        self.bus_gr = 0.0
         self.ride = [0.0] * 16  # current rider gain (dB) per channel
+        self.lar_hist: deque = deque(maxlen=150)  # 15 s of vocal-over-band while singing
+        self.last_lar = 0.0
         self.ride_lvl: list[deque] = [deque(maxlen=4) for _ in range(16)]  # 400 ms of channel power
         self.ride_ref: list[deque] = [deque(maxlen=600) for _ in range(16)]  # 60 s of active levels
         self.st_hist: deque = deque(maxlen=120)  # short-term loudness history for the leveller brake
@@ -70,8 +73,8 @@ class Engine:
             self.mh.connect_ports(self.graph.strip_out(n), f'{a}:ch_{n}')
         for n, src in enumerate(self.player.port_names, 1):
             self.mh.connect_ports(src, f'{a}:raw_{n}')
-        self.mh.connect_ports(port(MCOMP, 'out_l'), f'{a}:pre_l')
-        self.mh.connect_ports(port(MCOMP, 'out_r'), f'{a}:pre_r')
+        self.mh.connect_ports(port(MTAPE, 'out_l'), f'{a}:pre_l')
+        self.mh.connect_ports(port(MTAPE, 'out_r'), f'{a}:pre_r')
         self.leveller_on = True
         # Soundcheck calibration: digital trims so each source's active level sits near -20 dBFS RMS.
         self.calibrating_until = 0.0
@@ -93,7 +96,9 @@ class Engine:
         parts = msg.split()
         if len(parts) == 4 and parts[0] == 'output_set':
             inst, val = int(parts[1]), float(parts[3])
-            if parts[2] == 'rlm' and COMP < inst <= COMP + 16:
+            if parts[2] == 'gr' and inst == MCOMP:
+                self.bus_gr = round(abs(val), 1)
+            elif parts[2] == 'rlm' and COMP < inst <= COMP + 16:
                 self.gr[inst - COMP - 1] = round(-20 * math.log10(max(val, 1e-6)), 1)
 
 
@@ -110,7 +115,8 @@ class Engine:
         self._level(m)
         self._calibrate(f['raw'])
         self._ride(f)
-        frame = {'type': 'meters', **f, 'gr': self.gr, 'ride': self.ride, 'master': {**m, 'limiterGr': self.limiter_gr, 'drive': round(self.graph.master_gain, 1)}}
+        self._keep_vocals_on_top(f)
+        frame = {'type': 'meters', **f, 'gr': self.gr, 'ride': self.ride, 'master': {**m, 'limiterGr': self.limiter_gr, 'busGr': self.bus_gr, 'drive': round(self.graph.master_gain, 1), 'bandOffset': round(self.graph.band_offset, 1)}}
         self.broadcast(frame)
 
     def _level(self, m: dict) -> None:
@@ -168,6 +174,33 @@ class Engine:
             self.ride[i] = round(new, 1)
             g.apply_gain(n)
 
+    def _keep_vocals_on_top(self, f: dict) -> None:
+        """Holds the lead-vocal-to-band ratio near +5 dB by moving one shared offset on all
+        non-vocal channels (their balance against each other stays as set). Only learns while
+        a vocal is actually singing; moves at most 0.5 dB every 2 s, range -12..+3 dB."""
+        g = self.graph
+        p = [10 ** ((f['rms'][i] + g.gain_db(i + 1)) / 10) * (0 if g.mute[i + 1] else 1) for i in range(16)]
+        voc = sum(p[i - 1] for i in P.VOCALS)
+        band = sum(p) - voc
+        sing = any(f['raw'][i - 1] > -50 for i in P.VOCALS) and voc > 1e-7 and band > 1e-9
+        if sing:
+            self.lar_hist.append(10 * math.log10(voc / band))
+        now = time.time()
+        if now - self.last_lar < 2 or len(self.lar_hist) < 30:
+            return
+        self.last_lar = now
+        lar = sorted(self.lar_hist)[len(self.lar_hist) // 2]
+        err = P.TARGET_LAR - lar
+        if abs(err) < 1.0:
+            return
+        new = max(-12.0, min(3.0, g.band_offset - max(-0.5, min(0.5, err * 0.25))))
+        if abs(new - g.band_offset) >= 0.05:
+            g.band_offset = round(new, 2)
+            for k in g.strips:
+                if k not in P.VOCALS:
+                    g.apply_fader(k)
+                    g.apply_sends(k)
+
     def start_calibration(self, minutes: float = 20) -> None:
         """Soundcheck: for the next `minutes` of playback, set each channel's digital trim
         so its active level (90th percentile of 100 ms RMS) sits near -20 dBFS.
@@ -208,11 +241,6 @@ class Engine:
             self.calibrating_until = 0
             changed = True
         if changed:
-            # Overall gain staging: lift the whole band by the median trim so it sits near -20 dBFS,
-            # while each channel keeps its natural level relative to the others.
-            trims = sorted(st.trim for k, st in self.graph.strips.items() if len(self.active[k - 1]) >= 50)
-            if trims:
-                self.graph.global_trim = trims[len(trims) // 2]
             for k in self.graph.strips:
                 self.graph.apply_gain(k)
             self.save()

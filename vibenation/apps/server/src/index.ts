@@ -8,6 +8,7 @@ import path from 'node:path';
 import type { ClientAction, HealthResponse } from '@vibenation/shared';
 import { registerAuth } from './auth.js';
 import { DemoShow } from './sim.js';
+import { registerCams } from './cams.js';
 
 const PORT = Number(process.env.PORT ?? 8080);
 // Bind to localhost only; Caddy in front handles HTTPS once ports are approved.
@@ -26,6 +27,7 @@ app.get('/api/health', async (): Promise<HealthResponse> => ({
 }));
 
 const show = new DemoShow();
+registerCams(app, show);
 
 app.get('/ws', { websocket: true }, (socket) => {
   const off = show.subscribe((msg) => socket.send(JSON.stringify(msg)));

@@ -16,7 +16,41 @@ export interface CameraState {
   charging: boolean;
   warn?: string; // amber chip text, e.g. "Battery 18%"
   error?: string; // red chip text, e.g. "Disconnected"
+  /** Set for real phones (LiveKit participant identity); demo cameras have none. */
+  identity?: string;
+  temp?: number; // °C if the phone reports it
+  wifi?: string;
+  kbps?: number;
+  fps?: number;
+  width?: number;
+  height?: number;
+  wb?: string; // "4300 K · locked" / "auto"
+  exposure?: string;
+  locked?: boolean;
 }
+
+/** Phone -> server status, every ~2 s over /cam-ws. */
+export interface CamStatus {
+  type: 'status';
+  battery?: number; // 0..100
+  charging?: boolean;
+  temp?: number;
+  wifi?: string;
+  kbps?: number;
+  fps?: number;
+  width?: number;
+  height?: number;
+  wb?: string;
+  exposure?: string;
+  locked?: boolean;
+  landscape?: boolean;
+}
+
+/** Server -> phone. */
+export type CamCommand =
+  | { type: 'hello'; camId: number; num: string; name: string; livekitUrl: string; token: string; room: string }
+  | { type: 'tally'; live: boolean }
+  | { type: 'rename'; name: string };
 
 export interface EqBand {
   kind: 'hpf' | 'lpf' | 'bell' | 'lshelf' | 'hshelf' | 'off';

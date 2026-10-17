@@ -1,12 +1,28 @@
 # Public entry for the VibeNation web app. Caddy gets and renews the HTTPS
-# certificate automatically. Needs ports 80 and 443 open in ufw.
+# certificate automatically. Needs ports 80 and 443 open in ufw (plus 7881/tcp and
+# 7882/udp for the phone cameras' WebRTC media).
 app.jeeznews.com {
-	encode zstd gzip
-	reverse_proxy 127.0.0.1:8080
 	header {
 		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options nosniff
 		X-Frame-Options DENY
 		Referrer-Policy strict-origin-when-cross-origin
+	}
+
+	# Phone cameras: LiveKit signalling (WebSocket).
+	handle /rtc* {
+		reverse_proxy 127.0.0.1:7880
+	}
+
+	# Live audio: no compression, no buffering.
+	handle /api/audio/* {
+		reverse_proxy 127.0.0.1:8080 {
+			flush_interval -1
+		}
+	}
+
+	handle {
+		encode zstd gzip
+		reverse_proxy 127.0.0.1:8080
 	}
 }

@@ -51,6 +51,8 @@ class Strip:
     rider: float | None = None  # rider offset (dB) around the channel's own running level; None = no rider
     trim: float = 0.0  # digital input trim (dB) set by soundcheck calibration; never the MR18 preamp
     floor: float | None = None  # fader floor (dB) the agent may never go below
+    # Character inserts after the compressor: [(plugin key, {symbol: value})], our own analog models.
+    inserts: list[tuple[str, dict]] = field(default_factory=list)
 
 
 VOCAL_EQ: list[Band] = [
@@ -111,6 +113,8 @@ STRIPS: list[Strip] = [
 MASTER_EQ: list[Band] = [('hpf', 20, 0, 0.7), ('lshelf', 100, 2.0, 0.7), ('bell', 800, -1.0, 0.7), ('hshelf', 10000, 1.5, 0.7)]
 MASTER_COMP = Comp(-14, 2, 30, 200, 0)
 TARGET_LUFS = -16.0
+VOCALS = {9, 10}  # lead + second vocal: never pulled down by the band offset
+TARGET_LAR = 5.0  # lead vocal over band, dB (band rule: vocals on top; research +3..+7)
 CEILING_DBTP = -1.0
 
 # Shared effect returns (100% wet).
@@ -119,3 +123,33 @@ FX = {
     'room': {'decay': 0.6, 'predelay': 5, 'size': 12, 'in_high_cut': 8000, 'return_db': -6.0},
     'delay': {'note': 0.5, 'feedback': 0.35, 'hpf': 400, 'lpf': 6000, 'return_db': -6.0},
 }
+
+
+# ---- Character inserts (VibeNation's own analog-modelled plugins) ----
+VN = 'https://vibenation.app/lv2/'
+INSERT_URI = {
+    'deesser': VN + 'vn_deesser', 'opto': VN + 'vn_opto', 'fet': VN + 'vn_fet', 'pultec': VN + 'vn_pultec',
+}
+_VOX = [('deesser', {'freq': 6500, 'sensitivity': 50, 'range': 6}), ('opto', {'peak_reduction': 20, 'mix': 60, 'sc_high': 2, 'colour': 30})]
+_ROLE_INSERTS: dict[int, list[tuple[str, dict]]] = {
+    1: [('fet', {'ratio': 1, 'attack': 300, 'release': 200, 'mix': 30, 'colour': 40})],
+    2: [('fet', {'ratio': 1, 'attack': 300, 'release': 150, 'mix': 30, 'colour': 40})],
+    4: [('opto', {'peak_reduction': 15, 'mix': 50, 'colour': 20})],
+    5: [('opto', {'peak_reduction': 15, 'mix': 50, 'colour': 30})],
+    6: [('opto', {'peak_reduction': 15, 'mix': 50, 'colour': 30})],
+    7: [('opto', {'peak_reduction': 15, 'mix': 50, 'colour': 30})],
+    8: [('opto', {'peak_reduction': 15, 'mix': 50, 'colour': 30})],
+    9: _VOX,
+    10: _VOX,
+    12: [('pultec', {'low_freq': 2, 'low_boost': 3, 'low_atten': 2, 'tube': 30})],
+    14: [('pultec', {'low_freq': 2, 'low_boost': 2, 'low_atten': 2, 'tube': 25})],
+    15: [('deesser', {'freq': 4500, 'sensitivity': 45, 'range': 4}), ('opto', {'peak_reduction': 20, 'mix': 60, 'colour': 30})],
+    16: [('deesser', {'freq': 3500, 'sensitivity': 55, 'range': 6}), ('opto', {'peak_reduction': 25, 'mix': 70, 'colour': 20})],
+}
+for _s in STRIPS:
+    _s.inserts = [(k, dict(v)) for k, v in _ROLE_INSERTS.get(_s.n, [])]
+
+# Master colour + glue + tape (before the x42 true-peak limiter).
+MASTER_CONSOLE = {'drive': 0, 'colour': 40, 'crosstalk': 0}
+MASTER_BUS = {'threshold': -14, 'ratio': 0, 'attack': 10, 'release': 4, 'sc_hpf': 90, 'makeup': 0, 'mix': 100}
+MASTER_TAPE = {'speed': 1, 'drive': 0, 'saturation': 30, 'bias': 50, 'bump': 40, 'wow': 0, 'flutter': 0, 'mix': 50}

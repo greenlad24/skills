@@ -56,14 +56,21 @@ export class AudioLink {
       else if (msg.type === 'meters') this.applyFrame(msg);
       else this.log(`audio engine: ${msg.error}`);
     };
-    ws.onclose = () => {
+    // Node's WebSocket may emit only 'error' (no 'close') when the engine is down, so
+    // either event schedules exactly one retry.
+    let done = false;
+    const retry = () => {
+      if (done) return;
+      done = true;
       if (this.connected) this.log('audio engine disconnected');
       this.connected = false;
       this.status = null;
+      this.ws = null;
       this.onState({ audio: null });
       setTimeout(() => this.open(), 2000);
     };
-    ws.onerror = () => { /* onclose follows and schedules the retry */ };
+    ws.onclose = retry;
+    ws.onerror = retry;
   }
 
   private applyState(s: EngineState) {

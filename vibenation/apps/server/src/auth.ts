@@ -77,7 +77,7 @@ export function registerAuth(app: FastifyInstance) {
   // Everything under /api except login/logout/me/health needs a session.
   app.addHook('onRequest', async (req, reply) => {
     const url = req.url.split('?')[0];
-    const open = ['/api/login', '/api/logout', '/api/me', '/api/health'];
+    const open = ['/api/login', '/api/logout', '/api/me', '/api/health', '/api/cams/join'];
     if ((url.startsWith('/api/') || url === '/ws') && !open.includes(url) && !isAuthed(req)) {
       return reply.code(401).send({ error: 'Please log in.' });
     }
