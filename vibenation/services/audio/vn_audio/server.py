@@ -23,7 +23,7 @@ from collections import deque
 from aiohttp import WSMsgType, web
 
 from . import presets as P
-from .analyzer import Analyzer
+from .analyzer import Analyzer, wav_bytes
 from .graph import COMP, LIMITER, MCOMP, MTAPE, MixGraph, port
 from .modhost import ModHost
 from .player import StemPlayer
@@ -46,6 +46,12 @@ class Engine:
         self.gr = [0.0] * 16
         self.bus_gr = 0.0
         self.ride = [0.0] * 16  # current rider gain (dB) per channel
+        self.howl_track: dict = {}
+        self.clip_count = [0] * 16
+        self.last_clip_fix = [0.0] * 16
+        self.last_heard = [0.0] * 16
+        self.dead_alerted = [False] * 16
+        self.notches: dict = {}
         self.lar_hist: deque = deque(maxlen=150)  # 15 s of vocal-over-band while singing
         self.last_lar = 0.0
         self.ride_lvl: list[deque] = [deque(maxlen=4) for _ in range(16)]  # 400 ms of channel power
@@ -116,6 +122,8 @@ class Engine:
         self._calibrate(f['raw'])
         self._ride(f)
         self._keep_vocals_on_top(f)
+        self._watch_howl(f.get('howl', []))
+        self._watch_clip_and_dead(f)
         frame = {'type': 'meters', **f, 'gr': self.gr, 'ride': self.ride, 'master': {**m, 'limiterGr': self.limiter_gr, 'busGr': self.bus_gr, 'drive': round(self.graph.master_gain, 1), 'bandOffset': round(self.graph.band_offset, 1)},
                  'singing': [self.playing(n, f) for n in range(1, 17)]}
         self.broadcast(frame)
@@ -180,6 +188,70 @@ class Engine:
             g.ride[n] = round(new, 2)
             self.ride[i] = round(new, 1)
             g.apply_gain(n)
+
+    def _watch_howl(self, cands: list[dict]) -> None:
+        """Emergency only: a feedback tone that persists ~0.6 s (and isn't a held musical note:
+        it must stay within 1 % in pitch) gets a narrow notch on that channel (EQ band 8),
+        even if a human holds the channel. Released after 30 s without recurrence."""
+        now = time.time()
+        seen = set()
+        for c in cands:
+            key = c['ch']
+            seen.add(key)
+            h = self.howl_track.get(key)
+            if h and abs(h['f'] - c['f']) / h['f'] < 0.01:
+                h['n'] += 1
+            else:
+                self.howl_track[key] = h = {'f': c['f'], 'n': 1}
+            if h['n'] >= 6 and key not in self.notches:
+                st = self.graph.strips[key]
+                band = ('bell', c['f'], -9.0, 30.0)
+                st.eq = (st.eq + [band])[:8] if len(st.eq) < 8 else st.eq[:7] + [band]
+                self.graph.apply_strip(key)
+                self.notches[key] = {'f': c['f'], 'at': now, 'last': now}
+                self.broadcast({'type': 'alert', 'level': 'error', 'ch': key, 'text': f'Feedback on {st.name} at {round(c["f"])} Hz: notched it (-9 dB, very narrow).'})
+                self.broadcast(self.state())
+            elif key in self.notches:
+                self.notches[key]['last'] = now
+        for key in list(self.howl_track):
+            if key not in seen:
+                del self.howl_track[key]
+        for key, nt in list(self.notches.items()):
+            if now - nt['last'] > 30:
+                st = self.graph.strips[key]
+                st.eq = [b for b in st.eq if not (b[0] == 'bell' and b[3] == 30.0 and abs(b[1] - nt['f']) < 1)]
+                self.graph.apply_strip(key)
+                del self.notches[key]
+                self.broadcast({'type': 'alert', 'level': 'info', 'ch': key, 'text': f'Feedback gone on {st.name}: notch released.'})
+                self.broadcast(self.state())
+
+    def _watch_clip_and_dead(self, f: dict) -> None:
+        """Emergencies (allowed even on held channels): a channel clipping at its digital trim
+        gets the trim pulled down 3 dB; a source that was playing and goes silent for 20 s
+        while the band plays raises a dead-signal alert (it may be a mic or wireless pack)."""
+        now = time.time()
+        band_on = sum(1 for n in range(1, 17) if self.playing(n, f)) >= 3
+        for n, st in self.graph.strips.items():
+            i = n - 1
+            if f['peak'][i] > -0.3:
+                self.clip_count[i] += 1
+                if self.clip_count[i] >= 3 and now - self.last_clip_fix[i] > 5:
+                    st.trim = round(st.trim - 3.0, 1)
+                    self.graph.apply_gain(n)
+                    self.last_clip_fix[i] = now
+                    self.save()
+                    self.broadcast({'type': 'alert', 'level': 'error', 'ch': n, 'text': f'{st.name} was clipping: digital trim pulled down 3 dB (the mixer preamp is untouched).'})
+                    self.broadcast(self.state())
+            else:
+                self.clip_count[i] = 0
+            if f['raw'][i] > -75:  # a live mic always hears some stage bleed; a dead one doesn't
+                self.last_heard[i] = now
+                if self.dead_alerted[i]:
+                    self.dead_alerted[i] = False
+                    self.broadcast({'type': 'alert', 'level': 'info', 'ch': n, 'text': f'{st.name} is back.'})
+            elif band_on and self.last_heard[i] and now - self.last_heard[i] > 20 and not self.dead_alerted[i] and n in (9, 10, 15) and self.player.playing:
+                self.dead_alerted[i] = True
+                self.broadcast({'type': 'alert', 'level': 'error', 'ch': n, 'text': f'{st.name} has no signal at all (not even stage bleed) for 20 s while the band plays — check the mic, cable or wireless pack.'})
 
     def _keep_vocals_on_top(self, f: dict) -> None:
         """Holds the lead-vocal-to-band ratio near +5 dB by moving one shared offset on all
@@ -326,6 +398,8 @@ class Engine:
                 self.player.load(str(c['set']))
             if act in ('seek', 'load'):
                 self.analyzer.loud.reset_integrated()
+        elif t == 'param_get':  # diagnostics: read any plugin port through our mod-host connection
+            return {'value': self.mh.cmd(f"param_get {int(c['inst'])} {c['symbol']}")}
         elif t == 'calibrate':
             self.start_calibration(float(c.get('minutes', 20)))
         elif t == 'leveller':
@@ -453,7 +527,12 @@ def make_app(engine: Engine) -> web.Application:
     app.router.add_get('/state', state)
     app.router.add_post('/cmd', cmd)
     app.router.add_get('/ws', ws)
+    async def clip(req: web.Request) -> web.Response:
+        n = max(1, min(100, int(float(req.query.get('seconds', '6')) * 10)))
+        return web.Response(body=wav_bytes(list(engine.analyzer.clip)[-n:]), content_type='audio/wav')
+
     app.router.add_get('/stream.mp3', stream)
+    app.router.add_get('/clip.wav', clip)
     app.on_startup.append(on_start)
     return app
 

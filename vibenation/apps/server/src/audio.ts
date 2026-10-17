@@ -36,6 +36,7 @@ export class AudioLink {
   strips: Record<string, EngineStrip> = {};
   /** Last ~30 s of measurement frames (10 per second) for the mixer loop. */
   history: EngineFrame[] = [];
+  onAlert?: (a: { level: 'error' | 'info'; ch: number; text: string }) => void;
   private base: Record<string, EngineStrip> = {};
 
   constructor(
@@ -51,9 +52,10 @@ export class AudioLink {
     this.ws = ws;
     ws.onopen = () => { this.connected = true; this.log('audio engine connected'); };
     ws.onmessage = (e) => {
-      const msg = JSON.parse(String(e.data)) as EngineState | EngineFrame | { type: 'error'; error: string };
+      const msg = JSON.parse(String(e.data)) as EngineState | EngineFrame | { type: 'error'; error: string } | { type: 'alert'; level: 'error' | 'info'; ch: number; text: string };
       if (msg.type === 'engine') this.applyState(msg);
       else if (msg.type === 'meters') this.applyFrame(msg);
+      else if (msg.type === 'alert') this.onAlert?.(msg);
       else this.log(`audio engine: ${msg.error}`);
     };
     // Node's WebSocket may emit only 'error' (no 'close') when the engine is down, so

@@ -6,6 +6,7 @@ import { CHANNELS, type CameraState, type ClientAction, type FeedItem, type Show
 import { AudioLink } from './audio.js';
 import { MixerLoop } from './mixer.js';
 import { Director } from './director.js';
+import { Listener as AudioListener } from './listener.js';
 import { GoLive } from './golive.js';
 import { loadPackage } from './package.js';
 import { ShowLog, loadPlaybook, reviewShow } from './learning.js';
@@ -43,6 +44,7 @@ export class DemoShow {
   readonly mixer: MixerLoop;
   readonly director: Director;
   readonly golive: GoLive;
+  readonly listener: AudioListener;
   private videoSent = { cam: -1, slate: '' as string | null };
   readonly log = new ShowLog();
 
@@ -107,8 +109,14 @@ export class DemoShow {
       },
       (msg) => console.log(msg),
     );
+    this.audio.onAlert = (al) => {
+      this.feed({ kind: al.level === 'error' ? 'EMERGENCY' : 'MIX', text: al.text, why: al.level === 'error' ? 'Emergency move: allowed even on a channel you hold.' : undefined, confidence: 'sure' });
+      this.push();
+    };
+    this.listener = new AudioListener(() => !!this.state.audio?.playing);
     this.mixer = new MixerLoop({
       state: this.state,
+      listener: this.listener,
       audio: this.audio,
       isHeld: (id) => this.isHeld(id),
       addFeed: (f, undo) => { this.feed(f, undo); this.push(); },
@@ -224,6 +232,7 @@ export class DemoShow {
       { name: 'Cameras', meta: `${s.cams.filter((c) => c.connected).length} / ${s.cams.length}`, level: 'ok' },
       ...(s.audio ? [{ name: 'Mix engine', meta: `${s.master.lufsI.toFixed(1)} LUFS · TP ${s.master.truePeak.toFixed(1)}`, level: (s.master.truePeak > -1 ? 'warn' : 'ok') as 'warn' | 'ok' }] : []),
       { name: 'Claude mixer', meta: this.mixer?.status() ?? 'starting', level: this.mixer?.lastError ? 'warn' : 'ai' },
+      { name: 'Listener (hearing)', meta: this.listener?.status() ?? 'off', level: this.listener?.enabled ? (this.listener.lastError ? 'warn' : 'ai') : 'ok' },
       { name: 'Director', meta: s.vmodeHeld ? 'auto · vertical yours' : 'auto', level: 'ai' },
       { name: 'YouTube ingest', meta: `${s.health.mbps.toFixed(1)} Mbps`, level: 'ok' },
       ...s.cams.filter((c) => c.warn || c.error).map((c) => ({ name: c.num, meta: (c.error ?? c.warn)!, level: (c.error ? 'error' : 'warn') as 'error' | 'warn' })),

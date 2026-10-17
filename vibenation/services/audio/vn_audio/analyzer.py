@@ -101,6 +101,7 @@ class Analyzer:
         self.listeners: list = []
         self.peak_hold = np.full(16, -90.0)
         self.tp_tail: np.ndarray | None = None
+        self.clip: deque = deque(maxlen=100)  # last ~10 s of the master, 100 ms blocks (for the listener)
         self.client.set_process_callback(self._process)
         threading.Thread(target=self._work, name='analyzer', daemon=True).start()
         self.client.activate()
@@ -118,6 +119,30 @@ class Analyzer:
         mag = np.abs(np.fft.rfft(x * self.window))[: FFT // 2] / (FFT / 4)
         e = self.edges
         return [round(db(float(np.max(mag[e[i] : max(e[i + 1], e[i] + 1)]))), 1) for i in range(N_BANDS)]
+
+    HOWL_CH = (4, 9, 10, 15, 16)  # mics that could pick up the room PA
+
+    def _howl(self) -> list[dict]:
+        """Feedback detector (after van Waterschoot & Moonen / NHS): a spectral peak that towers
+        over the spectrum (PAPR > 10 dB) and its neighbours (PNPR > 15 dB), has no harmonics
+        (PHPR > 10 dB) and is loud enough. Returns candidates; persistence is judged upstream."""
+        out = []
+        for ch in self.HOWL_CH:
+            x = self.hist[:, ch - 1]
+            spec = np.abs(np.fft.rfft(x * self.window)) + 1e-9
+            p = spec * spec
+            k = int(np.argmax(p[20:1800])) + 20  # ~230 Hz .. 21 kHz
+            peak_db = 10 * math.log10(p[k] / (FFT / 4) ** 2)
+            if peak_db < -40:
+                continue
+            papr = 10 * math.log10(p[k] / np.mean(p[20:1800]))
+            neigh = np.concatenate([p[k - 4:k - 1], p[k + 2:k + 5]])
+            pnpr = 10 * math.log10(p[k] / max(np.max(neigh), 1e-18))
+            harm = [p[m * k] for m in (2, 3) if m * k < len(p)]
+            phpr = 10 * math.log10(p[k] / max(max(harm) if harm else 1e-18, 1e-18))
+            if papr > 10 and pnpr > 15 and phpr > 10:
+                out.append({'ch': ch, 'f': round(k * SR / FFT, 1), 'db': round(peak_db, 1)})
+        return out
 
     def _work(self) -> None:
         pending: list[np.ndarray] = []
@@ -141,6 +166,7 @@ class Analyzer:
             rms = np.sqrt(np.mean(ch * ch, axis=0))
             raw_rms = np.sqrt(np.mean(raw * raw, axis=0))
             self.loud.push(mst.astype(np.float64))
+            self.clip.append((np.clip(mst, -1, 1) * 32767).astype(np.int16))
             # 4x oversampled true peak; keep a short tail so block edges don't ring.
             tp_in = np.concatenate([self.tp_tail, mst]) if self.tp_tail is not None else mst
             self.tp_tail = mst[-64:]
@@ -148,7 +174,9 @@ class Analyzer:
             true_peak = db(float(np.max(np.abs(up))))
             pre_peak = db(float(np.max(np.abs(pre))))
             post_peak = db(float(np.max(np.abs(mst))))
+            howl = self._howl()
             self.frame = {
+                'howl': howl,
                 't': time.time(),
                 'peak': [round(db(float(v)), 1) for v in peak],
                 'rms': [round(db(float(v)), 1) for v in rms],
@@ -169,3 +197,17 @@ class Analyzer:
                     fn(self.frame)
                 except Exception:  # noqa: BLE001 - a bad listener must not stop metering
                     pass
+
+
+def wav_bytes(blocks: list, sr: int = SR) -> bytes:
+    """16-bit stereo WAV from int16 (n, 2) blocks."""
+    import io
+    import wave
+    data = np.concatenate(blocks) if blocks else np.zeros((0, 2), dtype=np.int16)
+    buf = io.BytesIO()
+    with wave.open(buf, 'wb') as w:
+        w.setnchannels(2)
+        w.setsampwidth(2)
+        w.setframerate(sr)
+        w.writeframes(data.tobytes())
+    return buf.getvalue()
