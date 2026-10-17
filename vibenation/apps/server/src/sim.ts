@@ -10,6 +10,14 @@ import { Listener as AudioListener } from './listener.js';
 import { GoLive } from './golive.js';
 import { loadPackage } from './package.js';
 import { ShowLog, loadPlaybook, reviewShow } from './learning.js';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// Camera names set in the app win over the phone's own name (kept across reconnects/restarts).
+const CAM_NAMES = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../data/cam-names.json');
+const loadCamNames = (): Record<string, string> => { try { return JSON.parse(readFileSync(CAM_NAMES, 'utf8')); } catch { return {}; } };
+const saveCamNames = (n: Record<string, string>) => { try { if (!existsSync(path.dirname(CAM_NAMES))) mkdirSync(path.dirname(CAM_NAMES), { recursive: true }); writeFileSync(CAM_NAMES, JSON.stringify(n, null, 1)); } catch { /* best effort */ } };
 
 type Listener = (msg: { type: 'state'; state: ShowState } | MeterFrame) => void;
 
@@ -176,6 +184,8 @@ export class DemoShow {
   liveCam() { return this.state.liveCam; }
   onCamsChanged(fn: () => void) { this.camWatchers.push(fn); }
   upsertCam(c: CameraState) {
+    const named = loadCamNames()[String(c.id)];
+    if (named) c = { ...c, name: named };
     const isNew = !this.realCams.has(c.id);
     this.realCams.set(c.id, c);
     this.syncCams();
@@ -299,10 +309,24 @@ export class DemoShow {
     }
     const forwarded = this.audio.forward(a);
     switch (a.type) {
+      case 'renameCam': {
+        const cam = this.realCams.get(a.cam) ?? s.cams.find((c) => c.id === a.cam);
+        const name = String(a.name ?? '').trim().slice(0, 40);
+        if (!cam || !name) return;
+        const names = loadCamNames();
+        names[String(cam.id)] = name;
+        saveCamNames(names);
+        if (this.realCams.has(cam.id)) this.realCams.set(cam.id, { ...this.realCams.get(cam.id)!, name });
+        else cam.name = name;
+        this.syncCams();
+        this.feed({ kind: 'YOURS', text: `You renamed ${cam.num} to “${name}”.`, why: 'The director reads names as roles: Singer, Wide stage, Keys, Drums, Guitar, Bass, Horns.' });
+        break;
+      }
       case 'take': {
         const cam = s.cams.find((c) => c.id === a.cam);
         if (!cam) return;
         s.liveCam = cam.id;
+        s.slate = null; // a camera click ends the slate: back to the band
         this.lastCut = now();
         this.director.manualCut();
         this.feed({ kind: 'YOURS', text: `You cut to ${cam.num} · ${cam.name}.`, why: 'Claude keeps directing from the shot you picked.' });

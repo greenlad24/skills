@@ -5,6 +5,7 @@ import { PLATFORM_BG } from '../components/Header';
 import { useLiveVideo } from '../components/cams/liveVideo';
 import { LiveVideo, NoPicture } from '../components/cams/LiveVideo';
 import { AddPhoneTile } from '../components/cams/AddPhone';
+import { Fit16x9, SlateArt, type SlateMode } from '../components/slate/SlateArt';
 
 // Show screen: one live program picture, click-to-cut camera tiles, all 16 faders,
 // and Claude's sidebar. There is no preview monitor and no manual-mode button.
@@ -37,17 +38,18 @@ export function ShowScreen() {
       <main style={{ flex: '999 1 640px', minWidth: 0, padding: 22, display: 'flex', flexDirection: 'column', gap: 18 }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
           <div style={{ flex: '999 1 560px', minWidth: 0 }}>
-            <Program label={liveCam ? `${liveCam.num} · ${liveCam.name}` : '—'} song={s.song} mbps={s.health.mbps} camId={s.liveCam} cam={liveCam} />
+            <Program label={s.slate ? `Slate · ${s.slate} · band muted, background music` : liveCam ? `${liveCam.num} · ${liveCam.name}` : '—'} song={s.song} mbps={s.health.mbps} camId={s.liveCam} cam={liveCam} slate={s.slate} />
           </div>
           <Vertical s={s} />
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <span className="vn-label">CAMERAS</span>
-          <span style={{ color: 'var(--text-3)', fontSize: 12 }}>Click a camera or press 1–{s.cams.length} to put it on air — Claude keeps directing from there</span>
+          <span style={{ color: 'var(--text-3)', fontSize: 12 }}>Click a camera or press 1–{s.cams.length} to put it on air (Claude keeps directing from there) · the slate is a source too</span>
         </div>
         <section aria-label="Cameras" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(176px, 1fr))', gap: 14, marginTop: -6 }}>
-          {s.cams.map((c) => <CamTile key={c.id} cam={c} live={c.id === s.liveCam} />)}
+          {s.cams.map((c) => <CamTile key={c.id} cam={c} live={!s.slate && c.id === s.liveCam} />)}
+          <SlateTile live={s.slate} />
           <AddPhoneTile />
         </section>
 
@@ -60,12 +62,16 @@ export function ShowScreen() {
 
 // ---------- program monitor ----------
 
-function Program({ label, song, mbps, camId, cam }: { label: string; song: string; mbps: number; camId: number; cam?: CameraState }) {
+const SLATE_COLOURS = { c1: '#FF5E62', c2: '#FF9966', c3: '#FFC371' };
+
+function Program({ label, song, mbps, camId, cam, slate }: { label: string; song: string; mbps: number; camId: number; cam?: CameraState; slate: ShowState['slate'] }) {
   const overlay: CSSProperties = { padding: '5px 12px', borderRadius: 8, background: 'rgba(10,6,4,0.55)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,236,220,0.12)' };
   return (
     <section aria-label="Program" style={{ borderRadius: 22, padding: 3, background: 'linear-gradient(140deg, #5EA2FF, #1F66E0 55%, #2A4F9E)', boxShadow: '0 0 0 1px rgba(61,139,255,0.25), 0 24px 70px rgba(31,102,224,0.22), 0 30px 60px rgba(0,0,0,0.5)' }}>
       <div style={{ borderRadius: 19, overflow: 'hidden', position: 'relative', aspectRatio: '16 / 9', maxHeight: 470, width: '100%', background: '#070403' }}>
-        {cam?.identity
+        {slate
+          ? <Fit16x9 label={`${slate} slate on air`}><SlateArt mode={slate} time="" colours={SLATE_COLOURS} /></Fit16x9>
+          : cam?.identity
           ? <LiveVideo key={cam.identity} identity={cam.identity} label={`Live program: ${cam.num}`} fallback={<NoPicture text={cam.connected ? `Waiting for video from ${cam.num}…` : `${cam.num} is not connected`} />} />
           : <StageScene key={camId} camId={camId} />}
         <div aria-hidden style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0) 22%, rgba(0,0,0,0) 70%, rgba(0,0,0,0.55) 100%)' }} />
@@ -195,7 +201,36 @@ const BODIES: Record<number, string> = {
 };
 const HEADS: Record<number, number> = { 1: 64, 2: 80, 3: 68, 4: 98, 5: 68 };
 
+const ROLE_NAMES = ['Wide stage', 'Singer', 'Keys', 'Drums', 'Guitar', 'Bass', 'Horns', 'Crowd'];
+
 function CamTile({ cam, live }: { cam: CameraState; live: boolean }) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(cam.name);
+  const save = (n: string) => { const v = n.trim(); if (v && v !== cam.name) send({ type: 'renameCam', cam: cam.id, name: v }); setEditing(false); };
+  return (
+    <div style={{ position: 'relative', display: 'flex', flexDirection: 'column' }}>
+      <CamButton cam={cam} live={live} />
+      {editing ? (
+        <form onSubmit={(e) => { e.preventDefault(); save(name); }} style={{ position: 'absolute', inset: 'auto 6px 6px 6px', padding: 8, borderRadius: 12, background: 'rgba(16,11,8,0.97)', border: '1px solid rgba(255,236,220,0.16)', display: 'flex', flexDirection: 'column', gap: 6, zIndex: 2 }}>
+          <input autoFocus value={name} maxLength={40} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') setEditing(false); }} aria-label={`New name for ${cam.num}`}
+            style={{ minHeight: 32, padding: '0 8px', borderRadius: 8, border: '1px solid rgba(255,236,220,0.16)', background: 'rgba(0,0,0,0.35)', color: 'var(--text-1)', fontSize: 13 }} />
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+            {ROLE_NAMES.map((r) => <button type="button" key={r} onClick={() => save(r)} style={{ padding: '3px 7px', borderRadius: 6, border: '1px solid rgba(255,236,220,0.12)', background: 'rgba(255,236,220,0.05)', color: 'var(--text-soft)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>{r}</button>)}
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button type="submit" style={{ flex: 1, minHeight: 28, borderRadius: 7, border: 0, background: 'var(--text-1)', color: '#140D09', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>Save</button>
+            <button type="button" onClick={() => setEditing(false)} style={{ minHeight: 28, padding: '0 10px', borderRadius: 7, border: '1px solid rgba(255,236,220,0.14)', background: 'none', color: 'var(--text-soft)', fontSize: 12, cursor: 'pointer' }}>Cancel</button>
+          </div>
+        </form>
+      ) : (
+        <button type="button" onClick={() => { setName(cam.name); setEditing(true); }} aria-label={`Rename ${cam.num}`} title="Rename (the director reads names as roles)"
+          style={{ position: 'absolute', right: 52, bottom: cam.identity && cam.connected ? 26 : 10, width: 26, height: 22, borderRadius: 6, border: '1px solid rgba(255,236,220,0.14)', background: 'rgba(255,236,220,0.06)', color: 'var(--text-soft)', fontSize: 12, cursor: 'pointer', zIndex: 1 }}>✎</button>
+      )}
+    </div>
+  );
+}
+
+function CamButton({ cam, live }: { cam: CameraState; live: boolean }) {
   const chip = cam.error ?? cam.warn;
   return (
     <button onClick={() => send({ type: 'take', cam: cam.id })} aria-label={`Put ${cam.num} on air`} aria-pressed={live}
@@ -224,6 +259,31 @@ function CamTile({ cam, live }: { cam: CameraState; live: boolean }) {
         </div>
       )}
     </button>
+  );
+}
+
+/** The slate as a video source: pick which one, click to put it on air (the stream then mutes the
+ *  band and plays background music). A camera click ends it. */
+function SlateTile({ live }: { live: ShowState['slate'] }) {
+  const [mode, setMode] = useState<SlateMode>(live ?? 'Starting soon');
+  useEffect(() => { if (live) setMode(live); }, [live]);
+  const modes: [SlateMode, string][] = [['Starting soon', 'Soon'], ['Break', 'Break'], ['Thanks for watching', 'Thanks']];
+  return (
+    <div style={{ padding: 8, borderRadius: 18, color: 'inherit', background: 'linear-gradient(180deg, rgba(40,30,23,0.8), rgba(24,18,14,0.8))', border: live ? '2px solid var(--on-air)' : '1px solid rgba(255,236,220,0.08)', boxShadow: live ? '0 0 0 4px rgba(61,139,255,0.18), 0 14px 30px rgba(31,102,224,0.25)' : '0 10px 24px rgba(0,0,0,0.3)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <button onClick={() => send({ type: 'slate', slate: mode })} aria-label={`Put the ${mode} slate on air`} aria-pressed={!!live}
+        style={{ padding: 0, border: 0, background: 'none', cursor: 'pointer', borderRadius: 12, overflow: 'hidden', position: 'relative', aspectRatio: '16 / 9' }}>
+        <Fit16x9 label={`${mode} slate preview`}><SlateArt mode={mode} time="" colours={SLATE_COLOURS} /></Fit16x9>
+        {live && <span style={{ position: 'absolute', right: 8, top: 8, padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', color: '#FFFFFF', background: 'var(--on-air-fill)' }}>LIVE</span>}
+        <span style={{ position: 'absolute', left: 8, top: 8, padding: '2px 7px', borderRadius: 6, background: 'rgba(10,6,4,0.55)', fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700, color: 'var(--text-1)' }}>SLATE</span>
+      </button>
+      <div role="group" aria-label="Which slate" style={{ display: 'flex', gap: 4 }}>
+        {modes.map(([m, short]) => (
+          <button key={m} onClick={() => { setMode(m); if (live) send({ type: 'slate', slate: m }); }} aria-pressed={mode === m}
+            style={{ flex: 1, minHeight: 26, borderRadius: 7, border: '1px solid rgba(255,236,220,0.12)', background: mode === m ? 'var(--text-1)' : 'rgba(255,236,220,0.04)', color: mode === m ? '#140D09' : 'var(--text-soft)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>{short}</button>
+        ))}
+      </div>
+      <span style={{ fontSize: 11, color: 'var(--text-meta)', padding: '0 2px' }}>{live ? 'On air: band muted, background music. Click a camera to end.' : 'Click the picture to put it on air.'}</span>
+    </div>
   );
 }
 

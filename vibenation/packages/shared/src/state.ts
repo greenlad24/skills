@@ -226,6 +226,8 @@ export type ClientAction =
   | { type: 'golive'; privacy?: 'public' | 'unlisted' | 'private' }
   | { type: 'end' }
   | { type: 'slate'; slate: ShowState['slate'] }
+  /** Rename a camera from the app (kept across reconnects and restarts). */
+  | { type: 'renameCam'; cam: number; name: string }
   | { type: 'pan'; ch: number; pan: number }
   | { type: 'eq'; ch: number; band: number; kind?: EqBand['kind']; f?: number; gain?: number; q?: number }
   | { type: 'comp'; ch: number; thresh?: number; ratio?: number; attack?: number; release?: number; makeup?: number; mix?: number }
