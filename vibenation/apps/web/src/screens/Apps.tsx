@@ -58,19 +58,22 @@ function AndroidCard() {
   return (
     <section aria-label="Android camera app" style={card}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <span className="vn-label">ANDROID · NATIVE APP</span>
-        <h2 style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 700 }}>VibeNation Camera</h2>
+        <span className="vn-label">ANDROID · GET THE APP (ONCE)</span>
+        <h2 style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 700 }}>Download VibeNation Camera</h2>
         <span className="vn-mono" style={{ fontSize: 12, color: 'var(--text-meta)' }}>
           {a ? `v${a.version ?? '?'} · ${a.sizeMB} MB · built ${fmtDate(a.builtAt)}` : info ? 'Not built yet' : '…'}
         </span>
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20, alignItems: 'flex-start' }}>
-        <Qr url={a?.url ?? ''} alt="QR code to download the Android camera app" empty={error || (info && !a ? 'Ask Claude to build the Android app.' : 'Making QR…')} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center' }}>
+          <Qr url={a?.url ?? ''} alt="Download code for the Android app (not a camera code)" empty={error || (info && !a ? 'Ask Claude to build the Android app.' : 'Making QR…')} />
+          <span className="vn-label" style={{ color: 'var(--warn)' }}>DOWNLOAD ONLY · NOT A CAMERA CODE</span>
+        </div>
         <div style={{ flex: '1 1 220px', minWidth: 0 }}>
           <Steps>
             <li>Scan this code with the Android phone’s camera and tap <b>Download</b>.</li>
             <li>Open the downloaded file. If Android asks, allow <b>Install unknown apps</b> for Chrome, then tap <b>Install</b>.</li>
-            <li>Open <b>VibeNation Camera</b>, tap <b>Scan</b> and scan the web camera code on this page (or Show › Add phone).</li>
+            <li>Open <b>VibeNation Camera</b>, tap <b>Scan</b> and scan the <b>camera code</b> (the first card on this page, or Show › Add phone).</li>
           </Steps>
         </div>
       </div>
@@ -103,18 +106,18 @@ function WebCard() {
     return () => { alive = false; };
   }, [n]);
   return (
-    <section aria-label="iPhone and web camera" style={card}>
+    <section aria-label="Camera code for the show" style={{ ...card, border: '1px solid rgba(255,236,220,0.28)' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <span className="vn-label">IPHONE · ANY PHONE · NO INSTALL</span>
-        <h2 style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 700 }}>Web camera</h2>
-        <span className="vn-mono" style={{ fontSize: 12, color: 'var(--text-meta)' }}>Safari on iPhone · Chrome on Android</span>
+        <span className="vn-label">CAMERA CODE · EVERY PHONE</span>
+        <h2 style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 700 }}>Scan this to add a camera</h2>
+        <span className="vn-mono" style={{ fontSize: 12, color: 'var(--text-meta)' }}>Android app: tap Scan · iPhone: Camera app → Safari</span>
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20, alignItems: 'flex-start' }}>
-        <Qr url={url} alt="QR code for the camera page" empty={error || 'Making QR…'} />
+        <Qr url={url} alt="Camera code: scan it to add a camera to the show" empty={error || 'Making QR…'} />
         <div style={{ flex: '1 1 220px', minWidth: 0 }}>
           <Steps>
-            <li>Scan this code with the iPhone’s Camera app and open the link in <b>Safari</b>.</li>
-            <li>For full screen: <b>Share › Add to Home Screen</b>, then open VibeNation from the home screen.</li>
+            <li><b>Android with the VibeNation Camera app:</b> open the app, tap <b>Scan</b> and scan this code.</li>
+            <li><b>iPhone</b> (or Android without the app): scan with the Camera app and open the link in <b>Safari</b> / Chrome. For full screen: <b>Share › Add to Home Screen</b>.</li>
             <li>Turn the phone sideways, name the camera (e.g. “Drums”), tap <b>Start camera</b> and allow the camera.</li>
           </Steps>
         </div>
@@ -144,12 +147,12 @@ export function AppsScreen() {
         <span style={{ fontSize: 11, letterSpacing: '0.16em', color: '#FF9A5A', fontWeight: 700 }}>APPS · PHONE CAMERAS</span>
         <h1 style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: 'clamp(34px, 4vw, 46px)', fontWeight: 800, letterSpacing: '-0.03em', lineHeight: 1.05 }}>Turn any phone into a camera.</h1>
         <p style={{ margin: 0, color: 'var(--text-soft)', fontSize: 16, lineHeight: 1.55, maxWidth: 640 }}>
-          Android phones use the VibeNation Camera app. iPhones (or any phone without the app) use the web camera — nothing to install. Every camera joins the show the moment it starts.
+          Every phone joins with the same camera code below. Android phones can get the VibeNation Camera app first (once); iPhones need nothing installed.
         </p>
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24 }}>
-        <AndroidCard />
         <WebCard />
+        <AndroidCard />
       </div>
     </main>
   );

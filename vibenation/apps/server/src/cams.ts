@@ -19,6 +19,21 @@ export function makeSigned(kind: string, payload: string, ttlS: number) {
   const body = `${kind}.${payload}.${Math.floor(Date.now() / 1000) + ttlS}`;
   return `${Buffer.from(body).toString('base64url')}.${sign(body)}`;
 }
+/** Why a camera code was refused, in words the person holding the phone can act on. */
+function inviteProblem(token: string | undefined): string {
+  const again = 'In VibeNation open Show › Add phone (or Apps › Web camera) and scan that code.';
+  if (!token) return `No camera code. ${again}`;
+  const [b, sig] = token.split('.');
+  const [kind, , exp] = (b ? Buffer.from(b, 'base64url').toString() : '').split('.');
+  if (kind === 'apk') return `That's the app DOWNLOAD code, not a camera code. ${again}`;
+  if (kind !== 'invite' || !sig) return `That isn't a VibeNation camera code. ${again}`;
+  const want = Buffer.from(sign(Buffer.from(b, 'base64url').toString()));
+  const got = Buffer.from(sig);
+  if (want.length !== got.length || !timingSafeEqual(want, got)) return `This camera code was made by an older setup of the server. ${again}`;
+  if (Number(exp) * 1000 < Date.now()) return `This camera code has expired (they last 24 hours). ${again}`;
+  return `This camera code was refused. ${again}`;
+}
+
 export function readSigned(kind: string, token: string | undefined): string | null {
   if (!token) return null;
   const [b, sig] = token.split('.');
@@ -76,7 +91,11 @@ export function registerCams(app: FastifyInstance, host: CamHost) {
 
   // Public, but needs a valid invite: a phone joins as a camera.
   app.post<{ Body: { k?: string; name?: string; device?: 'android' | 'iphone'; camId?: number } }>('/api/cams/join', async (req, reply) => {
-    if (readSigned('invite', req.body?.k) === null) return reply.code(403).send({ error: 'This camera link has expired. Scan the QR code in VibeNation again.' });
+    if (readSigned('invite', req.body?.k) === null) {
+      const why = inviteProblem(req.body?.k);
+      req.log.warn({ why }, 'camera join refused');
+      return reply.code(403).send({ error: why });
+    }
     await ensureRoom(app); // before picking the id, so concurrent joins can't get the same one
     const existing = host.cams().filter((c) => c.identity);
     const id = req.body?.camId && existing.some((c) => c.id === req.body.camId) ? req.body.camId : (Math.max(0, ...existing.map((c) => c.id)) || nextId - 1) + 1;
