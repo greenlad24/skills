@@ -159,6 +159,7 @@ class MixGraph:
     def _comp(self, inst: int, c: P.Comp) -> None:
         mh = self.mh
         mh.param(inst, 'cm', 0)  # downward
+        mh.param(inst, 'scm', 0 if c.peak else 1)  # sidechain: peak for drums, RMS otherwise
         mh.param(inst, 'al', lin(c.thresh))
         mh.param(inst, 'cr', c.ratio)
         mh.param(inst, 'at', c.attack)
@@ -250,7 +251,13 @@ class MixGraph:
         mh.param(LIMITER, 'threshold', P.CEILING_DBTP)
         mh.param(LIMITER, 'truepeak', 1)
         mh.param(LIMITER, 'release', 0.12)
-        mh.param(LIMITER, 'gain', self.master_gain)
+        mh.param(LIMITER, 'gain', 0)
+        self.apply_drive()
+
+    def apply_drive(self) -> None:
+        """Leveller drive sits at the master EQ output, so the console, bus glue and tape
+        work on a signal already near the -16 LUFS target and the limiter only catches peaks."""
+        self.mh.param(MEQ, 'g_out', min(10.0, lin(self.master_gain)))
 
     def set_bpm(self, bpm: float) -> None:
         self.bpm = max(60.0, min(200.0, bpm))

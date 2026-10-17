@@ -23,6 +23,7 @@ class Comp:
     makeup: float = 0.0  # dB
     knee: float = -6.0  # dB (soft)
     mix: float = 1.0  # parallel: 1 = fully compressed
+    peak: bool = False  # peak detection (drums/percussion); RMS otherwise
 
 
 @dataclass
@@ -66,10 +67,10 @@ VOCAL_EQ: list[Band] = [
 STRIPS: list[Strip] = [
     Strip(1, 'Kick', -10.0, 0,
           eq=[('bell', 60, 2.0, 1.0), ('bell', 285, -3.0, 1.5), ('hshelf', 16000, 2.0, 0.7)],
-          comp=Comp(-18, 4.5, 28, 85, 2), gate=Gate(-34, 12, 0.5, 45, 10), room=-22, no_hpf=True),
+          comp=Comp(-18, 4.5, 28, 85, 2, peak=True), gate=Gate(-34, 12, 0.5, 45, 10), room=-22, no_hpf=True),
     Strip(2, 'Snare', -14.9, 0,
           eq=[('hpf', 100, 0, 0.7), ('bell', 200, 0, 1.0), ('bell', 420, -3.0, 2.0), ('bell', 2500, 2.0, 1.0), ('bell', 8000, 2.0, 1.0)],
-          comp=Comp(-20, 4, 15, 50, 3), room=-15),
+          comp=Comp(-20, 4, 15, 50, 3, peak=True), room=-15),
     Strip(3, 'Overheads', -23.4, 0,
           eq=[('hpf', 180, 0, 0.7)], comp=Comp(-22, 4, 15, 120, 1)),
     Strip(4, 'Acoustic DI', -14.0, -20,
@@ -87,23 +88,23 @@ STRIPS: list[Strip] = [
     Strip(8, 'Guitar DI', -13.0, 30,
           eq=[('hpf', 120, 0, 0.7), ('bell', 4000, -2.0, 4.0), ('lpf', 9000, 0, 0.7)],
           comp=Comp(-20, 4, 10, 100, 2, mix=0.5), room=-20),
-    Strip(9, 'Vocal centre', -2.0, 0, eq=list(VOCAL_EQ), comp=Comp(-22, 3, 12, 150, 3), plate=-8, delay=-18, rider=0.0),
-    Strip(10, 'Vocal piano', -2.3, -15, eq=[('hpf', 120, 0, 0.7)] + VOCAL_EQ[1:], comp=Comp(-22, 3, 12, 150, 3), plate=-10, rider=0.0),
+    Strip(9, 'Vocal centre', -2.0, 0, eq=list(VOCAL_EQ), comp=Comp(-26, 3, 12, 150, 3), plate=-8, delay=-18, rider=0.0),
+    Strip(10, 'Vocal piano', -2.3, -15, eq=[('hpf', 120, 0, 0.7)] + VOCAL_EQ[1:], comp=Comp(-26, 3, 12, 150, 3), plate=-10, rider=0.0),
     Strip(11, 'Congas 1', -16.0, 35,
           eq=[('hpf', 90, 0, 0.7), ('bell', 350, -2.5, 1.2), ('bell', 4500, 2.5, 1.0)],
-          comp=Comp(-20, 4, 15, 80, 2), room=-18),
+          comp=Comp(-20, 4, 15, 80, 2, peak=True), room=-18),
     Strip(12, 'Bass DI', -10.0, 0,
           eq=[('bell', 250, -2.0, 1.5), ('bell', 800, 2.0, 1.0), ('bell', 2500, 1.5, 1.0), ('lpf', 6000, 0, 0.7)],
           comp=Comp(-24, 4, 15, 150, 5), no_hpf=True),
     Strip(13, 'Congas 2', -16.0, 50,
           eq=[('hpf', 90, 0, 0.7), ('bell', 350, -2.5, 1.2), ('bell', 4500, 2.5, 1.0)],
-          comp=Comp(-20, 4, 15, 80, 2), room=-18),
+          comp=Comp(-20, 4, 15, 80, 2, peak=True), room=-18),
     Strip(14, 'Synth bass', -9.8, 0,
           eq=[('bell', 55, 1.5, 1.0), ('bell', 300, -3.0, 1.0), ('bell', 1500, 1.5, 1.0)],
           comp=Comp(-20, 3, 20, 150, 2), no_hpf=True),
     Strip(15, 'Saxophone', -2.1, -25,
           eq=[('hpf', 120, 0, 0.7), ('bell', 400, -2.5, 1.2), ('bell', 2100, -1.5, 4.0), ('bell', 4000, -1.5, 4.0), ('hshelf', 8000, 2.0, 0.7)],
-          comp=Comp(-24, 3, 10, 120, 3), plate=-10, delay=-20, rider=0.0),
+          comp=Comp(-27, 3, 10, 120, 3), plate=-10, delay=-20, rider=0.0),
     Strip(16, 'Harmonica', -10.0, 25,
           eq=[('hpf', 120, 0, 0.7), ('bell', 250, 1.0, 1.0), ('bell', 1200, -2.0, 1.5), ('bell', 3500, -3.0, 1.5), ('lpf', 9000, 0, 0.7)],
           comp=Comp(-18, 3, 20, 150, 2), room=-12, rider=0.0),
@@ -151,5 +152,5 @@ for _s in STRIPS:
 
 # Master colour + glue + tape (before the x42 true-peak limiter).
 MASTER_CONSOLE = {'drive': 0, 'colour': 40, 'crosstalk': 0}
-MASTER_BUS = {'threshold': -14, 'ratio': 0, 'attack': 10, 'release': 4, 'sc_hpf': 90, 'makeup': 0, 'mix': 100}
+MASTER_BUS = {'threshold': -12, 'ratio': 0, 'attack': 10, 'release': 4, 'sc_hpf': 90, 'makeup': 0, 'mix': 100}
 MASTER_TAPE = {'speed': 1, 'drive': 0, 'saturation': 30, 'bias': 50, 'bump': 40, 'wow': 0, 'flutter': 0, 'mix': 50}

@@ -58,7 +58,7 @@ async def main(dur=45, per_set=6):
                         off = f['master'].get('bandOffset', 0.0)
                         p = [pw(f['rms'][i] + faders[i + 1] + (0 if i in (8, 9) else off)) for i in range(16)]
                         voc, band = p[8] + p[9], sum(p) - p[8] - p[9]
-                        if voc > pw(-50) and band > 0:
+                        if (f.get('singing', [False] * 16)[8] or f.get('singing', [False] * 16)[9]) and band > 0:
                             lar.append(10 * math.log10(voc / band))
                     lar_s = f'{sorted(lar)[len(lar) // 2]:+.1f}' if lar else '  n/a'
                     rows.append((set_name, int(pos), last['lufsI'], min(st_vals), max(st_vals), tp, lim, lar_s, gr, ride, last.get('drive')))

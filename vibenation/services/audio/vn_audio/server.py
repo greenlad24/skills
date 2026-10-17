@@ -111,12 +111,13 @@ class Engine:
 
     def _on_frame(self, f: dict) -> None:
         m = f['master']
-        self.limiter_gr = round(max(0.0, m['prePeak'] + self.graph.master_gain - m['peak']), 1)
+        self.limiter_gr = round(max(0.0, m['prePeak'] - m['peak']), 1)
         self._level(m)
         self._calibrate(f['raw'])
         self._ride(f)
         self._keep_vocals_on_top(f)
-        frame = {'type': 'meters', **f, 'gr': self.gr, 'ride': self.ride, 'master': {**m, 'limiterGr': self.limiter_gr, 'busGr': self.bus_gr, 'drive': round(self.graph.master_gain, 1), 'bandOffset': round(self.graph.band_offset, 1)}}
+        frame = {'type': 'meters', **f, 'gr': self.gr, 'ride': self.ride, 'master': {**m, 'limiterGr': self.limiter_gr, 'busGr': self.bus_gr, 'drive': round(self.graph.master_gain, 1), 'bandOffset': round(self.graph.band_offset, 1)},
+                 'singing': [self.playing(n, f) for n in range(1, 17)]}
         self.broadcast(frame)
 
     def _level(self, m: dict) -> None:
@@ -138,13 +139,18 @@ class Engine:
         err = P.TARGET_LUFS - s
         if abs(err) < 0.5:
             return
-        if err > 0 and self.limiter_gr > 4:  # louder would only mean more limiting: fix it upstream
+        if err > 0 and self.limiter_gr > 3:  # louder would only mean more limiting: fix it upstream
             return
         step = max(-3.0, min(1.0, err * 0.3))
         g = max(-10.0, min(20.0, self.graph.master_gain + step))
         if abs(g - self.graph.master_gain) >= 0.05:
             self.graph.master_gain = round(g, 2)
-            self.mh.param(LIMITER, 'gain', self.graph.master_gain)
+            self.graph.apply_drive()
+
+    def playing(self, n: int, f: dict) -> bool:
+        """The source itself is playing (not just stage bleed): its input, after the soundcheck
+        trim, is within 12 dB of the calibrated working level (-20 dBFS)."""
+        return f['raw'][n - 1] + self.graph.strips[n].trim > -32 and f['raw'][n - 1] > -60
 
     def _ride(self, f: dict) -> None:
         """Vocal/solo rider: keeps a channel near its own running level (+ Claude's offset),
@@ -157,7 +163,7 @@ class Engine:
             ride = g.ride.get(n, 0.0)
             lvl = f['rms'][i] - ride  # level before the ride
             self.ride_lvl[i].append(10 ** (lvl / 10))
-            if f['raw'][i] < -50 or g.mute[n]:
+            if not self.playing(n, f) or g.mute[n]:
                 continue  # silent or only bleed: hold the current ride
             short = 10 * math.log10(sum(self.ride_lvl[i]) / len(self.ride_lvl[i]))
             self.ride_ref[i].append(short)
@@ -182,7 +188,7 @@ class Engine:
         p = [10 ** ((f['rms'][i] + g.gain_db(i + 1)) / 10) * (0 if g.mute[i + 1] else 1) for i in range(16)]
         voc = sum(p[i - 1] for i in P.VOCALS)
         band = sum(p) - voc
-        sing = any(f['raw'][i - 1] > -50 for i in P.VOCALS) and voc > 1e-7 and band > 1e-9
+        sing = any(self.playing(i, f) for i in P.VOCALS) and voc > 1e-9 and band > 1e-9
         if sing:
             self.lar_hist.append(10 * math.log10(voc / band))
         now = time.time()

@@ -129,7 +129,7 @@ export class MixerLoop {
       const p = f.rms.map((v, i) => pw(v + chans[i].fader + (i === 8 || i === 9 ? 0 : off)) * (chans[i].mute ? 0 : 1));
       const voc = p[8] + p[9];
       const band = p.reduce((a, b) => a + b, 0) - voc;
-      if (voc > pw(-50) && band > 0) lar.push(dbOf(voc / band));
+      if ((f.singing?.[8] || f.singing?.[9]) && band > 0) lar.push(dbOf(voc / band));
     }
     lar.sort((a, b) => a - b);
     lines.push(lar.length > 20 ? `Vocal-to-band ratio (LAR) median ${lar[lar.length >> 1].toFixed(1)} dB, range ${lar[Math.floor(lar.length * 0.1)].toFixed(1)}..${lar[Math.floor(lar.length * 0.9)].toFixed(1)}.` : 'Vocals mostly silent in this window (LAR n/a).');
@@ -143,7 +143,7 @@ export class MixerLoop {
     lines.push('Channels (only those playing; level = post-fader RMS dBFS, active % of time, GR = compressor gain reduction, ride = rider gain now):');
     for (const c of chans) {
       const i = c.n - 1;
-      const active = frames.filter((f) => f.raw[i] > -55).length / n;
+      const active = frames.filter((f) => f.singing?.[i] ?? f.raw[i] > -55).length / n;
       if (active < 0.05 || c.mute) continue;
       const lvl = dbOf(avg((f) => pw(f.rms[i] + c.fader)));
       const gr = avg((f) => f.gr[i]);

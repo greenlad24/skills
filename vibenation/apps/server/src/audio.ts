@@ -21,7 +21,7 @@ type EngineState = {
 };
 export type EngineFrame = {
   type: 'meters';
-  peak: number[]; rms: number[]; raw: number[]; spec: number[][]; gr: number[]; ride?: number[];
+  peak: number[]; rms: number[]; raw: number[]; spec: number[][]; gr: number[]; ride?: number[]; singing?: boolean[];
   master: { lufsM: number; lufsS: number; lufsI: number; truePeak: number; limiterGr: number; drive: number; spec: number[] };
 };
 

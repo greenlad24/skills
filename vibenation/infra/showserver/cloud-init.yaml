@@ -1,0 +1,10 @@
+#cloud-config
+# VibeNation show server first boot: base packages only. The build server pushes the
+# code and runs provision.sh over SSH (no repository credentials on this machine).
+package_update: true
+packages: [rsync, git, curl, jq, ufw, ffmpeg, jackd2, lsp-plugins-lv2, x42-plugins, dragonfly-reverb-lv2, calf-plugins,
+           lilv-utils, liblilv-dev, libjack-jackd2-dev, libreadline-dev, libfftw3-dev, build-essential, pkg-config,
+           python3-venv, python3-dev, gstreamer1.0-tools, gstreamer1.0-plugins-good, gstreamer1.0-plugins-bad,
+           gstreamer1.0-plugins-ugly, gstreamer1.0-nice, gstreamer1.0-libav]
+runcmd:
+  - [sh, -c, 'ufw allow OpenSSH && ufw allow 7881/tcp && ufw allow 7882/udp && ufw allow 9000/udp && ufw --force enable']
