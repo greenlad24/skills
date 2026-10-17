@@ -29,9 +29,10 @@ from .thumbs import H, MAX_BYTES, W, faces
 REFS = os.environ.get('VN_THUMB_REFS', '/home/vibe/vibenation-media/thumbnail-refs')
 API = 'https://api.openai.com/v1'
 # Best first; the first one this key can use wins (VN_THUMB_MODEL forces one).
-MODELS = ['gpt-image-2.5', 'gpt-image-2', 'gpt-image-1.5', 'gpt-image-1']
+MODELS = ['gpt-image-2.5-sunburst', 'gpt-image-2.5-flare', 'gpt-image-2', 'gpt-image-1.5', 'gpt-image-1']  # 2.5-sunburst chosen 17 Oct 2026 (side-by-side test)
 GEN_SIZE = '1536x1024'
-# gpt-image-1 list prices (USD per 1M tokens) — an estimate for newer models too; shown as "about".
+# gpt-image-1 list prices (USD per 1M tokens), used as an estimate for newer models; shown as "about".
+# Measured 17 Oct 2026: 2.5-sunburst ≈ $0.16 per 3-person image, gpt-image-2 ≈ $0.32.
 PRICE = {'text_in': 5.0, 'image_in': 10.0, 'out': 40.0}
 
 PERFORMER_BINDING = (
