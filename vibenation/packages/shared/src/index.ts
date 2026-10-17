@@ -66,4 +66,7 @@ export interface HealthResponse {
 export interface AppsInfo {
   android: { version: string | null; sizeMB: number; builtAt: string; url: string; expiresInS: number } | null;
 }
+/** Keys screen. Values never leave the server; hint is the last 4 characters. */
+export type KeyName = 'GEMINI_API_KEY' | 'OPENAI_API_KEY' | 'DIGITALOCEAN_TOKEN';
+export interface KeyStatus { name: KeyName; label: string; use: string; get: string; set: boolean; hint: string | null }
 export * from './state.js';

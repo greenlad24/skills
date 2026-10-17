@@ -19,7 +19,7 @@ export function Logo() {
 
 const pill = { display: 'flex', alignItems: 'center', borderRadius: 999, background: 'rgba(255,236,220,0.05)', border: '1px solid rgba(255,236,220,0.08)' } as const;
 
-const NAV: [Route, string][] = [['show', 'Show'], ['mix', 'Mix'], ['fx', 'Effects'], ['golive', 'Go Live'], ['slate', 'Slate'], ['apps', 'Apps']];
+const NAV: [Route, string][] = [['show', 'Show'], ['mix', 'Mix'], ['fx', 'Effects'], ['golive', 'Go Live'], ['slate', 'Slate'], ['apps', 'Apps'], ['keys', 'Keys']];
 
 export function Header() {
   const s = useShow();

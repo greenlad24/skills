@@ -1,6 +1,6 @@
 # Accounts and keys only you can create
 
-VibeNation is built to use these, but each one needs you to sign in or create a key. Paste every key into the server's private settings file `/home/vibe/vibenation/vibenation/.env` (never committed), or send it to Claude in the chat and Claude will put it there.
+VibeNation is built to use these, but each one needs you to sign in or create a key. Paste Gemini, OpenAI and DigitalOcean keys on the **Keys** page in VibeNation (tested, stored privately on the server, never shown again). Others go in the private settings file `/home/vibe/vibenation/vibenation/.env` (never committed). Avoid pasting keys into chats.
 
 | # | What | Why | Where | What to paste |
 |---|---|---|---|---|

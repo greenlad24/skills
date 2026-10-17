@@ -1,8 +1,9 @@
 // The "listener": a hosted audio model hears a few seconds of the master mix and answers
 // specific questions (vocal intelligible? anything harsh? bass audible on a phone? solo?).
-// Claude's mixer reads these verdicts alongside the meters. Off until GEMINI_API_KEY is set.
+// Claude's mixer reads these verdicts alongside the meters. Off until GEMINI_API_KEY is set
+// (Keys screen; picked up live, no restart).
 
-const KEY = process.env.GEMINI_API_KEY ?? '';
+const key = () => process.env.GEMINI_API_KEY ?? '';
 const MODEL = process.env.GEMINI_MODEL ?? 'gemini-2.5-flash';
 const AUDIO = process.env.VN_AUDIO_URL ?? 'http://127.0.0.1:8091';
 
@@ -21,10 +22,10 @@ Answer JSON only: {"vocal": "clear"|"buried"|"too loud"|"no vocal", "harsh": "no
 export class Listener {
   verdicts: Verdict[] = [];
   lastError = '';
-  enabled = Boolean(KEY);
+  get enabled() { return Boolean(key()); }
 
   constructor(private playing: () => boolean) {
-    if (this.enabled) setInterval(() => void this.listen(), 20_000);
+    setInterval(() => void this.listen(), 20_000);
   }
 
   status() {
@@ -34,12 +35,12 @@ export class Listener {
   }
 
   async listen() {
-    if (!this.playing()) return;
+    if (!this.enabled || !this.playing()) return;
     try {
       const wav = Buffer.from(await (await fetch(`${AUDIO}/clip.wav?seconds=6`)).arrayBuffer());
-      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${KEY}`, {
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', 'x-goog-api-key': key() },
         body: JSON.stringify({
           contents: [{ parts: [{ text: PROMPT }, { inline_data: { mime_type: 'audio/wav', data: wav.toString('base64') } }] }],
           generationConfig: { responseMimeType: 'application/json', temperature: 0.2 },
