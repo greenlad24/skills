@@ -43,11 +43,22 @@ export function subjectOf(c: CameraState): Subject {
   return 'wide';
 }
 
+/** Which subject a soloing channel belongs to (the engine names the channel). */
+const SUBJECT_OF_CH: Record<number, Subject> = Object.fromEntries(
+  (Object.entries(SUBJECT_CHANNELS) as [Subject, number[]][]).flatMap(([subj, chs]) => chs.map((ch) => [ch, subj])),
+) as Record<number, Subject>;
+
+// Floors so cuts feel like a human director following the performer, not a metronome.
+const MIN_DWELL_S = 8;     // never cut sooner (playbook may ask for longer)
+const SETTLE_S = 2;        // a new focus must hold this long before it causes a cut
+const SINGER_MAX_S = 25;   // then one breather on the wide...
+const BREATHER_S = 8;      // ...for this long, then back to the singer if still singing
+
 export class Director {
   playbook: Playbook = loadPlaybook().director ?? { ...DEFAULT_PLAYBOOK };
   private lastCut = Date.now();
   private manualUntil = 0;
-  private medians: number[][] = Array.from({ length: 16 }, () => []);
+  private focus: { subject: Subject; since: number; why: string } | null = null;
   reason = '';
 
   constructor(
@@ -64,34 +75,13 @@ export class Director {
     this.manualUntil = Date.now() + this.playbook.manualHoldS * 1000;
   }
 
-  private featured(): { subject: Subject; why: string } | null {
-    const frames = this.audio.history.slice(-20); // last 2 s
-    if (frames.length < 10) return null;
-    const lvl = (ch: number) => frames.reduce((s, f) => s + f.rms[ch - 1], 0) / frames.length;
-    const playing = (ch: number) => frames.filter((f) => f.singing?.[ch - 1]).length > frames.length * 0.6;
-    for (let ch = 1; ch <= 16; ch++) {
-      const m = this.medians[ch - 1];
-      if (playing(ch)) { m.push(lvl(ch)); if (m.length > 600) m.shift(); }
-    }
-    const median = (ch: number) => { const m = [...this.medians[ch - 1]].sort((a, b) => a - b); return m.length > 20 ? m[m.length >> 1] : null; };
-    const vocalOn = playing(9) || playing(10);
-    // Solo: an instrument well above its own usual level while the vocal rests.
-    if (!vocalOn) {
-      let best: { subject: Subject; lift: number } | null = null;
-      for (const subject of ['keys', 'guitar', 'horns', 'bass', 'perc'] as Subject[]) {
-        for (const ch of SUBJECT_CHANNELS[subject]) {
-          const med = median(ch);
-          if (med === null || !playing(ch)) continue;
-          const lift = lvl(ch) - med;
-          if (lift >= this.playbook.soloLiftDb && (!best || lift > best.lift)) best = { subject, lift };
-        }
-      }
-      if (best) return { subject: best.subject, why: `${best.subject} solo — ${best.lift.toFixed(0)} dB above its usual level, vocal resting` };
-    }
-    if (vocalOn) return { subject: 'vocal', why: 'lead vocal singing' };
-    const groove = playing(1) && playing(2);
-    if (groove) return { subject: 'drums', why: 'kick and snare locked in, no vocal' };
-    return null;
+  /** Who is performing now, from the audio engine's arrangement follower (the same decisions
+   *  the mix uses): a solo, else the lead vocal (pauses between phrases count as singing), else the band. */
+  private performer(): { subject: Subject; why: string } {
+    const a = this.audio.history.at(-1)?.arrangement;
+    if (a?.solo) return { subject: SUBJECT_OF_CH[a.solo] ?? 'wide', why: `solo on ch${a.solo}` };
+    if (a?.lead) return { subject: 'vocal', why: 'lead vocal singing' };
+    return { subject: 'wide', why: 'band playing, vocal resting' };
   }
 
   private tick() {
@@ -100,31 +90,43 @@ export class Director {
     const cams = s.cams.filter((c) => c.connected && !c.error);
     if (cams.length < 2) return;
     const now = Date.now();
+    // Track the performer with a settle time, so a breath or a fill never causes a cut.
+    const p = this.performer();
+    if (!this.focus || this.focus.subject !== p.subject) this.focus = { ...p, since: now };
+    const settled = (now - this.focus.since) / 1000 >= SETTLE_S;
     if (now < this.manualUntil) return;
     const held = (now - this.lastCut) / 1000;
-    if (held < this.playbook.minDwellS) return;
+    if (held < Math.max(MIN_DWELL_S, this.playbook.minDwellS)) return;
     const live = cams.find((c) => c.id === s.liveCam);
     const liveSubject = live ? subjectOf(live) : 'wide';
-    const f = this.featured();
     const camFor = (subj: Subject) => cams.find((c) => subjectOf(c) === subj);
-    const wide = camFor('wide');
+    const wide = camFor('wide') ?? cams.find((c) => subjectOf(c) !== 'vocal');
+    const want = settled ? this.focus.subject : liveSubject;
 
     let target: CameraState | undefined;
     let why = '';
-    if (f && camFor(f.subject) && liveSubject !== f.subject) {
-      target = camFor(f.subject);
-      why = f.why;
-    } else if (liveSubject === 'wide' && held > this.playbook.maxWideS) {
-      target = (f && camFor(f.subject)) || cams.find((c) => subjectOf(c) !== 'wide' && subjectOf(c) !== 'crowd');
-      why = `wide held ${Math.round(held)} s (cap ${this.playbook.maxWideS} s)`;
-    } else if (liveSubject !== 'wide' && held > this.playbook.maxShotS + (liveSubject === 'drums' ? this.playbook.holdDrumsInGrooveS : 0) && (!f || f.subject !== liveSubject)) {
-      target = wide ?? cams.find((c) => c.id !== s.liveCam);
-      why = `${liveSubject} shot held ${Math.round(held)} s; ${wide ? 'back to the wide' : 'changing angle'}`;
+    if (want !== liveSubject && camFor(want)) {
+      // Follow the performer (solo player, singer, or back to the band).
+      target = camFor(want);
+      why = this.focus.why;
+    } else if (want === 'vocal' && liveSubject === 'vocal' && held > SINGER_MAX_S && wide && wide.id !== s.liveCam) {
+      target = wide;
+      why = `singer held ${Math.round(held)} s: a breather on the band`;
+    } else if (want === 'vocal' && liveSubject !== 'vocal' && held > BREATHER_S && camFor('vocal')) {
+      target = camFor('vocal');
+      why = 'back to the singer';
+    } else if (want === 'wide' && liveSubject === 'wide' && held > Math.max(this.playbook.maxWideS, 15)) {
+      // Long instrumental: show a featured player now and then, if there's a camera for one.
+      const feature = cams.find((c) => !['wide', 'vocal', 'crowd'].includes(subjectOf(c)));
+      if (feature) { target = feature; why = `instrumental: featuring ${subjectOf(feature)}`; }
+    } else if (want === 'wide' && liveSubject !== 'wide' && liveSubject !== this.focus.subject && held > this.playbook.maxShotS && wide) {
+      target = wide;
+      why = 'back to the band';
     }
     if (target && target.id !== s.liveCam) {
       this.lastCut = now;
       this.reason = why;
-      this.cut(target.id, why, f ? 'likely' : 'sure');
+      this.cut(target.id, why, settled ? 'likely' : 'guessing');
     }
   }
 }
