@@ -512,8 +512,11 @@ class Engine:
         elif t == 'transport':
             act = c.get('action')
             if act == 'play':
-                if not self.player.playing and not self.calibrated_session:
-                    self.calibrated_session = True  # first play after start: (re)calibrate trims
+                # The recording keeps its saved trims: re-measuring on every restart made the approved
+                # mix drift. Only a never-calibrated recording gets measured. The real soundcheck runs
+                # when the venue feed connects (set_source).
+                if not self.player.playing and not self.calibrated_session and all(st.trim == 0 for st in self.graph.strips.values()):
+                    self.calibrated_session = True
                     self.start_calibration()
                 self.player.play()
             elif act == 'pause':
