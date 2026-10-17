@@ -25,6 +25,8 @@ from aiohttp import WSMsgType, web
 from . import presets as P
 from .analyzer import Analyzer, wav_bytes
 from .arrangement import Arrangement
+
+DRUMS = (1, 2, 3)  # kick, snare, overheads: ridden by the meters (drum rider)
 from .graph import COMP, LIMITER, MCOMP, MTAPE, MixGraph, port
 from .modhost import ModHost
 from .player import StemPlayer
@@ -63,6 +65,10 @@ class Engine:
         self.st_hist: deque = deque(maxlen=300)  # 5 min of *music* short-term loudness for the leveller brake
         self.limiter_gr = 0.0
         self.arr = Arrangement()  # lead/backing vocals, solos, auto-mute of idle channels
+        # Drum faders from the meters, at soundcheck only (see _ride_drums).
+        self.drum_share: dict[int, deque] = {n: deque(maxlen=150) for n in DRUMS}
+        self.drum_done: set[int] = set()
+        self.last_drum = 0.0
         self.mh.feedback(self._feedback)
         a = self.analyzer.client.name
         self.graph = MixGraph(
@@ -130,10 +136,12 @@ class Engine:
         self._ride(f)
         self._follow_arrangement(f)
         self._keep_vocals_on_top(f)
+        self._ride_drums(f)
         self._watch_howl(f.get('howl', []))
         self._watch_clip_and_dead(f)
         frame = {'type': 'meters', **f, 'gr': self.gr, 'ride': self.ride, 'master': {**m, 'limiterGr': self.limiter_gr, 'busGr': self.bus_gr, 'drive': round(self.graph.master_gain, 1), 'bandOffset': round(self.graph.band_offset, 1)},
-                 'singing': [self.playing(n, f) for n in range(1, 17)], 'arrangement': self.arr.summary()}
+                 'singing': [self.playing(n, f) for n in range(1, 17)], 'arrangement': self.arr.summary(),
+                 'drums': {n: {'fader': self.graph.strips[n].fader, 'balanced': n in self.drum_done} for n in DRUMS}}
         self.broadcast(frame)
 
     def _level(self, m: dict) -> None:
@@ -276,6 +284,47 @@ class Engine:
             g.apply_fader(n)
             g.apply_sends(n)
 
+    def _ride_drums(self, f: dict) -> None:
+        """Drum faders set from the meters at SOUNDCHECK only (while the soundcheck calibration runs):
+        each drum's share of the whole mix (post-fader power, measured only while that drum plays) is
+        brought to P.DRUM_SHARE, then the fader is left alone for the rest of the show (user rule: drum
+        faders follow the actual meters, but don't travel during the show). A drum fader someone sets by
+        hand during soundcheck is left where they put it. Steps of at most 0.5 dB every 2 s, ±6 dB of the preset."""
+        now = time.time()
+        if not self.running() or now > self.calibrating_until:
+            return
+        g = self.graph
+        p = [10 ** ((f['rms'][i] + g.gain_db(i + 1)) / 10) * (0 if g.mute[i + 1] else 1) for i in range(16)]
+        total = sum(p)
+        for n in DRUMS:
+            if n not in self.drum_done and self.locked[n - 1] and total > 1e-12 and self.playing(n, f) and p[n - 1] > 1e-12:  # trim settled first
+                self.drum_share[n].append(10 * math.log10(p[n - 1] / total))
+        if now - self.last_drum < 2:
+            return
+        self.last_drum = now
+        for n in DRUMS:
+            h = self.drum_share[n]
+            if n in self.drum_done or len(h) < 30:
+                continue
+            err = P.DRUM_SHARE[n] - sorted(h)[len(h) // 2]
+            if abs(err) < 0.75:
+                self.drum_done.add(n)  # balanced: this fader stays here for the show
+                log.info('drum %s balanced from the meters at %.1f dB', n, g.strips[n].fader)
+                continue
+            st = g.strips[n]
+            preset = next(x.fader for x in P.STRIPS if x.n == n)
+            new = max(preset - 6, min(preset + 6, st.fader + max(-0.5, min(0.5, err * 0.5))))
+            if abs(new - st.fader) >= 0.05:
+                st.fader = round(new, 2)
+                g.apply_fader(n)
+                g.apply_sends(n)
+                h.clear()
+
+    def drum_retarget(self, n: int) -> None:
+        """Someone set this drum fader by hand: leave it there (no meter riding on it)."""
+        if n in DRUMS:
+            self.drum_done.add(n)
+
     def _keep_vocals_on_top(self, f: dict) -> None:
         """Holds the lead-vocal-to-band ratio near +5 dB by moving one shared offset on all
         non-vocal channels (their balance against each other stays as set). Only learns while
@@ -312,6 +361,9 @@ class Engine:
             d.clear()
         self.locked = [False] * 16
         self.calibrating_until = time.time() + minutes * 60
+        self.drum_done.clear()  # a new soundcheck sets the drum faders from the meters again
+        for d in self.drum_share.values():
+            d.clear()
 
     def _calibrate(self, raw: list[float]) -> None:
         if not self.running() or time.time() > self.calibrating_until:
@@ -424,6 +476,7 @@ class Engine:
             return {'type': 'master', 'eq': P.MASTER_EQ, 'bus': P.MASTER_BUS, 'tape': P.MASTER_TAPE, 'console': P.MASTER_CONSOLE}
         if t == 'fader' and s:
             s.fader = max(-60.0, min(10.0, float(c['db'])))
+            self.drum_retarget(n)
             g.apply_fader(n)
             g.apply_sends(n)
         elif t == 'pan' and s:

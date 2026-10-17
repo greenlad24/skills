@@ -122,6 +122,10 @@ VOCALS = {9, 10}  # lead + second vocal: never pulled down by the band offset
 OFFSET_EXEMPT = VOCALS | {1, 2, 3, 12, 14}
 TARGET_LAR = 5.0  # lead vocal over band, dB (band rule: vocals on top; research +3..+7)
 CEILING_DBTP = -1.0
+# Drum balance as each drum's share of the whole mix (post-fader power while that drum plays, dB),
+# measured from the meters on the user's approved mix (17 Oct 2026). Soundcheck sets the drum
+# faders to these once; they don't travel during the show.
+DRUM_SHARE = {1: -10.7, 2: -14.1, 3: -39.7}
 
 # Shared effect returns (100% wet).
 FX = {
