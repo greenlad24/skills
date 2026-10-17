@@ -4,6 +4,8 @@ After=network.target
 StartLimitIntervalSec=0
 
 [Service]
+User=vibe
+Group=vibe
 ExecStart=/usr/local/bin/livekit-server --config /etc/livekit.yaml
 Restart=always
 RestartSec=3

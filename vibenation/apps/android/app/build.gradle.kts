@@ -5,10 +5,10 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
-// Release signing lives OUTSIDE the repo: /root/vn-secrets/android-release.env
+// Release signing lives OUTSIDE the repo: /home/vibe/vn-secrets/android-release.env
 // (VN_KEYSTORE, VN_KEYSTORE_PASSWORD, VN_KEY_ALIAS, VN_KEY_PASSWORD). Override the path with VN_SIGNING_ENV.
 val signingEnv = Properties().apply {
-    val f = file(System.getenv("VN_SIGNING_ENV") ?: "/root/vn-secrets/android-release.env")
+    val f = file(System.getenv("VN_SIGNING_ENV") ?: "/home/vibe/vn-secrets/android-release.env")
     if (f.exists()) f.inputStream().use { load(it) }
 }
 

@@ -4,6 +4,8 @@ Description=VibeNation JACK audio server (dummy driver, 48 kHz)
 After=network.target
 
 [Service]
+User=vibe
+Group=vibe
 ExecStart=/usr/bin/jackd -R -P 70 -d dummy -r 48000 -p 2048
 Restart=always
 RestartSec=2

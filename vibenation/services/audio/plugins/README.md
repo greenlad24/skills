@@ -13,7 +13,7 @@ thin LV2 wrapper (`common/vn_arch.cpp`) instead of `faust2lv2`, so that:
 URIs: `https://vibenation.app/lv2/<name>`. Build + install all: `./build.sh` (→ `/usr/local/lib/lv2`), one: `./build.sh vn_fet`, no install: `NO_INSTALL=1 ./build.sh`.
 Tests: `VN_LV2_DIR=/usr/local/lib/lv2 ../.venv/bin/python tests/test_plugins.py` (ctypes host `tests/vnhost.py`, tones + 10 s stem excerpts normalised to −20 dBFS RMS; 31 checks, all pass).
 
-Reference repos (shallow clones, read-only) are in `/root/vn-tools/research/effects/` and `/root/vn-tools/research/`.
+Reference repos (shallow clones, read-only) are in `/home/vibe/vn-tools/research/effects/` and `/home/vibe/vn-tools/research/`.
 
 ## CPU (measured with `lv2bench -b 1024`, this 2-vCPU AMD droplet)
 
@@ -98,7 +98,7 @@ Verified: snare +6 dB in → max GR 4:1 23.6 dB, 20:1 27.9 dB, All 28.8 dB; 0 dB
 
 **Models:** low boost = 2nd-order low shelf (Q 0.6, midpoint 2× CPS, up to +13.5 dB); low atten = 1st-order low shelf (midpoint 4× CPS, up to −17.5 dB); the passive network's interaction is modelled (with boost engaged part of the atten is restored below CPS), giving the classic boost+atten curve. High boost = bell 3–16 kHz with bandwidth (Q 2.5 → 0.4, up to +16 dB); high atten = 1st-order high shelf at 5/10/20 kHz (up to −16 dB). Tube makeup stage (mostly 2nd harmonic, level dependent).
 
-**Studied:** consint `Pult-EQ` (`pultec_mono.dsp`: full 6-port WDF of the passive network, GPL — measured, not copied), ABSounds `EQP-WDF-1A` (WDF + `chowdsp_wdf`), Airwindows `Tube2`. We compiled the consint WDF and measured it (`/root/vn-tools/research/effects/pultec_ref/`): its pot laws give almost no action until the top of the knob (half low-atten = −0.8 dB) and max low boost/atten of only +10.8/−9.8 dB.
+**Studied:** consint `Pult-EQ` (`pultec_mono.dsp`: full 6-port WDF of the passive network, GPL — measured, not copied), ABSounds `EQP-WDF-1A` (WDF + `chowdsp_wdf`), Airwindows `Tube2`. We compiled the consint WDF and measured it (`/home/vibe/vn-tools/research/effects/pultec_ref/`): its pot laws give almost no action until the top of the knob (half low-atten = −0.8 dB) and max low boost/atten of only +10.8/−9.8 dB.
 
 **Better:** calibrated, linear-in-dB knob laws matching the EQP-1A spec (+13.5/−17.5/+16/−16 dB); the boost+atten trick reproduced (60 Hz both at 10: +7.3 dB at 30 Hz, −5.4 dB at 200 Hz); 2x OS so 12/16 kHz bells keep their analog shape (16 kHz bell measures +14.2 dB at 16 kHz) and the tube stage is alias-free; a few biquads instead of a per-sample 6×6 scattering matrix.
 

@@ -1,6 +1,6 @@
 # Accounts and keys only you can create
 
-VibeNation is built to use these, but each one needs you to sign in or create a key. Paste every key into the server's private settings file `/root/vibenation/vibenation/.env` (never committed), or send it to Claude in the chat and Claude will put it there.
+VibeNation is built to use these, but each one needs you to sign in or create a key. Paste every key into the server's private settings file `/home/vibe/vibenation/vibenation/.env` (never committed), or send it to Claude in the chat and Claude will put it there.
 
 | # | What | Why | Where | What to paste |
 |---|---|---|---|---|

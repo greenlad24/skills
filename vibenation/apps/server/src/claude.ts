@@ -3,7 +3,7 @@
 
 import { spawn } from 'node:child_process';
 
-const CLAUDE_BIN = process.env.VN_CLAUDE_BIN ?? `${process.env.HOME ?? '/root'}/.local/bin/claude`;
+const CLAUDE_BIN = process.env.VN_CLAUDE_BIN ?? `${process.env.HOME ?? '/home/vibe'}/.local/bin/claude`;
 export const CLAUDE_MODEL = process.env.VN_CLAUDE_MODEL ?? 'opus';
 
 export interface ClaudeResult<T> {

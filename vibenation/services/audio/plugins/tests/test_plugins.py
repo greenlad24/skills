@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 import vnhost  # noqa: E402
 
 SR = 48000
-STEMS = "/root/vibenation-media/stems-2026-04-04"
+STEMS = "/home/vibe/vibenation-media/stems-2026-04-04"
 fails = []
 
 

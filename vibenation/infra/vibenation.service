@@ -4,7 +4,9 @@ Description=VibeNation web app
 After=network.target
 
 [Service]
-WorkingDirectory=/root/vibenation/vibenation/apps/server
+User=vibe
+Group=vibe
+WorkingDirectory=/home/vibe/vibenation/vibenation/apps/server
 ExecStart=/usr/bin/env pnpm start
 Restart=always
 RestartSec=3
