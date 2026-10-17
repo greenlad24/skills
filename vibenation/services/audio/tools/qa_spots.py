@@ -30,11 +30,22 @@ async def main(dur=45, per_set=6):
                 st = await (await http.get(URL + '/state')).json()
                 length = st['transport']['length']
                 for k in range(per_set):
-                    pos = 240 + (length - 300) * k / max(1, per_set - 1)
-                    await http.post(URL + '/cmd', json={'type': 'transport', 'action': 'seek', 'seconds': pos})
-                    await http.post(URL + '/cmd', json={'type': 'transport', 'action': 'play'})
-                    frames, faders, t0 = [], None, None
+                    pos = 240 + (length - 420) * k / max(1, per_set - 1)
                     loop = asyncio.get_running_loop()
+                    for _try in range(4):  # skip talk/breaks: move on a minute if the band is quiet
+                        await http.post(URL + '/cmd', json={'type': 'transport', 'action': 'seek', 'seconds': pos})
+                        await http.post(URL + '/cmd', json={'type': 'transport', 'action': 'play'})
+                        t1, quiet = loop.time(), []
+                        while loop.time() - t1 < 6:
+                            d = json.loads((await ws.receive(timeout=5)).data)
+                            if d['type'] == 'meters':
+                                quiet.append(max(d['raw']) < -45)
+                        if sum(quiet) < len(quiet) * 0.5:
+                            break
+                        pos += 60
+                    frames, t0 = [], None
+                    cur = await (await http.get(URL + '/state')).json()
+                    faders = {int(n): v['fader'] for n, v in cur['mix']['strips'].items()}
                     t0 = loop.time()
                     while loop.time() - t0 < dur:
                         msg = await ws.receive(timeout=5)

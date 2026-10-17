@@ -50,7 +50,7 @@ class Engine:
         self.last_lar = 0.0
         self.ride_lvl: list[deque] = [deque(maxlen=4) for _ in range(16)]  # 400 ms of channel power
         self.ride_ref: list[deque] = [deque(maxlen=600) for _ in range(16)]  # 60 s of active levels
-        self.st_hist: deque = deque(maxlen=120)  # short-term loudness history for the leveller brake
+        self.st_hist: deque = deque(maxlen=300)  # 5 min of *music* short-term loudness for the leveller brake
         self.limiter_gr = 0.0
         self.mh.feedback(self._feedback)
         a = self.analyzer.client.name
@@ -123,20 +123,21 @@ class Engine:
     def _level(self, m: dict) -> None:
         """Master loudness leveller (after master_me): rides short-term loudness toward -16 LUFS,
         up at most 1 dB/s and down 3 dB/s, within -10..+20 dB of drive. A brake freezes it when
-        the music drops more than 14 dB under its recent median (song ends, talk, breaks)."""
+        the music drops more than 10 dB under its 5-minute median (song ends, talk, breaks), and
+        it never lifts anything quieter than -30 LUFS."""
         now = time.time()
         if not self.leveller_on or now - self.last_level < 1.0 or not self.player.playing:
             return
         self.last_level = now
-        s = m['lufsS']
-        if s > -60:
+        s = m['lufsS'] - self.graph.master_gain  # loudness before the leveller's own drive
+        median = sorted(self.st_hist)[len(self.st_hist) // 2] if len(self.st_hist) >= 5 else None
+        if median is not None and s < median - 10:
+            return  # brake: song end, talk or break — hold the drive, don't learn from it
+        if s > -45:
             self.st_hist.append(s)
-        if s < -40 or len(self.st_hist) < 5:
+        if median is None or m['lufsS'] < -30:
             return
-        median = sorted(self.st_hist)[len(self.st_hist) // 2]
-        if s < median - 14:  # brake
-            return
-        err = P.TARGET_LUFS - s
+        err = P.TARGET_LUFS - m['lufsS']
         if abs(err) < 0.5:
             return
         if err > 0 and self.limiter_gr > 3:  # louder would only mean more limiting: fix it upstream

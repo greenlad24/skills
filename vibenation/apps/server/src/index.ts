@@ -12,6 +12,7 @@ import { registerCams } from './cams.js';
 import { registerYouTube } from './youtube.js';
 import { registerPackage } from './package.js';
 import { registerDestinations } from './golive.js';
+import { registerLearning } from './learning.js';
 
 const PORT = Number(process.env.PORT ?? 8080);
 // Bind to localhost only; Caddy in front handles HTTPS once ports are approved.
@@ -34,6 +35,7 @@ registerCams(app, show);
 registerYouTube(app);
 registerPackage(app);
 registerDestinations(app);
+registerLearning(app, (p) => { show.director.playbook = p.director; });
 
 app.get('/ws', { websocket: true }, (socket) => {
   const off = show.subscribe((msg) => socket.send(JSON.stringify(msg)));

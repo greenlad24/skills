@@ -8,6 +8,7 @@ import { MixerLoop } from './mixer.js';
 import { Director } from './director.js';
 import { GoLive } from './golive.js';
 import { loadPackage } from './package.js';
+import { ShowLog, loadPlaybook, reviewShow } from './learning.js';
 
 type Listener = (msg: { type: 'state'; state: ShowState } | MeterFrame) => void;
 
@@ -43,6 +44,7 @@ export class DemoShow {
   readonly director: Director;
   readonly golive: GoLive;
   private videoSent = { cam: -1, slate: '' as string | null };
+  readonly log = new ShowLog();
 
   constructor() {
     const t = now();
@@ -114,6 +116,7 @@ export class DemoShow {
       hold: (id, ch) => this.hold(id, ch),
       changed: () => { this.refreshProcs(); this.push(); },
     });
+    setInterval(() => { if (this.state.onAir) this.log.write({ type: 'loudness', lufsI: this.state.master.lufsI, tp: this.state.master.truePeak, lim: this.state.master.limiterGr }); }, 60_000);
     this.director = new Director(() => this.state, this.audio, (cam, why, confidence) => {
       const c = this.state.cams.find((x) => x.id === cam);
       if (!c) return;
@@ -130,6 +133,7 @@ export class DemoShow {
       push: () => this.push(),
       pkg: loadPackage,
       startShow: () => {
+        this.log.start();
         this.state.onAir = true;
         this.state.liveSince = now();
         this.state.held = [];
@@ -185,6 +189,9 @@ export class DemoShow {
 
   private feed(f: Omit<FeedItem, 'id' | 't'>, undo?: () => void) {
     const item: FeedItem = { ...f, id: id(), t: now(), undoable: !!undo };
+    const type = f.kind === 'DIRECTOR' ? 'cut' : f.kind === 'MIX' ? 'mix' : f.kind === 'EMERGENCY' ? 'alert' : f.kind === 'YOURS'
+      ? (/^You cut/.test(f.text) ? 'human_cut' : /^Undid/.test(f.text) ? 'undo' : 'hold') : 'show';
+    this.log.write({ type, text: f.text, why: f.why, confidence: f.confidence });
     if (undo) this.undo.set(item.id, undo);
     this.state.feed = [item, ...this.state.feed].slice(0, 60);
     return item;
@@ -337,7 +344,18 @@ export class DemoShow {
       case 'end':
         s.slate = 'Thanks for watching';
         this.feed({ kind: 'SHOW', text: 'Ending: thanks-for-watching slate, then the stream stops in 30 s.' });
-        setTimeout(() => void this.golive.end(), 30_000);
+        setTimeout(() => {
+          void this.golive.end().then(async () => {
+            const showId = this.log.end();
+            if (!showId) return;
+            this.feed({ kind: 'SHOW', text: 'Show over. Claude is reviewing it to improve the next one…' });
+            this.push();
+            const r = await reviewShow(showId);
+            this.director.playbook = loadPlaybook().director;
+            this.feed({ kind: 'SHOW', text: r.message });
+            this.push();
+          });
+        }, 30_000);
         break;
       case 'slate':
         s.slate = a.slate;

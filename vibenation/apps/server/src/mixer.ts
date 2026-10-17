@@ -7,6 +7,7 @@
 import { CHANNELS, type ChannelState, type FeedItem, type ShowState } from '@vibenation/shared';
 import type { AudioLink, EngineFrame } from './audio.js';
 import { askClaude, CLAUDE_MODEL } from './claude.js';
+import { loadPlaybook } from './learning.js';
 
 export interface MixerHost {
   state: ShowState;
@@ -156,6 +157,8 @@ export class MixerLoop {
       const sends = c.sends ? `sends plate ${c.sends.plate ?? 'off'}, room ${c.sends.room ?? 'off'}, delay ${c.sends.delay ?? 'off'}` : '';
       lines.push(`- ch${c.n} ${c.name}${c.role ? ` (${c.role})` : ''}: fader ${c.fader} dB (base ${BASE[c.n].fader}), level ${lvl.toFixed(1)}, active ${Math.round(active * 100)}%, GR ${gr.toFixed(1)}, ride ${ride.toFixed(1)}; EQ [${eq}]; ${comp}; ${sends}; spectrum rel. ${spec.map((v) => (v - sMean).toFixed(0)).join('/')}${held.length ? `; HELD BY HUMAN: ${held.join(', ')}` : ''}`);
     }
+    const notes = loadPlaybook().mixNotes;
+    if (notes.length) lines.push(`Notes learned from previous shows: ${notes.join(' | ')}`);
     if (this.history.length) lines.push(`Your recent changes (newest last): ${this.history.slice(-8).map((h) => `[${Math.round((Date.now() - h.t) / 1000)} s ago] ${h.text}`).join(' | ')}`);
     return lines.join('\n');
   }

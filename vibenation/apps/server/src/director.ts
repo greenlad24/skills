@@ -7,6 +7,7 @@
 
 import type { CameraState, ShowState } from '@vibenation/shared';
 import type { AudioLink } from './audio.js';
+import { loadPlaybook } from './learning.js';
 
 export type Subject = 'wide' | 'vocal' | 'keys' | 'drums' | 'guitar' | 'bass' | 'horns' | 'perc' | 'crowd';
 
@@ -43,7 +44,7 @@ export function subjectOf(c: CameraState): Subject {
 }
 
 export class Director {
-  playbook: Playbook = { ...DEFAULT_PLAYBOOK };
+  playbook: Playbook = loadPlaybook().director ?? { ...DEFAULT_PLAYBOOK };
   private lastCut = Date.now();
   private manualUntil = 0;
   private medians: number[][] = Array.from({ length: 16 }, () => []);

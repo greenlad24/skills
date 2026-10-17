@@ -15,6 +15,8 @@ export function GoLiveScreen() {
   const s = useShow();
   const [countdown, setCountdown] = useState<number | null>(null);
   const [privacy, setPrivacy] = useState<'public' | 'private'>('public');
+  const [pb, setPb] = useState<{ director: { version: number }; shows: number; lessons: { k: string; t: string }[] } | null>(null);
+  useEffect(() => { fetch('/api/playbook').then((r) => r.json()).then(setPb).catch(() => undefined); }, [s?.golive.phase]);
   const [scheduled, setScheduled] = useState<{ id: string; title: string; scheduledStart?: string }[]>([]);
   useEffect(() => {
     if (!s?.youtube.connected) return;
@@ -80,10 +82,15 @@ export function GoLiveScreen() {
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
               <span className="vn-label" style={{ color: 'var(--ai-text)' }}>LEARNED FROM LAST SHOW</span>
               <span style={{ flex: 1 }} />
-              <span className="vn-mono" style={{ fontSize: 11, color: '#8F86A8' }}>playbook v1 · 0 shows</span>
+              <span className="vn-mono" style={{ fontSize: 11, color: '#8F86A8' }}>playbook v{pb?.director.version ?? 1} · {pb?.shows ?? 0} shows</span>
             </div>
-            <span style={{ fontSize: 12, lineHeight: 1.45, color: '#ECE6FF' }}>No shows reviewed yet. After each show Claude replays the recording and its decision log, learns from your manual cuts and holds and from viewer retention, and lists the changes here.</span>
-            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ai-text)', opacity: 0.6 }} title="The after-show review screen is future work">See the show review → <span style={{ fontWeight: 500 }}>(coming soon)</span></span>
+            {pb?.lessons.length ? pb.lessons.map((l, i) => (
+              <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                <span style={{ flex: 'none', marginTop: 2, padding: '1px 6px', borderRadius: 5, background: 'rgba(185,166,255,0.15)', color: '#D9CFFF', fontSize: 9, fontWeight: 800, letterSpacing: '0.06em' }}>{l.k}</span>
+                <span style={{ fontSize: 12, lineHeight: 1.45, color: '#ECE6FF' }}>{l.t}</span>
+              </div>
+            )) : <span style={{ fontSize: 12, lineHeight: 1.45, color: '#ECE6FF' }}>No shows reviewed yet. After each show Claude reviews its decision log against your manual cuts, holds and undos, and lists what it changes for the next show here.</span>}
+
           </div>
         </section>
 
