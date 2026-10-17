@@ -28,9 +28,9 @@ import java.util.concurrent.TimeUnit
 import kotlin.math.roundToInt
 
 /**
- * Camera2 capturer for LiveKit that runs auto white balance / exposure / focus for a few seconds,
- * then LOCKS them (CONTROL_AWB_LOCK, CONTROL_AE_LOCK, AF trigger) so the picture stays constant
- * for the whole stream. Frame handling mirrors WebRTC's own Camera2Session.
+ * Camera2 capturer for LiveKit that runs auto white balance / exposure for a few seconds, then LOCKS
+ * them (CONTROL_AWB_LOCK, CONTROL_AE_LOCK) so colour and brightness stay constant for the whole stream.
+ * Focus is never locked: continuous video autofocus keeps following the performers. Frame handling mirrors WebRTC's own Camera2Session.
  */
 class LockingCameraCapturer(
     private val context: Context,
@@ -264,10 +264,7 @@ class LockingCameraCapturer(
             b.set(CaptureRequest.COLOR_CORRECTION_MODE, CameraMetadata.COLOR_CORRECTION_MODE_TRANSFORM_MATRIX)
             b.set(CaptureRequest.COLOR_CORRECTION_GAINS, h.gains)
             b.set(CaptureRequest.COLOR_CORRECTION_TRANSFORM, h.ccm)
-            if (h.focus != null && canContinuousAf) {
-                b.set(CaptureRequest.CONTROL_AF_MODE, CameraMetadata.CONTROL_AF_MODE_OFF)
-                b.set(CaptureRequest.LENS_FOCUS_DISTANCE, h.focus)
-            }
+            // Focus is never locked: it keeps following the performers (continuous video AF, set in baseRequest).
             cs.setRepeatingRequest(b.build(), resultCallback, handler)
             true
         } catch (e: Exception) {
@@ -284,15 +281,10 @@ class LockingCameraCapturer(
         h.postDelayed(r, delayMs)
     }
 
-    /** Freeze AE + AWB, and lock focus where the camera has auto focus. */
+    /** Freeze AE + AWB. Focus stays continuous (user, 17 Oct 2026: cameras must keep auto focus). */
     private fun lockNow() {
         val cs = session ?: return
         try {
-            if (canContinuousAf) {
-                val trig = baseRequest(lockedNow = true)
-                trig.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_START)
-                cs.capture(trig.build(), resultCallback, handler)
-            }
             repeat(lockedNow = true)
             locked = true
         } catch (e: Exception) {

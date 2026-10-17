@@ -67,13 +67,12 @@ export interface LockResult {
 
 const NOT_SUPPORTED = 'auto (not supported on this phone)';
 
-/** Freeze white balance, exposure and focus at whatever the camera settled on. */
+/** Freeze white balance and exposure at whatever the camera settled on; focus stays continuous. */
 export async function lockPicture(track: MediaStreamTrack): Promise<LockResult> {
   const caps = (track.getCapabilities?.() ?? {}) as CaptureCaps;
   const cur = (track.getSettings() ?? {}) as CaptureSettings;
   const canWb = !!caps.whiteBalanceMode?.includes('manual');
   const canExp = !!caps.exposureMode?.includes('manual');
-  const canFocus = !!caps.focusMode?.includes('manual');
 
   const tryApply = async (c: Record<string, unknown>) => {
     try {
@@ -94,7 +93,8 @@ export async function lockPicture(track: MediaStreamTrack): Promise<LockResult> 
       ...(cur.iso ? { iso: cur.iso } : {}),
     });
   }
-  if (canFocus) await tryApply({ focusMode: 'manual', ...(cur.focusDistance ? { focusDistance: cur.focusDistance } : {}) });
+  // Focus is never locked (user, 17 Oct 2026): keep it continuous so it follows the performers.
+  if (caps.focusMode?.includes('continuous')) await tryApply({ focusMode: 'continuous' });
 
   const now = (track.getSettings() ?? {}) as CaptureSettings;
   const wbLocked = wbOk && now.whiteBalanceMode === 'manual';
