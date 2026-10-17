@@ -5,6 +5,11 @@ cd /opt/vibenation
 mkdir -p data
 export DEBIAN_FRONTEND=noninteractive
 
+# Pinned Python packages (services/*/requirements.txt) need Python 3.12 (Ubuntu 24.04). Fail fast otherwise.
+. /etc/os-release
+echo "OS: $PRETTY_NAME · $(python3 --version)"
+python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 12) else 1)' || { echo "Needs Python 3.12+ (Ubuntu 24.04); this image has $(python3 --version)" >&2; exit 1; }
+
 # Node 22 + pnpm
 if ! command -v node >/dev/null || ! node -v | grep -q '^v22'; then
   curl -fsSL https://deb.nodesource.com/setup_22.x | bash - >/dev/null && apt-get install -y -qq nodejs >/dev/null
@@ -24,7 +29,7 @@ command -v livekit-server >/dev/null || (curl -sSL https://get.livekit.io | bash
 pnpm install --frozen-lockfile >/dev/null
 pnpm --filter @vibenation/web build >/dev/null
 python3 -m venv services/audio/.venv
-services/audio/.venv/bin/pip install -q numpy scipy soundfile JACK-Client aiohttp
+services/audio/.venv/bin/pip install -q -r services/audio/requirements.txt
 
 # Services (same units as the build server)
 for u in vibenation-jack vibenation-audio vibenation vibenation-livekit; do

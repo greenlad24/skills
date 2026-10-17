@@ -24,7 +24,7 @@ Status as of 17 Oct 2026. ✅ done · ❌ to do · ➖ not needed for the first 
 - ✅ The show server's unit files drop `User=vibe` and point at `/opt/vibenation` (it has no vibe user).
 - ✅ mod-host patched to listen on 127.0.0.1 only.
 - ✅ Our LV2 plugins (`/usr/local/lib/lv2`) are copied over.
-- ❌ **Audio Python packages:** the show server's venv is missing `samplerate` and `ai-edge-litert` (the instrument classifier).
+- ✅ **Audio Python packages:** pinned in `services/audio/requirements.txt` (the build server's versions, including `samplerate` and `ai-edge-litert`), tested in a fresh venv. Provisioning stops early if the GPU image isn't Python 3.12 / Ubuntu 24.04; the image doesn't state its version.
 - ❌ **Video service is not set up on the show server:** no venv (`livekit`, `pillow`, `aiohttp` + system GStreamer), no `vibenation-video` service, no fonts check.
 - ❌ **LiveKit config:** `provision.sh` expects `/etc/livekit.yaml`, but nothing sends it.
 - ❌ **Test audio:** the 4 April stems are not copied over, and `VN_STEMS` still points at `/home/vibe/...`.
