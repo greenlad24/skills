@@ -4,7 +4,7 @@
 // (Keys screen; picked up live, no restart).
 
 const key = () => process.env.GEMINI_API_KEY ?? '';
-const MODEL = process.env.GEMINI_MODEL ?? 'gemini-2.5-flash';
+const MODEL = process.env.GEMINI_MODEL ?? 'gemini-3.8-flash'; // 2.5-flash is retired for new keys (Oct 2026)
 const AUDIO = process.env.VN_AUDIO_URL ?? 'http://127.0.0.1:8091';
 
 export interface Verdict {
