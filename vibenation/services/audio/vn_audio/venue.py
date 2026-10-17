@@ -11,6 +11,7 @@ target fill — no clicks, no drift.
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 import threading
 import time
@@ -23,12 +24,33 @@ import samplerate
 log = logging.getLogger('vn_audio.venue')
 CHANNELS = 16
 TARGET_FILL_S = 0.25  # buffer kept between network and JACK
+ENV_FILE = os.path.join(os.path.dirname(__file__), '..', '..', '..', '.env')  # vibenation/.env (also /opt/vibenation/.env)
+
+
+def venue_passphrase() -> str:
+    """VN_VENUE_PASSPHRASE from the environment, else from vibenation/.env (the systemd unit has no EnvironmentFile)."""
+    v = os.environ.get('VN_VENUE_PASSPHRASE', '').strip()
+    if not v and os.path.exists(ENV_FILE):
+        try:
+            for line in open(ENV_FILE):
+                k, _, val = line.strip().partition('=')
+                if k.strip() == 'VN_VENUE_PASSPHRASE':
+                    v = val.strip().strip('"').strip("'")
+        except OSError:
+            pass
+    if v and not 10 <= len(v) <= 79:
+        log.error('VN_VENUE_PASSPHRASE must be 10-79 characters; venue feed NOT encrypted')
+        return ''
+    return v
 
 
 class VenueReceiver:
-    def __init__(self, port: int = 9000, latency_ms: int = 500, client_name: str = 'vn_venue'):
+    def __init__(self, port: int = 9000, latency_ms: int = 500, client_name: str = 'vn_venue', passphrase: str | None = None):
         self.port = port
         self.latency_ms = latency_ms
+        self.passphrase = venue_passphrase() if passphrase is None else passphrase
+        if not self.passphrase:
+            log.warning('VN_VENUE_PASSPHRASE not set: venue feed on port %d is NOT encrypted and anyone can connect', port)
         self.client = jack.Client(client_name, no_start_server=True)
         self.sr = self.client.samplerate
         self.block = self.client.blocksize
@@ -75,12 +97,15 @@ class VenueReceiver:
 
     def _run(self) -> None:
         url = f'srt://0.0.0.0:{self.port}?mode=listener&latency={self.latency_ms * 1000}&transtype=live'
+        if self.passphrase:  # a sender without (or with a wrong) passphrase is refused at the handshake
+            url += f'&passphrase={self.passphrase}&pbkeylen=16'
         while True:
             proc = subprocess.Popen(
-                ['ffmpeg', '-loglevel', 'error', '-i', url, '-vn', '-f', 'f32le', '-ac', str(CHANNELS), '-ar', str(self.sr), '-'],
-                stdout=subprocess.PIPE,
+                ['ffmpeg', '-loglevel', 'error', '-probesize', '32', '-analyzeduration', '0', '-fflags', 'nobuffer', '-i', url, '-vn', '-f', 'f32le', '-ac', str(CHANNELS), '-ar', str(self.sr), '-'],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             )
-            assert proc.stdout
+            assert proc.stdout and proc.stderr
+            threading.Thread(target=self._log_stderr, args=(proc.stderr,), daemon=True).start()
             chunk_bytes = 4 * CHANNELS * 960  # 20 ms
             while True:
                 raw = proc.stdout.read(chunk_bytes)
@@ -101,17 +126,38 @@ class VenueReceiver:
                 self.buffered = 0
             time.sleep(0.5)
 
+    def _log_stderr(self, pipe) -> None:
+        # ffmpeg echoes the SRT URL in its errors; keep the passphrase out of the logs.
+        for line in iter(pipe.readline, b''):
+            msg = line.decode(errors='replace').rstrip()
+            if self.passphrase:
+                msg = msg.replace(self.passphrase, '***')
+            if msg:
+                log.warning('venue ffmpeg: %s', msg)
+
     def _push(self, x: np.ndarray) -> None:
         # Drift control: steer the resample ratio so the buffer sits at TARGET_FILL_S.
         err = (self.buffered / self.sr) - TARGET_FILL_S
         self.ratio = float(np.clip(1.0 - err * 0.002, 0.9995, 1.0005))  # at most ±500 ppm
         y = self.resampler.process(x, self.ratio, end_of_input=False).astype(np.float32)
         with self.lock:
-            if self.buffered > self.sr * 2:  # something stalled: drop the backlog
-                self.buf.clear()
-                self.buffered = 0
             self.buf.append(y)
             self.buffered += len(y)
+            # A backlog (burst on connect, or after a network stall) would add delay that the
+            # ±500 ppm drift loop needs ~25 min per second to remove: drop the oldest audio
+            # down to the target in one go instead.
+            excess = self.buffered - int(self.sr * TARGET_FILL_S)
+            if excess > self.sr * 0.3:
+                while excess > 0 and self.buf:
+                    head = self.buf[0]
+                    if len(head) <= excess:
+                        self.buf.popleft()
+                        excess -= len(head)
+                        self.buffered -= len(head)
+                    else:
+                        self.buf[0] = head[excess:]
+                        self.buffered -= excess
+                        excess = 0
 
     def status(self) -> dict:
         return {
@@ -120,4 +166,5 @@ class VenueReceiver:
             'driftPpm': round((self.ratio - 1.0) * 1e6),
             'underruns': self.underruns,
             'port': self.port,
+            'encrypted': bool(self.passphrase),
         }

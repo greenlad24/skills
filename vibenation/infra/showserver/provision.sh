@@ -40,6 +40,33 @@ done
 systemctl daemon-reload
 systemctl enable --now vibenation-jack vibenation-audio vibenation >/dev/null 2>&1 || true
 
+# Video service ------------------------------------------------------------------------
+# GStreamer compositor + encoders (services/video). VN_VIDEO_PROFILE=gpu comes from the
+# pushed .env; NVENC elements (nvh264enc ...) are the nvcodec plugin in gstreamer1.0-plugins-bad.
+apt-get install -y -qq -o DPkg::Lock::Timeout=300 python3-gi gir1.2-gstreamer-1.0 gir1.2-gst-plugins-base-1.0 \
+  gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
+  gstreamer1.0-plugins-ugly gstreamer1.0-libav >/dev/null
+# nvcodec registers its elements only if CUDA worked when the registry was scanned: rescan now.
+rm -f /root/.cache/gstreamer-1.0/registry.*.bin
+python3 -m venv --system-site-packages services/video/.venv
+services/video/.venv/bin/pip install -q -r services/video/requirements.txt
+sed -e 's#/home/vibe/vibenation/vibenation#/opt/vibenation#g' -e '/^User=/d' -e '/^Group=/d' \
+  infra/vibenation-video.service > /etc/systemd/system/vibenation-video.service
+systemctl daemon-reload
+systemctl enable vibenation-video >/dev/null 2>&1 || true
+systemctl restart vibenation-video || true
+{
+  echo "date: $(date -u +%FT%TZ)"
+  services/video/.venv/bin/python -c 'import gi; gi.require_version("Gst", "1.0"); from gi.repository import Gst; Gst.init(None)
+for f in ("nvh264enc", "nvcudah264enc", "nvautogpuh264enc", "x264enc", "compositor", "jackaudiosrc", "avenc_aac", "rtmp2sink", "flvmux"):
+    print(f"gst {f}: " + ("ok" if Gst.ElementFactory.find(f) else "MISSING"))' 2>&1
+  sleep 5
+  curl -s --max-time 5 http://127.0.0.1:8092/state | jq -c '{profile, encoders: (.encoders | map_values(.encoder)), fps: .stats.fps, error}' 2>&1 \
+    || echo "video service: not answering on :8092 (journalctl -u vibenation-video)"
+} > data/video-check.txt 2>&1
+cat data/video-check.txt
+# --------------------------------------------------------------------------------------
+
 # NVENC check (the reason this machine exists)
 {
   echo "date: $(date -u +%FT%TZ)"

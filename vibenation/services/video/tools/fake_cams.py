@@ -61,15 +61,17 @@ async def main():
     ap.add_argument('--cams', type=int, default=3)
     ap.add_argument('--size', default='640x360')
     ap.add_argument('--fps', type=int, default=15)
+    ap.add_argument('--room', default=os.environ.get('VN_VIDEO_ROOM', 'show'),
+                    help="LiveKit room (use a test room on a machine where real phones may be in 'show')")
     a = ap.parse_args()
     w, h = map(int, a.size.split('x'))
     url = os.environ.get('LIVEKIT_URL', 'ws://127.0.0.1:7880')
     key, secret = os.environ['LIVEKIT_API_KEY'], os.environ['LIVEKIT_API_SECRET']
     lk = api.LiveKitAPI(url.replace('ws', 'http', 1), key, secret)
-    if not (await lk.room.list_rooms(api.ListRoomsRequest(names=['show']))).rooms:
-        await lk.room.create_room(api.CreateRoomRequest(name='show', empty_timeout=12 * 3600, max_participants=20))
+    if not (await lk.room.list_rooms(api.ListRoomsRequest(names=[a.room]))).rooms:
+        await lk.room.create_room(api.CreateRoomRequest(name=a.room, empty_timeout=12 * 3600, max_participants=20))
     await lk.aclose()
-    await asyncio.gather(*(cam(n, url, key, secret, 'show', w, h, a.fps) for n in range(1, a.cams + 1)))
+    await asyncio.gather(*(cam(n, url, key, secret, a.room, w, h, a.fps) for n in range(1, a.cams + 1)))
 
 
 if __name__ == '__main__':

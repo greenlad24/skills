@@ -140,6 +140,31 @@ function WebCard() {
   );
 }
 
+// Venue laptop: the sender that takes the MR18's 16 channels over USB and sends them to the show server.
+function VenueCard() {
+  return (
+    <section aria-label="Venue laptop sender for the MR18" style={card}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <span className="vn-label">VENUE LAPTOP · WINDOWS</span>
+        <h2 style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 700 }}>Venue laptop (MR18)</h2>
+        <span className="vn-mono" style={{ fontSize: 12, color: 'var(--text-meta)' }}>16 channels over USB · sent encrypted to the show server</span>
+      </div>
+      <Steps>
+        <li>Download the zip on the venue laptop, right-click it › <b>Extract All</b>, put the folder on the Desktop.</li>
+        <li>Install <b>Python 3.12</b> if asked (tick <b>Add python.exe to PATH</b>), then double-click <b>setup.bat</b> and wait for <b>SETUP DONE</b>.</li>
+        <li>Open <b>sender.ini</b> and replace <b>SHOW-SERVER-IP</b> with the show server address. Save.</li>
+        <li>Plug in the MR18 by USB, double-click <b>run.bat</b> and wait for <b>CONNECTED</b>. Keep the window open.</li>
+      </Steps>
+      <span style={{ color: 'var(--text-meta)', fontSize: 12, lineHeight: 1.45 }}>
+        Use a network cable, not Wi-Fi. The zip holds the show passphrase: keep it to the venue laptop. Full help is in README.md inside the zip.
+      </span>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 'auto' }}>
+        <a href="/dl/venue-sender.zip" style={btn} download>Download venue sender (zip)</a>
+      </div>
+    </section>
+  );
+}
+
 export function AppsScreen() {
   return (
     <main style={{ flex: '1 1 auto', display: 'flex', flexDirection: 'column', gap: 24, padding: 'clamp(20px, 3vw, 36px) clamp(16px, 3vw, 40px)', maxWidth: 1380, width: '100%', margin: '0 auto' }}>
@@ -153,6 +178,7 @@ export function AppsScreen() {
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24 }}>
         <WebCard />
         <AndroidCard />
+        <VenueCard />
       </div>
     </main>
   );

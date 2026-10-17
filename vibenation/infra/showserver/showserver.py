@@ -211,7 +211,8 @@ def show_env() -> str:
     path = os.path.join(ROOT, '.env')
     lines = open(path).read().splitlines() if os.path.exists(path) else []
     keep = [l for l in lines if '=' in l and _sent(l.split('=', 1)[0].strip()) and l.split('=', 1)[0].strip() not in SHOW_OVERRIDES]
-    return ''.join(l + '\n' for l in keep) + ''.join(f'{k}={v}\n' for k, v in SHOW_OVERRIDES.items())
+    over = dict(SHOW_OVERRIDES, VN_VIDEO_PROFILE='gpu' if SIZE.startswith('gpu') else 'cpu')
+    return ''.join(l + '\n' for l in keep) + ''.join(f'{k}={v}\n' for k, v in over.items())
 
 
 def _sudo_write(path: str, text: str) -> None:

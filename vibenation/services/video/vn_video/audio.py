@@ -22,7 +22,7 @@ log = logging.getLogger('vn_video.audio')
 ENCODE = ('audioconvert ! level name=level interval=1000000000 post-messages=true '
           '! audioresample ! audioconvert ! audio/x-raw,rate=44100,channels=2 '
           '! avenc_aac bitrate=128000 ! aacparse ! audio/mpeg,mpegversion=4,stream-format=raw '
-          '! appsink name=aac emit-signals=true sync=false max-buffers=200 drop=true')
+          '! appsink name=aac emit-signals=true sync=false async=false max-buffers=200 drop=true')
 
 SOURCES = {
     'jack': 'jackaudiosrc name=jack client-name=vn_video connect=none buffer-time=100000 latency-time=10000 '

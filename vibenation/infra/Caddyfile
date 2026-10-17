@@ -14,6 +14,12 @@ app.jeeznews.com {
 		reverse_proxy 127.0.0.1:7880
 	}
 
+	# LiveKit server API (room list/tokens), used by the show server's video service.
+	# Authenticated by the LiveKit API key/secret.
+	handle /twirp/* {
+		reverse_proxy 127.0.0.1:7880
+	}
+
 	# Live audio: no compression, no buffering.
 	handle /api/audio/* {
 		reverse_proxy 127.0.0.1:8080 {

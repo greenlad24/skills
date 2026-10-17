@@ -40,6 +40,10 @@ PROFILES = {
     # Show server (RTX 4000 Ada): NVENC, 1080p60 program, two 16:9 encodes + vertical.
     'gpu': Profile('gpu', 1920, 1080, 60, 720, 1280, 30, 'nvenc',
                    {'16x9-9M': 9000, '16x9-6M': 6000, '9x16': 4000}, threads=4),
+    # Dedicated-CPU show server (CPU-Optimized c-16, no GPU): x264 veryfast, 1080p30 program.
+    # Measured need ~12-13 cores with 3 phones; 30 fps halves compositing vs 60.
+    'cpu': Profile('cpu', 1920, 1080, 30, 720, 1280, 30, 'x264',
+                   {'16x9-9M': 9000, '16x9-6M': 6000, '9x16': 4000}, threads=4),
     # Build server smoke test: x264 ultrafast, tiny sizes.
     'cpu-test': Profile('cpu-test', 640, 360, 30, 360, 640, 30, 'x264',
                         {'16x9-9M': 1500, '16x9-6M': 1000, '9x16': 800}),

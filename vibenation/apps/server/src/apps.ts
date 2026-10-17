@@ -3,6 +3,7 @@
 //
 // /dl/vibenation-camera.apk works with a login cookie, a camera invite (?k= from /cam),
 // or a 7-day download link from /api/apps (?k=, shown as a QR on the Apps screen).
+// /dl/venue-sender.zip (venue laptop sender) needs a login.
 
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
@@ -15,6 +16,8 @@ import { makeSigned, readSigned } from './cams.js';
 const RELEASE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../android/app/build/outputs/apk/release');
 const APK = process.env.VN_ANDROID_APK ?? path.join(RELEASE_DIR, 'app-release.apk');
 const LINK_TTL_S = 7 * 24 * 3600;
+// Venue laptop sender (MR18 -> SRT). Holds the venue passphrase, so login only.
+const VENUE_ZIP = process.env.VN_VENUE_SENDER_ZIP ?? '/home/vibe/vibenation-media/downloads/vibenation-venue-sender.zip';
 
 function versionName(): string | null {
   try {
@@ -55,5 +58,17 @@ export function registerApps(app: FastifyInstance) {
       .header('content-length', statSync(APK).size)
       .header('cache-control', 'no-store')
       .send(createReadStream(APK));
+  });
+
+  // Venue laptop sender package. Login required (it contains the SRT passphrase).
+  app.get('/dl/venue-sender.zip', async (req, reply) => {
+    if (!isAuthed(req)) return reply.code(401).type('text/plain').send('Log in to VibeNation to download the venue sender.');
+    if (!existsSync(VENUE_ZIP)) return reply.code(404).type('text/plain').send('The venue sender package has not been made yet. Ask Claude.');
+    return reply
+      .header('content-type', 'application/zip')
+      .header('content-disposition', 'attachment; filename="vibenation-venue-sender.zip"')
+      .header('content-length', statSync(VENUE_ZIP).size)
+      .header('cache-control', 'no-store')
+      .send(createReadStream(VENUE_ZIP));
   });
 }

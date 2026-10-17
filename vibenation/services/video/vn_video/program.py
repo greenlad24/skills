@@ -62,19 +62,21 @@ class Program:
         q1 = 'queue max-size-buffers=2 max-size-bytes=0 max-size-time=0 leaky=downstream'
         cam_norm = f'videoconvert {n} ! videoscale add-borders=true {n} ! {_caps("I420", p.w, p.h)}'
         still = 'is-live=true do-timestamp=true format=time min-latency=0'
+        # start-time-selection=first: with the default (zero) the compositors randomly stalled
+        # at start-up (still/camera appsrcs with no data yet); 10/10 clean starts with 'first'.
         desc = f"""
             videotestsrc is-live=true pattern=black ! {_caps('I420', p.w, p.h, p.fps)} ! prog.sink_0
-            compositor name=prog background=black latency={lat} ignore-inactive-pads=true
+            compositor name=prog background=black latency={lat} ignore-inactive-pads=true start-time-selection=first
               ! {_caps('I420', p.w, p.h, p.fps)} ! identity name=progcount ! tee name=progt allow-not-linked=true
             appsrc name=srcA {APPSRC} ! {q1} ! {cam_norm} ! {q1} ! prog.sink_1
             appsrc name=slate16 {still} caps="{_caps('RGBA', p.w, p.h, 0)}" ! videoconvert {n} ! video/x-raw,format=I420 ! {q1} ! prog.sink_2
             progt. ! queue max-size-buffers=1 leaky=downstream ! videorate drop-only=true max-rate=2 ! videoconvert ! video/x-raw,format=RGB
-              ! appsink name=snap_program sync=false emit-signals=true max-buffers=1 drop=true
+              ! appsink name=snap_program sync=false async=false emit-signals=true max-buffers=1 drop=true
             progt. ! queue name=encq_16x9-9M max-size-buffers=4 max-size-bytes=0 max-size-time=0 leaky=downstream ! valve name=valve_16x9-9M drop=true
             progt. ! queue name=encq_16x9-6M max-size-buffers=4 max-size-bytes=0 max-size-time=0 leaky=downstream ! valve name=valve_16x9-6M drop=true
 
             videotestsrc is-live=true pattern=black ! {_caps('I420', p.vw, p.vh, p.vfps)} ! vert.sink_0
-            compositor name=vert background=black latency={vlat} ignore-inactive-pads=true
+            compositor name=vert background=black latency={vlat} ignore-inactive-pads=true start-time-selection=first
               ! {_caps('I420', p.vw, p.vh, p.vfps)} ! identity name=vertcount ! tee name=vertt allow-not-linked=true
             appsrc name=srcC {APPSRC} ! {q1} ! {cam_norm} ! tee name=camC
             camC. ! {q1} ! valve name=vv_close drop=false ! videocrop name=crop_close ! videoscale {n} ! {_caps('I420', p.vw, p.vh)} ! {q1} ! vert.sink_1
@@ -83,7 +85,7 @@ class Program:
             appsrc name=strip {still} caps="{_caps('RGBA', p.vw, p.strip_h, 0)}" ! videoconvert ! video/x-raw,format=I420 ! {q1} ! vert.sink_4
             appsrc name=slate9 {still} caps="{_caps('RGBA', p.vw, p.vh, 0)}" ! videoconvert {n} ! video/x-raw,format=I420 ! {q1} ! vert.sink_5
             vertt. ! queue max-size-buffers=1 leaky=downstream ! videorate drop-only=true max-rate=2 ! videoconvert ! video/x-raw,format=RGB
-              ! appsink name=snap_vertical sync=false emit-signals=true max-buffers=1 drop=true
+              ! appsink name=snap_vertical sync=false async=false emit-signals=true max-buffers=1 drop=true
             vertt. ! queue name=encq_9x16 max-size-buffers=4 max-size-bytes=0 max-size-time=0 leaky=downstream ! valve name=valve_9x16 drop=true
         """
         pipe = Gst.parse_launch(desc)
@@ -164,6 +166,8 @@ class Program:
         set_prop(e, 'option-string', 'scenecut=0:nal-hrd=cbr' if p.name != 'cpu-test' else 'scenecut=0')
         if p.name == 'cpu-test':
             set_prop(e, 'threads', 1)
+        else:
+            set_prop(e, 'threads', 4)  # three encoders share the box: don't let each grab every core
         self.encoder_name[prof] = 'x264enc'
         return e
 
@@ -176,7 +180,7 @@ class Program:
         caps = Gst.ElementFactory.make('capsfilter')
         caps.set_property('caps', Gst.Caps.from_string('video/x-h264,stream-format=avc,alignment=au'))
         sink = Gst.ElementFactory.make('appsink', f'out_{prof}')
-        for k, v in (('emit-signals', True), ('sync', False), ('max-buffers', 120), ('drop', True)):
+        for k, v in (('emit-signals', True), ('sync', False), ('async', False), ('max-buffers', 120), ('drop', True)):  # async=false: a closed valve must not block PLAYING
             sink.set_property(k, v)
         sink.connect('new-sample', self._encoded, prof)
         for e in (enc, parse, caps, sink):

@@ -1,0 +1,25 @@
+[Unit]
+StartLimitIntervalSec=0
+Description=VibeNation video program (cameras, slates, encodes, RTMP outputs)
+# Audio comes from JACK when it is there; the service falls back to silence and retries by itself.
+After=network.target vibenation-jack.service vibenation-livekit.service
+Wants=vibenation-jack.service
+
+[Service]
+User=vibe
+Group=vibe
+WorkingDirectory=/home/vibe/vibenation/vibenation/services/video
+# LIVEKIT_* and VN_VIDEO_* (the show server's .env sets VN_VIDEO_PROFILE=gpu; default is cpu-test).
+EnvironmentFile=-/home/vibe/vibenation/vibenation/.env
+ExecStart=/home/vibe/vibenation/vibenation/services/video/.venv/bin/python -m vn_video.server
+Restart=always
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+KillMode=control-group
+TimeoutStopSec=10
+# Live video: ahead of ordinary work, behind the JACK/audio real-time threads.
+Nice=-5
+LimitMEMLOCK=infinity
+
+[Install]
+WantedBy=multi-user.target
