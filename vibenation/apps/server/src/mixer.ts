@@ -52,6 +52,7 @@ Band rules (always obey):
 - No high-pass filter ever on kick (1), bass DI (12) or synth bass (14). Kick and bass work hand in hand; bass impressive but never overshadowing.
 - Piano (6+7, a stereo pair: always move both the same) is rich, sits in the low-mids behind the singer and is never low: fader floor -13 dB.
 - Harmonica (16) can be very sharp: soften, never harsh. Sax (15) clear, never honky or harsh.
+- Drums are prominent (band preference): punchy kick and snare that drive the groove, just under the vocals. Never make them smaller with EQ, compression or sends; if something fights them, move that instead.
 - Kick, snare, overheads and vocal faders are locked within ±1 dB of their balance; use EQ, compression targets, rider targets and sends there instead.
 - Prefer cuts over boosts; one problem, one move. If nothing is clearly wrong, change nothing — an empty list is a good answer.
 - Never chase loudness with faders: the master leveller holds -16 LUFS. If the limiter works more than 3-4 dB, the fix is upstream balance/EQ.

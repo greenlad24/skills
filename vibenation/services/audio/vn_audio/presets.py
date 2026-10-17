@@ -65,13 +65,13 @@ VOCAL_EQ: list[Band] = [
 ]
 
 STRIPS: list[Strip] = [
-    Strip(1, 'Kick', -10.0, 0,
+    Strip(1, 'Kick', -7.0, 0,  # +3 dB drums (user, 17 Oct 2026: drums more prominent)
           eq=[('bell', 60, 2.0, 1.0), ('bell', 285, -3.0, 1.5), ('hshelf', 16000, 2.0, 0.7)],
           comp=Comp(-18, 4.5, 28, 85, 2, peak=True), gate=Gate(-34, 12, 0.5, 45, 10), room=-22, no_hpf=True),
-    Strip(2, 'Snare', -14.9, 0,
+    Strip(2, 'Snare', -11.9, 0,
           eq=[('hpf', 100, 0, 0.7), ('bell', 200, 0, 1.0), ('bell', 420, -3.0, 2.0), ('bell', 2500, 2.0, 1.0), ('bell', 8000, 2.0, 1.0)],
           comp=Comp(-20, 4, 15, 50, 3, peak=True), room=-15),
-    Strip(3, 'Overheads', -23.4, 0,
+    Strip(3, 'Overheads', -20.4, 0,
           eq=[('hpf', 180, 0, 0.7)], comp=Comp(-22, 4, 15, 120, 1)),
     Strip(4, 'Acoustic DI', -14.0, -20,
           eq=[('hpf', 100, 0, 0.7), ('bell', 250, -2.5, 1.2), ('bell', 1000, -3.0, 4.0), ('hshelf', 12000, 1.5, 0.7)],
