@@ -2,6 +2,9 @@ import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } fr
 import type { CameraState, ChannelState, ProcessRow, ShowState, VMode } from '@vibenation/shared';
 import { fmtDb, send, useMeters, useShow } from '../store';
 import { PLATFORM_BG } from '../components/Header';
+import { useLiveVideo } from '../components/cams/liveVideo';
+import { LiveVideo, NoPicture } from '../components/cams/LiveVideo';
+import { AddPhoneTile } from '../components/cams/AddPhone';
 
 // Show screen: one live program picture, click-to-cut camera tiles, all 16 faders,
 // and Claude's sidebar. There is no preview monitor and no manual-mode button.
@@ -27,12 +30,14 @@ export function ShowScreen() {
   }, [s.cams]);
 
   const liveCam = s.cams.find((c) => c.id === s.liveCam);
+  // Real phones (CameraState.identity set) stream over LiveKit; demo cameras keep the drawings.
+  useLiveVideo(s.cams.some((c) => c.identity), liveCam?.identity);
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', flex: '1 1 auto', minHeight: 0 }}>
       <main style={{ flex: '999 1 640px', minWidth: 0, padding: 22, display: 'flex', flexDirection: 'column', gap: 18 }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
           <div style={{ flex: '999 1 560px', minWidth: 0 }}>
-            <Program label={liveCam ? `${liveCam.num} · ${liveCam.name}` : '—'} song={s.song} mbps={s.health.mbps} camId={s.liveCam} />
+            <Program label={liveCam ? `${liveCam.num} · ${liveCam.name}` : '—'} song={s.song} mbps={s.health.mbps} camId={s.liveCam} cam={liveCam} />
           </div>
           <Vertical s={s} />
         </div>
@@ -43,6 +48,7 @@ export function ShowScreen() {
         </div>
         <section aria-label="Cameras" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(176px, 1fr))', gap: 14, marginTop: -6 }}>
           {s.cams.map((c) => <CamTile key={c.id} cam={c} live={c.id === s.liveCam} />)}
+          <AddPhoneTile />
         </section>
 
         <MixRow channels={s.channels} />
@@ -54,12 +60,14 @@ export function ShowScreen() {
 
 // ---------- program monitor ----------
 
-function Program({ label, song, mbps, camId }: { label: string; song: string; mbps: number; camId: number }) {
+function Program({ label, song, mbps, camId, cam }: { label: string; song: string; mbps: number; camId: number; cam?: CameraState }) {
   const overlay: CSSProperties = { padding: '5px 12px', borderRadius: 8, background: 'rgba(10,6,4,0.55)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,236,220,0.12)' };
   return (
     <section aria-label="Program" style={{ borderRadius: 22, padding: 3, background: 'linear-gradient(140deg, #5EA2FF, #1F66E0 55%, #2A4F9E)', boxShadow: '0 0 0 1px rgba(61,139,255,0.25), 0 24px 70px rgba(31,102,224,0.22), 0 30px 60px rgba(0,0,0,0.5)' }}>
       <div style={{ borderRadius: 19, overflow: 'hidden', position: 'relative', aspectRatio: '16 / 9', maxHeight: 470, width: '100%', background: '#070403' }}>
-        <StageScene key={camId} camId={camId} />
+        {cam?.identity
+          ? <LiveVideo key={cam.identity} identity={cam.identity} label={`Live program: ${cam.num}`} fallback={<NoPicture text={cam.connected ? `Waiting for video from ${cam.num}…` : `${cam.num} is not connected`} />} />
+          : <StageScene key={camId} camId={camId} />}
         <div aria-hidden style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0) 22%, rgba(0,0,0,0) 70%, rgba(0,0,0,0.55) 100%)' }} />
         <div style={{ position: 'absolute', left: 18, top: 16, display: 'flex', gap: 8, alignItems: 'center' }}>
           <span style={{ padding: '5px 11px', borderRadius: 8, background: 'var(--on-air-fill)', color: '#FFFFFF', fontWeight: 800, fontSize: 12, letterSpacing: '0.1em', boxShadow: '0 4px 16px rgba(31,102,224,0.6)' }}>LIVE</span>
@@ -192,8 +200,10 @@ function CamTile({ cam, live }: { cam: CameraState; live: boolean }) {
   return (
     <button onClick={() => send({ type: 'take', cam: cam.id })} aria-label={`Put ${cam.num} on air`} aria-pressed={live}
       style={{ textAlign: 'left', padding: 8, borderRadius: 18, cursor: 'pointer', color: 'inherit', background: 'linear-gradient(180deg, rgba(40,30,23,0.8), rgba(24,18,14,0.8))', border: live ? '2px solid var(--on-air)' : '1px solid rgba(255,236,220,0.08)', boxShadow: live ? '0 0 0 4px rgba(61,139,255,0.18), 0 14px 30px rgba(31,102,224,0.25)' : '0 10px 24px rgba(0,0,0,0.3)' }}>
-      <div style={{ aspectRatio: '16 / 9', borderRadius: 12, background: SCENES[cam.id] ?? SCENES[5], position: 'relative', overflow: 'hidden' }}>
-        <svg viewBox="0 0 160 90" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} aria-hidden><g fill="#050302" opacity="0.92"><circle cx={HEADS[cam.id] ?? 80} cy="40" r="11" /><path d={BODIES[cam.id] ?? BODIES[2]} /></g></svg>
+      <div style={{ aspectRatio: '16 / 9', borderRadius: 12, background: cam.identity ? '#070403' : SCENES[cam.id] ?? SCENES[5], position: 'relative', overflow: 'hidden' }}>
+        {cam.identity
+          ? <LiveVideo identity={cam.identity} label={`${cam.num} picture`} fallback={<NoPicture text={cam.connected ? 'Waiting for video…' : 'No signal'} />} />
+          : <svg viewBox="0 0 160 90" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} aria-hidden><g fill="#050302" opacity="0.92"><circle cx={HEADS[cam.id] ?? 80} cy="40" r="11" /><path d={BODIES[cam.id] ?? BODIES[2]} /></g></svg>}
         {live && <span style={{ position: 'absolute', right: 8, top: 8, padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', color: '#FFFFFF', background: 'var(--on-air-fill)' }}>LIVE</span>}
         <span style={{ position: 'absolute', left: 8, top: 8, padding: '2px 7px', borderRadius: 6, background: 'rgba(10,6,4,0.55)', fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700, color: 'var(--text-1)' }}>{cam.num}</span>
         {chip && (
@@ -206,6 +216,13 @@ function CamTile({ cam, live }: { cam: CameraState; live: boolean }) {
         <span role="img" aria-label={cam.error ? 'Error' : cam.warn ? 'Warning' : 'Healthy'} style={{ width: 7, height: 7, borderRadius: '50%', background: cam.error ? 'var(--error)' : cam.warn ? 'var(--warn)' : '#8F8378' }} />
         <kbd aria-label={`Shortcut key ${cam.id}`} style={{ minWidth: 20, height: 20, padding: '0 5px', borderRadius: 6, background: 'rgba(255,236,220,0.06)', border: '1px solid rgba(255,236,220,0.12)', borderBottomWidth: 2, fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700, color: 'var(--text-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{cam.id}</kbd>
       </div>
+      {cam.identity && cam.connected && (
+        <div title={`White balance: ${cam.wb ?? '—'} · Exposure: ${cam.exposure ?? '—'}${cam.wifi ? ` · Link: ${cam.wifi}` : ''}`} style={{ padding: '2px 4px 0', fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-meta)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {cam.height ? `${cam.height}p${cam.fps !== undefined ? ` · ${Math.round(cam.fps)} fps` : ''}` : '—'}
+          {cam.kbps !== undefined ? ` · ${(cam.kbps / 1000).toFixed(1)} Mbps` : ''}
+          {cam.locked !== undefined ? (cam.locked ? ' · locked' : ' · auto WB') : ''}
+        </div>
+      )}
     </button>
   );
 }

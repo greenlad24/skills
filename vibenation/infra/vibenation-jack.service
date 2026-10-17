@@ -4,11 +4,12 @@ Description=VibeNation JACK audio server (dummy driver, 48 kHz)
 After=network.target
 
 [Service]
-ExecStart=/usr/bin/jackd --no-realtime -d dummy -r 48000 -p 1024
+ExecStart=/usr/bin/jackd -R -P 70 -d dummy -r 48000 -p 2048
 Restart=always
 RestartSec=2
 Environment=JACK_NO_AUDIO_RESERVATION=1
 LimitMEMLOCK=infinity
+LimitRTPRIO=95
 
 [Install]
 WantedBy=multi-user.target

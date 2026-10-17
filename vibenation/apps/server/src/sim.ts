@@ -5,6 +5,7 @@
 import { CHANNELS, type CameraState, type ClientAction, type FeedItem, type ShowState, type MeterFrame, type ChatMessage } from '@vibenation/shared';
 import { AudioLink } from './audio.js';
 import { MixerLoop } from './mixer.js';
+import { Director } from './director.js';
 
 type Listener = (msg: { type: 'state'; state: ShowState } | MeterFrame) => void;
 
@@ -37,6 +38,7 @@ export class DemoShow {
   private undo = new Map<string, () => void>();
   readonly audio: AudioLink;
   readonly mixer: MixerLoop;
+  readonly director: Director;
 
   constructor() {
     const t = now();
@@ -104,6 +106,15 @@ export class DemoShow {
       hold: (id, ch) => this.hold(id, ch),
       changed: () => { this.refreshProcs(); this.push(); },
     });
+    this.director = new Director(() => this.state, this.audio, (cam, why, confidence) => {
+      const c = this.state.cams.find((x) => x.id === cam);
+      if (!c) return;
+      this.state.liveCam = cam;
+      this.lastCut = now();
+      this.feed({ kind: 'DIRECTOR', text: `Cut to ${c.num} · ${c.name}.`, why, confidence });
+      this.state.thinking = { ...this.state.thinking, text: `On ${c.num} · ${c.name}: ${why}.`, heard: why.split(' — ')[0] };
+      this.push();
+    });
     setInterval(() => this.meters(), 100);
     setInterval(() => this.claudeTick(), 6000);
   }
@@ -170,7 +181,6 @@ export class DemoShow {
 
   private refreshProcs() {
     const s = this.state;
-    const camWarn = s.cams.find((c) => c.warn);
     s.procs = [
       s.audio
         ? { name: 'Mixer audio link', meta: s.audio.source === 'recording' ? `test recording · ${s.audio.playing ? 'playing' : 'paused'}` : '16 ch · 48k', level: s.audio.playing ? 'ok' : 'warn' }
@@ -180,7 +190,7 @@ export class DemoShow {
       { name: 'Claude mixer', meta: this.mixer?.status() ?? 'starting', level: this.mixer?.lastError ? 'warn' : 'ai' },
       { name: 'Director', meta: s.vmodeHeld ? 'auto · vertical yours' : 'auto', level: 'ai' },
       { name: 'YouTube ingest', meta: `${s.health.mbps.toFixed(1)} Mbps`, level: 'ok' },
-      ...(camWarn ? [{ name: `${camWarn.num} battery`, meta: `${camWarn.battery}%`, level: 'warn' as const }] : []),
+      ...s.cams.filter((c) => c.warn || c.error).map((c) => ({ name: c.num, meta: (c.error ?? c.warn)!, level: (c.error ? 'error' : 'warn') as 'error' | 'warn' })),
     ];
   }
 
@@ -212,13 +222,13 @@ export class DemoShow {
     s.health.viewers = Math.max(0, s.health.viewers + Math.round((Math.random() - 0.45) * 20));
     s.health.likes += Math.random() < 0.4 ? 1 : 0;
 
-    if (now() - this.lastCut > 14_000 && Math.random() < 0.6) {
+    if (!this.audio.connected && now() - this.lastCut > 14_000 && Math.random() < 0.6) {
       const options = s.cams.filter((c) => c.connected && c.id !== s.liveCam && !c.error);
-      const next = pick(options);
-      s.liveCam = next.id;
+      const next = options.length ? pick(options) : null;
+      if (next) s.liveCam = next.id;
       this.lastCut = now();
-      this.feed({ kind: 'DIRECTOR', text: `Cut to ${next.num} · ${next.name}.`, why: pick(['Phrase ended on the downbeat; held the last shot 14 s.', 'Solo detected on this player.', 'Vocal came back in after the break.']) , confidence: 'likely' });
-      this.state.thinking = { text: `Holding ${next.num} through this phrase, then looking for the next solo.`, heard: pick(['groove locked', 'vocal phrase', 'keys solo']), confidence: 'likely' };
+      if (next) this.feed({ kind: 'DIRECTOR', text: `Cut to ${next.num} · ${next.name}.`, why: pick(['Phrase ended on the downbeat; held the last shot 14 s.', 'Solo detected on this player.', 'Vocal came back in after the break.']) , confidence: 'likely' });
+      if (next) this.state.thinking = { text: `Holding ${next.num} through this phrase, then looking for the next solo.`, heard: pick(['groove locked', 'vocal phrase', 'keys solo']), confidence: 'likely' };
     } else if (!this.audio.connected) {
       const free = s.channels.filter((c) => !c.held && !c.mute && !this.state.held.includes(`ch${c.n}.fader`));
       if (free.length) {
@@ -251,6 +261,7 @@ export class DemoShow {
         if (!cam) return;
         s.liveCam = cam.id;
         this.lastCut = now();
+        this.director.manualCut();
         this.feed({ kind: 'YOURS', text: `You cut to ${cam.num} · ${cam.name}.`, why: 'Claude keeps directing from the shot you picked.' });
         break;
       }

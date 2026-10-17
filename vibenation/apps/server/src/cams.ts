@@ -6,7 +6,7 @@
 
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import { AccessToken } from 'livekit-server-sdk';
+import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
 import type { CamCommand, CamStatus, CameraState } from '@vibenation/shared';
 
 const SECRET = process.env.VN_SESSION_SECRET || randomBytes(32).toString('hex');
@@ -30,6 +30,17 @@ function readSigned(kind: string, token: string | undefined): string | null {
   const [k, payload, exp] = body.split('.');
   if (k !== kind || Number(exp) * 1000 < Date.now()) return null;
   return payload;
+}
+
+// LiveKit runs with room.auto_create off, so the server creates the "show" room before
+// handing out tokens (idempotent: returns the existing room if it is already there).
+const LK_HTTP = (process.env.LIVEKIT_URL || 'ws://127.0.0.1:7880').replace(/^ws/, 'http');
+async function ensureRoom(app: FastifyInstance) {
+  try {
+    await new RoomServiceClient(LK_HTTP, LK_KEY, LK_SECRET).createRoom({ name: ROOM, emptyTimeout: 12 * 3600, maxParticipants: 20 });
+  } catch (err) {
+    app.log.warn({ err }, 'LiveKit: could not create the show room');
+  }
 }
 
 async function lkToken(identity: string, name: string, publish: boolean) {
@@ -59,12 +70,14 @@ export function registerCams(app: FastifyInstance, host: CamHost) {
   // Authenticated: subscribe-only LiveKit token so the web app can show the cameras.
   app.get('/api/cams/viewer-token', async (req) => {
     const id = `viewer-${randomBytes(4).toString('hex')}`;
+    await ensureRoom(app);
     return { url: `wss://${req.headers.host}`, token: await lkToken(id, 'VibeNation', false), room: ROOM };
   });
 
   // Public, but needs a valid invite: a phone joins as a camera.
   app.post<{ Body: { k?: string; name?: string; device?: 'android' | 'iphone'; camId?: number } }>('/api/cams/join', async (req, reply) => {
     if (readSigned('invite', req.body?.k) === null) return reply.code(403).send({ error: 'This camera link has expired. Scan the QR code in VibeNation again.' });
+    await ensureRoom(app); // before picking the id, so concurrent joins can't get the same one
     const existing = host.cams().filter((c) => c.identity);
     const id = req.body?.camId && existing.some((c) => c.id === req.body.camId) ? req.body.camId : (Math.max(0, ...existing.map((c) => c.id)) || nextId - 1) + 1;
     nextId = id + 1;
