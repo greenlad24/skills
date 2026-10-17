@@ -1,18 +1,29 @@
 # YouTube thumbnails
 
-Made from a real frame of the show by `vn_video/thumbs.py`. Faces are never AI-edited.
-The finish comes from the band's poster style (the R604 reference); the poster template itself (headline system, logo, schedule block, characters, scene rebuilding) is deliberately not used.
+Two generators, same look:
+- **`vn_video/thumbs_ai.py` (main):** tonight's guest performers, drawn from their approved character sheets, on the venue's real stage (OpenAI image edit, paid per image).
+- **`vn_video/thumbs.py` (fallback, free):** the best real frame from the show, cropped tight and graded. Used when no guest has a sheet, or there's no OpenAI key.
 
-## What makes a live-music thumbnail get clicked
-1. **One real moment:** the singer mid-note, or a player lost in it. Candidate frames are scored on face size, sharpness (no motion blur) and exposure; the best one wins.
-2. **Tight crop:** the performer fills the frame, face about 20% of the height, eyes on the upper third, on the side with more room. Other band members stay in when they fit.
-3. **Instrument or mic in shot:** signals "live music" instantly.
-4. **Depth:** the performer bright and crisp; the background darker and less saturated. No fake blur.
-5. **Warm finish (R604):** brown-black shadows, olive mids, golden highlights, cream tops, fine grain. Real skin texture, no beauty smoothing, no orange filter. Tuned for punch at phone size.
-6. **YouTube spec:** 1280×720 JPEG under 2 MB. Nothing important bottom-right (YouTube's duration/LIVE badge).
+## Research: Scary Pockets (Oct 2026, 415 videos)
+Their top 20 (4.5M–35M views) all follow the same formula:
+- **No text and no logo on the thumbnail.** The title sells: a famous song, the original artist and "funk cover ft. [singer]". Song fame is the biggest driver.
+- **The singer is the hero, mid-belt:** mouth open, eyes closed or intense, head large in frame.
+- **A mic right in front of the face:** reads "live" instantly and adds foreground depth.
+- **Warm, bright, natural light,** with the room readable but secondary.
+- **Band members visible behind** in about half of them: a real band, not a solo act.
+
+Their weakest covers (58k–106k) break it: gimmicks (text, split screens, costumes), flat purple or green backgrounds, letterbox bars, side-on faces.
+
+## The brief (what both generators aim for)
+1. **One hero performer** mid-song, emotion over glamour, head about ⅓ of the image height, on a third.
+2. **A mic in the foreground; instruments and band behind** in softer focus.
+3. **The venue's actual stage** (AI): the semicircular teal-green lattice backdrop, concrete walls, bamboo ceiling, partly visible and out of focus. Never a generic stage.
+4. **The R604 finish:** warm brown-black shadows, golden highlights, restrained saturation, fine grain, real skin texture.
+5. **YouTube spec:** 1280×720 JPEG under 2 MB; no faces in the bottom-right (badge).
 
 ## Rules
-- No logo, no venue name, no location, ever.
-- Text is optional and off by default. If used: 1–3 words, huge, heavy condensed caps (Anton), cream `#F0EADE`, top-left.
-- Guests are named only in the title and description, never in the picture.
-- Claude checks the chosen frame before it is uploaded (eyes open, no awkward mouth, nothing embarrassing). It can be replaced on the Go Live screen.
+- No text, no logo, no venue name, no signs, no location, ever.
+- Only approved performers are drawn from sheets: Jesse, Alyona (sheet name "aliona"), Greg (the usual Saturday guests). The lead singer is listed first. Never give a sheet's likeness to anyone else.
+- References stay off GitHub: `/home/vibe/vibenation-media/thumbnail-refs/` (mode 700) holds `performers/<name>/`, `stage/` (crops with no map, names or app UI) and `finish/R604.jpg`.
+- Every AI image is reviewed before use: likeness matches the sheets; hands, mics and instruments are physically right; the stage is recognisable; no text. A failed candidate is regenerated or dropped, never "fixed" with a filter. The user approves or swaps it on Go Live.
+- The cost is stated before generating (about $0.25–0.40 per image at high quality).
