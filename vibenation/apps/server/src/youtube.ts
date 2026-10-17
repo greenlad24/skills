@@ -8,8 +8,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 
-const CLIENT_ID = process.env.YOUTUBE_CLIENT_ID ?? '';
-const CLIENT_SECRET = process.env.YOUTUBE_CLIENT_SECRET ?? '';
+// Read live: the Keys screen can set these without a restart.
+const clientId = () => process.env.YOUTUBE_CLIENT_ID ?? '';
+const clientSecret = () => process.env.YOUTUBE_CLIENT_SECRET ?? '';
 const SECRETS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../data/secrets');
 const TOKEN_FILE = path.join(SECRETS, 'youtube.json');
 const SCOPES = ['https://www.googleapis.com/auth/youtube', 'https://www.googleapis.com/auth/youtube.force-ssl'];
@@ -27,7 +28,7 @@ export interface Broadcast {
   ingest?: { url: string; key: string };
 }
 
-const configured = () => Boolean(CLIENT_ID && CLIENT_SECRET);
+const configured = () => Boolean(clientId() && clientSecret());
 
 function load(): Tokens | null {
   try { return JSON.parse(readFileSync(TOKEN_FILE, 'utf8')) as Tokens; } catch { return null; }
@@ -44,7 +45,7 @@ async function accessToken(): Promise<string> {
   const r = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ client_id: CLIENT_ID, client_secret: CLIENT_SECRET, refresh_token: t.refresh_token, grant_type: 'refresh_token' }),
+    body: new URLSearchParams({ client_id: clientId(), client_secret: clientSecret(), refresh_token: t.refresh_token, grant_type: 'refresh_token' }),
   });
   const j = (await r.json()) as { access_token?: string; expires_in?: number; error_description?: string };
   if (!j.access_token) throw new Error(`YouTube token refresh failed: ${j.error_description ?? r.status}`);
@@ -155,7 +156,7 @@ export function registerYouTube(app: FastifyInstance) {
     const state = `${nonce}.${sign(nonce)}`;
     const redirect = `https://${req.headers.host}/api/oauth/youtube/callback`;
     const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
-    for (const [k, v] of Object.entries({ client_id: CLIENT_ID, redirect_uri: redirect, response_type: 'code', scope: SCOPES.join(' '), access_type: 'offline', prompt: 'consent', state })) url.searchParams.set(k, v);
+    for (const [k, v] of Object.entries({ client_id: clientId(), redirect_uri: redirect, response_type: 'code', scope: SCOPES.join(' '), access_type: 'offline', prompt: 'consent', state })) url.searchParams.set(k, v);
     return reply.redirect(url.toString());
   });
 
@@ -165,7 +166,7 @@ export function registerYouTube(app: FastifyInstance) {
     if (req.query.error || !req.query.code) return reply.redirect('/#/golive?youtube=denied');
     const r = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ code: req.query.code, client_id: CLIENT_ID, client_secret: CLIENT_SECRET, redirect_uri: `https://${req.headers.host}/api/oauth/youtube/callback`, grant_type: 'authorization_code' }),
+      body: new URLSearchParams({ code: req.query.code, client_id: clientId(), client_secret: clientSecret(), redirect_uri: `https://${req.headers.host}/api/oauth/youtube/callback`, grant_type: 'authorization_code' }),
     });
     const j = (await r.json()) as { refresh_token?: string; access_token?: string; expires_in?: number };
     if (!j.refresh_token) return reply.code(400).send('Google did not return a refresh token. Remove VibeNation from your Google account permissions and connect again.');

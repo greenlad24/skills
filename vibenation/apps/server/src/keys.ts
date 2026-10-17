@@ -20,6 +20,19 @@ const KEYS: Record<KeyName, { label: string; use: string; get: string; check: Ch
     label: 'OpenAI', use: 'Thumbnails (GPT Image) from a live camera frame', get: 'https://platform.openai.com/api-keys',
     check: (v) => fetch('https://api.openai.com/v1/models', { headers: { authorization: `Bearer ${v}` } }),
   },
+  YOUTUBE_CLIENT_ID: {
+    label: 'YouTube (Google sign-in) — Client ID', use: 'Lets VibeNation go live on the channel: creates the broadcast, title, description, tags, thumbnail', get: 'https://console.cloud.google.com/apis/credentials',
+    check: async (v) => new Response(null, { status: v.endsWith('.apps.googleusercontent.com') ? 200 : 400 }),
+  },
+  YOUTUBE_CLIENT_SECRET: {
+    label: 'YouTube (Google sign-in) — Client secret', use: 'Pairs with the Client ID. Save the Client ID first; this is tested against it.', get: 'https://console.cloud.google.com/apis/credentials',
+    // A dummy code against the real client: Google answers invalid_grant for a valid client, invalid_client otherwise.
+    check: async (v) => {
+      const r = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', body: new URLSearchParams({ code: 'test', client_id: process.env.YOUTUBE_CLIENT_ID ?? '', client_secret: v, redirect_uri: 'https://app.jeeznews.com/api/oauth/youtube/callback', grant_type: 'authorization_code' }) });
+      const j = (await r.json()) as { error?: string };
+      return new Response(null, { status: j.error === 'invalid_grant' ? 200 : 400 });
+    },
+  },
   DIGITALOCEAN_TOKEN: {
     label: 'DigitalOcean', use: 'Creates and destroys the GPU show server (~$0.76/h while it runs)', get: 'https://cloud.digitalocean.com/account/api/tokens',
     check: (v) => fetch('https://api.digitalocean.com/v2/sizes?per_page=1', { headers: { authorization: `Bearer ${v}` } }),
