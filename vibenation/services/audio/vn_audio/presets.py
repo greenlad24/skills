@@ -111,10 +111,15 @@ STRIPS: list[Strip] = [
 ]
 
 # Stream master: light glue, gentle equal-loudness EQ, true-peak limiter.
-MASTER_EQ: list[Band] = [('hpf', 20, 0, 0.7), ('lshelf', 100, 2.0, 0.7), ('bell', 800, -1.0, 0.7), ('hshelf', 10000, 1.5, 0.7)]
+# Tuned 17 Oct 2026 by A/B on the same passage: the old top end measured ~8 dB dark (air -24.6 vs ~-19).
+MASTER_EQ: list[Band] = [('hpf', 20, 0, 0.7), ('lshelf', 100, 3.5, 0.7), ('bell', 350, -1.0, 0.8), ('bell', 800, -1.0, 0.7),
+                         ('bell', 3000, 0.5, 0.8), ('hshelf', 6000, 5.0, 0.7)]
 MASTER_COMP = Comp(-14, 2, 30, 200, 0)
 TARGET_LUFS = -16.0
 VOCALS = {9, 10}  # lead + second vocal: never pulled down by the band offset
+# The keeper only moves what masks a voice (keys, guitars, horns, percussion). Drums and bass stay
+# where the band put them (user: drums prominent, more synth bass).
+OFFSET_EXEMPT = VOCALS | {1, 2, 3, 12, 14}
 TARGET_LAR = 5.0  # lead vocal over band, dB (band rule: vocals on top; research +3..+7)
 CEILING_DBTP = -1.0
 
@@ -152,5 +157,5 @@ for _s in STRIPS:
 
 # Master colour + glue + tape (before the x42 true-peak limiter).
 MASTER_CONSOLE = {'drive': 0, 'colour': 40, 'crosstalk': 0}
-MASTER_BUS = {'threshold': -12, 'ratio': 0, 'attack': 10, 'release': 4, 'sc_hpf': 90, 'makeup': 0, 'mix': 100}
+MASTER_BUS = {'threshold': -18, 'ratio': 1, 'attack': 3, 'release': 4, 'sc_hpf': 90, 'makeup': 0, 'mix': 60}  # parallel 'New York' glue: density without losing punch
 MASTER_TAPE = {'speed': 1, 'drive': 0, 'saturation': 30, 'bias': 50, 'bump': 40, 'wow': 0, 'flutter': 0, 'mix': 50}

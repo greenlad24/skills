@@ -220,10 +220,10 @@ class MixGraph:
         self.mh.param(COMP + n, 'g_out', lin(self.ride.get(n, 0.0)))
 
     def gain_db(self, n: int) -> float:
-        """Effective channel gain: the fader, the band offset on non-vocal channels, and the
+        """Effective channel gain: the fader, the band offset on the mid-range instruments, and the
         arrangement offset (lead/backing/solo/auto-mute)."""
         s = self.strips[n]
-        return s.fader + (0.0 if n in P.VOCALS else self.band_offset) + self.arr.get(n, 0.0)
+        return s.fader + (0.0 if n in P.OFFSET_EXEMPT else self.band_offset) + self.arr.get(n, 0.0)
 
     def apply_fader(self, n: int) -> None:
         s = self.strips[n]

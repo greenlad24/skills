@@ -300,7 +300,7 @@ class Engine:
         if abs(new - g.band_offset) >= 0.05:
             g.band_offset = round(new, 2)
             for k in g.strips:
-                if k not in P.VOCALS:
+                if k not in P.OFFSET_EXEMPT:
                     g.apply_fader(k)
                     g.apply_sends(k)
 
@@ -413,6 +413,15 @@ class Engine:
         g, t = self.graph, c.get('type')
         n = int(c.get('ch', 0))
         s = g.strips.get(n)
+        if t == 'master':
+            # Live master-bus changes (EQ bands, bus glue, tape): {"eq": [[kind, f, gain, q], ...], "bus": {...}, "tape": {...}}
+            if isinstance(c.get('eq'), list):
+                P.MASTER_EQ[:] = [tuple(b) for b in c['eq']][:8]
+            for key, target in (('bus', P.MASTER_BUS), ('tape', P.MASTER_TAPE), ('console', P.MASTER_CONSOLE)):
+                if isinstance(c.get(key), dict):
+                    target.update({k: v for k, v in c[key].items() if k in target})
+            g.apply_master()
+            return {'type': 'master', 'eq': P.MASTER_EQ, 'bus': P.MASTER_BUS, 'tape': P.MASTER_TAPE, 'console': P.MASTER_CONSOLE}
         if t == 'fader' and s:
             s.fader = max(-60.0, min(10.0, float(c['db'])))
             g.apply_fader(n)

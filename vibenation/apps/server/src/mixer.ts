@@ -123,14 +123,14 @@ export class MixerLoop {
     const stVals = frames.map((f) => f.master.lufsS);
     lines.push(`Song position: ${state.audio?.set ?? ''} ${Math.round(state.audio?.position ?? 0)} s. Song: ${state.song}. Tempo ~${Math.round(state.bpm)} BPM.`);
     if (alert) lines.push(`ALERT: ${alert}.`);
-    lines.push(`Vocals-on-top keeper: all non-vocal channels currently offset ${(m as unknown as { bandOffset?: number }).bandOffset ?? 0} dB (automatic, holds LAR near +5; you don't need to fight it with faders).`);
+    lines.push(`Vocals-on-top keeper: keys, guitars, horns and percussion currently offset ${(m as unknown as { bandOffset?: number }).bandOffset ?? 0} dB (automatic, holds LAR near +5; you don't need to fight it with faders).`);
     lines.push(`Master: integrated ${m.lufsI} LUFS (target -16), short-term range ${Math.min(...stVals).toFixed(1)}..${Math.max(...stVals).toFixed(1)}, true peak max ${Math.max(...frames.map((f) => f.master.truePeak)).toFixed(1)} dBTP, limiter max ${Math.max(...frames.map((f) => f.master.limiterGr)).toFixed(1)} dB, leveller drive ${m.drive} dB.`);
 
     // Lead-to-accompaniment ratio from post-fader channel power.
     const lar: number[] = [];
     for (const f of frames) {
       const off = (f.master as unknown as { bandOffset?: number }).bandOffset ?? 0;
-      const p = f.rms.map((v, i) => pw(v + chans[i].fader + (i === 8 || i === 9 ? 0 : off)) * (chans[i].mute ? 0 : 1));
+      const p = f.rms.map((v, i) => pw(v + chans[i].fader + ([0, 1, 2, 8, 9, 11, 13].includes(i) ? 0 : off)) * (chans[i].mute ? 0 : 1)); // vocals, drums and bass are exempt from the keeper's offset
       const voc = p[8] + p[9];
       const band = p.reduce((a, b) => a + b, 0) - voc;
       if ((f.singing?.[8] || f.singing?.[9]) && band > 0) lar.push(dbOf(voc / band));
