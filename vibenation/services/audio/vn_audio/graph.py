@@ -9,11 +9,15 @@ Master:   main mixer + returns -> stream EQ -> glue compressor -> x42 true-peak 
 from __future__ import annotations
 
 import copy
+import logging
 import math
+import time
 from dataclasses import asdict
 
 from . import presets as P
 from .modhost import ModHost
+
+log = logging.getLogger('vn_audio.graph')
 
 LSP = 'http://lsp-plug.in/plugins/lv2/'
 URI = {
@@ -57,6 +61,8 @@ class MixGraph:
         self.strips = {s.n: copy.deepcopy(s) for s in P.STRIPS}
         self.mute = {n: False for n in self.strips}
         self.solo = {n: False for n in self.strips}
+        self.global_trim = 0.0  # overall gain staging (dB) applied to every channel after its compressor
+        self.ride: dict[int, float] = {}  # current rider gain per channel (dB)
         self.master_gain = 0.0  # limiter input drive, dB (set by the loudness leveller)
         self.fx = {k: dict(v) for k, v in P.FX.items()}
         self.bpm = 118.0
@@ -64,9 +70,8 @@ class MixGraph:
     # ---------- build ----------
 
     def build(self) -> None:
-        mh = self.mh
-        for inst in [*range(101, 117), *range(201, 217), *range(301, 317), MIXER, *SEND.values(), *FXI.values(), RETURNS, MEQ, MCOMP, LIMITER]:
-            mh.remove(inst)
+        mh = self.mh  # the plugin host is restarted clean before each engine start
+        t0 = time.time()
 
         mh.add(URI['mixer'], MIXER)
         for k, inst in SEND.items():
@@ -88,7 +93,7 @@ class MixGraph:
             if s.gate:
                 mh.connect_ports(port(GATE + n, 'out'), port(EQ + n, 'in'))
             mh.connect_ports(port(EQ + n, 'out'), port(COMP + n, 'in'))
-            out = port(COMP + n, 'out')
+            out = self.strip_out(n)
             mh.connect_ports(out, port(MIXER, f'in_{n}l'))
             mh.connect_ports(out, port(MIXER, f'in_{n}r'))
             for k, inst in SEND.items():
@@ -117,6 +122,7 @@ class MixGraph:
             mh.connect_ports(port(LIMITER, 'outL'), pair[0])
             mh.connect_ports(port(LIMITER, 'outR'), pair[1])
         self.apply_master()
+        log.info('graph built in %.1f s', time.time() - t0)
 
     # ---------- apply ----------
 
@@ -158,13 +164,24 @@ class MixGraph:
             mh.param(GATE + n, 'rt', g.release + g.hold)
         bands = [b for b in s.eq if not (s.no_hpf and b[0] == 'hpf')]  # user rule: never high-pass kick/bass
         self._eq(EQ + n, bands)
-        mh.param(COMP + n, 'g_in', lin(s.trim))  # digital trim lives at the compressor input
         if s.comp:
             self._comp(COMP + n, s.comp)
         else:
             mh.param(COMP + n, 'cr', 1)
         self.apply_fader(n)
         self.apply_sends(n)
+
+    def strip_out(self, n: int) -> str:
+        return port(COMP + n, 'out')
+
+    def apply_gain(self, n: int) -> None:
+        """Gain staging around the compressor: the per-channel trim sets the level the
+        compressor sees (so thresholds mean the same on every source); after it, the level
+        is handed back (global trim - trim) so the recording's own balance and the band's
+        faders keep their meaning. The rider adds its current ride on top."""
+        s = self.strips[n]
+        self.mh.param(COMP + n, 'g_in', lin(s.trim))
+        self.mh.param(COMP + n, 'g_out', lin(self.global_trim - s.trim + self.ride.get(n, 0.0)))
 
     def apply_fader(self, n: int) -> None:
         s = self.strips[n]
@@ -221,7 +238,7 @@ class MixGraph:
             if n not in self.strips:
                 continue
             st = self.strips[n]
-            for f in ('fader', 'pan', 'trim', 'plate', 'room', 'delay'):
+            for f in ('fader', 'pan', 'trim', 'plate', 'room', 'delay', 'rider'):
                 if f in d:
                     setattr(st, f, d[f])
             if 'eq' in d:
@@ -235,6 +252,7 @@ class MixGraph:
             if k in self.fx:
                 self.fx[k].update(v)
         self.master_gain = float(data.get('master_gain', 0.0))
+        self.global_trim = float(data.get('global_trim', 0.0))
 
     def snapshot(self) -> dict:
         return {
@@ -242,6 +260,7 @@ class MixGraph:
             'base': {s.n: asdict(s) for s in P.STRIPS},
             'fx': self.fx,
             'master_gain': self.master_gain,
+            'global_trim': self.global_trim,
             'bpm': self.bpm,
         }
 

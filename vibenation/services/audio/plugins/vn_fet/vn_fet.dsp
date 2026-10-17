@@ -18,8 +18,8 @@ declare license "MIT";
 import("stdfaust.lib");
 vn = library("vn.lib");
 
-indb    = hslider("input[name:Input][unit:dB]", 0, -20, 40, 0.1) : vn.psm;
-outdb   = hslider("output[name:Output][unit:dB]", 0, -30, 20, 0.1) : vn.psm;
+indb    = hslider("input[name:Input][unit:dB]", 0, -20, 40, 0.1) : vn.db2lin : vn.psm;   // linear gain, smoothed (no pow per sample)
+outdb   = hslider("output[name:Output][unit:dB]", 0, -30, 20, 0.1) : vn.db2lin : vn.psm;   // linear gain, smoothed (no pow per sample)
 ratio   = nentry("ratio[name:Ratio][enum:4:1|8:1|12:1|20:1|All]", 0, 0, 4, 1);
 atk_us  = hslider("attack[name:Attack][unit:us][log]", 300, 20, 800, 1);
 rel_ms  = hslider("release[name:Release][unit:ms][log]", 300, 50, 1100, 1);
@@ -68,6 +68,6 @@ with {
 classA(y) = y + colour * 0.12 * (((y : max(-2) : min(2)) <: *) : vn.dcb) * (-0.5) : tanhsafe
 with { tanhsafe(v) = v / (1 + 0.02 * colour * v * v); };
 
-fet(x) = x * vn.db2lin(indb) : (loop ~ _) : classA : *(vn.db2lin(outdb));
+fet(x) = x * indb : (loop ~ _) : classA : *(outdb);
 
 process = _ <: _, fet : (*(1 - mixp/100), *(mixp/100)) :> _;

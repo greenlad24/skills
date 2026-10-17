@@ -37,11 +37,17 @@ HOST, PORT = '127.0.0.1', int(os.environ.get('VN_AUDIO_PORT', '8091'))
 
 class Engine:
     def __init__(self) -> None:
+        t0 = time.time()
         self.player = StemPlayer(STEMS)
+        log.info('player ready %.1f s', time.time() - t0)
         self.analyzer = Analyzer()
-        self.mh = ModHost()
-        self.mh.connect()
+        self.mh = ModHost.launch()
+        log.info('plugin host up %.1f s', time.time() - t0)
         self.gr = [0.0] * 16
+        self.ride = [0.0] * 16  # current rider gain (dB) per channel
+        self.ride_lvl: list[deque] = [deque(maxlen=4) for _ in range(16)]  # 400 ms of channel power
+        self.ride_ref: list[deque] = [deque(maxlen=600) for _ in range(16)]  # 60 s of active levels
+        self.st_hist: deque = deque(maxlen=120)  # short-term loudness history for the leveller brake
         self.limiter_gr = 0.0
         self.mh.feedback(self._feedback)
         a = self.analyzer.client.name
@@ -61,7 +67,7 @@ class Engine:
         self.graph.build()
         # Analysis taps: each strip after its compressor (pre-fader), and the master before the limiter.
         for n in range(1, 17):
-            self.mh.connect_ports(port(COMP + n, 'out'), f'{a}:ch_{n}')
+            self.mh.connect_ports(self.graph.strip_out(n), f'{a}:ch_{n}')
         for n, src in enumerate(self.player.port_names, 1):
             self.mh.connect_ports(src, f'{a}:raw_{n}')
         self.mh.connect_ports(port(MCOMP, 'out_l'), f'{a}:pre_l')
@@ -72,6 +78,7 @@ class Engine:
         self.active: list[deque] = [deque(maxlen=600) for _ in range(16)]
         self.last_trim = 0.0
         self.locked = [False] * 16
+        self.calibrated_session = False
         self.analyzer.listeners.append(self._on_frame)
         self.stream = Mp3Stream(self.mh)
         self.subscribers: set[asyncio.Queue] = set()
@@ -84,10 +91,11 @@ class Engine:
             threading.Thread(target=self._ready, daemon=True).start()
             return
         parts = msg.split()
-        if len(parts) == 4 and parts[0] == 'output_set' and parts[2] == 'rlm':
+        if len(parts) == 4 and parts[0] == 'output_set':
             inst, val = int(parts[1]), float(parts[3])
-            if COMP < inst <= COMP + 16:
+            if parts[2] == 'rlm' and COMP < inst <= COMP + 16:
                 self.gr[inst - COMP - 1] = round(-20 * math.log10(max(val, 1e-6)), 1)
+
 
     def _ready(self) -> None:
         time.sleep(0.05)
@@ -101,28 +109,64 @@ class Engine:
         self.limiter_gr = round(max(0.0, m['prePeak'] + self.graph.master_gain - m['peak']), 1)
         self._level(m)
         self._calibrate(f['raw'])
-        frame = {'type': 'meters', **f, 'gr': self.gr, 'master': {**m, 'limiterGr': self.limiter_gr, 'drive': round(self.graph.master_gain, 1)}}
+        self._ride(f)
+        frame = {'type': 'meters', **f, 'gr': self.gr, 'ride': self.ride, 'master': {**m, 'limiterGr': self.limiter_gr, 'drive': round(self.graph.master_gain, 1)}}
         self.broadcast(frame)
 
     def _level(self, m: dict) -> None:
-        """Slow loudness leveller: drives the limiter input toward -16 LUFS short-term.
-        Max 0.25 dB per second; holds still in silence or when the limiter already works hard."""
+        """Master loudness leveller (after master_me): rides short-term loudness toward -16 LUFS,
+        up at most 1 dB/s and down 3 dB/s, within -10..+20 dB of drive. A brake freezes it when
+        the music drops more than 14 dB under its recent median (song ends, talk, breaks)."""
         now = time.time()
         if not self.leveller_on or now - self.last_level < 1.0 or not self.player.playing:
             return
         self.last_level = now
         s = m['lufsS']
-        if s < -40:
+        if s > -60:
+            self.st_hist.append(s)
+        if s < -40 or len(self.st_hist) < 5:
+            return
+        median = sorted(self.st_hist)[len(self.st_hist) // 2]
+        if s < median - 14:  # brake
             return
         err = P.TARGET_LUFS - s
         if abs(err) < 0.5:
             return
         if err > 0 and self.limiter_gr > 4:  # louder would only mean more limiting: fix it upstream
             return
-        g = max(-10.0, min(20.0, self.graph.master_gain + max(-0.25, min(0.25, err * 0.1))))
+        step = max(-3.0, min(1.0, err * 0.3))
+        g = max(-10.0, min(20.0, self.graph.master_gain + step))
         if abs(g - self.graph.master_gain) >= 0.05:
             self.graph.master_gain = round(g, 2)
             self.mh.param(LIMITER, 'gain', self.graph.master_gain)
+
+    def _ride(self, f: dict) -> None:
+        """Vocal/solo rider: keeps a channel near its own running level (+ Claude's offset),
+        only while the source itself is playing. Up 1 dB/s, down 3 dB/s, within ±3 dB."""
+        g = self.graph
+        for n, s in g.strips.items():
+            if s.rider is None:
+                continue
+            i = n - 1
+            ride = g.ride.get(n, 0.0)
+            lvl = f['rms'][i] - ride  # level before the ride
+            self.ride_lvl[i].append(10 ** (lvl / 10))
+            if f['raw'][i] < -50 or g.mute[n]:
+                continue  # silent or only bleed: hold the current ride
+            short = 10 * math.log10(sum(self.ride_lvl[i]) / len(self.ride_lvl[i]))
+            self.ride_ref[i].append(short)
+            if len(self.ride_ref[i]) < 50:
+                continue
+            ref = sorted(self.ride_ref[i])[len(self.ride_ref[i]) // 2]
+            if short < ref - 15:
+                continue  # a breath or a pause, not a quiet phrase
+            want = max(-3.0, min(3.0, ref + s.rider - short))
+            if abs(want - ride) < 0.5:
+                continue
+            new = ride + max(-0.3, min(0.1, want - ride))
+            g.ride[n] = round(new, 2)
+            self.ride[i] = round(new, 1)
+            g.apply_gain(n)
 
     def start_calibration(self, minutes: float = 20) -> None:
         """Soundcheck: for the next `minutes` of playback, set each channel's digital trim
@@ -157,7 +201,6 @@ class Engine:
             step = max(-6.0, min(6.0, want - s.trim))
             if abs(step) >= 0.5:
                 s.trim = round(s.trim + step, 1)
-                self.mh.param(COMP + n, 'g_in', 10 ** (s.trim / 20))
                 changed = True
             if len(d) >= 300 and abs(want - s.trim) < 1:
                 self.locked[n - 1] = True
@@ -165,6 +208,13 @@ class Engine:
             self.calibrating_until = 0
             changed = True
         if changed:
+            # Overall gain staging: lift the whole band by the median trim so it sits near -20 dBFS,
+            # while each channel keeps its natural level relative to the others.
+            trims = sorted(st.trim for k, st in self.graph.strips.items() if len(self.active[k - 1]) >= 50)
+            if trims:
+                self.graph.global_trim = trims[len(trims) // 2]
+            for k in self.graph.strips:
+                self.graph.apply_gain(k)
             self.save()
             self.broadcast(self.state())
 
@@ -219,6 +269,8 @@ class Engine:
                 if k in c:
                     setattr(s.comp, k, float(c[k]))
             g.apply_strip(n)
+        elif t == 'rider' and s and s.rider is not None:
+            s.rider = max(-3.0, min(3.0, float(c['target'])))  # offset around the channel's own level
         elif t == 'fx' and c.get('fx') in g.fx:
             g.fx[c['fx']].update({k: v for k, v in c.items() if k not in ('type', 'fx')})
             g.apply_fx()
@@ -227,7 +279,8 @@ class Engine:
         elif t == 'transport':
             act = c.get('action')
             if act == 'play':
-                if not self.player.playing and all(st.trim == 0 for st in g.strips.values()):
+                if not self.player.playing and not self.calibrated_session:
+                    self.calibrated_session = True  # first play after start: (re)calibrate trims
                     self.start_calibration()
                 self.player.play()
             elif act == 'pause':

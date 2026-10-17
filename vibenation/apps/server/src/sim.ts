@@ -4,6 +4,7 @@
 
 import { CHANNELS, type ClientAction, type FeedItem, type ShowState, type MeterFrame, type ChatMessage } from '@vibenation/shared';
 import { AudioLink } from './audio.js';
+import { MixerLoop } from './mixer.js';
 
 type Listener = (msg: { type: 'state'; state: ShowState } | MeterFrame) => void;
 
@@ -32,6 +33,7 @@ export class DemoShow {
   private lastCut = now();
   private undo = new Map<string, () => void>();
   readonly audio: AudioLink;
+  readonly mixer: MixerLoop;
 
   constructor() {
     const t = now();
@@ -90,6 +92,15 @@ export class DemoShow {
       },
       (msg) => console.log(msg),
     );
+    this.mixer = new MixerLoop({
+      state: this.state,
+      audio: this.audio,
+      isHeld: (id) => this.isHeld(id),
+      addFeed: (f, undo) => { this.feed(f, undo); this.push(); },
+      aiTouched: (ch) => this.aiTouched.set(ch, now()),
+      hold: (id, ch) => this.hold(id, ch),
+      changed: () => { this.refreshProcs(); this.push(); },
+    });
     setInterval(() => this.meters(), 100);
     setInterval(() => this.claudeTick(), 6000);
   }
@@ -111,7 +122,12 @@ export class DemoShow {
     return item;
   }
 
-  private hold(key: string, ch?: number) {
+  /** True if a human holds this control (ids like "ch9.fader", "ch9.eq", "ch9.comp", "ch9.send"). */
+  isHeld(id: string) {
+    return this.state.held.some((h) => h === id || normalizeHold(h) === id);
+  }
+
+  hold(key: string, ch?: number) {
     if (!this.state.held.includes(key)) {
       this.state.held.push(key);
       if (ch) {
@@ -133,7 +149,7 @@ export class DemoShow {
         : { name: 'Mix engine', meta: 'not connected', level: 'error' },
       { name: 'Cameras', meta: `${s.cams.filter((c) => c.connected).length} / ${s.cams.length}`, level: 'ok' },
       ...(s.audio ? [{ name: 'Mix engine', meta: `${s.master.lufsI.toFixed(1)} LUFS · TP ${s.master.truePeak.toFixed(1)}`, level: (s.master.truePeak > -1 ? 'warn' : 'ok') as 'warn' | 'ok' }] : []),
-      { name: 'Listener (hearing)', meta: 'every 8 s', level: 'ai' },
+      { name: 'Claude mixer', meta: this.mixer?.status() ?? 'starting', level: this.mixer?.lastError ? 'warn' : 'ai' },
       { name: 'Director', meta: s.vmodeHeld ? 'auto · vertical yours' : 'auto', level: 'ai' },
       { name: 'YouTube ingest', meta: `${s.health.mbps.toFixed(1)} Mbps`, level: 'ok' },
       ...(camWarn ? [{ name: `${camWarn.num} battery`, meta: `${camWarn.battery}%`, level: 'warn' as const }] : []),
@@ -295,4 +311,14 @@ export function controlToEngine(id: string, value: number | string): Record<stri
     return { type: 'comp', ch, thresh: -6 - v * 0.3, ratio: 1.5 + v * 0.045 };
   }
   return null;
+}
+
+/** Map any held control id to the mixer's coarse ids (ch9.eq.2.gain -> ch9.eq, ch9.fx.verb -> ch9.send). */
+export function normalizeHold(id: string): string {
+  const m = /^ch(\d+)\.(\w+)(?:\.(\w+))?/.exec(id);
+  if (!m) return id;
+  const [, n, kind, sub] = m;
+  if (kind === 'fx') return sub === 'comp' ? `ch${n}.comp` : `ch${n}.send`;
+  if (kind === 'eq' || kind === 'comp' || kind === 'send') return `ch${n}.${kind}`;
+  return `ch${n}.${kind}`;
 }

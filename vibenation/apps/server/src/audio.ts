@@ -6,7 +6,7 @@ import type { AudioStatus, ChannelState, ClientAction, EqBand, MeterFrame } from
 
 const URL_BASE = process.env.VN_AUDIO_URL ?? 'http://127.0.0.1:8091';
 
-type EngineStrip = {
+export type EngineStrip = {
   n: number; fader: number; pan: number; trim: number; mute: boolean; solo: boolean; no_hpf: boolean;
   eq: [EqBand['kind'], number, number, number][];
   comp: { thresh: number; ratio: number; attack: number; release: number; makeup: number; mix: number } | null;
@@ -19,9 +19,9 @@ type EngineState = {
   leveller: boolean;
   calibrating: boolean;
 };
-type EngineFrame = {
+export type EngineFrame = {
   type: 'meters';
-  peak: number[]; rms: number[]; spec: number[][]; gr: number[];
+  peak: number[]; rms: number[]; raw: number[]; spec: number[][]; gr: number[]; ride?: number[];
   master: { lufsM: number; lufsS: number; lufsI: number; truePeak: number; limiterGr: number; drive: number; spec: number[] };
 };
 
@@ -33,7 +33,9 @@ export class AudioLink {
   connected = false;
   status: AudioStatus | null = null;
   private ws: WebSocket | null = null;
-  private strips: Record<string, EngineStrip> = {};
+  strips: Record<string, EngineStrip> = {};
+  /** Last ~30 s of measurement frames (10 per second) for the mixer loop. */
+  history: EngineFrame[] = [];
   private base: Record<string, EngineStrip> = {};
 
   constructor(
@@ -85,6 +87,8 @@ export class AudioLink {
   }
 
   private applyFrame(f: EngineFrame) {
+    this.history.push(f);
+    if (this.history.length > 300) this.history.shift();
     const post = f.peak.map((p, i) => {
       const s = this.strips[String(i + 1)];
       return s ? p + s.fader : p;

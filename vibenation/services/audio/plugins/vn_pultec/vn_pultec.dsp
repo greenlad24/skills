@@ -20,17 +20,17 @@ import("stdfaust.lib");
 vn = library("vn.lib");
 
 lfsel  = nentry("low_freq[name:Low Frequency][enum:20 Hz|30 Hz|60 Hz|100 Hz]", 2, 0, 3, 1);
-lboost = hslider("low_boost[name:Low Boost][unit:x]", 0, 0, 10, 0.1) : vn.psm;
-latten = hslider("low_atten[name:Low Atten][unit:x]", 0, 0, 10, 0.1) : vn.psm;
+lboost = hslider("low_boost[name:Low Boost][unit:x]", 0, 0, 10, 0.1);   // block-rate: keeps filter coefficients out of the sample loop
+latten = hslider("low_atten[name:Low Atten][unit:x]", 0, 0, 10, 0.1);   // block-rate: keeps filter coefficients out of the sample loop
 hfsel  = nentry("high_freq[name:High Boost Frequency][enum:3 kHz|4 kHz|5 kHz|8 kHz|10 kHz|12 kHz|16 kHz]", 3, 0, 6, 1);
-hboost = hslider("high_boost[name:High Boost][unit:x]", 0, 0, 10, 0.1) : vn.psm;
-hbw    = hslider("high_bw[name:High Bandwidth (sharp-broad)][unit:x]", 5, 0, 10, 0.1) : vn.psm;
+hboost = hslider("high_boost[name:High Boost][unit:x]", 0, 0, 10, 0.1);   // block-rate: keeps filter coefficients out of the sample loop
+hbw    = hslider("high_bw[name:High Bandwidth (sharp-broad)][unit:x]", 5, 0, 10, 0.1);   // block-rate: keeps filter coefficients out of the sample loop
 hasel  = nentry("atten_freq[name:High Atten Frequency][enum:5 kHz|10 kHz|20 kHz]", 1, 0, 2, 1);
-hatten = hslider("high_atten[name:High Atten][unit:x]", 0, 0, 10, 0.1) : vn.psm;
+hatten = hslider("high_atten[name:High Atten][unit:x]", 0, 0, 10, 0.1);   // block-rate: keeps filter coefficients out of the sample loop
 tube   = hslider("tube[name:Tube Drive][unit:%]", 30, 0, 100, 1) / 100 : vn.psm;
-outdb  = hslider("output[name:Output][unit:dB]", 0, -12, 12, 0.1) : vn.psm;
+outdb  = hslider("output[name:Output][unit:dB]", 0, -12, 12, 0.1) : vn.db2lin : vn.psm;   // linear gain, smoothed (no pow per sample)
 
-gmeter = hbargraph("gain_change[name:Program Gain Change][unit:dB]", -24, 24);
+gmeter = hbargraph("gain_change[vn_pow2db:1][name:Program Gain Change][unit:dB]", -24, 24);
 
 cps  = ba.selectn(4, lfsel, 20, 30, 60, 100);
 hf   = ba.selectn(7, hfsel, 3000, 4000, 5000, 8000, 10000, 12000, 16000);
@@ -53,9 +53,9 @@ highsec = fi.svf.bell(hf, qhb, ghb) : hshelf1(haf, 0 - gha);
 tubestage(x) = x + tube * (0.10 * (xc * xc : vn.dcb) - 0.04 * xc * xc * xc)
 with { xc = max(-1.5, min(1.5, x)); };
 
-eq = lowsec : highsec : tubestage : *(vn.db2lin(outdb));
+eq = lowsec : highsec : tubestage : *(outdb);
 
 // program gain change meter (300 ms RMS out/in)
-meter(x, y) = y : attach(_, (10 * log10(max(1e-12, y*y : vn.lag(0.3))) - 10 * log10(max(1e-12, x*x : vn.lag(0.3)))) * (x*x : vn.lag(0.3) > 1e-9) : gmeter);
+meter(x, y) = y : attach(_, (y*y : vn.lag(0.3)) / max(1e-12, x*x : vn.lag(0.3)) * (x*x : vn.lag(0.3) > 1e-9) + (x*x : vn.lag(0.3) <= 1e-9) : gmeter);
 
 process = _ <: _, eq : meter;

@@ -1,7 +1,8 @@
 [Unit]
+StartLimitIntervalSec=0
 Description=VibeNation audio engine (mix, meters, listen stream)
-After=vibenation-modhost.service
-Requires=vibenation-modhost.service
+After=vibenation-jack.service
+Requires=vibenation-jack.service
 
 [Service]
 WorkingDirectory=/root/vibenation/vibenation/services/audio
@@ -9,6 +10,8 @@ ExecStart=/root/vibenation/vibenation/services/audio/.venv/bin/python -m vn_audi
 Restart=always
 RestartSec=3
 Environment=PYTHONUNBUFFERED=1
+Environment=LV2_PATH=/usr/local/lib/lv2:/usr/lib/lv2:/usr/lib/x86_64-linux-gnu/lv2
+KillMode=control-group
 Environment=VN_STEMS=/root/vibenation-media/stems-2026-04-04
 
 [Install]

@@ -14,7 +14,7 @@ BUILD="$HERE/build"
 GEN="$HERE/.gen"
 CXX="${CXX:-g++}"
 # x86-64-v2 = SSE4.2: runs on the build droplet and on the show server.
-CXXFLAGS="${CXXFLAGS:--O3 -march=x86-64-v2 -fno-math-errno -fomit-frame-pointer -fvisibility=hidden}"
+CXXFLAGS="${CXXFLAGS:--O3 -march=x86-64-v2 -fno-math-errno -freciprocal-math -fomit-frame-pointer -fvisibility=hidden}"
 FAUSTFLAGS="${FAUSTFLAGS:--double -lang cpp -cn mydsp}"
 PLUGINS=(vn_opto vn_fet vn_vca_bus vn_pultec vn_tape vn_tape_stereo vn_console vn_deesser vn_rider)
 if [ $# -gt 0 ]; then PLUGINS=("$@"); fi

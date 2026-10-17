@@ -17,7 +17,7 @@ import("stdfaust.lib");
 vn = library("vn.lib");
 
 peak   = hslider("peak_reduction[name:Peak Reduction][unit:%]", 30, 0, 100, 0.1) : vn.psm;
-gaindb = hslider("gain[name:Gain][unit:dB]", 0, -20, 30, 0.1) : vn.psm;
+gaindb = hslider("gain[name:Gain][unit:dB]", 0, -20, 30, 0.1) : vn.db2lin : vn.psm;   // linear gain, smoothed (no pow per sample)
 mode   = nentry("mode[name:Mode][enum:Compress|Limit]", 0, 0, 1, 1);
 sclo   = hslider("sc_low[name:Sidechain Low 200 Hz][unit:dB]", 0, -12, 12, 0.1);
 scmid  = hslider("sc_mid[name:Sidechain Mid 1.5 kHz][unit:dB]", 0, -12, 12, 0.1);
@@ -27,7 +27,7 @@ mixp   = hslider("mix[name:Mix][unit:%]", 100, 0, 100, 1) : vn.psm;
 
 grmeter = hbargraph("gr[name:Gain Reduction][unit:dB]", 0, 40);
 
-thr  = -0.45 * peak;                              // dBFS: 0 .. -45
+thr  = -6 - 0.45 * peak;                          // dBFS: -6 .. -51
 beta = select2(mode, 2.0, 9.0);                   // 3:1-ish / 10:1-ish
 knee = select2(mode, 10.0, 6.0);                  // opto knees are wide
 
@@ -63,6 +63,6 @@ with {
   h  = colour;
 };
 
-opto(x) = (cell(x) ~ _) : tube : *(vn.db2lin(gaindb));
+opto(x) = (cell(x) ~ _) : tube : *(gaindb);
 
 process = _ <: _, opto : (*(1 - mixp/100), *(mixp/100)) :> _;

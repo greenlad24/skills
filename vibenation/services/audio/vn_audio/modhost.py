@@ -8,7 +8,9 @@ JACK ports of an instance are named effect_<id>:<symbol>.
 from __future__ import annotations
 
 import socket
+import subprocess
 import threading
+import time
 
 
 class ModHostError(RuntimeError):
@@ -21,9 +23,26 @@ class ModHost:
         self.fb_addr = (host, feedback_port)
         self.sock: socket.socket | None = None
         self.lock = threading.Lock()
+        self.proc: subprocess.Popen | None = None
 
     def connect(self) -> None:
         self.sock = socket.create_connection(self.addr, timeout=10)
+
+    @classmethod
+    def launch(cls, port: int = 5555) -> 'ModHost':
+        """Start a private mod-host child process (one control client only) and connect."""
+        subprocess.run(['pkill', '-f', f'^mod-host -n -p {port} '], check=False)  # only our own instance
+        time.sleep(0.5)
+        proc = subprocess.Popen(['mod-host', '-n', '-p', str(port), '-f', str(port + 1)], stdout=subprocess.DEVNULL)
+        mh = cls(port=port, feedback_port=port + 1)
+        mh.proc = proc
+        for _ in range(100):
+            try:
+                mh.connect()
+                return mh
+            except OSError:
+                time.sleep(0.1)
+        raise ModHostError('mod-host did not start')
 
     def cmd(self, text: str) -> str:
         with self.lock:

@@ -1,0 +1,101 @@
+// vn_tape.lib - shared tape machine model for vn_tape (mono) and vn_tape_stereo.
+//
+// Signal path (runs at 2x the host rate):
+//   input drive -> record pre-emphasis (speed dependent) -> Jiles-Atherton
+//   magnetic hysteresis (RK2 solver, alpha-transform derivative) -> playback
+//   de-emphasis (exact inverse of the pre-emphasis) -> head bump + gap/spacing
+//   loss (speed dependent) -> optional wow & flutter (modulated delay) -> output.
+// The JA equations follow J. Chowdhury, "Real-time physical modelling for analog
+// tape machines" (DAFx 2019) / ChowTapeModel; the pre/de-emphasis pair makes the
+// highs saturate first, like a real record/replay EQ, while staying flat at low level.
+declare name "vn_tape.lib";
+import("stdfaust.lib");
+vn = library("vn.lib");
+
+drivedb = hslider("drive[name:Drive][unit:dB]", 0, -12, 18, 0.1);
+satp    = hslider("saturation[name:Saturation][unit:%]", 50, 0, 100, 1) / 100;
+biasp   = hslider("bias[name:Bias (loop width)][unit:%]", 50, 0, 100, 1) / 100;
+speed   = nentry("speed[name:Tape Speed][enum:7.5 ips|15 ips|30 ips]", 1, 0, 2, 1);
+bump    = hslider("bump[name:Head Bump][unit:%]", 50, 0, 100, 1) / 100;
+wowp    = hslider("wow[name:Wow][unit:%]", 0, 0, 100, 1) / 100 : vn.psm;
+flutp   = hslider("flutter[name:Flutter][unit:%]", 0, 0, 100, 1) / 100 : vn.psm;
+mixp    = hslider("mix[name:Mix][unit:%]", 100, 0, 100, 1) : vn.psm;
+outdb   = hslider("output[name:Output][unit:dB]", 0, -12, 12, 0.1) : vn.db2lin : vn.psm;   // linear gain, smoothed (no pow per sample)
+gmeter  = hbargraph("gain_change[vn_pow2db:1][name:Saturation Gain Change][unit:dB]", -24, 24);
+
+// ---------------- Jiles-Atherton hysteresis ----------------
+Ms    = 0.5 + 1.5 * (1 - satp);
+dJ    = max(0.05, min(4, 0.5 * vn.db2lin(drivedb)));   // drive sets the JA anhysteretic slope (as ChowTape), not the input level
+aJ    = Ms / (0.01 + 6.0 * dJ);
+cc    = sqrt(1 - 0.85 * biasp) - 0.01;   // keep a reversible part: bias 100% stays usable
+nc    = 1 - cc;
+kk    = 0.47875;
+alpha = 1.6e-3;
+T     = 1 / ma.SR;
+
+deriv(x, xn1, xdn1) = (1.75 / T) * (x - xn1) - 0.75 * xdn1;
+
+sgn(v) = (v > 0) - (v < 0);
+
+hfunc(M, H, Hd) = Hd * (f1 + f2) / f3
+with {
+  Q     = (H + M * alpha) / aJ;
+  near0 = abs(Q) < 0.001;
+  Qs    = select2(near0, Q, 1);              // keep 1/Q finite on the unused branch
+  cth   = 1 / ma.tanh(Qs);
+  L     = select2(near0, cth - 1 / Qs, Q / 3);
+  Lp    = select2(near0, 1 - cth * cth + 1 / (Qs * Qs), 1 / 3);
+  Md    = L * Ms - M;
+  delta = select2(Hd >= 0, -1, 1);
+  kap1  = nc * (sgn(delta) == sgn(Md));
+  f1    = kap1 * Md / (nc * delta * kk - alpha * Md);
+  f2    = Lp * Ms / aJ * cc;
+  f3    = 1 - Lp * alpha * cc * Ms / aJ;
+};
+
+rk2(H, Hd, Hn1, Hdn1, Mn1) = select2(bad, M, 0)
+with {
+  k1  = T * hfunc(Mn1, Hn1, Hdn1);
+  k2  = T * hfunc(Mn1 + 0.5 * k1, 0.5 * (H + Hn1), 0.5 * (Hd + Hdn1));
+  M   = Mn1 + k2;
+  bad = (M != M) | (abs(M) > 20);
+};
+
+hyst(H) = rk2(H, deriv(H, Hn1, Hdn1), Hn1, Hdn1, Mn1)
+letrec {
+  'Hn1  = H;
+  'Hdn1 = deriv(H, Hn1, Hdn1);
+  'Mn1  = rk2(H, deriv(H, Hn1, Hdn1), Hn1, Hdn1, Mn1);
+};
+
+makeup = 1 / (cc * (0.01 + 6.0 * dJ) / 3.01);   // small-signal gain of the loop is ~c: keeps unity gain at low level
+
+// ---------------- record/replay EQ, bump, losses ----------------
+emf  = ba.selectn(3, speed, 3000, 5000, 8000);     // pre-emphasis midpoint
+emg  = ba.selectn(3, speed, 8, 6, 4);              // dB
+bmf  = ba.selectn(3, speed, 38, 62, 110);           // head bump
+hfl  = ba.selectn(3, speed, 12000, 17000, 22000);   // gap/spacing loss corner
+
+hsh(f, g, x) = x + (G - 1) * (x : fi.highpass(1, min(f * sqrt(G), 40000))) with { G = vn.db2lin(g); };
+pre  = hsh(emf, emg);
+post = hsh(emf, 0 - emg);
+bumpf = fi.svf.bell(bmf, 1.1, 3.5 * bump) : fi.svf.bell(2.3 * bmf, 1.2, -1.2 * bump);
+loss  = fi.lowpass(2, hfl);
+
+// ---------------- wow & flutter ----------------
+wdep = 0.0015 * wowp * ma.SR;       // samples (+-)
+fdep = 0.00006 * flutp * ma.SR;
+wf   = (os.osc(0.55) + 0.35 * os.osc(1.37) + 0.15 * (no.noise : fi.lowpass(1, 2))) / 1.5;
+ff   = os.osc(6.3) * 0.8 + 0.2 * os.osc(11.1);
+dly  = wdep + fdep + wdep * wf + fdep * ff;      // >= 0, mean = wdep + fdep
+wowflut = de.fdelay(4096, max(0, dly));
+basedly = de.fdelay(4096, wdep + fdep);          // dry path alignment
+
+tapech(x) = x : pre : hyst : *(makeup) : post : bumpf : loss : vn.dcb : wowflut;
+
+// level change caused by the tape (input vs. output, 300 ms RMS)
+meter(x, y) = y : attach(_, (y*y : vn.lag(0.3)) / max(1e-12, x*x : vn.lag(0.3)) * (x*x : vn.lag(0.3) > 1e-9) + (x*x : vn.lag(0.3) <= 1e-9) : gmeter);
+
+tape(x) = x <: basedly, tapech : (*(1 - mixp/100), *(mixp/100)) :> *(outdb) : meter(x);
+// right channel of the stereo version (same controls, no second meter)
+tape_r(x) = x <: basedly, tapech : (*(1 - mixp/100), *(mixp/100)) :> *(outdb);

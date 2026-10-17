@@ -41,11 +41,16 @@ struct VNZone {
     FAUSTFLOAT* zone;
     float lo, hi;
     bool output;
+    bool pow2db;   // bargraph carries a power ratio; convert to dB once per block (saves 2 logs/sample)
 };
 
 struct ZoneCollector : public UI {
     std::vector<VNZone> zones;
-    void add(FAUSTFLOAT* z, float lo, float hi, bool out) { zones.push_back({z, lo, hi, out}); }
+    std::vector<FAUSTFLOAT*> powz;
+    void add(FAUSTFLOAT* z, float lo, float hi, bool out) {
+        bool pw = std::find(powz.begin(), powz.end(), z) != powz.end();
+        zones.push_back({z, lo, hi, out, pw});
+    }
     void openTabBox(const char*) override {}
     void openHorizontalBox(const char*) override {}
     void openVerticalBox(const char*) override {}
@@ -58,7 +63,9 @@ struct ZoneCollector : public UI {
     void addHorizontalBargraph(const char*, FAUSTFLOAT* z, FAUSTFLOAT lo, FAUSTFLOAT hi) override { add(z, lo, hi, true); }
     void addVerticalBargraph(const char*, FAUSTFLOAT* z, FAUSTFLOAT lo, FAUSTFLOAT hi) override { add(z, lo, hi, true); }
     void addSoundfile(const char*, const char*, Soundfile**) override {}
-    void declare(FAUSTFLOAT*, const char*, const char*) override {}
+    void declare(FAUSTFLOAT* z, const char* k, const char*) override {
+        if (z && !strcmp(k, "vn_pow2db")) powz.push_back(z);
+    }
 };
 
 struct OSMeta : public Meta {
@@ -162,6 +169,18 @@ void run(LV2_Handle h, uint32_t nframes) {
             for (int c = 0; c < p->nout; ++c)
                 if (p->aout[c]) p->down[c].process(p->outbuf[c], p->aout[c] + done, n);
         }
+        // NaN/inf safety: if anything blew up, clear all DSP state and output silence
+        bool bad = false;
+        for (int c = 0; c < p->nout && !bad; ++c)
+            if (p->aout[c])
+                for (int i = 0; i < n; ++i)
+                    if (!std::isfinite(p->aout[c][done + i])) { bad = true; break; }
+        if (bad) {
+            p->dsp.instanceClear();
+            for (int c = 0; c < kMaxCh; ++c) { p->up[c].reset(); p->down[c].reset(); }
+            for (int c = 0; c < p->nout; ++c)
+                if (p->aout[c]) memset(p->aout[c] + done, 0, n * sizeof(float));
+        }
         done += n;
     }
 
@@ -169,6 +188,7 @@ void run(LV2_Handle h, uint32_t nframes) {
         const VNZone& vz = p->zones[z];
         if (vz.output && p->ctl[z]) {
             float v = *vz.zone;
+            if (vz.pow2db) v = 10.f * std::log10(std::max(v, 1e-12f));
             if (!std::isfinite(v)) v = 0.f;
             *p->ctl[z] = std::min(vz.hi, std::max(vz.lo, v));
         }
