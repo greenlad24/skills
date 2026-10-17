@@ -202,7 +202,10 @@ def _sent(key: str) -> bool:
 
 # Tonight's topology: phones keep using LiveKit on the build server (HTTPS, already working);
 # the show server's video service subscribes to it over the internet and encodes on the GPU.
-SHOW_OVERRIDES = {'LIVEKIT_URL': 'wss://app.jeeznews.com', 'VN_VIDEO_PROFILE': 'gpu'}
+# Slate music (copyright-free, not in git) lives next to the code: synced by cmd_provision.
+SLATE_MUSIC_SRC = os.environ.get('VN_SLATE_MUSIC_DIR', '/home/vibe/vibenation-media/slate-music')
+SLATE_MUSIC_DST = '/opt/vibenation-media/slate-music'
+SHOW_OVERRIDES = {'LIVEKIT_URL': 'wss://app.jeeznews.com', 'VN_VIDEO_PROFILE': 'gpu', 'VN_SLATE_MUSIC_DIR': SLATE_MUSIC_DST}
 # The build server's web app reaches the show server's engines through an SSH tunnel on these ports.
 TUNNEL = {'VN_AUDIO_URL': (18091, 8091), 'VN_VIDEO_URL': (18092, 8092)}
 TUNNEL_UNIT = '/etc/systemd/system/vibenation-showtunnel.service'
@@ -269,6 +272,12 @@ def cmd_provision(ip: str) -> None:
         subprocess.run(['ssh', '-i', SSH_KEY, f'root@{ip}', 'mkdir -p /opt/vibenation/data'], check=True)
         subprocess.run(['rsync', '-az', '-e', f'ssh -i {SSH_KEY}', mix, f'root@{ip}:/opt/vibenation/data/mix_state.json'], check=True)
     subprocess.run(['rsync', '-az', '-e', f'ssh -i {SSH_KEY}', '/usr/local/lib/lv2/', f'root@{ip}:/usr/local/lib/lv2/'], check=True)
+    # Slate music for the stream's breaks (the video service falls back to silence without it).
+    if os.path.isdir(SLATE_MUSIC_SRC):
+        subprocess.run(['ssh', '-i', SSH_KEY, f'root@{ip}', f'mkdir -p {SLATE_MUSIC_DST}'], check=True)
+        subprocess.run(['rsync', '-az', '--delete', '-e', f'ssh -i {SSH_KEY}', SLATE_MUSIC_SRC.rstrip('/') + '/', f'root@{ip}:{SLATE_MUSIC_DST}/'], check=True)
+    else:
+        print(f'warning: no slate music at {SLATE_MUSIC_SRC}: breaks will be silent on the stream')
     r = ssh(ip, 'bash /opt/vibenation/infra/showserver/provision.sh', check=False)
     print(r.stdout[-3000:])
     if r.returncode != 0:

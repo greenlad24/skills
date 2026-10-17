@@ -37,6 +37,7 @@ interface Reply {
 
 const BASE = Object.fromEntries(CHANNELS.map((c) => [c.n, c]));
 const LOCKED_FADERS = new Set([1, 2, 3, 9, 10]); // kick, snare, OH, vocals: ±1 dB once balanced (band rule)
+const LOCKED_EQ = new Set([1, 14]); // kick and synth bass tone: set with the user, Claude doesn't re-carve it
 const PIANO = new Set([6, 7]);
 const NO_HPF = new Set([1, 12, 14]);
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
@@ -54,6 +55,7 @@ Band rules (always obey):
 - Piano (6+7, a stereo pair: always move both the same) is rich and clearly audible (user wants more piano), sits in the low-mids behind the singer: fader floor -9 dB.
 - Harmonica (16) can be very sharp: soften, never harsh. Sax (15) clear, never honky or harsh.
 - Drums are prominent (band preference): punchy kick and snare that drive the groove, just under the vocals. Never make them smaller with EQ, compression or sends; if something fights them, move that instead.
+- Kick and synth bass EQ are locked (set with the band); other EQ bands move at most ±3 dB from their preset.
 - Kick, snare, overheads and vocal faders are locked within ±1 dB of their balance; use EQ, compression targets, rider targets and sends there instead.
 - Prefer cuts over boosts; one problem, one move. If nothing is clearly wrong, change nothing — an empty list is a good answer.
 - Never chase loudness with faders: the master leveller holds -16 LUFS. If the limiter works more than 3-4 dB, the fix is upstream balance/EQ.
@@ -219,13 +221,15 @@ export class MixerLoop {
       undo = { type: 'fader', ch: n, db: ch.fader };
       text = `${ch.name} fader ${ch.fader} → ${v} dB`;
     } else if (c.action === 'eq') {
-      if (this.host.isHeld(`ch${n}.eq`) || !ch.eq) return null;
+      if (this.host.isHeld(`ch${n}.eq`) || !ch.eq || LOCKED_EQ.has(n)) return null;
       const i = Number(c.band);
       const b = ch.eq[i];
       if (!b || (NO_HPF.has(n) && b.kind === 'hpf')) return null;
       const base = ch.eqBase?.[i]?.gain ?? b.gain;
-      const gain = c.gain === undefined || b.kind === 'hpf' || b.kind === 'lpf' ? b.gain : r1(clamp(b.gain + clamp(Number(c.gain) - b.gain, -1, 1), base - 6, base + 6));
-      const f = c.f === undefined ? b.f : Math.round(clamp(Number(c.f), b.f / 1.26, b.f * 1.26));
+      const baseF = ch.eqBase?.[i]?.f ?? b.f;
+      // At most ±3 dB from the preset band, and the frequency stays near the preset's (it used to drift a step per move).
+      const gain = c.gain === undefined || b.kind === 'hpf' || b.kind === 'lpf' ? b.gain : r1(clamp(b.gain + clamp(Number(c.gain) - b.gain, -1, 1), base - 3, base + 3));
+      const f = c.f === undefined ? b.f : Math.round(clamp(Number(c.f), baseF / 1.26, baseF * 1.26));
       if (Math.abs(gain - b.gain) < 0.2 && Math.abs(f - b.f) < 1) return null;
       cmd = { type: 'eq', ch: n, band: i, gain, f };
       undo = { type: 'eq', ch: n, band: i, gain: b.gain, f: b.f };

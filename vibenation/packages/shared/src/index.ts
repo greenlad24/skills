@@ -35,20 +35,20 @@ export interface ChannelDef {
 
 /** The band's 16 MR18 channels (USB Analog tap). Roles on 11, 15, 16 can switch live. */
 export const CHANNELS: ChannelDef[] = [
-  { n: 1, name: 'Kick', short: 'Kick', section: 'drums', fader: -7, noHpf: true }, // drums +3 dB (user, 17 Oct 2026)
-  { n: 2, name: 'Snare', short: 'Snare', section: 'drums', fader: -11.9 },
-  { n: 3, name: 'Overheads', short: 'OH', section: 'drums', fader: -20.4 },
+  { n: 1, name: 'Kick', short: 'Kick', section: 'drums', fader: -1.5, noHpf: true }, // drums +3 dB (user, 17 Oct 2026)
+  { n: 2, name: 'Snare', short: 'Snare', section: 'drums', fader: -6.6 },
+  { n: 3, name: 'Overheads', short: 'OH', section: 'drums', fader: -14.4 },
   { n: 4, name: 'Acoustic DI', short: 'Ac DI', section: 'gtr', fader: -14 },
   { n: 5, name: 'Guitar amp', short: 'Gtr amp', section: 'gtr', fader: -12 },
-  { n: 6, name: 'Piano L', short: 'Piano L', section: 'keys', fader: -8 }, // +2 dB (user, 17 Oct 2026)
-  { n: 7, name: 'Piano R', short: 'Piano R', section: 'keys', fader: -8 },
+  { n: 6, name: 'Piano L', short: 'Piano L', section: 'keys', fader: -6 }, // +2 dB (user, 17 Oct 2026)
+  { n: 7, name: 'Piano R', short: 'Piano R', section: 'keys', fader: -6 },
   { n: 8, name: 'Guitar DI', short: 'Gtr DI', section: 'gtr', fader: -13 },
   { n: 9, name: 'Vocal centre', short: 'Vox C', section: 'vox', fader: -2 },
   { n: 10, name: 'Vocal piano', short: 'Vox P', section: 'vox', fader: -2.3 },
   { n: 11, name: 'Congas 1', short: 'Congas', section: 'perc', fader: -16 },
   { n: 12, name: 'Bass DI', short: 'Bass DI', section: 'bass', fader: -10, noHpf: true },
   { n: 13, name: 'Congas 2', short: 'Congas 2', section: 'perc', fader: -16 },
-  { n: 14, name: 'Synth bass', short: 'Synth B', section: 'bass', fader: -6.8, noHpf: true }, // +3 dB (user, 17 Oct 2026)
+  { n: 14, name: 'Synth bass', short: 'Synth B', section: 'bass', fader: -4.8, noHpf: true }, // +3 dB (user, 17 Oct 2026)
   { n: 15, name: 'Saxophone', short: 'Sax', section: 'horn', fader: -2.1 },
   { n: 16, name: 'Harmonica', short: 'Harm', section: 'horn', fader: -10 },
 ];

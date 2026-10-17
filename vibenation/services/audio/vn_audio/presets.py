@@ -65,13 +65,13 @@ VOCAL_EQ: list[Band] = [
 ]
 
 STRIPS: list[Strip] = [
-    Strip(1, 'Kick', -7.0, 0,  # +3 dB drums (user, 17 Oct 2026: drums more prominent)
-          eq=[('bell', 60, 2.0, 1.0), ('bell', 285, -3.0, 1.5), ('hshelf', 16000, 2.0, 0.7)],
+    Strip(1, 'Kick', -1.5, 0,  # live balance 17 Oct 2026 (user: drums prominent, clear kick)
+          eq=[('bell', 60, 2.0, 1.0), ('bell', 285, -3.0, 1.5), ('hshelf', 16000, 2.0, 0.7), ('bell', 3500, 4.0, 1.2)],  # 3.5 kHz = beater click
           comp=Comp(-18, 4.5, 28, 85, 2, peak=True), gate=Gate(-34, 12, 0.5, 45, 10), room=-22, no_hpf=True),
-    Strip(2, 'Snare', -11.9, 0,
+    Strip(2, 'Snare', -6.6, 0,
           eq=[('hpf', 100, 0, 0.7), ('bell', 200, 0, 1.0), ('bell', 420, -3.0, 2.0), ('bell', 2500, 2.0, 1.0), ('bell', 8000, 2.0, 1.0)],
           comp=Comp(-20, 4, 15, 50, 3, peak=True), room=-15),
-    Strip(3, 'Overheads', -20.4, 0,
+    Strip(3, 'Overheads', -14.4, 0,
           eq=[('hpf', 180, 0, 0.7)], comp=Comp(-22, 4, 15, 120, 1)),
     Strip(4, 'Acoustic DI', -14.0, -20,
           eq=[('hpf', 100, 0, 0.7), ('bell', 250, -2.5, 1.2), ('bell', 1000, -3.0, 4.0), ('hshelf', 12000, 1.5, 0.7)],
@@ -79,10 +79,10 @@ STRIPS: list[Strip] = [
     Strip(5, 'Guitar amp', -12.0, -30,
           eq=[('hpf', 100, 0, 0.7), ('bell', 350, -2.0, 1.2), ('bell', 4000, -2.0, 4.0), ('lpf', 12000, 0, 0.7)],
           comp=Comp(-20, 4, 10, 100, 2, mix=0.5), room=-20),
-    Strip(6, 'Piano L', -8.0, -60,  # +2 dB (user, 17 Oct 2026: more piano)
+    Strip(6, 'Piano L', -6.0, -60,  # user 17 Oct 2026: more piano
           eq=[('hpf', 35, 0, 0.7), ('bell', 200, 1.0, 0.8), ('bell', 500, -2.0, 2.0), ('bell', 1500, -1.5, 1.0), ('bell', 3000, -2.0, 1.1), ('bell', 4500, -1.5, 0.8)],
           comp=Comp(-22, 2, 30, 200, 1), plate=-14, floor=-13),
-    Strip(7, 'Piano R', -8.0, 60,
+    Strip(7, 'Piano R', -6.0, 60,
           eq=[('hpf', 35, 0, 0.7), ('bell', 200, 1.0, 0.8), ('bell', 500, -2.0, 2.0), ('bell', 1500, -1.5, 1.0), ('bell', 3000, -2.0, 1.1), ('bell', 4500, -1.5, 0.8)],
           comp=Comp(-22, 2, 30, 200, 1), plate=-14, floor=-13),
     Strip(8, 'Guitar DI', -13.0, 30,
@@ -99,8 +99,8 @@ STRIPS: list[Strip] = [
     Strip(13, 'Congas 2', -16.0, 50,
           eq=[('hpf', 90, 0, 0.7), ('bell', 350, -2.5, 1.2), ('bell', 4500, 2.5, 1.0)],
           comp=Comp(-20, 4, 15, 80, 2, peak=True), room=-18),
-    Strip(14, 'Synth bass', -6.8, 0,  # +3 dB (user, 17 Oct 2026: more synth bass)
-          eq=[('bell', 55, 1.5, 1.0), ('bell', 300, -3.0, 1.0), ('bell', 1500, 1.5, 1.0)],
+    Strip(14, 'Synth bass', -4.8, 0,  # user 17 Oct 2026: more, and clear, synth bass
+          eq=[('bell', 55, 2.5, 1.0), ('bell', 250, -2.0, 1.0), ('bell', 1000, 3.0, 1.0)],  # 1 kHz = definition on phones
           comp=Comp(-20, 3, 20, 150, 2), no_hpf=True),
     Strip(15, 'Saxophone', -2.1, -25,
           eq=[('hpf', 120, 0, 0.7), ('bell', 400, -2.5, 1.2), ('bell', 2100, -1.5, 4.0), ('bell', 4000, -1.5, 4.0), ('hshelf', 8000, 2.0, 0.7)],

@@ -39,7 +39,7 @@ class Service:
         self.dests: dict[str, Destination] = {}
         self.subs: dict[str, list[Destination]] = {k: [] for k in OUTPUT_PROFILES}
         self.prog = Program(cfg, self._on_encoded)
-        self.audio = Audio(cfg.audio, cfg.jack_ports, self._on_audio)
+        self.audio = Audio(cfg.audio, cfg.jack_ports, self._on_audio, cfg.slate_music_dir, cfg.slate_music_db)
         self.cams = Cams(cfg.livekit_url, cfg.livekit_key, cfg.livekit_secret, cfg.room, self._on_frame)
         self.error: str | None = None
         self.cpu = 0.0
@@ -234,6 +234,7 @@ class Service:
                 elif 'minutes' in body or changed:
                     mins = float(body.get('minutes') or (15 if s == 'Break' else 5))
                     self.slate_ends = time.time() + mins * 60
+            self.audio.set_slate(self.slate is not None)   # band <-> slate music crossfade
             await self.refresh_slate(force=True)
         if 'vertical' in body:
             v = body['vertical'] or {}

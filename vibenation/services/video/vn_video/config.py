@@ -61,6 +61,9 @@ class Settings:
     audio: str = os.environ.get('VN_VIDEO_AUDIO', 'jack')          # jack | test | silence
     jack_ports: tuple[str, str] = tuple(os.environ.get('VN_VIDEO_JACK_PORTS', 'effect_1042:outL,effect_1042:outR').split(','))  # type: ignore[assignment]
     audio_delay_ms: int = int(os.environ.get('VN_VIDEO_AUDIO_DELAY_MS', '0'))
+    # Slate music: 16-bit 48 kHz stereo WAVs (normalised to about -20 LUFS); VN_SLATE_MUSIC_DB trims them.
+    slate_music_dir: str = os.environ.get('VN_SLATE_MUSIC_DIR', '/home/vibe/vibenation-media/slate-music')
+    slate_music_db: float = float(os.environ.get('VN_SLATE_MUSIC_DB', '0'))
     livekit_url: str = os.environ.get('LIVEKIT_URL', 'ws://127.0.0.1:7880')
     livekit_key: str = os.environ.get('LIVEKIT_API_KEY', '')
     livekit_secret: str = os.environ.get('LIVEKIT_API_SECRET', '')
