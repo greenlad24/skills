@@ -161,5 +161,6 @@ for _s in STRIPS:
 
 # Master colour + glue + tape (before the x42 true-peak limiter).
 MASTER_CONSOLE = {'drive': 0, 'colour': 40, 'crosstalk': 0}
+MAX_DRIVE_DB = 12.0  # leveller drive ceiling: more only pushes weak live inputs into the limiter
 MASTER_BUS = {'threshold': -10, 'ratio': 0, 'attack': 10, 'release': 4, 'sc_hpf': 90, 'makeup': 0, 'mix': 80}  # parallel 'New York' glue: density without losing punch
 MASTER_TAPE = {'speed': 1, 'drive': 0, 'saturation': 30, 'bias': 50, 'bump': 40, 'wow': 0, 'flutter': 0, 'mix': 50}

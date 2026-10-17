@@ -64,6 +64,7 @@ class Engine:
         self.ride_ref: list[deque] = [deque(maxlen=600) for _ in range(16)]  # 60 s of active levels
         self.st_hist: deque = deque(maxlen=300)  # 5 min of *music* short-term loudness for the leveller brake
         self.limiter_gr = 0.0
+        self.limiter_hist: deque = deque(maxlen=64)  # (t, gr) of recent frames, for the leveller
         self.arr = Arrangement()  # lead/backing vocals, solos, auto-mute of idle channels
         # Drum faders from the meters, at soundcheck only (see _ride_drums).
         self.drum_share: dict[int, deque] = {n: deque(maxlen=150) for n in DRUMS}
@@ -131,6 +132,7 @@ class Engine:
     def _on_frame(self, f: dict) -> None:
         m = f['master']
         self.limiter_gr = round(max(0.0, m['prePeak'] - m['peak']), 1)
+        self.limiter_hist.append((time.time(), self.limiter_gr))
         self._level(m)
         self._calibrate(f['raw'])
         self._ride(f)
@@ -153,9 +155,10 @@ class Engine:
         if not self.leveller_on or now - self.last_level < 1.0 or not self.running():
             return
         self.last_level = now
-        if self.limiter_gr > 4:
+        recent = max((g for t, g in self.limiter_hist if now - t < 3.0), default=0.0)
+        if recent > 4 or self.graph.master_gain > P.MAX_DRIVE_DB:
             # The limiter is crushing peaks (weak inputs driven hard): back the drive off whatever the loudness says.
-            self.graph.master_gain = round(max(-10.0, self.graph.master_gain - 1.0), 2)
+            self.graph.master_gain = round(max(-10.0, min(P.MAX_DRIVE_DB, self.graph.master_gain - 1.0)), 2)
             self.graph.apply_drive()
             return
         s = m['lufsS'] - self.graph.master_gain  # loudness before the leveller's own drive
@@ -169,10 +172,10 @@ class Engine:
         err = P.TARGET_LUFS - m['lufsS']
         if abs(err) < 0.5:
             return
-        if err > 0 and self.limiter_gr > 3:  # louder would only mean more limiting: fix it upstream
+        if err > 0 and recent > 2:  # louder would only mean more limiting: fix it upstream
             return
         step = max(-3.0, min(1.0, err * 0.3))
-        g = max(-10.0, min(20.0, self.graph.master_gain + step))
+        g = max(-10.0, min(P.MAX_DRIVE_DB, self.graph.master_gain + step))
         if abs(g - self.graph.master_gain) >= 0.05:
             self.graph.master_gain = round(g, 2)
             self.graph.apply_drive()
