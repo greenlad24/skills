@@ -6,6 +6,8 @@ import { CHANNELS, type CameraState, type ClientAction, type FeedItem, type Show
 import { AudioLink } from './audio.js';
 import { MixerLoop } from './mixer.js';
 import { Director } from './director.js';
+import { GoLive } from './golive.js';
+import { loadPackage } from './package.js';
 
 type Listener = (msg: { type: 'state'; state: ShowState } | MeterFrame) => void;
 
@@ -39,15 +41,17 @@ export class DemoShow {
   readonly audio: AudioLink;
   readonly mixer: MixerLoop;
   readonly director: Director;
+  readonly golive: GoLive;
+  private videoSent = { cam: -1, slate: '' as string | null };
 
   constructor() {
     const t = now();
     this.state = {
       showName: '[Band Name] · Friday Session',
-      onAir: true,
-      liveSince: t - (72 * 60 + 48) * 1000,
+      onAir: false,
+      liveSince: null,
       slate: null,
-      destinations: { YT: true, TW: true, FB: true, TT: true, IG: true },
+      destinations: { YT: true, TW: true, FB: true, TT: true, IG: true }, // switched on; 'ready' says which are connected
       cams: [
         { id: 1, num: 'CAM 1', name: 'Wide stage', device: 'android', connected: true, battery: 74, charging: true },
         { id: 2, num: 'CAM 2', name: 'Lead vocal', device: 'android', connected: true, battery: 86, charging: false },
@@ -67,7 +71,7 @@ export class DemoShow {
       master: { lufsI: -16.2, lufsS: -16.0, truePeak: -1.4, limiterGr: 1.8 },
       song: SONGS[0],
       bpm: 118,
-      health: { mbps: 9.0, fps: 60, cpu: 38, dropped: 0, viewers: 1240, likes: 86 },
+      health: { mbps: 0, fps: 0, cpu: 0, dropped: 0, viewers: 0, likes: 0 },
       thinking: {
         text: 'Piano solo is starting — keys up 6 dB and melodic, vocal silent for 4 bars. Planning to cut to CAM 3 · Keys on the next downbeat.',
         heard: 'keys solo',
@@ -80,6 +84,10 @@ export class DemoShow {
       controls: {},
       demo: true,
       audio: null,
+      preflight: [],
+      youtube: { configured: false, connected: false, channel: null },
+      ready: { YT: false, TW: false, FB: false, TT: false, IG: false },
+      golive: { phase: 'idle' },
     };
     this.feed({ kind: 'SHOW', text: 'Demo show running.', why: 'Fake cameras and audio until the real engines are connected.' });
     this.refreshProcs();
@@ -114,6 +122,27 @@ export class DemoShow {
       this.feed({ kind: 'DIRECTOR', text: `Cut to ${c.num} · ${c.name}.`, why, confidence });
       this.state.thinking = { ...this.state.thinking, text: `On ${c.num} · ${c.name}: ${why}.`, heard: why.split(' — ')[0] };
       this.push();
+    });
+    this.golive = new GoLive({
+      state: this.state,
+      audio: this.audio,
+      addFeed: (f) => this.feed(f),
+      push: () => this.push(),
+      pkg: loadPackage,
+      startShow: () => {
+        this.state.onAir = true;
+        this.state.liveSince = now();
+        this.state.held = [];
+        this.state.controls = {};
+        for (const c of this.state.channels) c.held = false;
+      },
+    });
+    // Keep the video service following the director and the slate.
+    this.camWatchers.push(() => {
+      const s = this.state;
+      if (!s.onAir) return;
+      if (s.liveCam !== this.videoSent.cam) { this.videoSent.cam = s.liveCam; void fetch((process.env.VN_VIDEO_URL ?? 'http://127.0.0.1:8092') + '/cmd', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ program: s.liveCam }) }).catch(() => undefined); }
+      if (s.slate !== this.videoSent.slate) { this.videoSent.slate = s.slate; void fetch((process.env.VN_VIDEO_URL ?? 'http://127.0.0.1:8092') + '/cmd', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ slate: s.slate, minutes: 15 }) }).catch(() => undefined); }
     });
     setInterval(() => this.meters(), 100);
     setInterval(() => this.claudeTick(), 6000);
@@ -219,8 +248,6 @@ export class DemoShow {
   /** Stand-in for the real Claude loop: small bounded moves on controls nobody holds. */
   private claudeTick() {
     const s = this.state;
-    s.health.viewers = Math.max(0, s.health.viewers + Math.round((Math.random() - 0.45) * 20));
-    s.health.likes += Math.random() < 0.4 ? 1 : 0;
 
     if (!this.audio.connected && now() - this.lastCut > 14_000 && Math.random() < 0.6) {
       const options = s.cams.filter((c) => c.connected && c.id !== s.liveCam && !c.error);
@@ -305,17 +332,12 @@ export class DemoShow {
         s.destinations[a.p] = a.on;
         break;
       case 'golive':
-        s.onAir = true;
-        s.liveSince = now();
-        s.held = [];
-        s.controls = {};
-        for (const c of s.channels) c.held = false;
-        this.feed({ kind: 'SHOW', text: 'Went live.', why: 'All holds cleared; Claude starts from the learned mix.' });
+        void this.golive.start(a.privacy);
         break;
       case 'end':
-        s.onAir = false;
         s.slate = 'Thanks for watching';
-        this.feed({ kind: 'SHOW', text: 'Show ended.' });
+        this.feed({ kind: 'SHOW', text: 'Ending: thanks-for-watching slate, then the stream stops in 30 s.' });
+        setTimeout(() => void this.golive.end(), 30_000);
         break;
       case 'slate':
         s.slate = a.slate;

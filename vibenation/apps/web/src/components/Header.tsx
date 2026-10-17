@@ -26,7 +26,7 @@ export function Header() {
   const route = useRoute();
   const elapsed = useElapsed(s?.onAir ? s.liveSince : null);
   if (!s) return null;
-  const dests = (Object.keys(s.destinations) as Platform[]).filter((p) => s.destinations[p]);
+  const dests = (Object.keys(s.destinations) as Platform[]).filter((p) => s.destinations[p] && s.ready?.[p]);
   const heldCount = s.held.length;
   return (
     <header style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 14, padding: '14px 22px', borderBottom: '1px solid rgba(255,236,220,0.07)', background: 'rgba(18,12,9,0.6)', backdropFilter: 'blur(16px)', position: 'sticky', top: 0, zIndex: 10 }}>
@@ -52,20 +52,20 @@ export function Header() {
       ) : (
         <div style={{ ...pill, gap: 8, padding: '7px 14px', fontWeight: 700, fontSize: 13, color: 'var(--text-soft)' }}>OFF AIR</div>
       )}
-      <div style={{ ...pill, gap: 6, padding: '5px 10px 5px 6px' }} aria-label={`Live on ${dests.length} platforms`}>
+      {dests.length > 0 && <div style={{ ...pill, gap: 6, padding: '5px 10px 5px 6px' }} aria-label={`Live on ${dests.length} platforms`}>
         {dests.map((p) => (
           <span key={p} title={PLATFORM_NAME[p]} style={{ width: 22, height: 22, borderRadius: 7, background: PLATFORM_BG[p], color: '#FFFFFF', fontSize: 9, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 0 2px #120C09' }}>{p}</span>
         ))}
         <span style={{ fontSize: 12, fontWeight: 700, color: '#E9DED2' }}>on {dests.length}</span>
-      </div>
-      <div style={{ ...pill, gap: 7, padding: '7px 12px', fontFamily: 'var(--font-mono)', fontSize: 13 }}>
+      </div>}
+      {s.onAir && <><div style={{ ...pill, gap: 7, padding: '7px 12px', fontFamily: 'var(--font-mono)', fontSize: 13 }}>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#C9BDB1" strokeWidth="2" aria-label="Viewers"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" /><circle cx="12" cy="12" r="3" /></svg>{s.health.viewers.toLocaleString('en')}
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#C9BDB1" strokeWidth="2" aria-label="Likes" style={{ marginLeft: 6 }}><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z" /></svg>{s.health.likes}
       </div>
       <div style={{ ...pill, gap: 12, padding: '7px 12px', fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-soft)' }} aria-label="Stream health">
         <span>{s.health.mbps.toFixed(1)} Mbps</span><span>{s.health.fps} fps</span><span>CPU {s.health.cpu}%</span>
         <span style={{ color: s.health.dropped ? 'var(--warn)' : undefined }}>{s.health.dropped} dropped</span>
-      </div>
+      </div></>}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 14px', borderRadius: 999, background: 'rgba(185,166,255,0.1)', border: '1px solid rgba(185,166,255,0.35)', color: 'var(--ai-text)', fontWeight: 600, fontSize: 13 }}>
         <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--ai)', boxShadow: '0 0 10px var(--ai)', animation: 'vnBreath 2.4s ease-in-out infinite' }} />
         AUTO · Claude is running the show{heldCount > 0 && <span style={{ color: 'var(--text-1)' }}> · {heldCount} held by you</span>}

@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import type { PreflightCheck } from '../../demo/golive';
+import type { PreflightCheck } from '@vibenation/shared';
 
 const ICON = { ok: 'M5 12l5 5L20 7', warn: 'M12 7v6M12 17h.01', error: 'M7 7l10 10M17 7L7 17' } as const;
 
@@ -17,7 +17,7 @@ export function Preflight({ checks }: { checks: PreflightCheck[] }) {
     <div style={{ borderRadius: 22, background: 'linear-gradient(180deg, rgba(36,27,21,0.8), rgba(20,15,11,0.8))', border: '1px solid rgba(255,236,220,0.07)', boxShadow: 'inset 0 1px 0 rgba(255,236,220,0.05), 0 24px 60px rgba(0,0,0,0.4)', padding: '6px 22px' }}>
       <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
         {checks.map((c, i) => (
-          <li key={c.title} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '15px 0', borderBottom: i < checks.length - 1 ? '1px solid rgba(255,236,220,0.05)' : undefined }}>
+          <li key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '15px 0', borderBottom: i < checks.length - 1 ? '1px solid rgba(255,236,220,0.05)' : undefined }}>
             <span style={iconStyle(c.level)} aria-label={c.level === 'ok' ? 'OK' : c.level === 'warn' ? 'Warning' : 'Problem'} role="img">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" aria-hidden="true"><path d={ICON[c.level]} /></svg>
             </span>

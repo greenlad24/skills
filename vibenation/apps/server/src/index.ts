@@ -10,8 +10,8 @@ import { registerAuth } from './auth.js';
 import { DemoShow } from './sim.js';
 import { registerCams } from './cams.js';
 import { registerYouTube } from './youtube.js';
-import { registerPackage, type StreamPackage } from './package.js';
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { registerPackage } from './package.js';
+import { registerDestinations } from './golive.js';
 
 const PORT = Number(process.env.PORT ?? 8080);
 // Bind to localhost only; Caddy in front handles HTTPS once ports are approved.
@@ -32,12 +32,8 @@ app.get('/api/health', async (): Promise<HealthResponse> => ({
 const show = new DemoShow();
 registerCams(app, show);
 registerYouTube(app);
-const dataDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../data');
-const pkgFile = path.join(dataDir, 'package.json');
-registerPackage(app, {
-  get: () => { try { return JSON.parse(readFileSync(pkgFile, 'utf8')) as StreamPackage; } catch { return null; } },
-  set: (p) => { mkdirSync(dataDir, { recursive: true }); writeFileSync(pkgFile, JSON.stringify(p, null, 2)); },
-});
+registerPackage(app);
+registerDestinations(app);
 
 app.get('/ws', { websocket: true }, (socket) => {
   const off = show.subscribe((msg) => socket.send(JSON.stringify(msg)));

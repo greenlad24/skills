@@ -184,6 +184,19 @@ export interface ShowState {
   controls: Record<string, number | string>;
   demo: boolean;
   audio: AudioStatus | null;
+  preflight: PreflightCheck[];
+  youtube: { configured: boolean; connected: boolean; channel: string | null };
+  /** Platforms whose stream key is saved on the server (TikTok/Instagram) or that are connected (OAuth). */
+  ready: Record<Platform, boolean>;
+  golive: { phase: 'idle' | 'starting' | 'live' | 'ending' | 'error'; message?: string; broadcastId?: string; privacy?: 'public' | 'unlisted' | 'private' };
+}
+
+export interface PreflightCheck {
+  id: string;
+  title: string;
+  detail: string;
+  meta: string;
+  level: 'ok' | 'warn' | 'error';
 }
 
 /** Lightweight high-rate update (meters) sent between full state pushes. */
@@ -210,7 +223,7 @@ export type ClientAction =
   | { type: 'vmode'; mode: VMode }
   | { type: 'undo'; feedId: string }
   | { type: 'destination'; p: Platform; on: boolean }
-  | { type: 'golive' }
+  | { type: 'golive'; privacy?: 'public' | 'unlisted' | 'private' }
   | { type: 'end' }
   | { type: 'slate'; slate: ShowState['slate'] }
   | { type: 'pan'; ch: number; pan: number }

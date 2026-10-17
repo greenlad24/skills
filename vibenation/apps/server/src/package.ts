@@ -1,8 +1,20 @@
 // Claude writes the per-platform stream package: ranked titles, SEO description with
 // chapters, and tags. Hard rules are checked in code after Claude answers.
 
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 import { askClaude } from './claude.js';
+
+const PKG_FILE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../data/package.json');
+export function loadPackage(): StreamPackage | null {
+  try { return JSON.parse(readFileSync(PKG_FILE, 'utf8')) as StreamPackage; } catch { return null; }
+}
+export function savePackage(p: StreamPackage) {
+  mkdirSync(path.dirname(PKG_FILE), { recursive: true });
+  writeFileSync(PKG_FILE, JSON.stringify(p, null, 2));
+}
 
 export interface StreamPackage {
   titles: string[]; // ranked, best first
@@ -54,7 +66,7 @@ export async function writePackage(info: { lineup?: string; songs?: string[]; mo
   throw new Error('Claude could not write a package that passes the rules; try again.');
 }
 
-export function registerPackage(app: FastifyInstance, store: { get(): StreamPackage | null; set(p: StreamPackage): void }) {
+export function registerPackage(app: FastifyInstance, store = { get: loadPackage, set: savePackage }) {
   app.get('/api/package', async () => ({ package: store.get() }));
   app.post<{ Body: { lineup?: string; songs?: string[]; mood?: string } }>('/api/package/generate', async (req, reply) => {
     try {
