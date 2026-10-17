@@ -1,0 +1,7 @@
+.venv/
+build/
+dist/
+ffmpeg.exe
+ffmpeg.zip
+ffmpeg-tmp/
+*.spec

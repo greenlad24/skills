@@ -13,6 +13,8 @@ corepack enable && corepack prepare pnpm@9.15.0 --activate >/dev/null
 # mod-host (headless LV2 host)
 if ! command -v mod-host >/dev/null; then
   rm -rf /tmp/mod-host && git clone -q --depth 1 https://github.com/moddevices/mod-host.git /tmp/mod-host
+  # localhost only: mod-host's socket protocol has no auth
+  sed -i 's/htonl(INADDR_ANY)/htonl(INADDR_LOOPBACK)/' /tmp/mod-host/src/socket.c
   make -C /tmp/mod-host -j"$(nproc)" >/dev/null && install -m755 /tmp/mod-host/mod-host /usr/local/bin/mod-host
 fi
 # LiveKit server

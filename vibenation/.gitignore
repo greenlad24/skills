@@ -9,3 +9,4 @@ __pycache__/
 .venv/
 services/audio/plugins/.gen/
 services/audio/plugins/build/
+.venv.old-root/
