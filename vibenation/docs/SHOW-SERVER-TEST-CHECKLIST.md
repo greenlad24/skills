@@ -12,7 +12,7 @@ Status as of 17 Oct 2026. ✅ done · ❌ to do · ➖ not needed for the first 
 - ✅ No show server already running (`showserver.py status`).
 - ✅ Price confirmed from the API: $0.76/h. First test budget: **≤ 1.5 h ≈ $1.15**.
 - ✅ Region fallback: tries tor1, nyc2, atl1, ric1, sfo3, mkc1, mem1. A full region refuses at no cost.
-- ❌ **Auto-destroy safety net.** A timer on the build server destroys every `vibenation-show` droplet after a hard limit (2 h for tests), even if the Claude session dies or the provisioning hangs.
+- ✅ **Auto-destroy safety net.** Each show server is tagged `vn-ttl-<min>` (`--ttl`, default 120). The `vibenation-showserver-reaper` timer on the build server runs every 5 minutes and destroys any show server past its limit, even if Claude's session or the script has died. For real shows, set `--ttl` to the show length plus 1 hour.
 
 ### Secrets
 - ✅ **The build server's `.env` stays here.** The rsync skips it; the show server gets a filtered `.env` (only `PORT`, `VN_*`, `LIVEKIT_*`, `GEMINI_*`, mode 600). Tested: the DigitalOcean token, YouTube, OpenAI and other keys are not sent.
@@ -54,4 +54,4 @@ Status as of 17 Oct 2026. ✅ done · ❌ to do · ➖ not needed for the first 
 - `showserver.py destroy`, then `showserver.py status` shows **"No show server running"**.
 - Check in the DigitalOcean dashboard that no droplet tagged `vibenation-show` remains.
 - Report the actual time used and the cost to the user.
-- Turn off the auto-destroy timer, or confirm it has nothing left to do.
+- The auto-destroy timer stays on; with no show server running it does nothing (`journalctl -u vibenation-showserver-reaper`).

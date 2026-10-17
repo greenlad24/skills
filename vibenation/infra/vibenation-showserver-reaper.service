@@ -1,0 +1,10 @@
+[Unit]
+Description=VibeNation: destroy GPU show servers past their time-to-live (cost safety net)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=vibe
+Group=vibe
+ExecStart=/usr/bin/python3 /home/vibe/vibenation/vibenation/infra/showserver/showserver.py reap

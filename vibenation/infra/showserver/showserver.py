@@ -8,16 +8,20 @@ credentials ever live on the show server).
 
 usage:
   showserver.py plan                 # print what would be created and the price
-  showserver.py create [--dry-run] [--retry <min>]  # first free region; create + provision + verify NVENC
+  showserver.py create [--dry-run] [--retry <min>] [--ttl <min>]
+                                     # first free region; create + provision + verify NVENC;
+                                     # auto-destroyed after --ttl minutes (default 120)
   showserver.py status               # list running show servers (and their cost so far)
   showserver.py provision <ip>       # (re)push code and services to a running server
   showserver.py destroy              # destroy every show server (tag vibenation-show)
+  showserver.py reap                 # destroy show servers past their time-to-live (run by a timer)
 
 Needs DIGITALOCEAN_TOKEN in vibenation/.env (never committed).
 """
 
 from __future__ import annotations
 
+import calendar
 import json
 import os
 import subprocess
@@ -35,6 +39,9 @@ SIZE = os.environ.get('VN_SHOW_SIZE', 'gpu-4000adax1-20gb')
 IMAGE = os.environ.get('VN_SHOW_IMAGE', 'gpu-h100x1-base')  # DigitalOcean AI/ML-ready image (NVIDIA drivers)
 API = 'https://api.digitalocean.com/v2'
 SSH_KEY = os.path.expanduser('~/.ssh/vibenation_show')
+# Safety net: every show server carries a time-to-live tag (vn-ttl-<minutes>); the reaper timer on
+# the build server destroys it once it is older than that, even if this script or Claude dies.
+DEFAULT_TTL_MIN = int(os.environ.get('VN_SHOW_TTL_MIN', '120'))
 
 
 def load_env() -> None:
@@ -117,12 +124,23 @@ def cmd_plan() -> None:
         print(f'A 4-hour show (incl. setup) ≈ ${p * 4:.2f}.')
 
 
-def try_regions(key: int, user_data: str) -> dict | None:
+def age_min(d: dict) -> float:
+    return (time.time() - calendar.timegm(time.strptime(d['created_at'], '%Y-%m-%dT%H:%M:%SZ'))) / 60
+
+
+def ttl_min(d: dict) -> int:
+    for t in d.get('tags', []):
+        if t.startswith('vn-ttl-') and t.endswith('m') and t[7:-1].isdigit():
+            return int(t[7:-1])
+    return DEFAULT_TTL_MIN  # untagged show server: default limit
+
+
+def try_regions(key: int, user_data: str, ttl: int) -> dict | None:
     """One pass over REGIONS. Returns the new droplet, or None if every region refused."""
     for region in REGIONS:
         try:
             d = api('POST', '/droplets', {'name': f'vibenation-show-{time.strftime("%Y%m%d-%H%M")}', 'region': region, 'size': SIZE,
-                                          'image': IMAGE, 'ssh_keys': [key], 'tags': [TAG], 'user_data': user_data,
+                                          'image': IMAGE, 'ssh_keys': [key], 'tags': [TAG, f'vn-ttl-{ttl}m'], 'user_data': user_data,
                                           'monitoring': True}, fatal=False)['droplet']
             print(f'{region}: created.')
             return d
@@ -133,16 +151,17 @@ def try_regions(key: int, user_data: str) -> dict | None:
     return None
 
 
-def cmd_create(dry: bool, retry_min: int) -> None:
+def cmd_create(dry: bool, retry_min: int, ttl: int) -> None:
     if droplets():
         sys.exit('A show server already exists (run status / destroy).')
     cmd_plan()
+    print(f'Auto-destroy after {ttl} min (≈ ${(price() or 0) * ttl / 60:.2f} at most).')
     if dry:
         return
     key = ensure_ssh_key()
     user_data = open(os.path.join(HERE, 'cloud-init.yaml')).read()
     deadline = time.time() + retry_min * 60
-    while (d := try_regions(key, user_data)) is None:
+    while (d := try_regions(key, user_data, ttl)) is None:
         if time.time() >= deadline:
             sys.exit('No region has capacity right now (nothing was created or charged). Try again later, '
                      'or retry automatically with: showserver.py create --retry <minutes>')
@@ -206,8 +225,23 @@ def cmd_status() -> None:
         return
     p = price() or 0
     for d in ds:
-        age_h = (time.time() - time.mktime(time.strptime(d['created_at'], '%Y-%m-%dT%H:%M:%SZ'))) / 3600
-        print(f'{d["name"]}  {public_ip(d)}  {d["status"]}  up {age_h:.1f} h  ≈ ${age_h * p:.2f} so far')
+        a = age_min(d)
+        print(f'{d["name"]}  {d["region"]["slug"]}  {public_ip(d)}  {d["status"]}  up {a / 60:.1f} h  ≈ ${a / 60 * p:.2f} so far'
+              f'  auto-destroy in {max(0, ttl_min(d) - a):.0f} min')
+
+
+def cmd_reap() -> None:
+    """Run by the vibenation-showserver-reaper timer: destroy show servers past their time-to-live."""
+    ds = droplets()
+    if not ds:
+        print('No show server running.')
+    for d in ds:
+        a, ttl = age_min(d), ttl_min(d)
+        if a >= ttl:
+            api('DELETE', f'/droplets/{d["id"]}')
+            print(f'Destroyed {d["name"]} ({d["region"]["slug"]}): up {a:.0f} min, limit {ttl} min.')
+        else:
+            print(f'{d["name"]}: up {a:.0f} min of {ttl}.')
 
 
 def cmd_destroy() -> None:
@@ -222,11 +256,12 @@ def cmd_destroy() -> None:
 if __name__ == '__main__':
     load_env()
     args = sys.argv[1:] or ['plan']
-    {'plan': cmd_plan, 'status': cmd_status, 'destroy': cmd_destroy}.get(args[0], lambda: None)()
+    {'plan': cmd_plan, 'status': cmd_status, 'destroy': cmd_destroy, 'reap': cmd_reap}.get(args[0], lambda: None)()
     if args[0] == 'create':
         retry = int(args[args.index('--retry') + 1]) if '--retry' in args else 0
-        cmd_create('--dry-run' in args, retry)
+        ttl = int(args[args.index('--ttl') + 1]) if '--ttl' in args else DEFAULT_TTL_MIN
+        cmd_create('--dry-run' in args, retry, ttl)
     elif args[0] == 'provision':
         cmd_provision(args[1])
-    elif args[0] not in ('plan', 'status', 'destroy'):
+    elif args[0] not in ('plan', 'status', 'destroy', 'reap'):
         sys.exit(__doc__)
