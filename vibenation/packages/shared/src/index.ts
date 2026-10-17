@@ -40,8 +40,8 @@ export const CHANNELS: ChannelDef[] = [
   { n: 3, name: 'Overheads', short: 'OH', section: 'drums', fader: -20.4 },
   { n: 4, name: 'Acoustic DI', short: 'Ac DI', section: 'gtr', fader: -14 },
   { n: 5, name: 'Guitar amp', short: 'Gtr amp', section: 'gtr', fader: -12 },
-  { n: 6, name: 'Piano L', short: 'Piano L', section: 'keys', fader: -10 },
-  { n: 7, name: 'Piano R', short: 'Piano R', section: 'keys', fader: -10 },
+  { n: 6, name: 'Piano L', short: 'Piano L', section: 'keys', fader: -8 }, // +2 dB (user, 17 Oct 2026)
+  { n: 7, name: 'Piano R', short: 'Piano R', section: 'keys', fader: -8 },
   { n: 8, name: 'Guitar DI', short: 'Gtr DI', section: 'gtr', fader: -13 },
   { n: 9, name: 'Vocal centre', short: 'Vox C', section: 'vox', fader: -2 },
   { n: 10, name: 'Vocal piano', short: 'Vox P', section: 'vox', fader: -2.3 },

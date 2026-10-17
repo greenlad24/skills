@@ -79,10 +79,10 @@ STRIPS: list[Strip] = [
     Strip(5, 'Guitar amp', -12.0, -30,
           eq=[('hpf', 100, 0, 0.7), ('bell', 350, -2.0, 1.2), ('bell', 4000, -2.0, 4.0), ('lpf', 12000, 0, 0.7)],
           comp=Comp(-20, 4, 10, 100, 2, mix=0.5), room=-20),
-    Strip(6, 'Piano L', -10.0, -60,
+    Strip(6, 'Piano L', -8.0, -60,  # +2 dB (user, 17 Oct 2026: more piano)
           eq=[('hpf', 35, 0, 0.7), ('bell', 200, 1.0, 0.8), ('bell', 500, -2.0, 2.0), ('bell', 1500, -1.5, 1.0), ('bell', 3000, -2.0, 1.1), ('bell', 4500, -1.5, 0.8)],
           comp=Comp(-22, 2, 30, 200, 1), plate=-14, floor=-13),
-    Strip(7, 'Piano R', -10.0, 60,
+    Strip(7, 'Piano R', -8.0, 60,
           eq=[('hpf', 35, 0, 0.7), ('bell', 200, 1.0, 0.8), ('bell', 500, -2.0, 2.0), ('bell', 1500, -1.5, 1.0), ('bell', 3000, -2.0, 1.1), ('bell', 4500, -1.5, 0.8)],
           comp=Comp(-22, 2, 30, 200, 1), plate=-14, floor=-13),
     Strip(8, 'Guitar DI', -13.0, 30,
@@ -112,8 +112,8 @@ STRIPS: list[Strip] = [
 
 # Stream master: light glue, gentle equal-loudness EQ, true-peak limiter.
 # Tuned 17 Oct 2026 by A/B on the same passage: the old top end measured ~8 dB dark (air -24.6 vs ~-19).
-MASTER_EQ: list[Band] = [('hpf', 20, 0, 0.7), ('lshelf', 100, 3.5, 0.7), ('bell', 350, -1.0, 0.8), ('bell', 800, -1.0, 0.7),
-                         ('bell', 3000, 0.5, 0.8), ('hshelf', 6000, 5.0, 0.7)]
+# No mid cuts: they took the piano's body away (user, 17 Oct 2026: "lacking the piano").
+MASTER_EQ: list[Band] = [('hpf', 20, 0, 0.7), ('lshelf', 100, 3.5, 0.7), ('bell', 3000, 0.5, 0.8), ('hshelf', 6000, 5.0, 0.7)]
 MASTER_COMP = Comp(-14, 2, 30, 200, 0)
 TARGET_LUFS = -16.0
 VOCALS = {9, 10}  # lead + second vocal: never pulled down by the band offset
