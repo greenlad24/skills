@@ -36,9 +36,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, '..', '..'))  # vibenation/
 TAG = 'vibenation-show'
 # Tried in order; a full region (or one without this GPU/image) refuses the create, which costs nothing.
-REGIONS = [r.strip() for r in os.environ.get('VN_SHOW_REGIONS', os.environ.get('VN_SHOW_REGION', 'tor1,nyc2,atl1,ric1,sfo3,mkc1,mem1')).split(',') if r.strip()]
-SIZE = os.environ.get('VN_SHOW_SIZE', 'gpu-4000adax1-20gb')
-IMAGE = os.environ.get('VN_SHOW_IMAGE', 'gpu-h100x1-base')  # DigitalOcean AI/ML-ready image (NVIDIA drivers)
+REGIONS = [r.strip() for r in os.environ.get('VN_SHOW_REGIONS', os.environ.get('VN_SHOW_REGION', 'blr1,lon1,nyc1,sfo2')).split(',') if r.strip()]
+# Default: CPU-Optimized c-16 (rehearsed 17 Oct 2026: 3 cams + 16 ch + 3 encodes at 1080p30 on ~2.7 of 16 cores).
+# GPU option: --size gpu-4000adax1-20gb --image gpu-h100x1-base --regions tor1,nyc2,atl1
+SIZE = os.environ.get('VN_SHOW_SIZE', 'c-16')
+IMAGE = os.environ.get('VN_SHOW_IMAGE', 'ubuntu-24-04-x64')  # DigitalOcean AI/ML-ready image (NVIDIA drivers)
 API = 'https://api.digitalocean.com/v2'
 SSH_KEY = os.path.expanduser('~/.ssh/vibenation_show')
 # Safety net: every show server carries a time-to-live tag (vn-ttl-<minutes>); the reaper timer on

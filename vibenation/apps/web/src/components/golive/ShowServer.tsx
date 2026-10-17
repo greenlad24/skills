@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 interface Server { name: string; ip: string | null; region: string; status: string; size: string; up_min: number; ttl_min: number; price_hourly: number }
 interface Status { servers?: Server[]; connected?: boolean; error?: string; job: { active: boolean; log: string[] } }
 
-const GPU_PRICE = 0.76;
+const PRICE = 0.5; // CPU-Optimized c-16, $/hour
 const btn = { minHeight: 44, padding: '0 16px', borderRadius: 12, border: 0, background: 'var(--text-1)', color: '#140D09', fontWeight: 700, fontSize: 14, cursor: 'pointer' } as const;
 const ghost = { ...btn, border: '1px solid rgba(255,236,220,0.12)', background: 'rgba(255,236,220,0.04)', color: 'var(--text-1)' } as const;
 
@@ -29,7 +29,7 @@ export function ShowServer() {
   const s = st?.servers?.[0];
   const busy = st?.job.active;
   const cost = s ? (s.up_min / 60) * s.price_hourly : 0;
-  const headline = s ? (st?.connected ? `Running · ${s.region.toUpperCase()} · connected` : `${busy ? 'Setting up' : s.status} · ${s.region.toUpperCase()}`) : busy ? 'Waiting for a free GPU…' : 'Off';
+  const headline = s ? (st?.connected ? `Running · ${s.region.toUpperCase()} · connected` : `${busy ? 'Setting up' : s.status} · ${s.region.toUpperCase()}`) : busy ? 'Starting…' : 'Off';
 
   return (
     <section aria-label="Show server" style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingBottom: 14, borderBottom: '1px solid rgba(255,236,220,0.08)' }}>
@@ -40,6 +40,7 @@ export function ShowServer() {
       {s && <span className="vn-mono" style={{ fontSize: 12, color: 'var(--text-meta)' }}>
         {s.size} · up {Math.round(s.up_min)} min · ≈ ${cost.toFixed(2)} so far · auto-off in {Math.max(0, Math.round(s.ttl_min - s.up_min))} min
       </span>}
+      {s?.ip && <span style={{ fontSize: 13 }}>Venue laptop: put <b className="vn-mono" style={{ fontSize: 15 }}>{s.ip}</b> as <b>server</b> in sender.ini.</span>}
       {busy && st?.job.log.length ? <code style={{ fontSize: 11, color: 'var(--text-soft)', whiteSpace: 'pre-wrap', maxHeight: 90, overflow: 'auto' }}>{st.job.log.slice(-4).join('\n')}</code> : null}
       {error && <span role="alert" style={{ color: 'var(--error)', fontSize: 13 }}>{error}</span>}
       {st?.error && <span role="alert" style={{ color: 'var(--warn)', fontSize: 12 }}>{st.error}</span>}
@@ -47,13 +48,13 @@ export function ShowServer() {
       {asking === 'start' ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <span style={{ fontSize: 13, color: 'var(--text-soft)' }}>
-            GPU server ≈ ${GPU_PRICE.toFixed(2)}/hour. It tries every region until a GPU is free, sets up (~15 min) and connects. Auto-off after:
+            Show server (16 dedicated CPUs) ≈ ${PRICE.toFixed(2)}/hour. It sets up (~15 min) in the nearest region with room and connects; the venue laptop then needs its address. Auto-off after:
           </span>
           <div style={{ display: 'flex', gap: 6 }}>
-            {[3, 5, 8].map((h) => <button key={h} onClick={() => setHours(h)} style={{ ...ghost, flex: 1, minHeight: 36, background: hours === h ? 'rgba(255,236,220,0.14)' : ghost.background }}>{h} h · ${(h * GPU_PRICE).toFixed(2)} max</button>)}
+            {[3, 5, 8].map((h) => <button key={h} onClick={() => setHours(h)} style={{ ...ghost, flex: 1, minHeight: 36, background: hours === h ? 'rgba(255,236,220,0.14)' : ghost.background }}>{h} h · ${(h * PRICE).toFixed(2)} max</button>)}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button style={{ ...btn, flex: 1 }} onClick={() => void act('start')}>Start · up to ${(hours * GPU_PRICE).toFixed(2)}</button>
+            <button style={{ ...btn, flex: 1 }} onClick={() => void act('start')}>Start · up to ${(hours * PRICE).toFixed(2)}</button>
             <button style={ghost} onClick={() => setAsking(null)}>Cancel</button>
           </div>
         </div>
