@@ -35,9 +35,9 @@ export interface ChannelDef {
 
 /** The band's 16 MR18 channels (USB Analog tap). Roles on 11, 15, 16 can switch live. */
 export const CHANNELS: ChannelDef[] = [
-  { n: 1, name: 'Kick', short: 'Kick', section: 'drums', fader: -1.5, noHpf: true }, // drums +3 dB (user, 17 Oct 2026)
-  { n: 2, name: 'Snare', short: 'Snare', section: 'drums', fader: -1.6 }, // S3: warmer, roomier, +5 dB (user, 18 Oct 2026)
-  { n: 3, name: 'Overheads', short: 'OH', section: 'drums', fader: -31.4 }, // 17 dB under F (user, 18 Oct 2026)
+  { n: 1, name: 'Kick', short: 'Kick', section: 'drums', fader: -18, noHpf: true }, // drums +3 dB (user, 17 Oct 2026)
+  { n: 2, name: 'Snare', short: 'Snare', section: 'drums', fader: -12.3 }, // S3 on MEGAMI's snare: warmer, +5 dB over MEGAMI (user, 18 Oct 2026)
+  { n: 3, name: 'Overheads', short: 'OH', section: 'drums', fader: -32.0 }, // 20 dB under MEGAMI's level (user, 18 Oct 2026)
   { n: 4, name: 'Acoustic DI', short: 'Ac DI', section: 'gtr', fader: -18 }, // supporting: 4 dB back (user, 17 Oct 2026)
   { n: 5, name: 'Guitar amp', short: 'Gtr amp', section: 'gtr', fader: -4 }, // +8 dB (user, 18 Oct 2026)
   { n: 6, name: 'Piano L', short: 'Piano L', section: 'keys', fader: -7.5 }, // +2 dB (user, 17 Oct 2026)

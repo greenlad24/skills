@@ -9,6 +9,7 @@ Master:   main mixer + returns -> stream EQ -> glue compressor -> x42 true-peak 
 from __future__ import annotations
 
 import copy
+import os
 import logging
 import math
 import time
@@ -43,12 +44,37 @@ MIXER, SEND = 1000, {'plate': 1010, 'room': 1011, 'delay': 1012}
 FXI = {'plate': 1020, 'room': 1021, 'delay': 1022}
 RETURNS, MEQ, MCOMP, LIMITER, MCONSOLE, MTAPE = 1030, 1040, 1041, 1042, 1043, 1044
 INS = 500  # character inserts: 500 + 10*n + k
+CONV = 700  # per-channel stereo convolution (measured impulse responses): 700 + n
+CONV_URI = 'http://gareus.org/oss/lv2/zeroconvolv#MonoToStereo'
+IR_DIR = os.environ.get('VN_IR_DIR', '/home/vibe/vibenation-media/megami/approved')
 RETURN_SLOT = {'plate': 1, 'room': 2, 'delay': 3}
 
 EQ_TYPE = {'off': 0, 'bell': 1, 'hpf': 2, 'hshelf': 3, 'lpf': 4, 'lshelf': 5}
 
 lin = lambda db: 10 ** (db / 20)  # noqa: E731
 
+
+_IR_BUNDLE = os.path.join(os.environ.get('VN_DATA', os.path.join(os.path.dirname(__file__), '..', '..', '..', 'data')), 'vn-impulse-responses.lv2')
+
+
+def register_ir_presets(mh, paths: dict[int, str]) -> None:
+    """Our mod-host can't set file properties directly, but it loads presets: write one LV2 preset bundle
+    (one preset per channel, pointing at its impulse response) and register it once."""
+    if not paths:
+        return
+    os.makedirs(_IR_BUNDLE, exist_ok=True)
+    pre = '@prefix lv2: <http://lv2plug.in/ns/lv2core#> .\n@prefix pset: <http://lv2plug.in/ns/ext/presets#> .\n@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n@prefix state: <http://lv2plug.in/ns/ext/state#> .\n\n'
+    man, body = pre, pre
+    for ch, p in sorted(paths.items()):
+        uri = f'urn:vibenation:ir:ch{ch}'
+        man += f'<{uri}> a pset:Preset ; lv2:appliesTo <{CONV_URI}> ; rdfs:seeAlso <presets.ttl> .\n'
+        body += f'<{uri}> a pset:Preset ; lv2:appliesTo <{CONV_URI}> ; rdfs:label "VibeNation ch{ch}" ;\n    state:state [ <http://gareus.org/oss/lv2/zeroconvolv#ir> <file://{os.path.abspath(p)}> ] .\n'
+    open(os.path.join(_IR_BUNDLE, 'manifest.ttl'), 'w').write(man)
+    open(os.path.join(_IR_BUNDLE, 'presets.ttl'), 'w').write(body)
+    try:
+        mh.cmd(f'bundle_add {os.path.abspath(_IR_BUNDLE)}/')
+    except Exception as e:  # noqa: BLE001 - channels then run without their impulse responses (logged per channel)
+        log.warning('impulse-response presets could not be registered: %s', e)
 
 def port(inst: int, sym: str) -> str:
     return f'effect_{inst}:{sym}'
@@ -92,6 +118,9 @@ class MixGraph:
         mh.monitor(MCOMP, 'gr')
         mh.add(URI['limiter'], LIMITER)
 
+        # all impulse-response presets in one bundle, registered once (mod-host caches a bundle on first load)
+        register_ir_presets(mh, {n: os.path.join(IR_DIR, st.conv) for n, st in self.strips.items()
+                                 if st.conv and os.path.exists(os.path.join(IR_DIR, st.conv))})
         for n, s in self.strips.items():
             if s.gate:
                 mh.add(URI['gate'], GATE + n)
@@ -110,8 +139,24 @@ class MixGraph:
                 mh.connect_ports(prev, port(inst, 'in'))
                 prev = port(inst, 'out')
             out = self.strip_out(n)
-            mh.connect_ports(out, port(MIXER, f'in_{n}l'))
-            mh.connect_ports(out, port(MIXER, f'in_{n}r'))
+            conv_ok = False
+            if s.conv and os.path.exists(os.path.join(IR_DIR, s.conv)):
+                try:
+                    mh.add(CONV_URI, CONV + n)
+                    mh.cmd(f'preset_load {CONV + n} urn:vibenation:ir:ch{n}')
+                    mh.connect_ports(out, port(CONV + n, 'in'))
+                    mh.connect_ports(port(CONV + n, 'out_1'), port(MIXER, f'in_{n}l'))
+                    mh.connect_ports(port(CONV + n, 'out_2'), port(MIXER, f'in_{n}r'))
+                    conv_ok = True
+                    log.info('ch%d: impulse response %s', n, s.conv)
+                except Exception as e:  # noqa: BLE001 - never let a missing IR stop the engine
+                    log.warning('ch%d: impulse response %s could not load (%s); channel runs without it', n, s.conv, e)
+                    mh.remove(CONV + n)
+            if not conv_ok:
+                if s.conv and not os.path.exists(os.path.join(IR_DIR, s.conv)):
+                    log.warning('ch%d: impulse response %s not found in %s; channel runs without it', n, s.conv, IR_DIR)
+                mh.connect_ports(out, port(MIXER, f'in_{n}l'))
+                mh.connect_ports(out, port(MIXER, f'in_{n}r'))
             for k, inst in SEND.items():
                 mh.connect_ports(out, port(inst, f'in_{n}'))
             self.apply_strip(n)

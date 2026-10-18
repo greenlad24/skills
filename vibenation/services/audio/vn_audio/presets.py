@@ -54,6 +54,9 @@ class Strip:
     floor: float | None = None  # fader floor (dB) the agent may never go below
     # Character inserts after the compressor: [(plugin key, {symbol: value})], our own analog models.
     inserts: list[tuple[str, dict]] = field(default_factory=list)
+    # Stereo impulse response (file in VN_IR_DIR) after the inserts: mono in -> stereo out to the mixer's L/R.
+    # Carries a measured EQ + stereo + space exactly (the MEGAMI 1:1 copies); the sends stay on the mono channel.
+    conv: str | None = None
 
 
 VOCAL_EQ: list[Band] = [
@@ -70,14 +73,18 @@ STRIPS: list[Strip] = [
     # cut), knock cut, low thump kept, softer top; faster/gentler compression (doesn't sharpen the attack) and a gate
     # that lets the drum ring instead of chopping it.
     # 18 Oct (MEGAMI test): roundness kept, but MEGAMI's knock kept too: no 160/285 Hz cuts
-    Strip(1, 'Kick', -1.5, 0,  # live balance 17 Oct 2026 (user: drums prominent)
-          eq=[('bell', 60, 3.4, 1.0), ('bell', 160, 0.0, 1.2), ('bell', 285, 0.0, 1.5), ('bell', 4000, -1.0, 1.0), ('lpf', 12000, 0.0, 0.7)],
-          comp=Comp(-18, 3.0, 12, 140, 2, peak=True), gate=Gate(-34, 8, 0.5, 80, 120), room=-22, no_hpf=True),  # user's pick 18 Oct: "round with a little definition"
-    Strip(2, 'Snare', -1.6, 0,  # user's pick 18 Oct 2026 (S3): warmer, roomier, 5 dB louder, toward Scary Pockets
-          eq=[('hpf', 100, 0.0, 0.7), ('bell', 200, 2.3, 1), ('bell', 420, -3.0, 2), ('bell', 2500, 1.5, 1), ('bell', 8000, 1.0, 1)],
-          comp=Comp(-20, 4, 20, 80, 3, peak=True), room=-8),
-    Strip(3, 'Overheads', -31.4, 0,  # user's pick 18 Oct 2026: 17 dB under F, HPF 250 Hz, softer top (less cymbal wash)
-          eq=[('hpf', 250, 0.0, 0.7), ('hshelf', 9000, -1.0, 0.7)], comp=Comp(-22, 4, 15, 120, 1)),
+    # Kick, user's pick 18 Oct 2026: MEGAMI's kick copied 1:1 (its fast gentle compression + its measured stereo impulse
+    # response) with the user's rules on top (rounder: +1.4 dB at 60 Hz, -4 dB click at 3.5 kHz, soft above 12 kHz; knock kept).
+    Strip(1, 'Kick', -18.0, 0,  # -16.5 dB: the impulse response carries MEGAMI's gain; same drum balance as approved
+          eq=[('bell', 60, 1.4, 1.0), ('bell', 3500, -4.0, 1.2), ('lpf', 12000, 0.0, 0.7)],
+          comp=Comp(-48.4, 1.3, 0.5, 30, 4.6), no_hpf=True, conv='ch01_kick_ir_engine.wav'),
+    # Snare + overheads, user's pick 18 Oct 2026 (version 3): MEGAMI's measured impulse responses with the user's rules on
+    # top. Drum balance = MEGAMI's plus the rules, anchored on the kick (faders set by measurement after the switch).
+    Strip(2, 'Snare', -12.3, 0,  # S3 rules: more body, softer top, +5 dB over MEGAMI's level (fader measured with its impulse response)
+          eq=[('bell', 200, 2.3, 1.0), ('bell', 2500, -0.5, 1.0), ('bell', 8000, -1.0, 1.0)],
+          comp=Comp(-20, 1.0, 20, 80, 0), conv='ch02_snare_ir_engine.wav'),
+    Strip(3, 'Overheads', -32.0, 0,  # rules: cleaner lows, softer top, 20 dB under MEGAMI's level (-17, then 3 lower; measured with its impulse response)
+          eq=[('hpf', 250, 0.0, 0.7), ('hshelf', 9000, -1.0, 0.7)], comp=Comp(-22, 1.0, 15, 120, 0), conv='ch03_overheads_ir_engine.wav'),
     Strip(4, 'Acoustic DI', -18.0, -20,  # user 17 Oct 2026: supporting channels (4, 8, 13, 15, 16) sit 4 dB back
           eq=[('hpf', 100, 0, 0.7), ('bell', 250, -2.5, 1.2), ('bell', 1000, -3.0, 4.0), ('hshelf', 12000, 1.5, 0.7)],
           comp=Comp(-20, 3, 5, 150, 2), plate=-24),
