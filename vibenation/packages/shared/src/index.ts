@@ -37,18 +37,18 @@ export interface ChannelDef {
 export const CHANNELS: ChannelDef[] = [
   { n: 1, name: 'Kick', short: 'Kick', section: 'drums', fader: -1.5, noHpf: true }, // drums +3 dB (user, 17 Oct 2026)
   { n: 2, name: 'Snare', short: 'Snare', section: 'drums', fader: -1.6 }, // S3: warmer, roomier, +5 dB (user, 18 Oct 2026)
-  { n: 3, name: 'Overheads', short: 'OH', section: 'drums', fader: -20.4 }, // 6 dB lower than F (user, 18 Oct 2026)
+  { n: 3, name: 'Overheads', short: 'OH', section: 'drums', fader: -31.4 }, // 17 dB under F (user, 18 Oct 2026)
   { n: 4, name: 'Acoustic DI', short: 'Ac DI', section: 'gtr', fader: -18 }, // supporting: 4 dB back (user, 17 Oct 2026)
-  { n: 5, name: 'Guitar amp', short: 'Gtr amp', section: 'gtr', fader: -12 },
-  { n: 6, name: 'Piano L', short: 'Piano L', section: 'keys', fader: -6 }, // +2 dB (user, 17 Oct 2026)
-  { n: 7, name: 'Piano R', short: 'Piano R', section: 'keys', fader: -6 },
+  { n: 5, name: 'Guitar amp', short: 'Gtr amp', section: 'gtr', fader: -4 }, // +8 dB (user, 18 Oct 2026)
+  { n: 6, name: 'Piano L', short: 'Piano L', section: 'keys', fader: -7.5 }, // +2 dB (user, 17 Oct 2026)
+  { n: 7, name: 'Piano R', short: 'Piano R', section: 'keys', fader: -7.5 },
   { n: 8, name: 'Guitar DI', short: 'Gtr DI', section: 'gtr', fader: -17 }, // supporting
   { n: 9, name: 'Vocal centre', short: 'Vox C', section: 'vox', fader: -2 },
   { n: 10, name: 'Vocal piano', short: 'Vox P', section: 'vox', fader: -2.3 },
   { n: 11, name: 'Congas 1', short: 'Congas', section: 'perc', fader: -16 },
   { n: 12, name: 'Bass DI', short: 'Bass DI', section: 'bass', fader: -10, noHpf: true },
   { n: 13, name: 'Congas 2', short: 'Congas 2', section: 'perc', fader: -20 }, // supporting
-  { n: 14, name: 'Synth bass', short: 'Synth B', section: 'bass', fader: -9.3, noHpf: true }, // +3 dB (user, 17 Oct 2026)
+  { n: 14, name: 'Synth bass', short: 'Synth B', section: 'bass', fader: -9, noHpf: true }, // +3 dB (user, 17 Oct 2026)
   { n: 15, name: 'Saxophone', short: 'Sax', section: 'horn', fader: -6.1 }, // supporting
   { n: 16, name: 'Harmonica', short: 'Harm', section: 'horn', fader: -14 }, // supporting
 ];

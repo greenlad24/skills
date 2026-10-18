@@ -70,24 +70,24 @@ STRIPS: list[Strip] = [
     # cut), knock cut, low thump kept, softer top; faster/gentler compression (doesn't sharpen the attack) and a gate
     # that lets the drum ring instead of chopping it.
     Strip(1, 'Kick', -1.5, 0,  # live balance 17 Oct 2026 (user: drums prominent)
-          eq=[('bell', 60, 2.0, 1.0), ('bell', 160, -2.0, 1.2), ('bell', 285, -3.0, 1.5), ('bell', 4000, -1.0, 1.0), ('lpf', 12000, 0, 0.7)],
+          eq=[('bell', 60, 3.4, 1), ('bell', 160, -3.3, 1.2), ('bell', 285, -3.8, 1.5), ('bell', 4000, -0.2, 1), ('lpf', 12000, 0.0, 0.7)],
           comp=Comp(-18, 3.0, 12, 140, 2, peak=True), gate=Gate(-34, 8, 0.5, 80, 120), room=-22, no_hpf=True),  # user's pick 18 Oct: "round with a little definition"
     Strip(2, 'Snare', -1.6, 0,  # user's pick 18 Oct 2026 (S3): warmer, roomier, 5 dB louder, toward Scary Pockets
-          eq=[('hpf', 100, 0, 0.7), ('bell', 200, 2.5, 1.0), ('bell', 420, -3.0, 2.0), ('bell', 2500, 1.5, 1.0), ('bell', 8000, 0, 1.0)],
+          eq=[('hpf', 100, 0.0, 0.7), ('bell', 200, 2.3, 1), ('bell', 420, -3.0, 2), ('bell', 2500, 1.5, 1), ('bell', 8000, 1.0, 1)],
           comp=Comp(-20, 4, 20, 80, 3, peak=True), room=-8),
-    Strip(3, 'Overheads', -20.4, 0,  # user's pick 18 Oct 2026: 6 dB lower than F
-          eq=[('hpf', 180, 0, 0.7)], comp=Comp(-22, 4, 15, 120, 1)),
+    Strip(3, 'Overheads', -31.4, 0,  # user's pick 18 Oct 2026: 17 dB under F, HPF 250 Hz, softer top (less cymbal wash)
+          eq=[('hpf', 250, 0.0, 0.7), ('hshelf', 9000, -1.0, 0.7)], comp=Comp(-22, 4, 15, 120, 1)),
     Strip(4, 'Acoustic DI', -18.0, -20,  # user 17 Oct 2026: supporting channels (4, 8, 13, 15, 16) sit 4 dB back
           eq=[('hpf', 100, 0, 0.7), ('bell', 250, -2.5, 1.2), ('bell', 1000, -3.0, 4.0), ('hshelf', 12000, 1.5, 0.7)],
           comp=Comp(-20, 3, 5, 150, 2), plate=-24),
-    Strip(5, 'Guitar amp', -12.0, -30,
-          eq=[('hpf', 100, 0, 0.7), ('bell', 350, -2.0, 1.2), ('bell', 4000, -2.0, 4.0), ('lpf', 12000, 0, 0.7)],
+    Strip(5, 'Guitar amp', -4.0, -30,  # user 18 Oct 2026: +8 dB over F, a little presence at 2 kHz
+          eq=[('hpf', 110, 0.0, 0.7), ('bell', 350, -2.0, 1.2), ('bell', 2000, 1.5, 1), ('bell', 4000, -1.0, 4), ('lpf', 12000, 0.0, 0.7)],
           comp=Comp(-20, 4, 10, 100, 2, mix=0.5), room=-20),
-    Strip(6, 'Piano L', -6.0, -60,  # user 17 Oct 2026: more piano
-          eq=[('hpf', 35, 0, 0.7), ('bell', 200, 1.0, 0.8), ('bell', 500, -2.0, 2.0), ('bell', 1500, -1.5, 1.0), ('bell', 3000, -2.0, 1.1), ('bell', 4500, -1.5, 0.8)],
+    Strip(6, 'Piano L', -7.5, -60,  # user 18 Oct 2026: -1.5 dB to make room; 200 Hz boost removed (mud)
+          eq=[('hpf', 35, 0.0, 0.7), ('bell', 200, 0.0, 0.8), ('bell', 500, -2.0, 2), ('bell', 1500, -1.5, 1), ('bell', 3000, -2.0, 1.1), ('bell', 4500, -1.5, 0.8)],
           comp=Comp(-22, 2, 30, 200, 1), plate=-14, floor=-13),
-    Strip(7, 'Piano R', -6.0, 60,
-          eq=[('hpf', 35, 0, 0.7), ('bell', 200, 1.0, 0.8), ('bell', 500, -2.0, 2.0), ('bell', 1500, -1.5, 1.0), ('bell', 3000, -2.0, 1.1), ('bell', 4500, -1.5, 0.8)],
+    Strip(7, 'Piano R', -7.5, 60,
+          eq=[('hpf', 35, 0.0, 0.7), ('bell', 200, 0.0, 0.8), ('bell', 500, -2.0, 2), ('bell', 1500, -1.5, 1), ('bell', 3000, -2.0, 1.1), ('bell', 4500, -1.5, 0.8)],
           comp=Comp(-22, 2, 30, 200, 1), plate=-14, floor=-13),
     Strip(8, 'Guitar DI', -17.0, 30,
           eq=[('hpf', 120, 0, 0.7), ('bell', 4000, -2.0, 4.0), ('lpf', 9000, 0, 0.7)],
@@ -95,8 +95,8 @@ STRIPS: list[Strip] = [
     # Vox C, user's pick 18 Oct 2026: "C + intimate space" (vocal tutorials: keep 200 Hz warmth, slower attack = thicker,
     # reverb behind the voice with a long pre-delay, a little short room for closeness, a quiet 1/8 echo between phrases).
     Strip(9, 'Vocal centre', -2.0, 0, eq=[('hpf', 100, 0, 0.7), ('bell', 250, -2.0, 1.2), ('bell', 600, 0.0, 1.5), ('bell', 3000, 2.0, 1.0), ('hshelf', 10000, 3.5, 0.7)],
-          comp=Comp(-28, 4, 18, 150, 3), gate=Gate(-50, 12, 1.5, 120, 300), plate=-7, room=-10, delay=-16, rider=0.0),
-    Strip(10, 'Vocal piano', -2.3, -15, eq=[('hpf', 120, 0, 0.7)] + VOCAL_EQ[1:], comp=Comp(-26, 3, 12, 150, 3), gate=Gate(-50, 12, 1.5, 120, 300), plate=-10, rider=0.0),
+          comp=Comp(-28, 4, 18, 150, 3), gate=Gate(-50, 12, 1.5, 120, 300), plate=-10.1, room=-13.1, delay=-16, rider=0.0),  # reverb -30% (user 18 Oct)
+    Strip(10, 'Vocal piano', -2.3, -15, eq=[('hpf', 120, 0, 0.7)] + VOCAL_EQ[1:], comp=Comp(-26, 3, 12, 150, 3), gate=Gate(-50, 12, 1.5, 120, 300), plate=-13.1, rider=0.0),  # reverb -30% (user 18 Oct)
     Strip(11, 'Congas 1', -16.0, 35,
           eq=[('hpf', 90, 0, 0.7), ('bell', 350, -2.5, 1.2), ('bell', 4500, 2.5, 1.0)],
           comp=Comp(-20, 4, 15, 80, 2, peak=True), gate=Gate(-50, 12, 1.5, 120, 300), room=-18),
@@ -106,8 +106,8 @@ STRIPS: list[Strip] = [
     Strip(13, 'Congas 2', -20.0, 50,
           eq=[('hpf', 90, 0, 0.7), ('bell', 350, -2.5, 1.2), ('bell', 4500, 2.5, 1.0)],
           comp=Comp(-20, 4, 15, 80, 2, peak=True), room=-18),
-    Strip(14, 'Synth bass', -9.3, 0,  # user's pick 18 Oct 2026 (B2): defined for phones (bass tutorials: 400-800 Hz notes, 2-4 kHz attack)
-          eq=[('bell', 55, 0.0, 1.0), ('bell', 250, -3.0, 1.0), ('bell', 700, 2.0, 1.2), ('bell', 2500, 1.5, 1.0), ('bell', 35, -5.0, 1.0)],
+    Strip(14, 'Synth bass', -9.0, 0,  # user's pick 18 Oct 2026 (B2): defined for phones (bass tutorials: 400-800 Hz notes, 2-4 kHz attack)
+          eq=[('bell', 55, 1.0, 1), ('bell', 250, -3.0, 1), ('bell', 700, 2.0, 1.2), ('bell', 2500, 1.5, 1), ('bell', 35, -4.0, 1)],
           comp=Comp(-22, 4, 15, 120, 2), no_hpf=True),
     Strip(15, 'Saxophone', -6.1, -25,
           eq=[('hpf', 120, 0, 0.7), ('bell', 400, -2.5, 1.2), ('bell', 2100, -1.5, 4.0), ('bell', 4000, -1.5, 4.0), ('hshelf', 8000, 2.0, 0.7)],
@@ -148,7 +148,7 @@ CEILING_DBTP = -2.0  # YouTube's AAC re-encode added ~1 dB: -1 reached +0.1 dBTP
 # Drum balance as each drum's share of the whole mix (post-fader power while that drum plays, dB),
 # measured from the meters on the user's approved mix (17 Oct 2026). Soundcheck sets the drum
 # faders to these once; they don't travel during the show.
-DRUM_SHARE = {1: -10.7, 2: -9.5, 3: -45.7}  # snare +5 dB (S3), overheads -6 dB (user 18 Oct 2026)
+DRUM_SHARE = {1: -10.7, 2: -9.5, 3: -56.7}  # snare +5 dB (S3), overheads -17 dB (user 18 Oct 2026)
 
 # Shared effect returns (100% wet).
 FX = {
