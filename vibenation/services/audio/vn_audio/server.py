@@ -102,6 +102,8 @@ class Engine:
         self.mh.connect_ports(port(MTAPE, 'out_l'), f'{a}:pre_l')
         self.mh.connect_ports(port(MTAPE, 'out_r'), f'{a}:pre_r')
         self.leveller_on = True
+        self.keeper_on = True   # vocals-on-top keeper
+        self.tone_on = True     # tone keeper (F's long-term balance)
         self.auto_venue = True
         # Soundcheck calibration: digital trims so each source's active level sits near -20 dBFS RMS.
         self.calibrating_until = 0.0
@@ -193,6 +195,8 @@ class Engine:
         """Tone keeper (user: Mix F's tone consistently, the whole show): over the last 3 minutes of
         music, compares the master's energy per band with F's and nudges the master EQ band that steers
         each region by 0.1 dB every 30 s, within ±TONE_RANGE_DB of MASTER_EQ. Breaks and talk don't count."""
+        if not self.tone_on:
+            return
         if m.get('tone') and m['lufsS'] > -26 and self.running():
             self.tone_hist.append(m['tone'])
         now = time.time()
@@ -392,6 +396,8 @@ class Engine:
         non-vocal channels (their balance against each other stays as set). Only learns while
         a vocal is actually singing; moves at most 0.25 dB every 2 s, range -3..+2 dB (Mix F holds:
         a wider range swung the whole band by 12 dB on the 17 Oct live test)."""
+        if not self.keeper_on:
+            return
         g = self.graph
         p = [10 ** ((f['rms'][i] + g.gain_db(i + 1)) / 10) * (0 if g.mute[i + 1] else 1) for i in range(16)]
         lead = self.arr.lead if self.arr.lead_singing() else None
@@ -567,6 +573,12 @@ class Engine:
         elif t == 'send' and s and c.get('fx') in ('plate', 'room', 'delay'):
             setattr(s, c['fx'], None if c.get('db') is None else max(-60.0, min(6.0, float(c['db']))))
             g.apply_sends(n)
+        elif t == 'eq_set' and s:  # replace a channel's whole EQ: [[kind, f, gain, q], ...] (at most 8 bands)
+            bands = [(str(k), float(f), max(-15.0, min(15.0, float(gn))), float(q)) for k, f, gn, q in c['bands']][:8]
+            if s.no_hpf and any(b[0] == 'hpf' for b in bands):
+                raise ValueError('No high-pass on kick or bass (band rule).')
+            s.eq = bands
+            g.apply_strip(n)
         elif t == 'eq' and s:
             i = int(c['band'])
             kind, f, gain, q = s.eq[i] if i < len(s.eq) else ('bell', 1000.0, 0.0, 1.0)
@@ -617,6 +629,23 @@ class Engine:
             self.set_source(str(c.get('source')))
         elif t == 'calibrate':
             self.start_calibration(float(c.get('minutes', 20)))
+        elif t == 'auto':
+            # Test renders (A/B pages): hold the automatic moves still. {"leveller": bool, "keeper": bool,
+            # "tone": bool, "drive": dB, "band_offset": dB} — every key optional.
+            for k, attr in (('leveller', 'leveller_on'), ('keeper', 'keeper_on'), ('tone', 'tone_on')):
+                if k in c:
+                    setattr(self, attr, bool(c[k]))
+            if 'drive' in c:
+                g.master_gain = max(-10.0, min(P.MAX_DRIVE_DB, float(c['drive'])))
+                g.apply_drive()
+            if 'band_offset' in c:
+                g.band_offset = max(-3.0, min(2.0, float(c['band_offset'])))
+                for k in g.strips:
+                    if k not in P.OFFSET_EXEMPT:
+                        g.apply_fader(k)
+                        g.apply_sends(k)
+            return {'type': 'auto', 'leveller': self.leveller_on, 'keeper': self.keeper_on, 'tone': self.tone_on,
+                    'drive': g.master_gain, 'band_offset': g.band_offset}
         elif t == 'leveller':
             self.leveller_on = bool(c['on'])
         elif t == 'reset':
