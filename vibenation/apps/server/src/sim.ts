@@ -121,10 +121,12 @@ export class DemoShow {
       this.feed({ kind: al.level === 'error' ? 'EMERGENCY' : 'MIX', text: al.text, why: al.level === 'error' ? 'Emergency move: allowed even on a channel you hold.' : undefined, confidence: 'sure' });
       this.push();
     };
-    // Gemini only hears real music: the source is playing, the band is audible (median short-term
-    // loudness of the last ~10 s above -35 LUFS) and no slate is up (user: not between songs/breaks).
+    // Gemini (paid per call) only hears a real show (user rule): the show server is up (the app's
+    // engine link points at it), the live stream is on air, the band is audible (median short-term
+    // loudness of the last ~10 s above -35 LUFS) and no slate is up. It stops when the stream stops.
+    const showServer = !!process.env.VN_AUDIO_URL && !/127\.0\.0\.1:8091|localhost:8091/.test(process.env.VN_AUDIO_URL);
     this.listener = new AudioListener(() => {
-      if (!this.state.audio?.playing || this.state.slate) return false;
+      if (!showServer || !this.state.onAir || !this.state.audio?.playing || this.state.slate) return false;
       const recent = this.audio.history.slice(-100).map((f) => f.master.lufsS).sort((x, y) => x - y);
       return recent.length >= 50 && recent[Math.floor(recent.length / 2)] > -35;
     });
