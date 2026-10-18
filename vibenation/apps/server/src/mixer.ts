@@ -98,7 +98,7 @@ export class MixerLoop {
     const recent = frames.slice(-50);
     if (recent.length < 30) return null;
     if (recent.filter((f) => f.master.limiterGr > 4).length > 20) return 'limiter working over 4 dB';
-    if (recent.some((f) => f.master.truePeak > -0.8)) return 'true peak above -1 dBTP';
+    if (recent.some((f) => f.master.truePeak > -1.8)) return 'true peak above -2 dBTP';
     return null;
   }
 

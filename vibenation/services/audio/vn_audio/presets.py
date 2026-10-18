@@ -121,7 +121,7 @@ VOCALS = {9, 10}  # lead + second vocal: never pulled down by the band offset
 # where the band put them (user: drums prominent, more synth bass).
 OFFSET_EXEMPT = VOCALS | {1, 2, 3, 12, 14}
 TARGET_LAR = 2.0  # lead vocal over the band, dB (user, 17 Oct 2026: +5 was too much; sit the singer in the band like the reference)
-CEILING_DBTP = -1.0
+CEILING_DBTP = -2.0  # YouTube's AAC re-encode added ~1 dB: -1 reached +0.1 dBTP on the 17 Oct test
 # Drum balance as each drum's share of the whole mix (post-fader power while that drum plays, dB),
 # measured from the meters on the user's approved mix (17 Oct 2026). Soundcheck sets the drum
 # faders to these once; they don't travel during the show.

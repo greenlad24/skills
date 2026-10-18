@@ -206,9 +206,9 @@ def _sent(key: str) -> bool:
 SLATE_MUSIC_SRC = os.environ.get('VN_SLATE_MUSIC_DIR', '/home/vibe/vibenation-media/slate-music')
 SLATE_MUSIC_DST = '/opt/vibenation-media/slate-music'
 # The venue sound travels through more buffering (laptop capture, SRT 500 ms, venue buffer, JACK) than the
-# phone pictures (WebRTC): on the 17 Oct live test the sound was ~1 s behind the picture. A negative delay
+# phone pictures (WebRTC): measured on the 17 Oct live test recording, the sound was ~0.83 s behind the picture. A negative delay
 # stamps the audio earlier so the stream lines up (measure with a clap and adjust live: {"audio": {"delayMs": n}}).
-AV_SYNC_MS = os.environ.get('VN_SHOW_AUDIO_DELAY_MS', '-1000')
+AV_SYNC_MS = os.environ.get('VN_SHOW_AUDIO_DELAY_MS', '-830')
 SHOW_OVERRIDES = {'LIVEKIT_URL': 'wss://app.jeeznews.com', 'VN_VIDEO_PROFILE': 'gpu', 'VN_SLATE_MUSIC_DIR': SLATE_MUSIC_DST,
                   'VN_VIDEO_AUDIO_DELAY_MS': AV_SYNC_MS}
 # The build server's web app reaches the show server's engines through an SSH tunnel on these ports.
