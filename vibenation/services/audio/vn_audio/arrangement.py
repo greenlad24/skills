@@ -29,7 +29,8 @@ from dataclasses import dataclass, field
 
 FPS = 10
 VOICES = (9, 10)                      # always-voice channels (ch 11 / 16 join when the classifier says voice)
-SOLOISTS = (4, 5, 6, 8, 15, 16)       # melodic instruments that can take a solo (6 = piano pair 6+7)
+SOLOISTS = (5, 6)                     # guitar amp and piano (6 = pair 6+7). Sax, harmonica, guitar DI, DI 1 and congas 2 are
+                                      # supporting channels and never solo (user, 18 Oct 2026)
 PAIRS = {6: (6, 7)}                   # a stereo pair moves together
 AUTOMUTE = tuple(range(4, 17))        # everything but kick, snare, overheads
 LINE = (4, 6, 7, 8, 12, 14)           # DI/line inputs: no bleed, so any signal means playing
