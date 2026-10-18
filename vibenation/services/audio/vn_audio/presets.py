@@ -72,9 +72,9 @@ STRIPS: list[Strip] = [
     Strip(1, 'Kick', -1.5, 0,  # live balance 17 Oct 2026 (user: drums prominent)
           eq=[('bell', 60, 2.0, 1.0), ('bell', 160, -2.0, 1.2), ('bell', 285, -3.0, 1.5), ('bell', 4000, -1.0, 1.0), ('lpf', 12000, 0, 0.7)],
           comp=Comp(-18, 3.0, 12, 140, 2, peak=True), gate=Gate(-34, 8, 0.5, 80, 120), room=-22, no_hpf=True),  # user's pick 18 Oct: "round with a little definition"
-    Strip(2, 'Snare', -6.6, 0,
-          eq=[('hpf', 100, 0, 0.7), ('bell', 200, 0, 1.0), ('bell', 420, -3.0, 2.0), ('bell', 2500, 2.0, 1.0), ('bell', 8000, 2.0, 1.0)],
-          comp=Comp(-20, 4, 15, 50, 3, peak=True), room=-15),
+    Strip(2, 'Snare', -1.6, 0,  # user's pick 18 Oct 2026 (S3): warmer, roomier, 5 dB louder, toward Scary Pockets
+          eq=[('hpf', 100, 0, 0.7), ('bell', 200, 2.5, 1.0), ('bell', 420, -3.0, 2.0), ('bell', 2500, 1.5, 1.0), ('bell', 8000, 0, 1.0)],
+          comp=Comp(-20, 4, 20, 80, 3, peak=True), room=-8),
     Strip(3, 'Overheads', -14.4, 0,
           eq=[('hpf', 180, 0, 0.7)], comp=Comp(-22, 4, 15, 120, 1)),
     Strip(4, 'Acoustic DI', -18.0, -20,  # user 17 Oct 2026: supporting channels (4, 8, 13, 15, 16) sit 4 dB back
@@ -141,7 +141,7 @@ CEILING_DBTP = -2.0  # YouTube's AAC re-encode added ~1 dB: -1 reached +0.1 dBTP
 # Drum balance as each drum's share of the whole mix (post-fader power while that drum plays, dB),
 # measured from the meters on the user's approved mix (17 Oct 2026). Soundcheck sets the drum
 # faders to these once; they don't travel during the show.
-DRUM_SHARE = {1: -10.7, 2: -14.1, 3: -39.7}
+DRUM_SHARE = {1: -10.7, 2: -9.5, 3: -39.7}  # snare +5 dB (S3, user 18 Oct 2026)
 
 # Shared effect returns (100% wet).
 FX = {

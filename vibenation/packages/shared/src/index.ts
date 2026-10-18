@@ -36,7 +36,7 @@ export interface ChannelDef {
 /** The band's 16 MR18 channels (USB Analog tap). Roles on 11, 15, 16 can switch live. */
 export const CHANNELS: ChannelDef[] = [
   { n: 1, name: 'Kick', short: 'Kick', section: 'drums', fader: -1.5, noHpf: true }, // drums +3 dB (user, 17 Oct 2026)
-  { n: 2, name: 'Snare', short: 'Snare', section: 'drums', fader: -6.6 },
+  { n: 2, name: 'Snare', short: 'Snare', section: 'drums', fader: -1.6 }, // S3: warmer, roomier, +5 dB (user, 18 Oct 2026)
   { n: 3, name: 'Overheads', short: 'OH', section: 'drums', fader: -14.4 },
   { n: 4, name: 'Acoustic DI', short: 'Ac DI', section: 'gtr', fader: -18 }, // supporting: 4 dB back (user, 17 Oct 2026)
   { n: 5, name: 'Guitar amp', short: 'Gtr amp', section: 'gtr', fader: -12 },
