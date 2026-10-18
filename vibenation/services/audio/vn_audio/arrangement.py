@@ -10,8 +10,10 @@ graph adds to the fader (and so to the post-fader sends):
                          (user rule: the balance stays almost the same all night, so these moves are small)
   muted          (off)   a supporting channel (CORE excluded) whose player has been silent for 8 s (user rule:
                          "not playing = muted until playing consistently"): no bleed, no mud.
-                         CORE channels (guitar amp, piano, vocals, bass DI, synth bass) are never muted
+                         CORE channels (guitar amp, piano, vocals, synth bass) are never muted
                          unless silent for 10 minutes, and open again on the first played frame.
+                         Sax, harmonica, congas 2, guitar DI, bass DI and DI 1 open only on a clearly played
+                         signal (STRICT_OPEN) and stay muted under it.
                          It opens when the player plays consistently (5 of the last 6 frames)
                          or at once on a strong entry (within 6 dB of the working level).
                          Vocal mics (user rule): open on the first sung frame, close only after
@@ -33,14 +35,20 @@ SOLOISTS = (5, 6)                     # guitar amp and piano (6 = pair 6+7). Sax
                                       # supporting channels and never solo (user, 18 Oct 2026)
 PAIRS = {6: (6, 7)}                   # a stereo pair moves together
 AUTOMUTE = tuple(range(4, 17))        # everything but kick, snare, overheads
-LINE = (4, 6, 7, 8, 12, 14)           # DI/line inputs: no bleed, so any signal means playing
+LINE = (6, 7, 14)                     # line inputs (keys, synth bass): no bleed, so any signal means playing
+# Channels that are mostly bleed or noise when nobody plays them (user, 18 Oct 2026: "muted the whole show if the
+# signal is not high", "they stay muted under a certain dB"): playing = the raw input above this line for 5 of 6
+# frames, whatever the classifier hears. Measured on the demo sets and the venue clips of 17 Oct: sax bleed never
+# passes -42 dBFS, congas 2 bleed -47.5, the harmonica mic's bleed reaches about -35; an idle plugged-in DI hums
+# around -60 and a played one sits near -35.
+STRICT_OPEN = {4: -45.0, 8: -45.0, 12: -45.0, 13: -40.0, 15: -40.0, 16: -34.0}
 
 BACKING_DB = -3.0
 SOLO_DB = 2.0
 MUTE_DB = -60.0
 MUTE_AFTER_S = 8.0
 VOICE_MUTE_AFTER_S = 300.0            # vocal mics stay open 5 min after the last singing
-CORE = (5, 6, 7, 9, 10, 12, 14)       # user rule: never auto-muted unless silent this long (drums never)
+CORE = (5, 6, 7, 9, 10, 14)           # user rule: never auto-muted unless silent this long (drums never); bass DI moved to STRICT_OPEN (user, 18 Oct)
 CORE_MUTE_AFTER_S = 600.0
 STRONG_DB = -26.0                     # within 6 dB of the -20 dBFS working level: open at once
 LEAD_SWITCH_S = 2.0                   # a new lead must win for this long (hysteresis)
@@ -81,7 +89,10 @@ class Arrangement:
         Returns the arrangement offset per channel (only channels that changed)."""
         dt = 1 / FPS
         for n, c in self.ch.items():
-            p = playing.get(n, False) or (n in LINE and raw is not None and raw.get(n, -120.0) > -60)
+            if n in STRICT_OPEN:
+                p = raw is not None and raw.get(n, -120.0) > STRICT_OPEN[n]
+            else:
+                p = playing.get(n, False) or (n in LINE and raw is not None and raw.get(n, -120.0) > -60)
             c.hist.append((p, level.get(n, -120.0)))
             c.silent_s = 0.0 if p else c.silent_s + dt
             if p:
@@ -89,7 +100,7 @@ class Arrangement:
             voice = n in self.voices
             if c.muted:
                 recent = list(c.hist)[-6:]
-                if ((voice or n in CORE) and p) or sum(1 for q, _ in recent if q) >= 5 or (p and level.get(n, -120.0) > STRONG_DB):
+                if sum(1 for q, _ in recent if q) >= 5 or (n not in STRICT_OPEN and p and (voice or n in CORE or level.get(n, -120.0) > STRONG_DB)):
                     c.muted = False
             elif c.silent_s >= (CORE_MUTE_AFTER_S if n in CORE else VOICE_MUTE_AFTER_S if voice else MUTE_AFTER_S):
                 c.muted = True

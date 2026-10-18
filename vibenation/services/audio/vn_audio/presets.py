@@ -75,7 +75,7 @@ STRIPS: list[Strip] = [
     # 18 Oct (MEGAMI test): roundness kept, but MEGAMI's knock kept too: no 160/285 Hz cuts
     # Kick, user's pick 18 Oct 2026: MEGAMI's kick copied 1:1 (its fast gentle compression + its measured stereo impulse
     # response) with the user's rules on top (rounder: +1.4 dB at 60 Hz, -4 dB click at 3.5 kHz, soft above 12 kHz; knock kept).
-    Strip(1, 'Kick', -18.0, 0,  # -16.5 dB: the impulse response carries MEGAMI's gain; same drum balance as approved
+    Strip(1, 'Kick', -17.0, 0,  # -16.5 dB: the impulse response carries MEGAMI's gain; same drum balance as approved
           eq=[('bell', 60, 1.4, 1.0), ('bell', 3500, -4.0, 1.2), ('lpf', 12000, 0.0, 0.7)],
           comp=Comp(-48.4, 1.3, 0.5, 30, 4.6), no_hpf=True, conv='ch01_kick_ir_engine.wav'),
     # Snare + overheads, user's pick 18 Oct 2026 (version 3): MEGAMI's measured impulse responses with the user's rules on
@@ -88,35 +88,34 @@ STRIPS: list[Strip] = [
     Strip(4, 'Acoustic DI', -18.0, -20,  # user 17 Oct 2026: supporting channels (4, 8, 13, 15, 16) sit 4 dB back
           eq=[('hpf', 100, 0, 0.7), ('bell', 250, -2.5, 1.2), ('bell', 1000, -3.0, 4.0), ('hshelf', 12000, 1.5, 0.7)],
           comp=Comp(-20, 3, 5, 150, 2), plate=-24),
-    Strip(5, 'Guitar amp', -4.0, -30,  # user 18 Oct 2026: +8 dB over F, a little presence at 2 kHz
-          eq=[('hpf', 110, 0.0, 0.7), ('bell', 350, -2.0, 1.2), ('bell', 2000, 1.5, 1), ('bell', 4000, -1.0, 4), ('lpf', 12000, 0.0, 0.7)],
-          comp=Comp(-20, 4, 10, 100, 2, mix=0.5), room=-20),
-    Strip(6, 'Piano L', -7.5, -60,  # user 18 Oct 2026: -1.5 dB to make room; 200 Hz boost removed (mud)
-          eq=[('hpf', 35, 0.0, 0.7), ('bell', 200, 0.0, 0.8), ('bell', 500, -2.0, 2), ('bell', 1500, -1.5, 1), ('bell', 3000, -2.0, 1.1), ('bell', 4500, -1.5, 0.8)],
-          comp=Comp(-22, 2, 30, 200, 1), plate=-14, floor=-13),
-    Strip(7, 'Piano R', -7.5, 60,
-          eq=[('hpf', 35, 0.0, 0.7), ('bell', 200, 0.0, 0.8), ('bell', 500, -2.0, 2), ('bell', 1500, -1.5, 1), ('bell', 3000, -2.0, 1.1), ('bell', 4500, -1.5, 0.8)],
-          comp=Comp(-22, 2, 30, 200, 1), plate=-14, floor=-13),
+    # Version 3, user's pick 18 Oct 2026 (guitar amp, piano, vocals, synth bass): MEGAMI's channel copied 1:1 (its fitted
+    # compression + measured stereo impulse response, which carries its EQ, placement and space) with the user's rules
+    # on top. Levels = MEGAMI's balance plus the rules, anchored on the kick (faders set by measurement).
+    Strip(5, 'Guitar amp', -8.6, 0,  # rules: low cut 110 Hz, presence at 2 kHz, +4 dB over MEGAMI (+8, then 4 lower)
+          eq=[('hpf', 110, 0.0, 0.7), ('bell', 2000, 1.5, 1.0)], no_hpf=True, conv='ch05_guitar_amp_ir_engine.wav'),
+    Strip(6, 'Piano L', -2.4, 0, eq=[('bell', 200, -1.0, 0.8)], no_hpf=True, floor=-13,  # rules: no 200 Hz mud, -1.5 dB
+          conv='ch06_piano_l_ir_engine.wav'),
+    Strip(7, 'Piano R', -4.1, 0, eq=[('bell', 200, -1.0, 0.8)], no_hpf=True, floor=-13, conv='ch07_piano_r_ir_engine.wav'),
     Strip(8, 'Guitar DI', -17.0, 30,
           eq=[('hpf', 120, 0, 0.7), ('bell', 4000, -2.0, 4.0), ('lpf', 9000, 0, 0.7)],
           comp=Comp(-20, 4, 10, 100, 2, mix=0.5), room=-20),
-    # Vox C, user's pick 18 Oct 2026: "C + intimate space" (vocal tutorials: keep 200 Hz warmth, slower attack = thicker,
-    # reverb behind the voice with a long pre-delay, a little short room for closeness, a quiet 1/8 echo between phrases).
-    Strip(9, 'Vocal centre', -2.0, 0, eq=[('hpf', 100, 0, 0.7), ('bell', 250, -2.0, 1.2), ('bell', 600, 0.0, 1.5), ('bell', 3000, 2.0, 1.0), ('hshelf', 10000, 3.5, 0.7)],
-          comp=Comp(-28, 4, 18, 150, 3), gate=Gate(-50, 12, 1.5, 120, 300), plate=-10.1, room=-13.1, delay=-16, rider=0.0),  # reverb -30% (user 18 Oct)
-    Strip(10, 'Vocal piano', -2.3, -15, eq=[('hpf', 120, 0, 0.7)] + VOCAL_EQ[1:], comp=Comp(-26, 3, 12, 150, 3), gate=Gate(-50, 12, 1.5, 120, 300), plate=-13.1, rider=0.0),  # reverb -30% (user 18 Oct)
+    # Vocals: MEGAMI's fitted compression and space (in the impulse response); the gentle bleed expander stays (-12 dB between phrases).
+    Strip(9, 'Vocal centre', -25.0, 0, eq=[('bell', 250, 1.0, 1.2), ('bell', 3000, 2.0, 1.0), ('hshelf', 10000, 1.5, 0.7)],  # rules: intimate
+          comp=Comp(-34.4, 1.5, 6, 30, 5.7), gate=Gate(-50, 12, 1.5, 120, 300), no_hpf=True, rider=0.0, conv='ch09_vocal_c_ir_engine.wav'),
+    Strip(10, 'Vocal piano', -25.1, 0, comp=Comp(-31.2, 1.4, 0.5, 30, 6.2), gate=Gate(-50, 12, 1.5, 120, 300), no_hpf=True, rider=0.0,
+          conv='ch10_vocal_p_ir_engine.wav'),
     Strip(11, 'Congas 1', -16.0, 35,
           eq=[('hpf', 90, 0, 0.7), ('bell', 350, -2.5, 1.2), ('bell', 4500, 2.5, 1.0)],
           comp=Comp(-20, 4, 15, 80, 2, peak=True), gate=Gate(-50, 12, 1.5, 120, 300), room=-18),
-    Strip(12, 'Bass DI', -10.0, 0,
-          eq=[('bell', 250, -2.0, 1.5), ('bell', 800, 2.0, 1.0), ('bell', 2500, 1.5, 1.0), ('lpf', 6000, 0, 0.7)],
-          comp=Comp(-24, 4, 15, 150, 5), no_hpf=True),
+    Strip(12, 'Bass DI', -14.7, 0,  # user 18 Oct 2026: exactly the synth bass's mix
+          eq=[('bell', 55, 1.0, 1.0), ('bell', 250, -1.0, 1.0), ('bell', 700, 2.0, 1.2), ('bell', 1000, -3.0, 1.0), ('bell', 2500, 1.5, 1.0), ('bell', 35, 1.0, 1.0)],
+          no_hpf=True, conv='ch14_synth_bass_ir_engine.wav'),
     Strip(13, 'Congas 2', -20.0, 50,
           eq=[('hpf', 90, 0, 0.7), ('bell', 350, -2.5, 1.2), ('bell', 4500, 2.5, 1.0)],
           comp=Comp(-20, 4, 15, 80, 2, peak=True), room=-18),
-    Strip(14, 'Synth bass', -9.0, 0,  # user's pick 18 Oct 2026 (B2): defined for phones (bass tutorials: 400-800 Hz notes, 2-4 kHz attack)
-          eq=[('bell', 55, 1.0, 1), ('bell', 250, -3.0, 1), ('bell', 700, 2.0, 1.2), ('bell', 2500, 1.5, 1), ('bell', 35, -4.0, 1)],
-          comp=Comp(-22, 4, 15, 120, 2), no_hpf=True),
+    Strip(14, 'Synth bass', -14.7, 0,  # B2 rules on MEGAMI's copy (defined for phones), -1.2 dB vs MEGAMI (+0.3, then 1.5 lower)
+          eq=[('bell', 55, 1.0, 1.0), ('bell', 250, -1.0, 1.0), ('bell', 700, 2.0, 1.2), ('bell', 1000, -3.0, 1.0), ('bell', 2500, 1.5, 1.0), ('bell', 35, 1.0, 1.0)],
+          no_hpf=True, conv='ch14_synth_bass_ir_engine.wav'),
     Strip(15, 'Saxophone', -6.1, -25,
           eq=[('hpf', 120, 0, 0.7), ('bell', 400, -2.5, 1.2), ('bell', 2100, -1.5, 4.0), ('bell', 4000, -1.5, 4.0), ('hshelf', 8000, 2.0, 0.7)],
           comp=Comp(-27, 3, 10, 120, 3), plate=-10, delay=-20, rider=0.0),
@@ -177,14 +176,7 @@ _ROLE_INSERTS: dict[int, list[tuple[str, dict]]] = {
     1: [('fet', {'ratio': 1, 'attack': 300, 'release': 200, 'mix': 30, 'colour': 40})],
     2: [('fet', {'ratio': 1, 'attack': 300, 'release': 150, 'mix': 30, 'colour': 40})],
     4: [('opto', {'peak_reduction': 15, 'mix': 50, 'colour': 20})],
-    5: [('opto', {'peak_reduction': 15, 'mix': 50, 'colour': 30})],
-    6: [('opto', {'peak_reduction': 15, 'mix': 50, 'colour': 30})],
-    7: [('opto', {'peak_reduction': 15, 'mix': 50, 'colour': 30})],
     8: [('opto', {'peak_reduction': 15, 'mix': 50, 'colour': 30})],
-    9: _VOX,
-    10: _VOX,
-    12: [('pultec', {'low_freq': 2, 'low_boost': 3, 'low_atten': 2, 'tube': 30})],
-    14: [('pultec', {'low_freq': 2, 'low_boost': 2, 'low_atten': 2, 'tube': 25})],
     15: [('deesser', {'freq': 4500, 'sensitivity': 45, 'range': 4}), ('opto', {'peak_reduction': 20, 'mix': 60, 'colour': 30})],
     16: [('deesser', {'freq': 3500, 'sensitivity': 55, 'range': 6}), ('opto', {'peak_reduction': 25, 'mix': 70, 'colour': 20})],
 }
