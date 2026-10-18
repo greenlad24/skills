@@ -69,8 +69,9 @@ STRIPS: list[Strip] = [
     # reference: ours had ~7 dB more 100-200 Hz knock and ~6 dB more 3-6 kHz beater click. So: no click boost (a gentle
     # cut), knock cut, low thump kept, softer top; faster/gentler compression (doesn't sharpen the attack) and a gate
     # that lets the drum ring instead of chopping it.
+    # 18 Oct (MEGAMI test): roundness kept, but MEGAMI's knock kept too: no 160/285 Hz cuts
     Strip(1, 'Kick', -1.5, 0,  # live balance 17 Oct 2026 (user: drums prominent)
-          eq=[('bell', 60, 3.4, 1), ('bell', 160, -3.3, 1.2), ('bell', 285, -3.8, 1.5), ('bell', 4000, -0.2, 1), ('lpf', 12000, 0.0, 0.7)],
+          eq=[('bell', 60, 3.4, 1.0), ('bell', 160, 0.0, 1.2), ('bell', 285, 0.0, 1.5), ('bell', 4000, -1.0, 1.0), ('lpf', 12000, 0.0, 0.7)],
           comp=Comp(-18, 3.0, 12, 140, 2, peak=True), gate=Gate(-34, 8, 0.5, 80, 120), room=-22, no_hpf=True),  # user's pick 18 Oct: "round with a little definition"
     Strip(2, 'Snare', -1.6, 0,  # user's pick 18 Oct 2026 (S3): warmer, roomier, 5 dB louder, toward Scary Pockets
           eq=[('hpf', 100, 0.0, 0.7), ('bell', 200, 2.3, 1), ('bell', 420, -3.0, 2), ('bell', 2500, 1.5, 1), ('bell', 8000, 1.0, 1)],
