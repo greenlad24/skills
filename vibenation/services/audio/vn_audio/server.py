@@ -28,7 +28,7 @@ from .analyzer import Analyzer, wav_bytes
 from .arrangement import Arrangement
 
 DRUMS = (1, 2, 3)  # kick, snare, overheads: ridden by the meters (drum rider)
-from .graph import COMP, LIMITER, MCOMP, MTAPE, MixGraph, port
+from .graph import COMP, EQ_TYPE, LIMITER, MCOMP, MTAPE, MixGraph, port
 from .modhost import ModHost
 from .player import StemPlayer
 from .venue import VenueReceiver
@@ -634,12 +634,22 @@ class Engine:
             g.apply_strip(n)
         elif t == 'eq' and s:
             i = int(c['band'])
-            kind, f, gain, q = s.eq[i] if i < len(s.eq) else ('bell', 1000.0, 0.0, 1.0)
-            if s.no_hpf and c.get('kind', kind) == 'hpf':
-                raise ValueError('No high-pass on kick or bass (band rule).')
-            band = (c.get('kind', kind), float(c.get('f', f)), max(-15.0, min(15.0, float(c.get('gain', gain)))), float(c.get('q', q)))
-            s.eq = [*s.eq, band] if i >= len(s.eq) else [band if j == i else b for j, b in enumerate(s.eq)]
-            g.apply_strip(n)
+            if c.get('remove'):
+                s.eq = [b for j, b in enumerate(s.eq) if j != i]
+                g.apply_strip(n)
+            elif i >= len(s.eq) and len(s.eq) >= 8:
+                raise ValueError('A channel EQ has 8 points at most.')
+            else:
+                kind, f, gain, q = s.eq[i] if i < len(s.eq) else ('bell', 1000.0, 0.0, 1.0)
+                kind = c.get('kind', kind)
+                if kind not in EQ_TYPE or kind == 'off':
+                    raise ValueError(f'Unknown EQ point type {kind!r}.')
+                if s.no_hpf and kind == 'hpf':
+                    raise ValueError('No high-pass on kick or bass (band rule).')
+                gain = 0.0 if kind in ('hpf', 'lpf') else max(-15.0, min(15.0, float(c.get('gain', gain))))
+                band = (kind, max(20.0, min(20000.0, float(c.get('f', f)))), gain, max(0.1, min(10.0, float(c.get('q', q)))))
+                s.eq = [*s.eq, band] if i >= len(s.eq) else [band if j == i else b for j, b in enumerate(s.eq)]
+                g.apply_strip(n)
         elif t == 'gate' and s and s.gate:
             for k in ('thresh', 'range', 'attack', 'hold', 'release'):
                 if k in c:

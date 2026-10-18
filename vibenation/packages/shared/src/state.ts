@@ -229,7 +229,7 @@ export type ClientAction =
   /** Rename a camera from the app (kept across reconnects and restarts). */
   | { type: 'renameCam'; cam: number; name: string }
   | { type: 'pan'; ch: number; pan: number }
-  | { type: 'eq'; ch: number; band: number; kind?: EqBand['kind']; f?: number; gain?: number; q?: number }
+  | { type: 'eq'; ch: number; band: number; kind?: EqBand['kind']; f?: number; gain?: number; q?: number; remove?: boolean } // band >= current count adds a point
   | { type: 'comp'; ch: number; thresh?: number; ratio?: number; attack?: number; release?: number; makeup?: number; mix?: number }
   | { type: 'send'; ch: number; fx: 'plate' | 'room' | 'delay'; db: number | null }
   | { type: 'transport'; action: 'play' | 'pause' | 'seek' | 'load'; seconds?: number; set?: string }

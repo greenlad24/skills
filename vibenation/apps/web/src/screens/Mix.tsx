@@ -1,7 +1,7 @@
 import { useCallback, useState, type CSSProperties } from 'react';
 import type { ChannelState } from '@vibenation/shared';
 import { send, useShow } from '../store';
-import { changesFor, easyFor, eqFor, fromEngine, knobsFor, type Band, type KnobKey, type MacroKey } from '../demo/mix';
+import { changesFor, easyFor, eqFor, fromEngine, knobsFor, TYPE_TO_KIND, type Band, type KnobKey, type MacroKey } from '../demo/mix';
 import { Strip } from '../components/mix/Strip';
 import { MasterStrip } from '../components/mix/Meters';
 import { ChangeCards, SelectedPanel, type ChMix } from '../components/mix/SelectedPanel';
@@ -48,12 +48,30 @@ export function MixScreen() {
   const patch = (p: Partial<ChMix>) => setMixes((m) => ({ ...m, [n]: { ...(m[n] ?? initMix(cur)), ...p } }));
 
   const onBand = (i: number, p: Partial<Band>) => {
-    if (cur.eq) { send({ type: 'eq', ch: n, band: i, ...(p.f !== undefined && { f: p.f }), ...(p.g !== undefined && { gain: p.g }), ...(p.q !== undefined && { q: p.q }) }); return; }
+    if (cur.eq) {
+      send({ type: 'eq', ch: n, band: mix.bands[i]?.i ?? i, ...(p.type !== undefined && { kind: TYPE_TO_KIND[p.type] }), ...(p.f !== undefined && { f: p.f }), ...(p.g !== undefined && { gain: p.g }), ...(p.q !== undefined && { q: p.q }) });
+      return;
+    }
     patch({ bands: mix.bands.map((b, k) => (k === i ? { ...b, ...p } : b)) });
     for (const key of Object.keys(p) as (keyof Band)[]) {
       if (key === 'type') continue;
       if (p[key] !== mix.bands[i][key]) sendControl(`ch${n}.eq.${i + 1}.${key === 'g' ? 'gain' : key === 'f' ? 'freq' : 'q'}`, p[key] as number);
     }
+  };
+  const onAddBand = (f: number, g: number) => {
+    if (mix.bands.length >= 8) return;
+    if (cur.eq) { send({ type: 'eq', ch: n, band: cur.eq.length, kind: 'bell', f, gain: g, q: 1 }); return; }
+    patch({ bands: [...mix.bands, { type: 'BELL', f, g, q: 1 }] });
+  };
+  const onRemoveBand = (i: number) => {
+    if (cur.eq) { send({ type: 'eq', ch: n, band: mix.bands[i]?.i ?? i, remove: true }); return; }
+    patch({ bands: mix.bands.filter((_, k) => k !== i) });
+  };
+  const pan = cur.pan ?? mix.pan ?? 0;
+  const onPan = (v: number) => {
+    if (cur.eq) { send({ type: 'pan', ch: n, pan: v }); return; }
+    patch({ pan: v });
+    send({ type: 'pan', ch: n, pan: v });
   };
   const onEasy = (k: MacroKey, v: number) => { patch({ easy: { ...mix.easy, [k]: v } }); sendControl(`ch${n}.fx.${k}`, v); };
   const onKnob = (k: KnobKey, v: number) => {
@@ -104,7 +122,7 @@ export function MixScreen() {
       </section>
 
       <aside aria-label="Selected channel" style={{ flex: '1 1 400px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <SelectedPanel c={cur} mix={mix} bpm={s.bpm} ab={ab} setAb={setAb} onBand={onBand} onEasy={onEasy} onKnob={onKnob} />
+        <SelectedPanel c={cur} mix={mix} bpm={s.bpm} ab={ab} setAb={setAb} onBand={onBand} onAddBand={onAddBand} onRemoveBand={onRemoveBand} pan={pan} onPan={onPan} onEasy={onEasy} onKnob={onKnob} />
         <ChangeCards changes={mix.changes} ab={ab} setAb={setAb} onUndo={onUndo} onAmount={onAmount} />
       </aside>
     </main>

@@ -48,12 +48,15 @@ export function specFor(kind: Section, n: number, seedBase: number): SpecBar[] {
 // ---- EQ ----
 
 export type BandType = 'HPF' | 'LPF' | 'LOW' | 'BELL' | 'SHELF';
-export interface Band { type: BandType; f: number; g: number; q: number }
+export interface Band { type: BandType; f: number; g: number; q: number; i?: number } // i: the engine's band index
 export const BAND_COLOR = ['#E08A5A', '#E6C07A', '#B9A6FF', '#7FD1C3', '#E58FB0', '#8FA3D9', '#9FC7A8', '#D9A066'];
 
 const KIND_TO_TYPE: Record<EqBand['kind'], BandType> = { hpf: 'HPF', lpf: 'LPF', lshelf: 'LOW', hshelf: 'SHELF', bell: 'BELL', off: 'BELL' };
 /** Real engine bands -> UI bands. */
-export const fromEngine = (eq: EqBand[]): Band[] => eq.filter((b) => b.kind !== 'off').map((b) => ({ type: KIND_TO_TYPE[b.kind], f: b.f, g: b.gain, q: b.q }));
+export const fromEngine = (eq: EqBand[]): Band[] => eq.map((b, i) => ({ type: KIND_TO_TYPE[b.kind], f: b.f, g: b.gain, q: b.q, i, off: b.kind === 'off' })).filter((b) => !b.off).map(({ off: _off, ...b }) => b);
+/** UI band types -> engine kinds. */
+export const TYPE_TO_KIND: Record<BandType, Exclude<EqBand['kind'], 'off'>> = { HPF: 'hpf', LPF: 'lpf', LOW: 'lshelf', SHELF: 'hshelf', BELL: 'bell' };
+export const TYPE_LABEL: Record<BandType, string> = { BELL: 'Bell', LOW: 'Low shelf', SHELF: 'High shelf', HPF: 'Low cut', LPF: 'High cut' };
 
 type EqPreset = { a: Band[]; b: Band[] };
 const hpf = (f: number): Band => ({ type: 'HPF', f, g: 0, q: 0.7 });

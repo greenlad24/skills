@@ -89,6 +89,7 @@ class MixGraph:
         self.outputs = outputs  # master L/R go to each of these [L, R] port pairs
         self.strips = {s.n: copy.deepcopy(s) for s in P.STRIPS}
         self.mute = {n: False for n in self.strips}
+        self.conv_on: set[int] = set()  # channels running their impulse response (stereo into the mixer)
         self.solo = {n: False for n in self.strips}
         self.global_trim = 0.0  # unused (kept for saved-state compatibility)
         self.band_offset = 0.0  # "vocals on top": shared offset on every non-vocal channel (dB)
@@ -104,6 +105,7 @@ class MixGraph:
 
     def build(self) -> None:
         mh = self.mh  # the plugin host is restarted clean before each engine start
+        self.conv_on.clear()
         t0 = time.time()
 
         mh.add(URI['mixer'], MIXER)
@@ -148,6 +150,7 @@ class MixGraph:
                     mh.connect_ports(port(CONV + n, 'out_1'), port(MIXER, f'in_{n}l'))
                     mh.connect_ports(port(CONV + n, 'out_2'), port(MIXER, f'in_{n}r'))
                     conv_ok = True
+                    self.conv_on.add(n)
                     log.info('ch%d: impulse response %s', n, s.conv)
                 except Exception as e:  # noqa: BLE001 - never let a missing IR stop the engine
                     log.warning('ch%d: impulse response %s could not load (%s); channel runs without it', n, s.conv, e)
@@ -276,8 +279,12 @@ class MixGraph:
         s = self.strips[n]
         mh = self.mh
         mh.param(MIXER, f'cg_{n}', min(3.98107, lin(self.gain_db(n))))
-        mh.param(MIXER, f'cp_{n}l', s.pan)
-        mh.param(MIXER, f'cp_{n}r', s.pan)
+        if n in self.conv_on:  # stereo after its impulse response: pan works as balance and keeps the width
+            mh.param(MIXER, f'cp_{n}l', max(-100.0, min(100.0, -100.0 + s.pan)))
+            mh.param(MIXER, f'cp_{n}r', max(-100.0, min(100.0, 100.0 + s.pan)))
+        else:
+            mh.param(MIXER, f'cp_{n}l', s.pan)
+            mh.param(MIXER, f'cp_{n}r', s.pan)
         mh.param(MIXER, f'cm_{n}', 1 if self.mute[n] else 0)
         mh.param(MIXER, f'cs_{n}', 1 if self.solo[n] else 0)
 

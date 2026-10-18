@@ -2,7 +2,7 @@ import { useState, type CSSProperties } from 'react';
 import type { ChannelState } from '@vibenation/shared';
 import { go } from '../../route';
 import { EXTRAS, KNOBS, MACROS, macroSub, type Band, type ChangeCard, type KnobKey, type MacroKey } from '../../demo/mix';
-import { EqGraph, EqTable } from './EqPanel';
+import { EqGraph, EqPointEditor, EqTable } from './EqPanel';
 import { useMeters } from '../../store';
 import type { Section } from '@vibenation/shared';
 import { Knob } from './Knob';
@@ -10,6 +10,7 @@ import { LcdGr } from './Meters';
 import { faderText } from './Fader';
 
 export interface ChMix {
+  pan?: number; // demo only (no engine)
   a: Band[]; // before Claude
   bands: Band[]; // current
   easy: Record<MacroKey, number>;
@@ -21,14 +22,23 @@ const card: CSSProperties = { borderRadius: 22, background: 'linear-gradient(180
 const seg: CSSProperties = { display: 'flex', gap: 2, padding: 3, borderRadius: 10, background: 'rgba(0,0,0,0.3)' };
 const segBtn = (on: boolean, onBg = 'var(--text-1)', h = 28, pad = '0 10px'): CSSProperties => ({ minHeight: h, padding: pad, borderRadius: 7, border: 0, fontSize: 11, fontWeight: 700, cursor: 'pointer', background: on ? onBg : 'transparent', color: on ? '#140D09' : 'var(--text-meta)' });
 
-export function SelectedPanel({ c, mix, bpm, ab, setAb, onBand, onEasy, onKnob }: {
+/** Pan readout: L 30% / C / R 30%. */
+export const panText = (v: number) => (v < 0 ? `L ${Math.round(-v)}%` : v > 0 ? `R ${Math.round(v)}%` : 'C');
+
+export function SelectedPanel({ c, mix, bpm, ab, setAb, onBand, onAddBand, onRemoveBand, pan, onPan, onEasy, onKnob }: {
   c: ChannelState; mix: ChMix; bpm: number; ab: 'A' | 'B'; setAb: (v: 'A' | 'B') => void;
-  onBand: (i: number, patch: Partial<Band>) => void; onEasy: (k: MacroKey, v: number) => void; onKnob: (k: KnobKey, v: number) => void;
+  onBand: (i: number, patch: Partial<Band>) => void; onAddBand: (f: number, g: number) => void; onRemoveBand: (i: number) => void;
+  pan: number; onPan: (v: number) => void;
+  onEasy: (k: MacroKey, v: number) => void; onKnob: (k: KnobKey, v: number) => void;
 }) {
   const [post, setPost] = useState(true);
+  const [pick, setPick] = useState(0);
   const [fx, setFx] = useState<'easy' | 'detail'>('easy');
   const name = c.role ?? c.name;
   const bands = ab === 'A' ? mix.a : mix.bands;
+  const selBand = Math.min(pick, Math.max(0, bands.length - 1));
+  const addBand = (f: number, g: number) => { onAddBand(f, g); setPick(bands.length); };
+  const removeBand = (i: number) => { onRemoveBand(i); setPick(Math.max(0, i - 1)); };
 
   return (
     <section style={{ ...card, padding: 18, display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -63,9 +73,25 @@ export function SelectedPanel({ c, mix, bpm, ab, setAb, onBand, onEasy, onKnob }
           <button onClick={() => setPost(true)} aria-pressed={post} style={{ ...segBtn(post, 'rgba(255,236,220,0.12)', 28, '0 9px'), color: post ? 'var(--text-1)' : 'var(--text-meta)', fontWeight: post ? 700 : 600 }}>Post</button>
         </div>
       </div>
-      <LiveEq n={c.n} section={c.section} bands={bands} editable={ab === 'B'} post={post} onBand={onBand} />
-      <EqTable bands={bands} />
+      <LiveEq n={c.n} section={c.section} bands={bands} editable={ab === 'B'} post={post} onBand={onBand} selected={selBand} onSelect={setPick} onAdd={addBand} />
+      <EqTable bands={bands} selected={selBand} onSelect={setPick} />
+      {ab === 'B' && <EqPointEditor bands={bands} selected={selBand} noHpf={c.noHpf} onBand={onBand} onAdd={() => addBand(1000, 0)} onRemove={removeBand} />}
       {ab === 'A' && <span style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.4, marginTop: -6 }}>Showing the EQ before Claude's changes. Switch to B to edit.</span>}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span className="vn-label">PAN</span>
+          <span style={{ flex: 1 }} />
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 14, fontWeight: 700, minWidth: 64, textAlign: 'right' }} aria-live="polite">{panText(pan)}</span>
+          <button type="button" onClick={() => onPan(0)} disabled={pan === 0} style={{ minHeight: 28, padding: '0 10px', borderRadius: 8, border: '1px solid rgba(255,236,220,0.12)', background: 'rgba(255,236,220,0.06)', color: 'var(--text-1)', fontSize: 11, fontWeight: 700, cursor: pan === 0 ? 'default' : 'pointer', opacity: pan === 0 ? 0.5 : 1 }}>Center</button>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-meta)' }}>L</span>
+          <input type="range" min={-100} max={100} step={1} value={pan} aria-label={`Pan, ${panText(pan)}`} aria-valuetext={panText(pan)}
+            onChange={(e) => onPan(Number(e.target.value))} onDoubleClick={() => onPan(0)} style={{ width: '100%', accentColor: 'var(--text-1)' }} />
+          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-meta)' }}>R</span>
+        </div>
+      </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingTop: 4 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -159,7 +185,7 @@ export function ChangeCards({ changes, ab, setAb, onUndo, onAmount }: {
 }
 
 /** EQ graph fed with the channel's real spectrum when the audio engine is running. */
-function LiveEq(p: { n: number; section: Section; bands: Band[]; editable: boolean; post: boolean; onBand: (i: number, patch: Partial<Band>) => void }) {
+function LiveEq(p: { n: number; section: Section; bands: Band[]; editable: boolean; post: boolean; onBand: (i: number, patch: Partial<Band>) => void; selected: number; onSelect: (i: number) => void; onAdd: (f: number, g: number) => void }) {
   const m = useMeters();
-  return <EqGraph section={p.section} bands={p.bands} editable={p.editable} post={p.post} onBand={p.onBand} live={m?.spec?.[p.n - 1]} />;
+  return <EqGraph section={p.section} bands={p.bands} editable={p.editable} post={p.post} onBand={p.onBand} live={m?.spec?.[p.n - 1]} selected={p.selected} onSelect={p.onSelect} onAdd={p.onAdd} />;
 }
