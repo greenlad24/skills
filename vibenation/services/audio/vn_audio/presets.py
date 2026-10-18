@@ -99,11 +99,12 @@ STRIPS: list[Strip] = [
     Strip(8, 'Guitar DI', -17.0, 30,
           eq=[('hpf', 120, 0, 0.7), ('bell', 4000, -2.0, 4.0), ('lpf', 9000, 0, 0.7)],
           comp=Comp(-20, 4, 10, 100, 2, mix=0.5), room=-20),
-    # Vocals: MEGAMI's fitted compression and space (in the impulse response); the gentle bleed expander stays (-12 dB between phrases).
-    Strip(9, 'Vocal centre', -25.0, 0, eq=[('bell', 250, 1.0, 1.2), ('bell', 3000, 2.0, 1.0), ('hshelf', 10000, 1.5, 0.7)],  # rules: intimate
-          comp=Comp(-34.4, 1.5, 6, 30, 5.7), gate=Gate(-50, 12, 1.5, 120, 300), no_hpf=True, rider=0.0, conv='ch09_vocal_c_ir_engine.wav'),
-    Strip(10, 'Vocal piano', -25.1, 0, comp=Comp(-31.2, 1.4, 0.5, 30, 6.2), gate=Gate(-50, 12, 1.5, 120, 300), no_hpf=True, rider=0.0,
-          conv='ch10_vocal_p_ir_engine.wav'),
+    # Vocals back to the F mix (user, 18 Oct 2026: "return the vocal channels to what they were in F mix").
+    # Vox C, user's pick 18 Oct 2026: "C + intimate space" (vocal tutorials: keep 200 Hz warmth, slower attack = thicker,
+    # reverb behind the voice with a long pre-delay, a little short room for closeness, a quiet 1/8 echo between phrases).
+    Strip(9, 'Vocal centre', -2.0, 0, eq=[('hpf', 100, 0, 0.7), ('bell', 250, -2.0, 1.2), ('bell', 600, 0.0, 1.5), ('bell', 3000, 2.0, 1.0), ('hshelf', 10000, 3.5, 0.7)],
+          comp=Comp(-28, 4, 18, 150, 3), gate=Gate(-50, 12, 1.5, 120, 300), plate=-10.1, room=-13.1, delay=-16, rider=0.0),  # reverb -30% (user 18 Oct)
+    Strip(10, 'Vocal piano', -2.3, -15, eq=[('hpf', 120, 0, 0.7)] + VOCAL_EQ[1:], comp=Comp(-26, 3, 12, 150, 3), gate=Gate(-50, 12, 1.5, 120, 300), plate=-13.1, rider=0.0),  # reverb -30% (user 18 Oct)
     Strip(11, 'Congas 1', -16.0, 35,
           eq=[('hpf', 90, 0, 0.7), ('bell', 350, -2.5, 1.2), ('bell', 4500, 2.5, 1.0)],
           comp=Comp(-20, 4, 15, 80, 2, peak=True), gate=Gate(-50, 12, 1.5, 120, 300), room=-18),
@@ -177,6 +178,8 @@ _ROLE_INSERTS: dict[int, list[tuple[str, dict]]] = {
     2: [('fet', {'ratio': 1, 'attack': 300, 'release': 150, 'mix': 30, 'colour': 40})],
     4: [('opto', {'peak_reduction': 15, 'mix': 50, 'colour': 20})],
     8: [('opto', {'peak_reduction': 15, 'mix': 50, 'colour': 30})],
+    9: _VOX,
+    10: _VOX,
     15: [('deesser', {'freq': 4500, 'sensitivity': 45, 'range': 4}), ('opto', {'peak_reduction': 20, 'mix': 60, 'colour': 30})],
     16: [('deesser', {'freq': 3500, 'sensitivity': 55, 'range': 6}), ('opto', {'peak_reduction': 25, 'mix': 70, 'colour': 20})],
 }

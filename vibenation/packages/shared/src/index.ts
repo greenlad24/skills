@@ -43,8 +43,8 @@ export const CHANNELS: ChannelDef[] = [
   { n: 6, name: 'Piano L', short: 'Piano L', section: 'keys', fader: -2.4 }, // V3: MEGAMI -1.5 dB (user, 18 Oct 2026)
   { n: 7, name: 'Piano R', short: 'Piano R', section: 'keys', fader: -4.1 }, // V3: MEGAMI -1.5 dB
   { n: 8, name: 'Guitar DI', short: 'Gtr DI', section: 'gtr', fader: -17 }, // supporting
-  { n: 9, name: 'Vocal centre', short: 'Vox C', section: 'vox', fader: -25.0 }, // V3: MEGAMI's level (its impulse response carries its gain)
-  { n: 10, name: 'Vocal piano', short: 'Vox P', section: 'vox', fader: -25.1 }, // V3: MEGAMI's level
+  { n: 9, name: 'Vocal centre', short: 'Vox C', section: 'vox', fader: -2 },
+  { n: 10, name: 'Vocal piano', short: 'Vox P', section: 'vox', fader: -2.3 },
   { n: 11, name: 'Congas 1', short: 'Congas', section: 'perc', fader: -16 },
   { n: 12, name: 'Bass DI', short: 'Bass DI', section: 'bass', fader: -14.7, noHpf: true }, // same mix as the synth bass (user, 18 Oct 2026)
   { n: 13, name: 'Congas 2', short: 'Congas 2', section: 'perc', fader: -20 }, // supporting
