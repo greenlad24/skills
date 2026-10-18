@@ -33,6 +33,7 @@ export class Listener {
     if (!this.enabled) return 'off (no Gemini key)';
     if (Date.now() < this.pausedUntil) return 'paused: Gemini quota used up (turn on billing in Google AI Studio)';
     if (this.lastError) return `error: ${this.lastError.slice(0, 60)}`;
+    if (!this.playing()) return 'waiting for music (no calls)';
     return this.verdicts.length ? `every 20 s · ${this.verdicts[this.verdicts.length - 1].vocal}` : 'starting';
   }
 

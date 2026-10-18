@@ -121,7 +121,13 @@ export class DemoShow {
       this.feed({ kind: al.level === 'error' ? 'EMERGENCY' : 'MIX', text: al.text, why: al.level === 'error' ? 'Emergency move: allowed even on a channel you hold.' : undefined, confidence: 'sure' });
       this.push();
     };
-    this.listener = new AudioListener(() => !!this.state.audio?.playing);
+    // Gemini only hears real music: the source is playing, the band is audible (median short-term
+    // loudness of the last ~10 s above -35 LUFS) and no slate is up (user: not between songs/breaks).
+    this.listener = new AudioListener(() => {
+      if (!this.state.audio?.playing || this.state.slate) return false;
+      const recent = this.audio.history.slice(-100).map((f) => f.master.lufsS).sort((x, y) => x - y);
+      return recent.length >= 50 && recent[Math.floor(recent.length / 2)] > -35;
+    });
     this.mixer = new MixerLoop({
       state: this.state,
       listener: this.listener,
