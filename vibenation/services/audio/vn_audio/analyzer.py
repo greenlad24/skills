@@ -15,6 +15,8 @@ import jack
 import numpy as np
 from scipy import signal
 
+from . import presets as P
+
 SR = 48000
 N_BANDS = 32
 FFT = 4096
@@ -120,6 +122,12 @@ class Analyzer:
         e = self.edges
         return [round(db(float(np.max(mag[e[i] : max(e[i + 1], e[i] + 1)]))), 1) for i in range(N_BANDS)]
 
+    def _tone(self, x: np.ndarray) -> list[float]:
+        """Master energy per tone-keeper band (linear power, summed over the band), for the long-term tone."""
+        p = np.abs(np.fft.rfft(x * self.window)) ** 2
+        f = np.fft.rfftfreq(FFT, 1 / SR)
+        return [float(p[(f >= lo) & (f < hi)].sum()) for _, lo, hi, _, _ in P.TONE_TARGET]
+
     HOWL_CH = (4, 9, 10, 15, 16)  # mics that could pick up the room PA
 
     def _howl(self) -> list[dict]:
@@ -190,6 +198,7 @@ class Analyzer:
                     'prePeak': round(pre_peak, 1),
                     'peak': round(post_peak, 1),
                     'spec': self._bands(self.mhist),
+                    'tone': self._tone(self.mhist),
                 },
             }
             for fn in list(self.listeners):

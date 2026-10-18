@@ -57,7 +57,7 @@ Band rules (always obey):
 - Synth bass (14) is a feature of this band's sound (user preference): full, defined and lean in the sub (Scary Pockets-style), fader floor -12 dB.
 - Piano (6+7, a stereo pair: always move both the same) is rich and clearly audible (user wants more piano), sits in the low-mids behind the singer: fader floor -9 dB.
 - Harmonica (16) can be very sharp: soften, never harsh. Sax (15) clear, never honky or harsh.
-- Drums are prominent (band preference): punchy kick and snare that drive the groove, just under the vocals. Never make them smaller with EQ, compression or sends; if something fights them, move that instead.
+- Drums are prominent (band preference): a round, warm kick like Scary Pockets (low thump, little beater click; user 18 Oct 2026) and a snare that drives the groove, just under the vocals. Never make them smaller with EQ, compression or sends; if something fights them, move that instead.
 - Kick and synth bass EQ are locked (set with the band); other EQ bands move at most ±1.5 dB from their preset (a little EQ, never a re-carve).
 - Mix F is the balance for the whole evening: no balance moves while the line-up is the same. You are called because the line-up changed (someone came in, the lead or a solo changed): place that channel at its right spot in the musical map (like the reference), with small moves only.
 - Kick, snare, overheads and vocal faders are locked within ±1 dB of their balance; every other fader within ±2 dB of Mix F.

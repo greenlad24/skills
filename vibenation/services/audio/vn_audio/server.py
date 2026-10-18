@@ -20,6 +20,7 @@ import threading
 import time
 from collections import deque
 
+import numpy as np
 from aiohttp import WSMsgType, web
 
 from . import presets as P
@@ -54,6 +55,9 @@ class Engine:
         self.ride = [0.0] * 16  # current rider gain (dB) per channel
         self.howl_track: dict = {}
         self.clip_count = [0] * 16
+        self.raw_clip = [0] * 16
+        self.raw_clip_alert = [0.0] * 16
+        self.master_over_alert = 0.0
         self.last_clip_fix = [0.0] * 16
         self.last_heard = [0.0] * 16
         self.dead_alerted = [False] * 16
@@ -65,6 +69,9 @@ class Engine:
         self.st_hist: deque = deque(maxlen=300)  # 5 min of *music* short-term loudness for the leveller brake
         self.limiter_gr = 0.0
         self.limiter_hist: deque = deque(maxlen=64)  # (t, gr) of recent frames, for the leveller
+        self.tone_hist: deque = deque(maxlen=1800)   # 3 min of master band energies while music plays (10 frames/s)
+        self.tone_off = [0.0] * len(P.TONE_TARGET)   # keeper offsets on the steered MASTER_EQ bands (dB)
+        self.last_tone = 0.0
         self.arr = Arrangement()  # lead/backing vocals, solos, auto-mute of idle channels
         # Drum faders from the meters, at soundcheck only (see _ride_drums).
         self.drum_share: dict[int, deque] = {n: deque(maxlen=150) for n in DRUMS}
@@ -134,6 +141,7 @@ class Engine:
         self.limiter_gr = round(max(0.0, m['prePeak'] - m['peak']), 1)
         self.limiter_hist.append((time.time(), self.limiter_gr))
         self._level(m)
+        self._keep_tone(m)
         self._calibrate(f['raw'])
         self._ride(f)
         self._follow_arrangement(f)
@@ -141,7 +149,7 @@ class Engine:
         self._ride_drums(f)
         self._watch_howl(f.get('howl', []))
         self._watch_clip_and_dead(f)
-        frame = {'type': 'meters', **f, 'gr': self.gr, 'ride': self.ride, 'master': {**m, 'limiterGr': self.limiter_gr, 'busGr': self.bus_gr, 'drive': round(self.graph.master_gain, 1), 'bandOffset': round(self.graph.band_offset, 1)},
+        frame = {'type': 'meters', **f, 'gr': self.gr, 'ride': self.ride, 'master': {**m, 'limiterGr': self.limiter_gr, 'busGr': self.bus_gr, 'drive': round(self.graph.master_gain, 1), 'bandOffset': round(self.graph.band_offset, 1), 'toneOff': self.tone_off},
                  'singing': [self.playing(n, f) for n in range(1, 17)], 'arrangement': self.arr.summary(),
                  'drums': {n: {'fader': self.graph.strips[n].fader, 'balanced': n in self.drum_done} for n in DRUMS}}
         self.broadcast(frame)
@@ -180,6 +188,39 @@ class Engine:
         if abs(g - self.graph.master_gain) >= 0.05:
             self.graph.master_gain = round(g, 2)
             self.graph.apply_drive()
+
+    def _keep_tone(self, m: dict) -> None:
+        """Tone keeper (user: Mix F's tone consistently, the whole show): over the last 3 minutes of
+        music, compares the master's energy per band with F's and nudges the master EQ band that steers
+        each region by 0.1 dB every 30 s, within ±TONE_RANGE_DB of MASTER_EQ. Breaks and talk don't count."""
+        if m.get('tone') and m['lufsS'] > -26 and self.running():
+            self.tone_hist.append(m['tone'])
+        now = time.time()
+        if now - self.last_tone < 30 or len(self.tone_hist) < 600:  # at least a minute of music
+            return
+        self.last_tone = now
+        e = np.array(self.tone_hist).sum(0)
+        share = 10 * np.log10(e / e.sum() + 1e-12)
+        err: dict[int, list[float]] = {}
+        for (name, _lo, _hi, target, band), have in zip(P.TONE_TARGET, share):
+            err.setdefault(band, []).append(target - have)
+        changed = False
+        for band, errs in err.items():
+            d = sum(errs) / len(errs)
+            if abs(d) < P.TONE_DEADBAND_DB:
+                continue
+            k = [i for i, t in enumerate(P.TONE_TARGET) if t[4] == band][0]
+            new = max(-P.TONE_RANGE_DB, min(P.TONE_RANGE_DB, self.tone_off[k] + (P.TONE_STEP_DB if d > 0 else -P.TONE_STEP_DB)))
+            if new != self.tone_off[k]:
+                self.tone_off[k] = round(new, 2)
+                changed = True
+        if changed:
+            eq = [list(b) for b in P.MASTER_EQ]
+            for (_n, _lo, _hi, _t, band), off in zip(P.TONE_TARGET, self.tone_off):
+                if band < len(eq) and off:
+                    eq[band][2] = round(P.MASTER_EQ[band][2] + off, 2)
+            self.graph.master_eq_live = [tuple(b) for b in eq]
+            self.graph.apply_master_eq()
 
     def playing(self, n: int, f: dict) -> bool:
         """The source itself is playing (not just stage bleed): its input, after the soundcheck
@@ -256,6 +297,10 @@ class Engine:
         gets the trim pulled down 3 dB; a source that was playing and goes silent for 20 s
         while the band plays raises a dead-signal alert (it may be a mic or wireless pack)."""
         now = time.time()
+        tp = f['master'].get('truePeak', -99)
+        if tp > P.CEILING_DBTP + 0.5 and now - self.master_over_alert > 60 and self.running():
+            self.master_over_alert = now
+            self.broadcast({'type': 'alert', 'level': 'error', 'ch': 0, 'text': f'Master peak {tp:+.1f} dBTP is over the {P.CEILING_DBTP:.0f} dBTP ceiling: check the limiter.'})
         band_on = sum(1 for n in range(1, 17) if self.playing(n, f)) >= 3
         for n, st in self.graph.strips.items():
             i = n - 1
@@ -270,6 +315,13 @@ class Engine:
                     self.broadcast(self.state())
             else:
                 self.clip_count[i] = 0
+            if f['raw'][i] > -0.5 and self.running():  # clipping before us, at the MR18 preamp/converter
+                self.raw_clip[i] += 1
+                if self.raw_clip[i] >= 2 and now - self.raw_clip_alert[i] > 60:
+                    self.raw_clip_alert[i] = now
+                    self.broadcast({'type': 'alert', 'level': 'error', 'ch': n, 'text': f'{st.name} is clipping at the MR18 preamp: ask the band to turn its gain down a little (Claude never touches preamp gain).'})
+            else:
+                self.raw_clip[i] = 0
             if f['raw'][i] > -75:  # a live mic always hears some stage bleed; a dead one doesn't
                 self.last_heard[i] = now
                 if self.dead_alerted[i]:

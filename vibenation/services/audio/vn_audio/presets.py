@@ -65,9 +65,13 @@ VOCAL_EQ: list[Band] = [
 ]
 
 STRIPS: list[Strip] = [
-    Strip(1, 'Kick', -1.5, 0,  # live balance 17 Oct 2026 (user: drums prominent, clear kick)
-          eq=[('bell', 60, 2.0, 1.0), ('bell', 285, -3.0, 1.5), ('hshelf', 16000, 2.0, 0.7), ('bell', 3500, 4.0, 1.2)],  # 3.5 kHz = beater click
-          comp=Comp(-18, 4.5, 28, 85, 2, peak=True), gate=Gate(-34, 12, 0.5, 45, 10), room=-22, no_hpf=True),
+    # Kick, user 18 Oct 2026: "less punchy, more rounded", like Scary Pockets. Measured on the 17 Oct live test vs the
+    # reference: ours had ~7 dB more 100-200 Hz knock and ~6 dB more 3-6 kHz beater click. So: no click boost (a gentle
+    # cut), knock cut, low thump kept, softer top; faster/gentler compression (doesn't sharpen the attack) and a gate
+    # that lets the drum ring instead of chopping it.
+    Strip(1, 'Kick', -1.5, 0,  # live balance 17 Oct 2026 (user: drums prominent)
+          eq=[('bell', 60, 2.0, 1.0), ('bell', 160, -3.0, 1.2), ('bell', 285, -3.0, 1.5), ('bell', 4000, -3.0, 1.0), ('lpf', 9000, 0, 0.7)],
+          comp=Comp(-18, 3.0, 6, 140, 2, peak=True), gate=Gate(-34, 8, 0.5, 80, 120), room=-22, no_hpf=True),
     Strip(2, 'Snare', -6.6, 0,
           eq=[('hpf', 100, 0, 0.7), ('bell', 200, 0, 1.0), ('bell', 420, -3.0, 2.0), ('bell', 2500, 2.0, 1.0), ('bell', 8000, 2.0, 1.0)],
           comp=Comp(-20, 4, 15, 50, 3, peak=True), room=-15),
@@ -113,10 +117,19 @@ STRIPS: list[Strip] = [
 # Stream master: light glue, gentle equal-loudness EQ, true-peak limiter.
 # Tuned 17 Oct 2026 by A/B on the same passage: the old top end measured ~8 dB dark (air -24.6 vs ~-19).
 # No mid cuts: they took the piano's body away (user, 17 Oct 2026: "lacking the piano").
-MASTER_EQ: list[Band] = [('hpf', 30, 0, 0.7), ('bell', 50, 1.5, 0.8), ('lshelf', 100, 0.5, 0.7), ('bell', 250, -2.0, 1.0),
-                         ('bell', 400, -1.5, 1.2), ('bell', 1500, 1.0, 0.9), ('bell', 3000, 0.5, 0.8), ('hshelf', 6000, 6.5, 0.7)]
-# F: toward Scary Pockets (user's choice 17 Oct 2026). The 50 / 400 / 1500 Hz bands (user OK 18 Oct) come from the 17 Oct
-# live recording: 3 dB less sub than the reference, 1-1.5 dB more 250-800 Hz box, 2 dB less 0.8-2.5 kHz definition.
+MASTER_EQ: list[Band] = [('hpf', 30, 0, 0.7), ('lshelf', 90, 5.3, 0.6), ('bell', 220, -1.3, 1.0), ('bell', 450, -2.3, 1.1),
+                         ('bell', 1500, 1.9, 0.9), ('bell', 3000, -0.4, 1.0), ('hshelf', 5000, 4.9, 0.7), ('bell', 11000, -2.7, 0.9)]
+# "Live matched to F" (user's pick 18 Oct 2026): F's master plus the curve that took the 17 Oct live recording to F's
+# long-term tone, fitted to 8 bands (within 1.6 dB of the matched sample). The tone keeper holds it there all night.
+
+# Tone keeper: F's long-term energy share per band (dB of total), measured on the approved F mix. The engine compares
+# the master's last 3 minutes of music with this and nudges one master EQ band per region, slowly (user: "consistently
+# matched to F the whole show"). Bands: (name, lo Hz, hi Hz, F target dB, MASTER_EQ index it steers).
+TONE_TARGET = [('sub', 20, 60, -8.8, 1), ('low', 60, 250, -3.3, 1), ('lowmid', 250, 800, -6.1, 3),
+               ('mid', 800, 2500, -9.5, 4), ('pres', 2500, 6000, -14.8, 5), ('air', 6000, 16000, -18.4, 7)]
+TONE_RANGE_DB = 2.0      # the keeper moves a band at most this far from MASTER_EQ
+TONE_STEP_DB = 0.1       # per update (every 30 s): 0.2 dB a minute, unnoticeable
+TONE_DEADBAND_DB = 1.0
 MASTER_COMP = Comp(-14, 2, 30, 200, 0)
 TARGET_LUFS = -16.0
 VOCALS = {9, 10}  # lead + second vocal: never pulled down by the band offset

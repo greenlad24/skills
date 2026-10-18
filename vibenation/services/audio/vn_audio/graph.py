@@ -66,6 +66,7 @@ class MixGraph:
         self.solo = {n: False for n in self.strips}
         self.global_trim = 0.0  # unused (kept for saved-state compatibility)
         self.band_offset = 0.0  # "vocals on top": shared offset on every non-vocal channel (dB)
+        self.master_eq_live: list[P.Band] | None = None  # MASTER_EQ + tone keeper offsets
         self.ride: dict[int, float] = {}  # current rider gain per channel (dB)
         self.arr: dict[int, float] = {}  # arrangement offset per channel (dB): lead/backing/solo/auto-mute, not saved
         self.master_gain = 0.0  # limiter input drive, dB (set by the loudness leveller)
@@ -258,8 +259,12 @@ class MixGraph:
             mh.param(RETURNS, f'cg_{slot}', lin(fx[k]['return_db']))
         mh.param(RETURNS, 'cg_4', 0)
 
+    def apply_master_eq(self) -> None:
+        """Master EQ as set, plus the tone keeper's small offsets (server._keep_tone)."""
+        self._eq(MEQ, self.master_eq_live or P.MASTER_EQ, stereo=True)
+
     def apply_master(self) -> None:
-        self._eq(MEQ, P.MASTER_EQ, stereo=True)
+        self.apply_master_eq()
         mh = self.mh
         for inst, params in ((MCONSOLE, P.MASTER_CONSOLE), (MCOMP, P.MASTER_BUS), (MTAPE, P.MASTER_TAPE)):
             for sym, v in params.items():
