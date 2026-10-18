@@ -253,7 +253,7 @@ class Service:
                     self.vertical[k] = int(v[k]) if v[k] is not None else None
             self.apply_vertical()
         if 'audio' in body and 'delayMs' in (body['audio'] or {}):
-            self.audio_delay_ms = max(-1000, min(2000, int(body['audio']['delayMs'])))
+            self.audio_delay_ms = max(-2000, min(2000, int(body['audio']['delayMs'])))
         if 'start' in body:
             self.start_dests(body['start'] or [])
         if 'stop' in body:
