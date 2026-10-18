@@ -92,7 +92,10 @@ STRIPS: list[Strip] = [
     Strip(8, 'Guitar DI', -17.0, 30,
           eq=[('hpf', 120, 0, 0.7), ('bell', 4000, -2.0, 4.0), ('lpf', 9000, 0, 0.7)],
           comp=Comp(-20, 4, 10, 100, 2, mix=0.5), room=-20),
-    Strip(9, 'Vocal centre', -2.0, 0, eq=list(VOCAL_EQ), comp=Comp(-26, 3, 12, 150, 3), plate=-8, delay=-18, rider=0.0),
+    # Vox C, user's pick 18 Oct 2026: "C + intimate space" (vocal tutorials: keep 200 Hz warmth, slower attack = thicker,
+    # reverb behind the voice with a long pre-delay, a little short room for closeness, a quiet 1/8 echo between phrases).
+    Strip(9, 'Vocal centre', -2.0, 0, eq=[('hpf', 100, 0, 0.7), ('bell', 250, -2.0, 1.2), ('bell', 600, 0.0, 1.5), ('bell', 3000, 2.0, 1.0), ('hshelf', 10000, 3.5, 0.7)],
+          comp=Comp(-28, 4, 18, 150, 3), plate=-7, room=-10, delay=-16, rider=0.0),
     Strip(10, 'Vocal piano', -2.3, -15, eq=[('hpf', 120, 0, 0.7)] + VOCAL_EQ[1:], comp=Comp(-26, 3, 12, 150, 3), plate=-10, rider=0.0),
     Strip(11, 'Congas 1', -16.0, 35,
           eq=[('hpf', 90, 0, 0.7), ('bell', 350, -2.5, 1.2), ('bell', 4500, 2.5, 1.0)],
@@ -145,9 +148,9 @@ DRUM_SHARE = {1: -10.7, 2: -9.5, 3: -45.7}  # snare +5 dB (S3), overheads -6 dB 
 
 # Shared effect returns (100% wet).
 FX = {
-    'plate': {'decay': 1.5, 'predelay': 40, 'low_cut': 200, 'high_cut': 8000, 'return_db': -6.0},
+    'plate': {'decay': 1.8, 'predelay': 80, 'low_cut': 250, 'high_cut': 7000, 'return_db': -6.0},  # Vox C intimate space (18 Oct 2026)
     'room': {'decay': 0.6, 'predelay': 5, 'size': 12, 'in_high_cut': 8000, 'return_db': -6.0},
-    'delay': {'note': 0.5, 'feedback': 0.35, 'hpf': 400, 'lpf': 6000, 'return_db': -6.0},
+    'delay': {'note': 0.5, 'feedback': 0.3, 'hpf': 400, 'lpf': 6000, 'return_db': -6.0},
 }
 
 
