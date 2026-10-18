@@ -70,8 +70,8 @@ STRIPS: list[Strip] = [
     # cut), knock cut, low thump kept, softer top; faster/gentler compression (doesn't sharpen the attack) and a gate
     # that lets the drum ring instead of chopping it.
     Strip(1, 'Kick', -1.5, 0,  # live balance 17 Oct 2026 (user: drums prominent)
-          eq=[('bell', 60, 2.0, 1.0), ('bell', 160, -3.0, 1.2), ('bell', 285, -3.0, 1.5), ('bell', 4000, -3.0, 1.0), ('lpf', 9000, 0, 0.7)],
-          comp=Comp(-18, 3.0, 6, 140, 2, peak=True), gate=Gate(-34, 8, 0.5, 80, 120), room=-22, no_hpf=True),
+          eq=[('bell', 60, 2.0, 1.0), ('bell', 160, -2.0, 1.2), ('bell', 285, -3.0, 1.5), ('bell', 4000, -1.0, 1.0), ('lpf', 12000, 0, 0.7)],
+          comp=Comp(-18, 3.0, 12, 140, 2, peak=True), gate=Gate(-34, 8, 0.5, 80, 120), room=-22, no_hpf=True),  # user's pick 18 Oct: "round with a little definition"
     Strip(2, 'Snare', -6.6, 0,
           eq=[('hpf', 100, 0, 0.7), ('bell', 200, 0, 1.0), ('bell', 420, -3.0, 2.0), ('bell', 2500, 2.0, 1.0), ('bell', 8000, 2.0, 1.0)],
           comp=Comp(-20, 4, 15, 50, 3, peak=True), room=-15),
