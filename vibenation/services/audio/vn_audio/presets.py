@@ -96,9 +96,8 @@ STRIPS: list[Strip] = [
     Strip(6, 'Piano L', -2.4, 0, eq=[('bell', 200, -1.0, 0.8)], no_hpf=True, floor=-13,  # rules: no 200 Hz mud, -1.5 dB
           conv='ch06_piano_l_ir_engine.wav'),
     Strip(7, 'Piano R', -4.1, 0, eq=[('bell', 200, -1.0, 0.8)], no_hpf=True, floor=-13, conv='ch07_piano_r_ir_engine.wav'),
-    Strip(8, 'Guitar DI', -17.0, 30,
-          eq=[('hpf', 120, 0, 0.7), ('bell', 4000, -2.0, 4.0), ('lpf', 9000, 0, 0.7)],
-          comp=Comp(-20, 4, 10, 100, 2, mix=0.5), room=-20),
+    Strip(8, 'Guitar DI', -8.7, 0,  # V3, user's pick 18 Oct 2026: MEGAMI's acoustic guitar (piece B) copied 1:1, 4 dB back as a supporting channel
+          comp=Comp(-30.0, 1.2, 0.5, 30, 2.9), no_hpf=True, conv='ch08_guitar_di_ir_engine.wav'),
     # Vocals back to the F mix (user, 18 Oct 2026: "return the vocal channels to what they were in F mix").
     # Vox C, user's pick 18 Oct 2026: "C + intimate space" (vocal tutorials: keep 200 Hz warmth, slower attack = thicker,
     # reverb behind the voice with a long pre-delay, a little short room for closeness, a quiet 1/8 echo between phrases).
@@ -177,7 +176,6 @@ _ROLE_INSERTS: dict[int, list[tuple[str, dict]]] = {
     1: [('fet', {'ratio': 1, 'attack': 300, 'release': 200, 'mix': 30, 'colour': 40})],
     2: [('fet', {'ratio': 1, 'attack': 300, 'release': 150, 'mix': 30, 'colour': 40})],
     4: [('opto', {'peak_reduction': 15, 'mix': 50, 'colour': 20})],
-    8: [('opto', {'peak_reduction': 15, 'mix': 50, 'colour': 30})],
     9: _VOX,
     10: _VOX,
     15: [('deesser', {'freq': 4500, 'sensitivity': 45, 'range': 4}), ('opto', {'peak_reduction': 20, 'mix': 60, 'colour': 30})],

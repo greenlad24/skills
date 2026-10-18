@@ -107,6 +107,7 @@ class Engine:
         self.keeper_on = True   # vocals-on-top keeper
         self.tone_on = True     # tone keeper (F's long-term balance)
         self.duck_on = True     # plate/echo dip under the lead vocal
+        self.arrange_on = True  # arrangement follower (lead/backing, solos, auto-mute); off only for level measurements
         self.auto_venue = True
         # Soundcheck calibration: digital trims so each source's active level sits near -20 dBFS RMS.
         self.calibrating_until = 0.0
@@ -390,7 +391,7 @@ class Engine:
     def _follow_arrangement(self, f: dict) -> None:
         """Lead/backing vocals, solos and auto-mute (see arrangement.py). Only while the music runs;
         channels a human muted or soloed are left alone."""
-        if not self.running():
+        if not self.running() or not self.arrange_on:
             return
         g = self.graph
         self.arr.held = {n for n in g.strips if g.mute[n] or g.solo[n]}
@@ -650,6 +651,10 @@ class Engine:
                 band = (kind, max(20.0, min(20000.0, float(c.get('f', f)))), gain, max(0.1, min(10.0, float(c.get('q', q)))))
                 s.eq = [*s.eq, band] if i >= len(s.eq) else [band if j == i else b for j, b in enumerate(s.eq)]
                 g.apply_strip(n)
+        elif t == 'insert' and s and 0 <= int(c.get('slot', -1)) < len(s.inserts) and isinstance(c.get('params'), dict):
+            kind, params = s.inserts[int(c['slot'])]
+            params.update({str(k): float(v) for k, v in c['params'].items()})
+            g.apply_inserts(n)
         elif t == 'gate' and s and s.gate:
             for k in ('thresh', 'range', 'attack', 'hold', 'release'):
                 if k in c:
@@ -695,9 +700,14 @@ class Engine:
         elif t == 'auto':
             # Test renders (A/B pages): hold the automatic moves still. {"leveller": bool, "keeper": bool,
             # "tone": bool, "drive": dB, "band_offset": dB} — every key optional.
-            for k, attr in (('leveller', 'leveller_on'), ('keeper', 'keeper_on'), ('tone', 'tone_on'), ('duck', 'duck_on')):
+            for k, attr in (('leveller', 'leveller_on'), ('keeper', 'keeper_on'), ('tone', 'tone_on'), ('duck', 'duck_on'), ('arrangement', 'arrange_on')):
                 if k in c:
                     setattr(self, attr, bool(c[k]))
+            if c.get('arrangement') is False:  # every channel back to its plain fader while measuring
+                for k in g.strips:
+                    g.arr[k] = 0.0
+                    g.apply_fader(k)
+                    g.apply_sends(k)
             if 'drive' in c:
                 g.master_gain = max(-10.0, min(P.MAX_DRIVE_DB, float(c['drive'])))
                 g.apply_drive()
@@ -707,7 +717,7 @@ class Engine:
                     if k not in P.OFFSET_EXEMPT:
                         g.apply_fader(k)
                         g.apply_sends(k)
-            return {'type': 'auto', 'leveller': self.leveller_on, 'keeper': self.keeper_on, 'tone': self.tone_on, 'duck': self.duck_on,
+            return {'type': 'auto', 'leveller': self.leveller_on, 'keeper': self.keeper_on, 'tone': self.tone_on, 'duck': self.duck_on, 'arrangement': self.arrange_on,
                     'drive': g.master_gain, 'band_offset': g.band_offset}
         elif t == 'leveller':
             self.leveller_on = bool(c['on'])

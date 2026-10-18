@@ -11,6 +11,8 @@ export type EngineStrip = {
   eq: [EqBand['kind'], number, number, number][];
   comp: { thresh: number; ratio: number; attack: number; release: number; makeup: number; mix: number } | null;
   plate: number | null; room: number | null; delay: number | null;
+  gate: { thresh: number; range: number; attack: number; hold: number; release: number } | null;
+  inserts: [string, Record<string, number>][];
 };
 type EngineState = {
   type: 'engine';
@@ -100,6 +102,7 @@ export class AudioLink {
           ...c, fader: e.fader, pan: e.pan, trim: e.trim, mute: e.mute, solo: e.solo, noHpf: e.no_hpf,
           eq: toBands(e.eq), eqBase: b ? toBands(b.eq) : undefined, comp: e.comp,
           sends: { plate: e.plate, room: e.room, delay: e.delay },
+          gate: e.gate, inserts: (e.inserts ?? []).map(([kind, params]) => ({ kind, params })),
         };
       },
     });
@@ -128,7 +131,7 @@ export class AudioLink {
   /** Forward a browser action to the engine if it's a mix action. Returns true if handled. */
   forward(a: ClientAction): boolean {
     if (!this.connected || !this.ws) return false;
-    const mixTypes = ['fader', 'mute', 'solo', 'pan', 'eq', 'comp', 'send', 'transport', 'calibrate'];
+    const mixTypes = ['fader', 'mute', 'solo', 'pan', 'eq', 'comp', 'send', 'insert', 'gate', 'transport', 'calibrate'];
     if (!mixTypes.includes(a.type)) return false;
     this.ws.send(JSON.stringify(a));
     return true;

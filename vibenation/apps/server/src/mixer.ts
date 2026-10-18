@@ -182,7 +182,7 @@ export class MixerLoop {
       const ride = avg((f) => f.ride?.[i] ?? 0);
       const spec = Array.from({ length: 8 }, (_, g) => avg((f) => f.spec[i].slice(g * 4, g * 4 + 4).reduce((a, b) => a + b, 0) / 4));
       const sMean = spec.reduce((a, b) => a + b, 0) / 8;
-      const held = ['fader', 'eq', 'comp', 'send', 'pan', 'mute', 'solo'].filter((k) => this.host.isHeld(`ch${c.n}.${k}`));
+      const held = ['fader', 'eq', 'comp', 'send', 'insert', 'gate', 'pan', 'mute', 'solo'].filter((k) => this.host.isHeld(`ch${c.n}.${k}`));
       const eq = (c.eq ?? []).map((b, k) => `${k}:${b.kind} ${Math.round(b.f)}Hz ${b.kind === 'hpf' || b.kind === 'lpf' ? '' : `${b.gain > 0 ? '+' : ''}${b.gain}dB Q${b.q}`}`.trim()).join('; ');
       const comp = c.comp ? `comp ${c.comp.thresh} dB ${c.comp.ratio}:1 ${c.comp.attack}/${c.comp.release} ms` : 'no comp';
       const sends = c.sends ? `sends plate ${c.sends.plate ?? 'off'}, room ${c.sends.room ?? 'off'}, delay ${c.sends.delay ?? 'off'}` : '';

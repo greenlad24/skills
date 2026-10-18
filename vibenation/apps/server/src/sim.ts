@@ -19,6 +19,12 @@ const CAM_NAMES = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 const loadCamNames = (): Record<string, string> => { try { return JSON.parse(readFileSync(CAM_NAMES, 'utf8')); } catch { return {}; } };
 const saveCamNames = (n: Record<string, string>) => { try { if (!existsSync(path.dirname(CAM_NAMES))) mkdirSync(path.dirname(CAM_NAMES), { recursive: true }); writeFileSync(CAM_NAMES, JSON.stringify(n, null, 1)); } catch { /* best effort */ } };
 
+// Controls a person holds survive an app restart (cleared when a new show starts).
+const HELD_FILE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../data/held.json');
+const loadHeld = (): string[] => { try { const h = JSON.parse(readFileSync(HELD_FILE, 'utf8')); return Array.isArray(h) ? h.filter((x) => typeof x === 'string') : []; } catch { return []; } };
+const saveHeld = (h: string[]) => { try { writeFileSync(HELD_FILE, JSON.stringify(h)); } catch { /* best effort */ } };
+const HELD0 = loadHeld();
+
 type Listener = (msg: { type: 'state'; state: ShowState } | MeterFrame) => void;
 
 const now = () => Date.now();
@@ -77,7 +83,7 @@ export class DemoShow {
       vAutoPick: 'close',
       channels: CHANNELS.map((c) => ({
         n: c.n, name: c.name, short: c.short, section: c.section, fader: c.fader,
-        meter: 0, gr: 0, mute: c.n === 4, solo: false, held: false, aiRecent: false,
+        meter: 0, gr: 0, mute: c.n === 4, solo: false, held: HELD0.some((h) => h.startsWith(`ch${c.n}.`)), aiRecent: false,
         role: c.n === 11 ? 'Trombone' : undefined,
       })),
       master: { lufsI: -16.2, lufsS: -16.0, truePeak: -1.4, limiterGr: 1.8 },
@@ -92,7 +98,7 @@ export class DemoShow {
       procs: [],
       feed: [],
       chat: DEMO_CHAT.map((m) => ({ ...m, id: id() })),
-      held: [],
+      held: [...HELD0],
       controls: {},
       demo: true,
       audio: null,
@@ -161,6 +167,7 @@ export class DemoShow {
         this.state.onAir = true;
         this.state.liveSince = now();
         this.state.held = [];
+        saveHeld([]);
         this.state.controls = {};
         for (const c of this.state.channels) c.held = false;
       },
@@ -231,6 +238,7 @@ export class DemoShow {
   hold(key: string, ch?: number) {
     if (!this.state.held.includes(key)) {
       this.state.held.push(key);
+      saveHeld(this.state.held);
       if (ch) {
         const c = this.state.channels[ch - 1];
         if (!c.held) {
@@ -405,6 +413,8 @@ export class DemoShow {
       case 'eq':
       case 'comp':
       case 'send':
+      case 'insert':
+      case 'gate':
         this.hold(`ch${a.ch}.${a.type}`, a.ch);
         break;
     }

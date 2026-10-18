@@ -3,6 +3,7 @@ import type { ChannelState } from '@vibenation/shared';
 import { go } from '../../route';
 import { EXTRAS, KNOBS, MACROS, macroSub, type Band, type ChangeCard, type KnobKey, type MacroKey } from '../../demo/mix';
 import { EqGraph, EqPointEditor, EqTable } from './EqPanel';
+import { ChannelFx } from './ChannelFx';
 import { useMeters } from '../../store';
 import type { Section } from '@vibenation/shared';
 import { Knob } from './Knob';
@@ -33,7 +34,7 @@ export function SelectedPanel({ c, mix, bpm, ab, setAb, onBand, onAddBand, onRem
 }) {
   const [post, setPost] = useState(true);
   const [pick, setPick] = useState(0);
-  const [fx, setFx] = useState<'easy' | 'detail'>('easy');
+  const [fx, setFx] = useState<'easy' | 'detail'>(c.eq ? 'detail' : 'easy');
   const name = c.role ?? c.name;
   const bands = ab === 'A' ? mix.a : mix.bands;
   const selBand = Math.min(pick, Math.max(0, bands.length - 1));
@@ -122,6 +123,11 @@ export function SelectedPanel({ c, mix, bpm, ab, setAb, onBand, onAddBand, onRem
               })}
             </div>
             <span style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.4 }}>Each knob drives several settings at once. Turning one holds that effect for you for the rest of the show.</span>
+          </>
+        ) : c.eq ? (
+          <>
+            <ChannelFx c={c} />
+            <a href="#/fx" onClick={(e) => { e.preventDefault(); go('fx'); }} style={{ fontSize: 13, fontWeight: 700 }}>Open the effects rack →</a>
           </>
         ) : (
           <>

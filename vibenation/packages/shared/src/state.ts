@@ -68,6 +68,20 @@ export interface CompSettings {
   mix: number;
 }
 
+export interface GateSettings {
+  thresh: number;
+  range: number;
+  attack: number;
+  hold: number;
+  release: number;
+}
+
+/** One of the channel's character inserts (our own analog models), as the engine runs it. */
+export interface InsertState {
+  kind: string; // 'fet' | 'opto' | 'deesser' | 'pultec'
+  params: Record<string, number>;
+}
+
 export interface ChannelState {
   n: number;
   name: string;
@@ -91,6 +105,8 @@ export interface ChannelState {
   comp?: CompSettings | null;
   sends?: { plate: number | null; room: number | null; delay: number | null };
   noHpf?: boolean;
+  gate?: GateSettings | null; // bleed expander / gate
+  inserts?: InsertState[];
 }
 
 export interface AudioStatus {
@@ -232,5 +248,7 @@ export type ClientAction =
   | { type: 'eq'; ch: number; band: number; kind?: EqBand['kind']; f?: number; gain?: number; q?: number; remove?: boolean } // band >= current count adds a point
   | { type: 'comp'; ch: number; thresh?: number; ratio?: number; attack?: number; release?: number; makeup?: number; mix?: number }
   | { type: 'send'; ch: number; fx: 'plate' | 'room' | 'delay'; db: number | null }
+  | { type: 'insert'; ch: number; slot: number; params: Record<string, number> }
+  | { type: 'gate'; ch: number; thresh?: number; range?: number; attack?: number; hold?: number; release?: number }
   | { type: 'transport'; action: 'play' | 'pause' | 'seek' | 'load'; seconds?: number; set?: string }
   | { type: 'calibrate' };
