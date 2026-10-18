@@ -95,11 +95,11 @@ STRIPS: list[Strip] = [
     # Vox C, user's pick 18 Oct 2026: "C + intimate space" (vocal tutorials: keep 200 Hz warmth, slower attack = thicker,
     # reverb behind the voice with a long pre-delay, a little short room for closeness, a quiet 1/8 echo between phrases).
     Strip(9, 'Vocal centre', -2.0, 0, eq=[('hpf', 100, 0, 0.7), ('bell', 250, -2.0, 1.2), ('bell', 600, 0.0, 1.5), ('bell', 3000, 2.0, 1.0), ('hshelf', 10000, 3.5, 0.7)],
-          comp=Comp(-28, 4, 18, 150, 3), plate=-7, room=-10, delay=-16, rider=0.0),
-    Strip(10, 'Vocal piano', -2.3, -15, eq=[('hpf', 120, 0, 0.7)] + VOCAL_EQ[1:], comp=Comp(-26, 3, 12, 150, 3), plate=-10, rider=0.0),
+          comp=Comp(-28, 4, 18, 150, 3), gate=Gate(-50, 12, 1.5, 120, 300), plate=-7, room=-10, delay=-16, rider=0.0),
+    Strip(10, 'Vocal piano', -2.3, -15, eq=[('hpf', 120, 0, 0.7)] + VOCAL_EQ[1:], comp=Comp(-26, 3, 12, 150, 3), gate=Gate(-50, 12, 1.5, 120, 300), plate=-10, rider=0.0),
     Strip(11, 'Congas 1', -16.0, 35,
           eq=[('hpf', 90, 0, 0.7), ('bell', 350, -2.5, 1.2), ('bell', 4500, 2.5, 1.0)],
-          comp=Comp(-20, 4, 15, 80, 2, peak=True), room=-18),
+          comp=Comp(-20, 4, 15, 80, 2, peak=True), gate=Gate(-50, 12, 1.5, 120, 300), room=-18),
     Strip(12, 'Bass DI', -10.0, 0,
           eq=[('bell', 250, -2.0, 1.5), ('bell', 800, 2.0, 1.0), ('bell', 2500, 1.5, 1.0), ('lpf', 6000, 0, 0.7)],
           comp=Comp(-24, 4, 15, 150, 5), no_hpf=True),
@@ -130,6 +130,10 @@ MASTER_EQ: list[Band] = [('hpf', 30, 0, 0.7), ('lshelf', 90, 5.3, 0.6), ('bell',
 # matched to F the whole show"). Bands: (name, lo Hz, hi Hz, F target dB, MASTER_EQ index it steers).
 TONE_TARGET = [('sub', 20, 60, -8.8, 1), ('low', 60, 250, -3.3, 1), ('lowmid', 250, 800, -6.1, 3),
                ('mid', 800, 2500, -9.5, 4), ('pres', 2500, 6000, -14.8, 5), ('air', 6000, 16000, -18.4, 7)]
+# Bleed expander (user's pick 18 Oct 2026: "expander, gentle" on Vox C, Vox P and Congas 1): -12 dB between phrases,
+# 1.5 ms attack, 120 ms hold, 300 ms release. The threshold is learned live per channel from its own levels: 35% of
+# the way from the bleed level up to the singing level (90th percentile), so it holds whatever the preamp gain.
+EXPANDER_CH = (9, 10, 11)
 TONE_RANGE_DB = 2.0      # the keeper moves a band at most this far from MASTER_EQ
 TONE_STEP_DB = 0.1       # per update (every 30 s): 0.2 dB a minute, unnoticeable
 TONE_DEADBAND_DB = 1.0

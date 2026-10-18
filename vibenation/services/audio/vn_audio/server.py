@@ -72,6 +72,8 @@ class Engine:
         self.tone_hist: deque = deque(maxlen=1800)   # 3 min of master band energies while music plays (10 frames/s)
         self.tone_off = [0.0] * len(P.TONE_TARGET)   # keeper offsets on the steered MASTER_EQ bands (dB)
         self.last_tone = 0.0
+        self.exp_hist = {n: deque(maxlen=1800) for n in P.EXPANDER_CH}  # 3 min of raw levels (10 frames/s)
+        self.last_exp = 0.0
         self.arr = Arrangement()  # lead/backing vocals, solos, auto-mute of idle channels
         # Drum faders from the meters, at soundcheck only (see _ride_drums).
         self.drum_share: dict[int, deque] = {n: deque(maxlen=150) for n in DRUMS}
@@ -144,6 +146,7 @@ class Engine:
         self.limiter_hist.append((time.time(), self.limiter_gr))
         self._level(m)
         self._keep_tone(m)
+        self._learn_expanders(f['raw'])
         self._calibrate(f['raw'])
         self._ride(f)
         self._follow_arrangement(f)
@@ -190,6 +193,35 @@ class Engine:
         if abs(g - self.graph.master_gain) >= 0.05:
             self.graph.master_gain = round(g, 2)
             self.graph.apply_drive()
+
+    def _learn_expanders(self, raw: list[float]) -> None:
+        """Bleed expanders on the vocal mics: every 10 s, set each threshold between that mic's bleed level and
+        its singing level (35% up from the bleed), learned from the last 3 minutes (moves at most 1 dB a step)."""
+        if not self.running():
+            return
+        for n in P.EXPANDER_CH:
+            if raw[n - 1] > -90:
+                self.exp_hist[n].append(raw[n - 1])
+        now = time.time()
+        if now - self.last_exp < 10:
+            return
+        self.last_exp = now
+        for n in P.EXPANDER_CH:
+            st = self.graph.strips.get(n)
+            h = self.exp_hist[n]
+            if st is None or st.gate is None or len(h) < 300:
+                continue
+            a = np.array(h)
+            sing = float(np.percentile(a, 90))
+            band = a[(a > sing - 35) & (a < sing - 8)]
+            if len(band) < 50:
+                continue  # no clear bleed below the singing yet
+            bleed = float(np.percentile(band, 30))
+            want = bleed + 0.35 * (sing - bleed)  # nearer the bleed than the voice: soft low notes stay open (matches the approved test clips)
+            new = round(st.gate.thresh + max(-1.0, min(1.0, want - st.gate.thresh)), 1)
+            if abs(new - st.gate.thresh) >= 0.2:
+                st.gate.thresh = new
+                self.graph.apply_strip(n)
 
     def _keep_tone(self, m: dict) -> None:
         """Tone keeper (user: Mix F's tone consistently, the whole show): over the last 3 minutes of
