@@ -75,6 +75,7 @@ class Engine:
         self.exp_hist = {n: deque(maxlen=1800) for n in P.EXPANDER_CH}  # 3 min of raw levels (10 frames/s)
         self.last_exp = 0.0
         self.arr = Arrangement()  # lead/backing vocals, solos, auto-mute of idle channels
+        self.arr.balance_locked = P.BALANCE_LOCKED
         # Drum faders from the meters, at soundcheck only (see _ride_drums).
         self.drum_share: dict[int, deque] = {n: deque(maxlen=150) for n in DRUMS}
         self.drum_done: set[int] = set()
@@ -291,6 +292,8 @@ class Engine:
         """Vocal/solo rider: keeps a channel near its own running level (+ Claude's offset),
         only while the source itself is playing. Up 0.5 dB/s, down 1 dB/s, within ±2 dB (gentle:
         the balance must not audibly move)."""
+        if P.BALANCE_LOCKED:  # the user's saved balance: nothing automatic moves it
+            return
         g = self.graph
         for n, s in g.strips.items():
             if s.rider is None:
@@ -412,6 +415,8 @@ class Engine:
         brought to P.DRUM_SHARE, then the fader is left alone for the rest of the show (user rule: drum
         faders follow the actual meters, but don't travel during the show). A drum fader someone sets by
         hand during soundcheck is left where they put it. Steps of at most 0.5 dB every 2 s, ±6 dB of the preset."""
+        if P.BALANCE_LOCKED:  # the user's saved balance: nothing automatic moves it
+            return
         now = time.time()
         if not self.running() or now > self.calibrating_until:
             return
@@ -452,6 +457,8 @@ class Engine:
         non-vocal channels (their balance against each other stays as set). Only learns while
         a vocal is actually singing; moves at most 0.25 dB every 2 s, range -3..+2 dB (Mix F holds:
         a wider range swung the whole band by 12 dB on the 17 Oct live test)."""
+        if P.BALANCE_LOCKED:  # the user's saved balance: nothing automatic moves it
+            return
         if not self.keeper_on:
             return
         g = self.graph
@@ -703,6 +710,11 @@ class Engine:
             self.set_source(str(c.get('source')))
         elif t == 'calibrate':
             self.start_calibration(float(c.get('minutes', 20)))
+        elif t == 'master_fader':
+            # A person moved the master fader: it is theirs now, so the automatic leveller stops riding it.
+            self.leveller_on = False
+            g.master_gain = max(-20.0, min(P.MAX_DRIVE_DB, float(c['db'])))
+            g.apply_drive()
         elif t == 'auto':
             # Test renders (A/B pages): hold the automatic moves still. {"leveller": bool, "keeper": bool,
             # "tone": bool, "drive": dB, "band_offset": dB} — every key optional.

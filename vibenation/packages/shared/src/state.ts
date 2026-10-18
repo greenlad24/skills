@@ -225,6 +225,8 @@ export interface MeterFrame {
   spec?: number[][];
   masterSpec?: number[];
   peakDb?: number[];
+  /** Channels the engine has muted because nobody plays them (they open when the player comes in). */
+  autoMuted?: number[];
 }
 
 export type ServerMessage = { type: 'state'; state: ShowState } | MeterFrame;
@@ -249,6 +251,7 @@ export type ClientAction =
   | { type: 'comp'; ch: number; thresh?: number; ratio?: number; attack?: number; release?: number; makeup?: number; mix?: number }
   | { type: 'send'; ch: number; fx: 'plate' | 'room' | 'delay'; db: number | null }
   | { type: 'insert'; ch: number; slot: number; params: Record<string, number> }
+  | { type: 'master_fader'; db: number } // master drive (dB); holding it turns the automatic leveller off
   | { type: 'gate'; ch: number; thresh?: number; range?: number; attack?: number; hold?: number; release?: number }
   | { type: 'transport'; action: 'play' | 'pause' | 'seek' | 'load'; seconds?: number; set?: string }
   | { type: 'calibrate' };

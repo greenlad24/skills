@@ -1,6 +1,6 @@
 import { memo, useState, type CSSProperties } from 'react';
 import type { ChannelState } from '@vibenation/shared';
-import { send } from '../../store';
+import { send, useAutoMuted } from '../../store';
 import { MINI_EQ, SECTION_COLOR, specFor } from '../../demo/mix';
 import { ChannelGr, ChannelMeter } from './Meters';
 import { Fader, faderText } from './Fader';
@@ -21,6 +21,7 @@ const tagBase: CSSProperties = { fontSize: 9, fontWeight: 800, letterSpacing: '0
 /** One channel bay. Name/ring select it; meters update on their own. */
 export const Strip = memo(function Strip({ c, selected, fine, compOn, onPick }: { c: ChannelState; selected: boolean; fine: boolean; compOn: boolean; onPick: (n: number) => void }) {
   const [local, setLocal] = useState<number | null>(null);
+  const auto = useAutoMuted(c.n) && !c.mute; // muted by the engine: nobody plays it right now
   const db = local ?? c.fader;
   const col = SECTION_COLOR[c.section];
   const i = c.n - 1;
@@ -54,11 +55,13 @@ export const Strip = memo(function Strip({ c, selected, fine, compOn, onPick }: 
       <ChannelGr i={i} fallback={c.gr} />
       <span style={{ display: 'flex', gap: 4, width: '100%' }}>
         <button onClick={() => send({ type: 'solo', ch: c.n, on: !c.solo })} aria-pressed={c.solo} aria-label={`Solo ${name}`} style={sm(c.solo, '#F5EEE6', '#140D09')}>S</button>
-        <button onClick={() => send({ type: 'mute', ch: c.n, on: !c.mute })} aria-pressed={c.mute} aria-label={`Mute ${name}`} style={sm(c.mute, '#F5EEE6', '#140D09')}>M</button>
+        <button onClick={() => send({ type: 'mute', ch: c.n, on: !c.mute })} aria-pressed={c.mute} aria-label={auto ? `${name} is muted automatically (not playing); press to mute it yourself` : `Mute ${name}`}
+          title={auto ? 'Muted automatically: nobody is playing it. It opens by itself when the instrument comes in.' : undefined}
+          style={auto ? { ...sm(true, 'rgba(185,166,255,0.22)', 'var(--ai-text)'), boxShadow: 'inset 0 0 0 1px rgba(185,166,255,0.5)' } : sm(c.mute, '#F5EEE6', '#140D09')}>M</button>
       </span>
-      <span style={{ padding: '3px 0', width: '100%', textAlign: 'center', borderRadius: 6, background: 'rgba(0,0,0,0.35)', fontFamily: 'var(--font-mono)', fontSize: 11, color: '#E9DED2' }}>{c.mute ? 'mute' : faderText(db)}</span>
+      <span style={{ padding: '3px 0', width: '100%', textAlign: 'center', borderRadius: 6, background: 'rgba(0,0,0,0.35)', fontFamily: 'var(--font-mono)', fontSize: 11, color: auto ? 'var(--ai-text)' : '#E9DED2' }}>{c.mute ? 'mute' : auto ? 'auto mute' : faderText(db)}</span>
       <span style={{ height: 180, display: 'flex', gap: 4, alignItems: 'flex-end' }}>
-        <ChannelMeter i={i} muted={c.mute} fallback={c.meter} />
+        <ChannelMeter i={i} muted={c.mute} fallback={c.meter} idle={auto} />
         <Fader ch={c.n} name={name} db={db} fine={fine} onLocal={setLocal} />
       </span>
       {c.held ? (
@@ -76,7 +79,7 @@ export const Strip = memo(function Strip({ c, selected, fine, compOn, onPick }: 
       <button onClick={() => onPick(c.n)} aria-label={`Select channel ${c.n}`} style={{
         width: 34, height: 34, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, cursor: 'pointer',
         fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 13, color: 'var(--text-1)', background: 'radial-gradient(circle at 50% 35%, #2A211B, #120D0A)',
-        border: `2px solid ${col}`, boxShadow: `0 0 ${selected ? '16px' : '8px'} ${col}`, opacity: c.mute ? 0.4 : 1,
+        border: `2px solid ${col}`, boxShadow: `0 0 ${selected ? '16px' : '8px'} ${col}`, opacity: c.mute || auto ? 0.4 : 1,
       }}>{c.n}</button>
     </div>
   );

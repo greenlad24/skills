@@ -124,6 +124,7 @@ export class AudioLink {
       peakDb: post,
       spec: f.spec,
       masterSpec: f.master.spec,
+      autoMuted: f.arrangement?.muted ?? [],
       master: { lufsI: f.master.lufsI, lufsS: f.master.lufsS, lufsM: f.master.lufsM, truePeak: f.master.truePeak, limiterGr: f.master.limiterGr, drive: f.master.drive },
     });
   }
@@ -131,7 +132,7 @@ export class AudioLink {
   /** Forward a browser action to the engine if it's a mix action. Returns true if handled. */
   forward(a: ClientAction): boolean {
     if (!this.connected || !this.ws) return false;
-    const mixTypes = ['fader', 'mute', 'solo', 'pan', 'eq', 'comp', 'send', 'insert', 'gate', 'transport', 'calibrate'];
+    const mixTypes = ['fader', 'mute', 'solo', 'pan', 'eq', 'comp', 'send', 'insert', 'gate', 'master_fader', 'transport', 'calibrate'];
     if (!mixTypes.includes(a.type)) return false;
     this.ws.send(JSON.stringify(a));
     return true;

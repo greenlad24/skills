@@ -189,3 +189,30 @@ MASTER_CONSOLE = {'drive': 0, 'colour': 40, 'crosstalk': 0}
 MAX_DRIVE_DB = 12.0  # leveller drive ceiling: more only pushes weak live inputs into the limiter
 MASTER_BUS = {'threshold': -10, 'ratio': 0, 'attack': 10, 'release': 4, 'sc_hpf': 90, 'makeup': 0, 'mix': 80}  # parallel 'New York' glue: density without losing punch
 MASTER_TAPE = {'speed': 1, 'drive': 0, 'saturation': 30, 'bias': 50, 'bump': 40, 'wow': 0, 'flutter': 0, 'mix': 50}
+
+# ---- The user's saved balance (18 Oct 2026, 23:27: "save the current balance - that should be the balance from now on
+# with no changes to it"). Faders, pans and EQ exactly as set by hand on the demo; nothing automatic moves them. ----
+BALANCE_LOCKED = True  # no automatic balance moves: no vocal riders, no lead/backing or solo offsets, no band offset, no AI fader moves
+BAND_OFFSET_FIXED = 2.0
+SAVED_BALANCE: dict[int, dict] = {
+    1: {'fader': -3.5, 'pan': 0.0, 'eq': [('lshelf', 37.0, -4.0, 1.0), ('bell', 3775.0, -3.0, 1.2), ('lpf', 6490.0, 0.0, 0.7), ('bell', 160.0, 3.5, 1.0)]},
+    2: {'fader': -4.5, 'pan': 0.0, 'eq': [('bell', 200.0, 2.3, 1.0), ('bell', 2500.0, -0.5, 1.0), ('bell', 8000.0, -1.0, 1.0)]},
+    3: {'fader': -19.0, 'pan': 0.0, 'eq': [('hpf', 250.0, 0.0, 0.7), ('hshelf', 9000.0, -1.0, 0.7)]},
+    4: {'fader': -18.0, 'pan': -20.0, 'eq': [('hpf', 100.0, 0.0, 0.7), ('bell', 250.0, -2.5, 1.2), ('bell', 1000.0, -3.0, 4.0), ('hshelf', 12000.0, 1.5, 0.7)]},
+    5: {'fader': -5.3, 'pan': 35.0, 'eq': [('hpf', 110.0, 0.0, 0.7), ('bell', 2000.0, 1.5, 1.0)]},
+    6: {'fader': -8.9, 'pan': -100.0, 'eq': [('lshelf', 100.0, -12.0, 0.8), ('bell', 2727.0, -3.5, 7.3), ('bell', 1000.0, 0.0, 1.0)]},
+    7: {'fader': -1.0, 'pan': 100.0, 'eq': [('lshelf', 163.0, -12.0, 0.8), ('bell', 2727.0, -3.0, 2.8), ('bell', 227.0, -1.0, 1.0)]},
+    8: {'fader': -13.5, 'pan': -45.0, 'eq': []},
+    9: {'fader': 1.0, 'pan': 0.0, 'eq': [('hpf', 100.0, 0.0, 0.7), ('bell', 250.0, -2.0, 1.2), ('bell', 600.0, 0.0, 1.5), ('bell', 2742.0, 1.5, 1.0), ('hshelf', 10000.0, 3.5, 0.7)]},
+    10: {'fader': 1.0, 'pan': -15.0, 'eq': [('hpf', 120.0, 0.0, 0.7), ('bell', 250.0, -3.0, 1.2), ('bell', 600.0, 0.0, 1.5), ('bell', 2000.0, 0.0, 1.0), ('hshelf', 10000.0, 2.0, 0.7)]},
+    11: {'fader': 1.0, 'pan': 35.0, 'eq': [('hpf', 90.0, 0.0, 0.7), ('bell', 350.0, -2.5, 1.2), ('bell', 4500.0, 2.5, 1.0)]},
+    12: {'fader': -4.0, 'pan': 0.0, 'eq': [('bell', 55.0, 1.0, 1.0), ('bell', 250.0, -1.0, 1.0), ('bell', 700.0, 2.0, 1.2), ('bell', 1000.0, -3.0, 1.0), ('bell', 2500.0, 1.5, 1.0), ('bell', 35.0, 1.0, 1.0)]},
+    13: {'fader': -20.0, 'pan': 50.0, 'eq': [('hpf', 90.0, 0.0, 0.7), ('bell', 350.0, -2.5, 1.2), ('bell', 4500.0, 2.5, 1.0)]},
+    14: {'fader': -4.0, 'pan': 0.0, 'eq': [('bell', 51.0, -2.5, 1.0), ('bell', 200.0, -3.0, 0.4), ('bell', 424.0, 2.0, 1.2), ('bell', 916.0, -5.5, 1.0), ('bell', 2114.0, -2.5, 1.0), ('lshelf', 71.0, -12.0, 1.0)]},
+    15: {'fader': -14.2, 'pan': -25.0, 'eq': [('hpf', 120.0, 0.0, 0.7), ('bell', 400.0, -2.5, 1.2), ('bell', 2100.0, -1.5, 4.0), ('bell', 4000.0, -1.5, 4.0), ('hshelf', 8000.0, 2.0, 0.7)]},
+    16: {'fader': -17.5, 'pan': 25.0, 'eq': [('hpf', 120.0, 0.0, 0.7), ('bell', 250.0, 1.0, 1.0), ('bell', 1200.0, -2.0, 1.5), ('bell', 3500.0, -3.0, 1.5), ('lpf', 9000.0, 0.0, 0.7)]},
+}
+for _s in STRIPS:
+    _b = SAVED_BALANCE.get(_s.n)
+    if _b:
+        _s.fader, _s.pan, _s.eq = _b['fader'], _b['pan'], list(_b['eq'])

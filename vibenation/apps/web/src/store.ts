@@ -49,6 +49,11 @@ export function useMeters() {
   return useSyncExternalStore((f) => { meterSubs.add(f); return () => meterSubs.delete(f); }, () => meters);
 }
 
+/** True while the engine keeps this channel muted because nobody plays it (re-renders only when that flips). */
+export function useAutoMuted(n: number) {
+  return useSyncExternalStore((f) => { meterSubs.add(f); return () => meterSubs.delete(f); }, () => !!meters?.autoMuted?.includes(n));
+}
+
 /** Elapsed "HH:MM:SS" since a timestamp, ticking every second. */
 export function useElapsed(since: number | null) {
   const [, tick] = useState(0);

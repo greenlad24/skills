@@ -39,6 +39,8 @@ interface Reply {
 
 const BASE = Object.fromEntries(CHANNELS.map((c) => [c.n, c]));
 const LOCKED_FADERS = new Set([1, 2, 3, 9, 10]); // kick, snare, OH, vocals: ±1 dB once balanced (band rule)
+// The user's saved balance (18 Oct 2026, 23:27): "that should be the balance from now on with no changes to it".
+const BALANCE_LOCKED = true;
 const FADER_RANGE_DB = 2; // every other channel: Mix F all night, ±2 dB at most (user, 17 Oct 2026: no big swings)
 const LOCKED_EQ = new Set([1, 14]); // kick and synth bass tone: set with the user, Claude doesn't re-carve it
 const PIANO = new Set([6, 7]);
@@ -55,6 +57,7 @@ Band rules (always obey):
 - Vocals on top: the lead vocal (whichever of ch 9 / 10 the arrangement follower names) must stay intelligible; backing vocals sit about 3 dB under it automatically. Target lead-vocal-to-band ratio (LAR) about +2 dB: clear but sitting in the band, like the reference (user, 17 Oct 2026).
 - No high-pass filter ever on kick (1), bass DI (12) or synth bass (14). Kick and bass work hand in hand; bass impressive but never overshadowing.
 - Synth bass (14) is a feature of this band's sound (user preference): full, defined and lean in the sub (Scary Pockets-style), fader floor -12 dB.
+- FADERS ARE LOCKED: the user saved this balance (18 Oct 2026) and wants no changes to it. Never propose fader or rider moves.
 - Piano (6+7, a stereo pair: always move both the same) is rich and clearly audible (user wants more piano), sits in the low-mids behind the singer: fader floor -9 dB.
 - Harmonica (16) can be very sharp: soften, never harsh. Sax (15) clear, never honky or harsh.
 - Drums are prominent (band preference): a round, warm kick like Scary Pockets (low thump, little beater click; user 18 Oct 2026) and a snare that drives the groove, just under the vocals. Never make them smaller with EQ, compression or sends; if something fights them, move that instead.
@@ -228,7 +231,7 @@ export class MixerLoop {
     const pair = PIANO.has(n) ? (n === 6 ? 7 : 6) : null;
 
     if (c.action === 'fader') {
-      if (this.host.isHeld(`ch${n}.fader`)) return null;
+      if (BALANCE_LOCKED || this.host.isHeld(`ch${n}.fader`)) return null;
       const base = BASE[n].fader;
       const lo = LOCKED_FADERS.has(n) ? base - 1 : base - FADER_RANGE_DB;
       const hi = LOCKED_FADERS.has(n) ? base + 1 : base + FADER_RANGE_DB;

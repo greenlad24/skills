@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { CHANNELS } from '@vibenation/shared';
+import { CHANNELS, type ClientAction } from '@vibenation/shared';
 import { fmtDb } from '../../store';
 import { sendSoon } from './sendSoon';
 
@@ -33,7 +33,11 @@ const round = (db: number) => Math.round(db * 10) / 10;
 
 /** Draggable fader cap (`db` is what to show; `onLocal` sets/clears the parent's local override). Drag is relative (no jump); FINE makes it 4× finer.
  *  Double-click resets to the channel's starting level. Arrow keys nudge. */
-export function Fader({ ch, name, db, fine, onLocal }: { ch: number; name: string; db: number; fine: boolean; onLocal: (db: number | null) => void }) {
+export function Fader({ ch, name, db, fine, onLocal, toAction, resetDb }: {
+  ch: number; name: string; db: number; fine: boolean; onLocal: (db: number | null) => void;
+  /** For non-channel faders (master): the action to send, and the double-click level. */
+  toAction?: (db: number) => ClientAction; resetDb?: number;
+}) {
   const drag = useRef<{ y: number; p: number } | null>(null);
   const release = useRef<number>();
   const shown = db; // parent shows its local value while dragging
@@ -44,7 +48,7 @@ export function Fader({ ch, name, db, fine, onLocal }: { ch: number; name: strin
   const commit = (v: number) => {
     const d = round(Math.min(MAX_DB, Math.max(MIN_DB, v)));
     setL(d);
-    sendSoon(`ch${ch}.fader`, { type: 'fader', ch, db: d });
+    sendSoon(toAction ? `${name}.fader` : `ch${ch}.fader`, toAction ? toAction(d) : { type: 'fader', ch, db: d });
     clearTimeout(release.current);
     if (!drag.current) release.current = window.setTimeout(() => setL(null), 600);
   };
@@ -66,7 +70,7 @@ export function Fader({ ch, name, db, fine, onLocal }: { ch: number; name: strin
       }}
       onPointerUp={() => { drag.current = null; release.current = window.setTimeout(() => setL(null), 600); }}
       onPointerCancel={() => { drag.current = null; setL(null); }}
-      onDoubleClick={() => commit(CHANNELS.find((c) => c.n === ch)?.fader ?? 0)}
+      onDoubleClick={() => commit(resetDb ?? CHANNELS.find((c) => c.n === ch)?.fader ?? 0)}
       onKeyDown={(e) => {
         const step = fine ? 0.1 : 0.5;
         if (e.key === 'ArrowUp') commit(shown + step);

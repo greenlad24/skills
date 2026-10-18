@@ -34,23 +34,24 @@ export interface ChannelDef {
 }
 
 /** The band's 16 MR18 channels (USB Analog tap). Roles on 11, 15, 16 can switch live. */
+// Faders = the user's saved balance (18 Oct 2026, 23:27), locked: nothing automatic moves them.
 export const CHANNELS: ChannelDef[] = [
-  { n: 1, name: 'Kick', short: 'Kick', section: 'drums', fader: -17.0, noHpf: true }, // V3: MEGAMI's kick + rules (user, 18 Oct 2026)
-  { n: 2, name: 'Snare', short: 'Snare', section: 'drums', fader: -12.3 }, // S3 on MEGAMI's snare: warmer, +5 dB over MEGAMI (user, 18 Oct 2026)
-  { n: 3, name: 'Overheads', short: 'OH', section: 'drums', fader: -32.0 }, // 20 dB under MEGAMI's level (user, 18 Oct 2026)
-  { n: 4, name: 'Acoustic DI', short: 'Ac DI', section: 'gtr', fader: -18 }, // supporting: 4 dB back (user, 17 Oct 2026)
-  { n: 5, name: 'Guitar amp', short: 'Gtr amp', section: 'gtr', fader: -8.6 }, // V3: +4 dB over MEGAMI (user, 18 Oct 2026)
-  { n: 6, name: 'Piano L', short: 'Piano L', section: 'keys', fader: -2.4 }, // V3: MEGAMI -1.5 dB (user, 18 Oct 2026)
-  { n: 7, name: 'Piano R', short: 'Piano R', section: 'keys', fader: -4.1 }, // V3: MEGAMI -1.5 dB
-  { n: 8, name: 'Guitar DI', short: 'Gtr DI', section: 'gtr', fader: -17 }, // supporting
-  { n: 9, name: 'Vocal centre', short: 'Vox C', section: 'vox', fader: -2 },
-  { n: 10, name: 'Vocal piano', short: 'Vox P', section: 'vox', fader: -2.3 },
-  { n: 11, name: 'Congas 1', short: 'Congas', section: 'perc', fader: -16 },
-  { n: 12, name: 'Bass DI', short: 'Bass DI', section: 'bass', fader: -14.7, noHpf: true }, // same mix as the synth bass (user, 18 Oct 2026)
-  { n: 13, name: 'Congas 2', short: 'Congas 2', section: 'perc', fader: -20 }, // supporting
-  { n: 14, name: 'Synth bass', short: 'Synth B', section: 'bass', fader: -14.7, noHpf: true }, // V3: MEGAMI -1.2 dB (user, 18 Oct 2026)
-  { n: 15, name: 'Saxophone', short: 'Sax', section: 'horn', fader: -6.1 }, // supporting
-  { n: 16, name: 'Harmonica', short: 'Harm', section: 'horn', fader: -14 }, // supporting
+  { n: 1, name: 'Kick', short: 'Kick', section: 'drums', fader: -3.5, noHpf: true }, // V3: MEGAMI's kick + rules (user, 18 Oct 2026)
+  { n: 2, name: 'Snare', short: 'Snare', section: 'drums', fader: -4.5 }, // S3 on MEGAMI's snare: warmer, +5 dB over MEGAMI (user, 18 Oct 2026)
+  { n: 3, name: 'Overheads', short: 'OH', section: 'drums', fader: -19.0 }, // 20 dB under MEGAMI's level (user, 18 Oct 2026)
+  { n: 4, name: 'Acoustic DI', short: 'Ac DI', section: 'gtr', fader: -18.0 }, // supporting: 4 dB back (user, 17 Oct 2026)
+  { n: 5, name: 'Guitar amp', short: 'Gtr amp', section: 'gtr', fader: -5.3 }, // V3: +4 dB over MEGAMI (user, 18 Oct 2026)
+  { n: 6, name: 'Piano L', short: 'Piano L', section: 'keys', fader: -8.9 }, // V3: MEGAMI -1.5 dB (user, 18 Oct 2026)
+  { n: 7, name: 'Piano R', short: 'Piano R', section: 'keys', fader: -1.0 }, // V3: MEGAMI -1.5 dB
+  { n: 8, name: 'Guitar DI', short: 'Gtr DI', section: 'gtr', fader: -13.5 }, // supporting
+  { n: 9, name: 'Vocal centre', short: 'Vox C', section: 'vox', fader: 1.0 },
+  { n: 10, name: 'Vocal piano', short: 'Vox P', section: 'vox', fader: 1.0 },
+  { n: 11, name: 'Congas 1', short: 'Congas', section: 'perc', fader: 1.0 },
+  { n: 12, name: 'Bass DI', short: 'Bass DI', section: 'bass', fader: -4.0, noHpf: true }, // same mix as the synth bass (user, 18 Oct 2026)
+  { n: 13, name: 'Congas 2', short: 'Congas 2', section: 'perc', fader: -20.0 }, // supporting
+  { n: 14, name: 'Synth bass', short: 'Synth B', section: 'bass', fader: -4.0, noHpf: true }, // V3: MEGAMI -1.2 dB (user, 18 Oct 2026)
+  { n: 15, name: 'Saxophone', short: 'Sax', section: 'horn', fader: -14.2 }, // supporting
+  { n: 16, name: 'Harmonica', short: 'Harm', section: 'horn', fader: -17.5 }, // supporting
 ];
 
 export const LOUDNESS_TARGET = { lufsI: -16, truePeakDb: -1 } as const;

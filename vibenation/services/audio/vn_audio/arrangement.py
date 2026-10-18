@@ -41,7 +41,7 @@ LINE = (6, 7, 14)                     # line inputs (keys, synth bass): no bleed
 # frames, whatever the classifier hears. Measured on the demo sets and the venue clips of 17 Oct: sax bleed never
 # passes -42 dBFS, congas 2 bleed -47.5, the harmonica mic's bleed reaches about -35; an idle plugged-in DI hums
 # around -60 and a played one sits near -35.
-STRICT_OPEN = {4: -45.0, 8: -45.0, 12: -45.0, 13: -40.0, 15: -40.0, 16: -34.0}
+STRICT_OPEN = {4: -45.0, 8: -45.0, 11: -40.0, 12: -45.0, 13: -40.0, 15: -40.0, 16: -34.0}  # congas 1 like congas 2 (venue clip bleed peaked at -42.9)
 
 BACKING_DB = -3.0
 SOLO_DB = 2.0
@@ -72,6 +72,7 @@ class ChannelState:
 
 class Arrangement:
     def __init__(self) -> None:
+        self.balance_locked = False  # set by the engine from presets.BALANCE_LOCKED (this module stays pure logic)
         self.ch = {n: ChannelState(silent_s=0.0, muted=False) if n in CORE else ChannelState() for n in range(1, 17)}
         self.lead: int | None = None
         self.challenger: tuple[int, float] | None = None   # (channel, seconds winning)
@@ -188,7 +189,8 @@ class Arrangement:
         return ''
 
     def _targets(self) -> dict[int, float]:
-        want_db = {'lead': 0.0, 'backing': BACKING_DB, 'solo': SOLO_DB, 'muted': MUTE_DB, '': 0.0}
+        locked = self.balance_locked  # the user's saved balance: only auto-mute, no lead/backing/solo moves
+        want_db = {'lead': 0.0, 'backing': 0.0 if locked else BACKING_DB, 'solo': 0.0 if locked else SOLO_DB, 'muted': MUTE_DB, '': 0.0}
         changed = {}
         for n, c in self.ch.items():
             if n in self.held:

@@ -92,7 +92,7 @@ class MixGraph:
         self.conv_on: set[int] = set()  # channels running their impulse response (stereo into the mixer)
         self.solo = {n: False for n in self.strips}
         self.global_trim = 0.0  # unused (kept for saved-state compatibility)
-        self.band_offset = 0.0  # "vocals on top": shared offset on every non-vocal channel (dB)
+        self.band_offset = P.BAND_OFFSET_FIXED if P.BALANCE_LOCKED else 0.0  # "vocals on top": shared offset on every non-vocal channel (dB)
         self.master_eq_live: list[P.Band] | None = None  # MASTER_EQ + tone keeper offsets
         self.fx_duck = 0.0  # dB on the plate/echo returns while the lead vocal sings 
         self.ride: dict[int, float] = {}  # current rider gain per channel (dB)
@@ -367,6 +367,8 @@ class MixGraph:
                 self.fx[k].update(v)
         self.master_gain = min(P.MAX_DRIVE_DB, float(data.get('master_gain', 0.0)))
         self.band_offset = max(-3.0, min(2.0, float(data.get('band_offset', 0.0))))  # same range as the keeper
+        if P.BALANCE_LOCKED:
+            self.band_offset = P.BAND_OFFSET_FIXED  # the user's saved balance was set with this offset in place
 
     def snapshot(self) -> dict:
         return {

@@ -417,6 +417,9 @@ export class DemoShow {
       case 'gate':
         this.hold(`ch${a.ch}.${a.type}`, a.ch);
         break;
+      case 'master_fader':
+        this.hold('master.fader');
+        break;
     }
     this.refreshProcs();
     this.push();
