@@ -90,7 +90,10 @@ class Engine:
         if os.path.exists(self.state_file):
             try:
                 with open(self.state_file) as fh:
-                    self.graph.load(json.load(fh))
+                    data = json.load(fh)
+                    for st in data.get('strips', {}).values():  # drop notches saved before they were made temporary
+                        st['eq'] = [b for b in st.get('eq', []) if not _is_notch(b)]
+                    self.graph.load(data)
                 log.info('restored mix from %s', self.state_file)
             except (OSError, ValueError) as e:
                 log.warning('could not restore mix: %s', e)
@@ -581,7 +584,10 @@ class Engine:
         os.makedirs(DATA, exist_ok=True)
         tmp = self.state_file + '.tmp'
         with open(tmp, 'w') as fh:
-            json.dump(self.graph.snapshot(), fh)
+            snap = self.graph.snapshot()
+            for st in snap.get('strips', {}).values():  # emergency feedback notches are temporary: never saved
+                st['eq'] = [b for b in st.get('eq', []) if not _is_notch(b)]
+            json.dump(snap, fh)
         os.replace(tmp, self.state_file)
 
     def broadcast(self, msg: dict) -> None:
@@ -733,6 +739,11 @@ class Engine:
         st = self.state()
         self.broadcast(st)
         return st
+
+
+def _is_notch(b) -> bool:
+    """The feedback guard's notch: a bell at -9 dB with Q 30 (nothing else uses Q 30)."""
+    return b[0] == 'bell' and float(b[3]) == 30.0 and float(b[2]) == -9.0
 
 
 def _offer(q: asyncio.Queue, data: str) -> None:
