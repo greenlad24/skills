@@ -113,7 +113,10 @@ STRIPS: list[Strip] = [
 # Stream master: light glue, gentle equal-loudness EQ, true-peak limiter.
 # Tuned 17 Oct 2026 by A/B on the same passage: the old top end measured ~8 dB dark (air -24.6 vs ~-19).
 # No mid cuts: they took the piano's body away (user, 17 Oct 2026: "lacking the piano").
-MASTER_EQ: list[Band] = [('hpf', 30, 0, 0.7), ('lshelf', 100, 0.5, 0.7), ('bell', 250, -2.0, 1.0), ('bell', 3000, 0.5, 0.8), ('hshelf', 6000, 6.5, 0.7)]  # F: toward Scary Pockets (user's choice 17 Oct 2026)
+MASTER_EQ: list[Band] = [('hpf', 30, 0, 0.7), ('bell', 50, 1.5, 0.8), ('lshelf', 100, 0.5, 0.7), ('bell', 250, -2.0, 1.0),
+                         ('bell', 400, -1.5, 1.2), ('bell', 1500, 1.0, 0.9), ('bell', 3000, 0.5, 0.8), ('hshelf', 6000, 6.5, 0.7)]
+# F: toward Scary Pockets (user's choice 17 Oct 2026). The 50 / 400 / 1500 Hz bands (user OK 18 Oct) come from the 17 Oct
+# live recording: 3 dB less sub than the reference, 1-1.5 dB more 250-800 Hz box, 2 dB less 0.8-2.5 kHz definition.
 MASTER_COMP = Comp(-14, 2, 30, 200, 0)
 TARGET_LUFS = -16.0
 VOCALS = {9, 10}  # lead + second vocal: never pulled down by the band offset
