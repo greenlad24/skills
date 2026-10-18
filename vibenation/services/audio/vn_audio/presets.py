@@ -153,7 +153,7 @@ DRUM_SHARE = {1: -10.7, 2: -9.5, 3: -56.7}  # snare +5 dB (S3), overheads -17 dB
 
 # Shared effect returns (100% wet).
 FX = {
-    'plate': {'decay': 1.8, 'predelay': 80, 'low_cut': 250, 'high_cut': 7000, 'return_db': -6.0},  # Vox C intimate space (18 Oct 2026)
+    'plate': {'decay': 1.8, 'predelay': 80, 'low_cut': 300, 'high_cut': 5000, 'return_db': -6.0},  # intimate space, darker so it sits under the voice (user 18 Oct)
     'room': {'decay': 0.6, 'predelay': 5, 'size': 12, 'in_high_cut': 8000, 'return_db': -6.0},
     'delay': {'note': 0.5, 'feedback': 0.3, 'hpf': 400, 'lpf': 6000, 'return_db': -6.0},
 }
