@@ -601,7 +601,8 @@ class Engine:
         elif t in ('mute', 'solo') and s:
             getattr(g, t)[n] = bool(c['on'])
             g.apply_fader(n)
-            g.apply_sends(n)
+            for k in (g.strips if t == 'solo' else (n,)):  # a solo changes every channel's effect sends
+                g.apply_sends(k)
         elif t == 'send' and s and c.get('fx') in ('plate', 'room', 'delay'):
             setattr(s, c['fx'], None if c.get('db') is None else max(-60.0, min(6.0, float(c['db']))))
             g.apply_sends(n)

@@ -240,7 +240,8 @@ class MixGraph:
         # Sends are post-fader: send gain = fader gain x send level.
         for k, inst in SEND.items():
             db = getattr(s, k)
-            on = db is not None and not self.mute[n]
+            soloing = any(self.solo.values())
+            on = db is not None and not self.mute[n] and (not soloing or self.solo[n])  # solo silences the others' effect sends too
             self.mh.param(inst, f'cg_{n}', min(3.98107, lin(self.gain_db(n) + db)) if on else 0)
 
     def apply_fx(self) -> None:
