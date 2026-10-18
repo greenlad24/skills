@@ -134,6 +134,7 @@ TONE_TARGET = [('sub', 20, 60, -8.8, 1), ('low', 60, 250, -3.3, 1), ('lowmid', 2
 # 1.5 ms attack, 120 ms hold, 300 ms release. The threshold is learned live per channel from its own levels: 35% of
 # the way from the bleed level up to the singing level (90th percentile), so it holds whatever the preamp gain.
 EXPANDER_CH = (9, 10, 11)
+FX_DUCK_DB = 3.0  # plate + echo dip while the lead vocal sings (user 18 Oct: ducking essential, but the reverb stays audible at all times)
 TONE_RANGE_DB = 2.0      # the keeper moves a band at most this far from MASTER_EQ
 TONE_STEP_DB = 0.1       # per update (every 30 s): 0.2 dB a minute, unnoticeable
 TONE_DEADBAND_DB = 1.0

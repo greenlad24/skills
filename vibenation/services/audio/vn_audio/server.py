@@ -106,6 +106,7 @@ class Engine:
         self.leveller_on = True
         self.keeper_on = True   # vocals-on-top keeper
         self.tone_on = True     # tone keeper (F's long-term balance)
+        self.duck_on = True     # plate/echo dip under the lead vocal
         self.auto_venue = True
         # Soundcheck calibration: digital trims so each source's active level sits near -20 dBFS RMS.
         self.calibrating_until = 0.0
@@ -147,6 +148,7 @@ class Engine:
         self._level(m)
         self._keep_tone(m)
         self._learn_expanders(f['raw'])
+        self._duck_fx(f['raw'])
         self._calibrate(f['raw'])
         self._ride(f)
         self._follow_arrangement(f)
@@ -193,6 +195,24 @@ class Engine:
         if abs(g - self.graph.master_gain) >= 0.05:
             self.graph.master_gain = round(g, 2)
             self.graph.apply_drive()
+
+    def _duck_fx(self, raw: list[float]) -> None:
+        """Reverb under the voice (user: vocal presence on top, reverb underneath): while the lead vocal is
+        actually singing (above its bleed expander threshold), the plate and echo returns dip P.FX_DUCK_DB;
+        between phrases they come back, so the space blooms in the gaps (Streaky's ducked-reverb trick)."""
+        g = self.graph
+        want = 0.0
+        if self.duck_on:
+            for n in P.VOCALS:
+                st = g.strips.get(n)
+                thr = st.gate.thresh if st is not None and st.gate is not None else -50.0
+                if raw[n - 1] > thr + 3 and not g.mute[n]:
+                    want = -P.FX_DUCK_DB
+        step = 1.5 if want < g.fx_duck else 0.4  # down in ~0.3 s, back up in ~1.2 s
+        new = max(want, g.fx_duck - step) if want < g.fx_duck else min(want, g.fx_duck + step)
+        if abs(new - g.fx_duck) >= 0.05:
+            g.fx_duck = round(new, 2)
+            g.apply_returns()
 
     def _learn_expanders(self, raw: list[float]) -> None:
         """Bleed expanders on the vocal mics: every 10 s, set each threshold between that mic's bleed level and
@@ -665,7 +685,7 @@ class Engine:
         elif t == 'auto':
             # Test renders (A/B pages): hold the automatic moves still. {"leveller": bool, "keeper": bool,
             # "tone": bool, "drive": dB, "band_offset": dB} — every key optional.
-            for k, attr in (('leveller', 'leveller_on'), ('keeper', 'keeper_on'), ('tone', 'tone_on')):
+            for k, attr in (('leveller', 'leveller_on'), ('keeper', 'keeper_on'), ('tone', 'tone_on'), ('duck', 'duck_on')):
                 if k in c:
                     setattr(self, attr, bool(c[k]))
             if 'drive' in c:
@@ -677,7 +697,7 @@ class Engine:
                     if k not in P.OFFSET_EXEMPT:
                         g.apply_fader(k)
                         g.apply_sends(k)
-            return {'type': 'auto', 'leveller': self.leveller_on, 'keeper': self.keeper_on, 'tone': self.tone_on,
+            return {'type': 'auto', 'leveller': self.leveller_on, 'keeper': self.keeper_on, 'tone': self.tone_on, 'duck': self.duck_on,
                     'drive': g.master_gain, 'band_offset': g.band_offset}
         elif t == 'leveller':
             self.leveller_on = bool(c['on'])
