@@ -12,6 +12,7 @@ import copy
 import os
 import logging
 import math
+import threading
 import time
 from dataclasses import asdict
 
@@ -89,6 +90,8 @@ class MixGraph:
         self.outputs = outputs  # master L/R go to each of these [L, R] port pairs
         self.strips = {s.n: copy.deepcopy(s) for s in P.STRIPS}
         self.mute = {n: False for n in self.strips}
+        self._eq_now: dict[int, list] = {}   # EQ bands last sent per plugin instance (for gliding)
+        self._eq_gen: dict[int, int] = {}
         self.conv_on: set[int] = set()  # channels running their impulse response (stereo into the mixer)
         self.solo = {n: False for n in self.strips}
         self.global_trim = 0.0  # unused (kept for saved-state compatibility)
@@ -106,6 +109,7 @@ class MixGraph:
     def build(self) -> None:
         mh = self.mh  # the plugin host is restarted clean before each engine start
         self.conv_on.clear()
+        self._eq_now.clear()
         t0 = time.time()
 
         mh.add(URI['mixer'], MIXER)
@@ -154,6 +158,43 @@ class MixGraph:
 
     # ---------- apply ----------
 
+    def _eq_glide(self, inst: int, bands: list[P.Band], stereo: bool = False) -> None:
+        """Apply an EQ, gliding big jumps in small steps (~15 ms apart). A large jump in one go (e.g. Q 4.7 -> 1.0)
+        can make the plugin's filter go unstable and latch silent; small steps never did."""
+        prev = self._eq_now.get(inst)
+        self._eq_gen[inst] = gen = self._eq_gen.get(inst, 0) + 1
+        same_shape = prev is not None and len(prev) == len(bands) and all(a[0] == b[0] for a, b in zip(prev, bands))
+        if not same_shape:
+            self._eq_now[inst] = list(bands)
+            self._eq(inst, bands, stereo)
+            return
+
+        def ratio(a: float, b: float) -> float:
+            return abs(math.log(max(b, 1e-3) / max(a, 1e-3)))
+        steps = 1
+        for a, b in zip(prev, bands):
+            steps = max(steps, math.ceil(ratio(a[1], b[1]) / math.log(1.15)), math.ceil(ratio(a[3], b[3]) / math.log(1.15)),
+                        math.ceil(abs(b[2] - a[2]) / 1.0))
+        steps = min(steps, 40)
+        if steps <= 1:
+            self._eq_now[inst] = list(bands)
+            self._eq(inst, bands, stereo)
+            return
+
+        def run() -> None:
+            for k in range(1, steps + 1):
+                if self._eq_gen.get(inst) != gen:
+                    return  # a newer change took over (it glides from wherever this one got to)
+                t = k / steps
+                cur = [(b[0], a[1] * (b[1] / a[1]) ** t, a[2] + (b[2] - a[2]) * t, a[3] * (b[3] / a[3]) ** t) for a, b in zip(prev, bands)]
+                try:
+                    self._eq(inst, cur, stereo)
+                except Exception:  # noqa: BLE001 - the channel may be rebuilding
+                    return
+                self._eq_now[inst] = cur
+                time.sleep(0.015)
+        threading.Thread(target=run, name=f'eq-glide-{inst}', daemon=True).start()
+
     def _eq(self, inst: int, bands: list[P.Band], stereo: bool = False) -> None:
         mh = self.mh
         mh.param(inst, 'mode', 0)  # IIR, zero latency
@@ -192,7 +233,7 @@ class MixGraph:
             mh.param(GATE + n, 'at', g.attack)
             mh.param(GATE + n, 'rt', g.release + g.hold)
         bands = [b for b in s.eq if not (s.no_hpf and b[0] == 'hpf')]  # user rule: never high-pass kick/bass
-        self._eq(EQ + n, bands)
+        self._eq_glide(EQ + n, bands)
         if s.comp:
             self._comp(COMP + n, s.comp)
         else:
@@ -268,6 +309,7 @@ class MixGraph:
             except Exception:  # noqa: BLE001 - not every channel has every plugin
                 pass
         self.conv_on.discard(n)
+        self._eq_now.pop(EQ + n, None)
         self._build_strip(n)
         self.apply_gain(n)
         self.apply_inserts(n)
@@ -340,7 +382,7 @@ class MixGraph:
 
     def apply_master_eq(self) -> None:
         """Master EQ as set, plus the tone keeper's small offsets (server._keep_tone)."""
-        self._eq(MEQ, self.master_eq_live or P.MASTER_EQ, stereo=True)
+        self._eq_glide(MEQ, list(self.master_eq_live or P.MASTER_EQ), stereo=True)
 
     def apply_master(self) -> None:
         self.apply_master_eq()
