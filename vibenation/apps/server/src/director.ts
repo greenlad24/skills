@@ -59,7 +59,10 @@ export function subjectOf(c: CameraState): Subject {
 // Floors so cuts feel like a human director following the performer, not a metronome.
 const MIN_DWELL_S = 8;     // never cut sooner (playbook may ask for longer)
 const SETTLE_S = 2;        // a new focus must hold this long before it causes a cut
-const SINGER_MAX_S = 25;   // then one breather on the band (solos are held up to 60 s)
+// The lead singer (Vox C, Vox P, or Congas 1 when it's a voice) is on screen 80-90 % of the song (user, 19 Oct 2026):
+// ~34 s on the singer's camera, then a ~6 s breather on the band, then back = 85 %.
+const SINGER_MAX_S = 34;   // solos are held up to 60 s
+const BREATHER_S = 6;      // a breather away from the singer is this short
 
 export class Director {
   playbook: Playbook = loadPlaybook().director ?? { ...DEFAULT_PLAYBOOK };
@@ -67,6 +70,7 @@ export class Director {
   private manualUntil = 0;
   private focus: { key: string; ch: number | null; since: number; why: string } | null = null;
   private stable: number | null = null; // the last confirmed performer
+  private breather = false; // the live shot is a short breather away from the singer
   reason = '';
 
   constructor(
@@ -105,7 +109,7 @@ export class Director {
     if (now < this.manualUntil) return;
     const settled = (now - this.focus.since) / 1000 >= SETTLE_S;
     const held = (now - this.lastCut) / 1000;
-    if (held < Math.max(MIN_DWELL_S, this.playbook.minDwellS)) return;
+    if (held < (this.breather ? BREATHER_S : Math.max(MIN_DWELL_S, this.playbook.minDwellS))) return;
     const info = new Map(cams.map((c) => [c.id, channelsOf(c)]));
     const live = cams.find((c) => c.id === s.liveCam);
     const covers = (c: CameraState | undefined, ch: number) => !!c && info.get(c.id)!.chans.has(ch);
@@ -119,18 +123,21 @@ export class Director {
 
     let target: CameraState | undefined;
     let why = '';
+    let breather = false;
     if (want !== null && !covers(live, want) && camFor(want)) {
       target = camFor(want);
       why = this.focus.why;
     } else if (want !== null && covers(live, want) && held > (this.focus.why.startsWith('solo') ? 60 : SINGER_MAX_S)) {
       target = wideCam && wideCam.id !== s.liveCam ? wideCam : other;
       why = `held ${Math.round(held)} s on the performer: a breather on the band`;
+      breather = !this.focus.why.startsWith('solo');
     } else if (want === null && held > Math.max(this.playbook.maxWideS, 15)) {
       target = wideCam && wideCam.id !== s.liveCam && !info.get(s.liveCam)?.wide ? wideCam : other;
       why = 'instrumental: changing angle';
     }
     if (target && target.id !== s.liveCam) {
       this.lastCut = now;
+      this.breather = breather;
       this.reason = why;
       this.cut(target.id, why, settled ? 'likely' : 'guessing');
     }
