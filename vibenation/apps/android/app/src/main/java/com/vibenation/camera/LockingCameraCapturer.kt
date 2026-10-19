@@ -3,6 +3,9 @@ package com.vibenation.camera
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Matrix
+import android.graphics.Rect
+import android.hardware.camera2.params.MeteringRectangle
+import android.os.Build
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraCharacteristics
@@ -25,16 +28,20 @@ import livekit.org.webrtc.VideoCapturer
 import livekit.org.webrtc.VideoFrame
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import kotlin.math.abs
 import kotlin.math.roundToInt
+import kotlin.math.sqrt
 
 /**
  * Camera2 capturer for LiveKit that runs auto white balance / exposure for a few seconds, then LOCKS
  * them (CONTROL_AWB_LOCK, CONTROL_AE_LOCK) so colour and brightness stay constant for the whole stream.
- * Focus is never locked: continuous video autofocus keeps following the performers. Frame handling mirrors WebRTC's own Camera2Session.
+ * Focus is never locked: continuous video autofocus keeps following the performers (a tapped focus point only tells it
+ * where to look). Pinch zoom, lens choice (switching cameras without leaving the room). Frame handling mirrors WebRTC's
+ * own Camera2Session.
  */
 class LockingCameraCapturer(
     private val context: Context,
-    val format: Format,
+    format: Format,
     /** Current display rotation in degrees (0/90/180/270). */
     private val displayRotation: () -> Int,
     private val listener: Listener,
@@ -48,7 +55,12 @@ class LockingCameraCapturer(
         val fpsRange: Range<Int>,
         val sensorOrientation: Int,
         val frontFacing: Boolean,
+        /** Zoom the lens starts at (e.g. 0.6 = the ultra-wide behind a logical camera). */
+        val startZoom: Float = 1f,
     )
+
+    /** One choice in the drawer: a camera id and the zoom it starts at. */
+    data class Lens(val key: String, val label: String, val cameraId: String, val zoom: Float)
 
     interface Listener {
         /** Called on the camera thread whenever lock state or the reported values change. */
@@ -76,11 +88,61 @@ class LockingCameraCapturer(
         /** Last locked picture in this app session (null = lock fresh). */
         @Volatile var held: Held? = null
 
-        /** Back camera, 1920x1080 (or the closest 16:9 below), 60 fps when the device can, else 30. */
-        fun pickFormat(context: Context): Format? {
+        /** 35 mm-equivalent focal length of a camera (null if the HAL doesn't say). */
+        private fun equivFocal(ch: CameraCharacteristics): Float? {
+            val f = ch.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)?.minOrNull() ?: return null
+            val s = ch.get(CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE) ?: return null
+            val diag = sqrt(s.width * s.width + s.height * s.height)
+            return if (diag > 0f) f * 43.27f / diag else null
+        }
+
+        /** Zoom range of a camera: zoom ratio on Android 11+ (can go below 1 for an ultra-wide), else digital crop. */
+        fun zoomRange(ch: CameraCharacteristics): Range<Float> {
+            if (Build.VERSION.SDK_INT >= 30) ch.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE)?.let { return it }
+            val max = ch.get(CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM) ?: 1f
+            return Range(1f, maxOf(1f, max))
+        }
+
+        /**
+         * The lenses this phone offers: Ultra-wide / Main / Telephoto on the back and the Front camera. Phones that hide
+         * their ultra-wide behind one logical camera get it as "Ultra-wide" at that camera's lowest zoom (e.g. 0.6×).
+         */
+        fun lenses(context: Context): List<Lens> {
+            val cm = context.getSystemService(CameraManager::class.java) ?: return emptyList()
+            val ids = try { cm.cameraIdList.toList() } catch (_: Exception) { return emptyList() }
+            val chs = ids.mapNotNull { id -> try { id to cm.getCameraCharacteristics(id) } catch (_: Exception) { null } }
+            fun usable(ch: CameraCharacteristics): Boolean {
+                val caps = ch.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES)?.toSet().orEmpty()
+                return CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_BACKWARD_COMPATIBLE in caps
+            }
+            val back = chs.filter { (_, ch) -> ch.get(CameraCharacteristics.LENS_FACING) == CameraMetadata.LENS_FACING_BACK && usable(ch) }
+            val out = mutableListOf<Lens>()
+            val main = back.firstOrNull() // camera 0 is the main back camera on every phone we know
+            if (main != null) {
+                val mainEq = equivFocal(main.second) ?: 26f
+                val zr = zoomRange(main.second)
+                val others = back.drop(1).mapNotNull { (id, ch) -> equivFocal(ch)?.let { Triple(id, ch, it / mainEq) } }
+                val uw = others.filter { it.third < 0.8f }.minByOrNull { it.third }
+                when {
+                    uw != null -> out += Lens("uw", "Ultra-wide", uw.first, 1f)
+                    zr.lower < 0.95f -> out += Lens("uw", "Ultra-wide", main.first, zr.lower)
+                }
+                out += Lens("main", "Main", main.first, 1f)
+                others.filter { it.third > 1.3f }.distinctBy { (it.third * 2).roundToInt() }.sortedBy { it.third }.forEach {
+                    val x = it.third
+                    out += Lens("tele${it.first}", "Telephoto ${if (x >= 2.5f) x.roundToInt().toString() else String.format("%.1f", x)}×", it.first, 1f)
+                }
+            }
+            chs.firstOrNull { (_, ch) -> ch.get(CameraCharacteristics.LENS_FACING) == CameraMetadata.LENS_FACING_FRONT && usable(ch) }
+                ?.let { out += Lens("front", "Front", it.first, 1f) }
+            return out
+        }
+
+        /** Back camera (or the chosen lens), 1920x1080 (or the closest 16:9 below), 60 fps when the device can, else 30. */
+        fun pickFormat(context: Context, lens: Lens? = null): Format? {
             val cm = context.getSystemService(CameraManager::class.java) ?: return null
             val ids = try { cm.cameraIdList.toList() } catch (_: Exception) { return null }
-            val id = ids.firstOrNull {
+            val id = lens?.cameraId?.takeIf { it in ids } ?: ids.firstOrNull {
                 cm.getCameraCharacteristics(it).get(CameraCharacteristics.LENS_FACING) == CameraMetadata.LENS_FACING_BACK
             } ?: ids.firstOrNull() ?: return null
             val ch = cm.getCameraCharacteristics(id)
@@ -107,19 +169,50 @@ class LockingCameraCapturer(
                 fpsRange = range,
                 sensorOrientation = ch.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90,
                 frontFacing = ch.get(CameraCharacteristics.LENS_FACING) == CameraMetadata.LENS_FACING_FRONT,
+                startZoom = lens?.takeIf { it.cameraId == id }?.zoom ?: 1f,
             )
         }
     }
 
     private val cameraManager = context.getSystemService(CameraManager::class.java)
-    private val characteristics = cameraManager.getCameraCharacteristics(format.cameraId)
-    private val afModes = characteristics.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES)?.toSet().orEmpty()
-    private val canContinuousAf = CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_VIDEO in afModes
-    private val xyzToCamera: DoubleArray? = Cct.pickColorTransform(characteristics)
-    private val manualCapable: Boolean = characteristics.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES)?.let { caps ->
-        CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR in caps &&
-            CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_POST_PROCESSING in caps
-    } ?: false
+    @Volatile var format: Format = format
+        private set
+    private lateinit var characteristics: CameraCharacteristics
+    private var canContinuousAf = false
+    private var afRegionsMax = 0
+    private var xyzToCamera: DoubleArray? = null
+    private var manualCapable = false
+    private var activeArray = Rect()
+    /** Zoom limits of the current camera (zoom ratio, or digital crop before Android 11). */
+    var zoomRange: Range<Float> = Range(1f, 1f)
+        private set
+    private val useZoomRatio = Build.VERSION.SDK_INT >= 30
+
+    /** Current zoom (1 = the lens as it is). */
+    @Volatile var zoom = 1f
+        private set
+    /** Tapped focus point in sensor coordinates (0..1), null = the camera's own auto focus area. */
+    @Volatile private var focusPoint: Pair<Float, Float>? = null
+    /** True while a held picture (manual ISO/shutter/colour) is being repeated instead of the AE/AWB lock. */
+    private var heldActive = false
+
+    private fun loadCamera(f: Format) {
+        characteristics = cameraManager.getCameraCharacteristics(f.cameraId)
+        val afModes = characteristics.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES)?.toSet().orEmpty()
+        canContinuousAf = CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_VIDEO in afModes
+        afRegionsMax = characteristics.get(CameraCharacteristics.CONTROL_MAX_REGIONS_AF) ?: 0
+        xyzToCamera = Cct.pickColorTransform(characteristics)
+        manualCapable = characteristics.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES)?.let { caps ->
+            CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR in caps &&
+                CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_POST_PROCESSING in caps
+        } ?: false
+        activeArray = characteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE) ?: Rect()
+        zoomRange = zoomRange(characteristics)
+        zoom = f.startZoom.coerceIn(zoomRange.lower, zoomRange.upper)
+        focusPoint = null
+    }
+
+    init { loadCamera(format) }
 
     private var helper: SurfaceTextureHelper? = null
     private var observer: CapturerObserver? = null
@@ -232,7 +325,112 @@ class LockingCameraCapturer(
         if (canContinuousAf) b.set(CaptureRequest.CONTROL_AF_MODE, CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_VIDEO)
         b.set(CaptureRequest.CONTROL_AE_LOCK, lockedNow)
         b.set(CaptureRequest.CONTROL_AWB_LOCK, lockedNow)
+        applyZoom(b)
+        applyFocusPoint(b)
         return b
+    }
+
+    /** The part of the sensor the picture shows at zoom [z] (centred), in active-array coordinates. */
+    private fun cropFor(z: Float): Rect {
+        val a = activeArray
+        if (z <= 1f) return Rect(0, 0, a.width(), a.height())
+        val w = (a.width() / z).roundToInt(); val h = (a.height() / z).roundToInt()
+        val l = (a.width() - w) / 2; val t = (a.height() - h) / 2
+        return Rect(l, t, l + w, t + h)
+    }
+
+    private fun applyZoom(b: CaptureRequest.Builder) {
+        if (useZoomRatio) {
+            if (zoomRange.upper > zoomRange.lower) b.set(CaptureRequest.CONTROL_ZOOM_RATIO, zoom)
+        } else if (zoom > 1f) {
+            b.set(CaptureRequest.SCALER_CROP_REGION, cropFor(zoom))
+        }
+    }
+
+    /** A tapped point steers continuous auto focus to that spot (it keeps focusing there; focus never locks). */
+    private fun applyFocusPoint(b: CaptureRequest.Builder) {
+        val p = focusPoint ?: return
+        if (afRegionsMax < 1) return
+        val c = cropFor(zoom)
+        val half = (minOf(c.width(), c.height()) * 0.08f).roundToInt().coerceAtLeast(16)
+        val x = (c.left + p.first * c.width()).roundToInt()
+        val y = (c.top + p.second * c.height()).roundToInt()
+        val r = Rect(x - half, y - half, x + half, y + half)
+        r.intersect(0, 0, activeArray.width(), activeArray.height())
+        b.set(CaptureRequest.CONTROL_AF_REGIONS, arrayOf(MeteringRectangle(r, MeteringRectangle.METERING_WEIGHT_MAX)))
+    }
+
+    /** Re-issue the current picture (locked or held) with the latest zoom / focus point. */
+    private fun reapply() {
+        val h = held
+        if (heldActive && h != null && repeatHeld(h)) return
+        repeat(lockedNow = locked)
+    }
+
+    /** Pinch zoom: multiplies the current zoom (within the lens's range). Returns the new zoom. */
+    fun zoomBy(factor: Float): Float {
+        val z = (zoom * factor).coerceIn(zoomRange.lower, zoomRange.upper)
+        if (abs(z - zoom) < 0.005f) return zoom
+        zoom = z
+        handler?.post { reapply() }
+        return z
+    }
+
+    /**
+     * Tap to focus. [u],[v] are 0..1 across the picture as shown (landscape, left→right, top→bottom); they are mapped
+     * back to the sensor through the same rotation the frames get.
+     */
+    fun focusAt(u: Float, v: Float) {
+        if (afRegionsMax < 1 || !canContinuousAf) return
+        var x = u; var y = v
+        if (format.frontFacing) x = 1f - x
+        // The frames are rotated by frameOrientation() for display; undo it to get sensor coordinates.
+        val p = when (frameOrientation()) {
+            90 -> y to 1f - x
+            180 -> 1f - x to 1f - y
+            270 -> 1f - y to x
+            else -> x to y
+        }
+        focusPoint = p.first.coerceIn(0f, 1f) to p.second.coerceIn(0f, 1f)
+        refocus()
+    }
+
+    /** Back to the camera's own auto focus area. */
+    fun clearFocusPoint() {
+        if (focusPoint == null) return
+        focusPoint = null
+        refocus()
+    }
+
+    private fun refocus() {
+        handler?.post {
+            val cs = session ?: return@post
+            try {
+                // Restart the continuous AF search on the new area (cancel, never a lock trigger).
+                val c = baseRequest(lockedNow = locked)
+                c.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_CANCEL)
+                cs.capture(c.build(), resultCallback, handler)
+            } catch (e: Exception) {
+                Log.w(TAG, "refocus", e)
+            }
+            reapply()
+        }
+    }
+
+    /** Switch to another lens without leaving the room: the stream keeps going, the picture re-locks on the new lens. */
+    fun switchTo(f: Format) {
+        if (f.cameraId == format.cameraId) {
+            // Same camera (e.g. Main <-> the ultra-wide zoom of a logical camera): just change the zoom.
+            format = f
+            zoom = f.startZoom.coerceIn(zoomRange.lower, zoomRange.upper)
+            handler?.post { reapply() }
+            return
+        }
+        val wasRunning = running
+        stop(notify = false)
+        format = f
+        loadCamera(f)
+        if (wasRunning) startCapture(f.width, f.height, f.fps)
     }
 
     private val resultCallback = object : CameraCaptureSession.CaptureCallback() {
@@ -243,6 +441,7 @@ class LockingCameraCapturer(
 
     private fun repeat(lockedNow: Boolean) {
         val cs = session ?: return
+        heldActive = false
         try {
             cs.setRepeatingRequest(baseRequest(lockedNow).build(), resultCallback, handler)
         } catch (e: Exception) {
@@ -266,6 +465,7 @@ class LockingCameraCapturer(
             b.set(CaptureRequest.COLOR_CORRECTION_TRANSFORM, h.ccm)
             // Focus is never locked: it keeps following the performers (continuous video AF, set in baseRequest).
             cs.setRepeatingRequest(b.build(), resultCallback, handler)
+            heldActive = true
             true
         } catch (e: Exception) {
             Log.w(TAG, "restore held picture failed, locking fresh", e)
@@ -328,7 +528,8 @@ class LockingCameraCapturer(
             if (isEmpty()) append("Auto")
         }
         val gains = r.get(CaptureResult.COLOR_CORRECTION_GAINS)
-        val kelvin = if (gains != null && xyzToCamera != null) Cct.kelvinFromGains(gains, xyzToCamera) else null
+        val xyz = xyzToCamera
+        val kelvin = if (gains != null && xyz != null) Cct.kelvinFromGains(gains, xyz) else null
         val wb = kelvin?.let { "$it K" } ?: "Auto"
         val aeLocked = r.get(CaptureResult.CONTROL_AE_STATE) == CameraMetadata.CONTROL_AE_STATE_LOCKED
         val awbLocked = r.get(CaptureResult.CONTROL_AWB_STATE) == CameraMetadata.CONTROL_AWB_STATE_LOCKED
@@ -379,7 +580,10 @@ class LockingCameraCapturer(
         }
     }
 
-    override fun stopCapture() {
+    override fun stopCapture() = stop(notify = true)
+
+    /** [notify] = false while switching lenses: the video source never sees the capturer stop. */
+    private fun stop(notify: Boolean) {
         if (!running) return
         running = false
         val h = handler
@@ -398,7 +602,7 @@ class LockingCameraCapturer(
         helper?.stopListening()
         surface?.release()
         surface = null
-        observer?.onCapturerStopped()
+        if (notify) observer?.onCapturerStopped()
         thread?.quitSafely()
         thread = null
         handler = null

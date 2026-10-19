@@ -19,6 +19,10 @@ class Prefs(ctx: Context) {
     var camId: Int?
         get() = p.getInt("camId", 0).takeIf { it > 0 }
         set(v) = p.edit().putInt("camId", v ?: 0).apply()
+    /** Chosen lens ("main", "uw", "tele<id>", "front"); null = main. */
+    var lens: String?
+        get() = p.getString("lens", null)
+        set(v) = p.edit().putString("lens", v).apply()
     var guides: Boolean
         get() = p.getBoolean("guides", false)
         set(v) = p.edit().putBoolean("guides", v).apply()

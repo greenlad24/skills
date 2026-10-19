@@ -62,6 +62,10 @@ data class CamUi(
     val wifi: String = "—",
     val thermalWarn: Boolean = false,
     val error: String? = null,
+    /** Lens in use (key of LockingCameraCapturer.Lens) and current zoom. */
+    val lens: String = "main",
+    val zoom: Float = 1f,
+    val focusSet: Boolean = false,
 ) {
     enum class Stage { Idle, Joining, Connecting, Streaming, Reconnecting, Failed }
 
@@ -135,6 +139,39 @@ class CamSession(
     }
 
     fun relockPicture() { capturer?.relock() }
+
+    /** Lenses this phone offers (Ultra-wide / Main / Telephoto / Front). */
+    val lenses: List<LockingCameraCapturer.Lens> by lazy { LockingCameraCapturer.lenses(appContext) }
+
+    private fun chosenLens() = lenses.firstOrNull { it.key == prefs.lens } ?: lenses.firstOrNull { it.key == "main" }
+
+    /** Switch lens; live if streaming, remembered for next time either way. */
+    fun selectLens(key: String) {
+        val lens = lenses.firstOrNull { it.key == key } ?: return
+        prefs.lens = key
+        val cap = capturer
+        if (cap != null) {
+            val fmt = LockingCameraCapturer.pickFormat(appContext, lens) ?: return
+            cap.switchTo(fmt)
+            _ui.update { it.copy(lens = key, zoom = cap.zoom, focusSet = false, width = fmt.width, height = fmt.height, targetFps = fmt.fps, locked = false) }
+        } else {
+            _ui.update { it.copy(lens = key, zoom = lens.zoom) }
+        }
+    }
+
+    /** Pinch zoom (factor > 1 = closer). */
+    fun zoomBy(factor: Float) {
+        val cap = capturer ?: return
+        val z = cap.zoomBy(factor)
+        _ui.update { it.copy(zoom = z) }
+    }
+
+    /** Tap to focus at (u, v) across the picture (0..1); null = back to auto focus. */
+    fun focusAt(u: Float?, v: Float?) {
+        val cap = capturer ?: return
+        if (u == null || v == null) cap.clearFocusPoint() else cap.focusAt(u, v)
+        _ui.update { it.copy(focusSet = u != null) }
+    }
 
     // ---------------------------------------------------------------- join + LiveKit
 
@@ -210,7 +247,7 @@ class CamSession(
 
     /** Connect, publish, and suspend until the room is gone. Returns a human reason. */
     private suspend fun runRoom(j: Joined): String {
-        val fmt = LockingCameraCapturer.pickFormat(appContext) ?: throw IllegalStateException("No usable camera found")
+        val fmt = LockingCameraCapturer.pickFormat(appContext, chosenLens()) ?: throw IllegalStateException("No usable camera found")
         val r = LiveKit.create(
             appContext,
             RoomOptions(adaptiveStream = false, dynacast = true),
@@ -258,7 +295,7 @@ class CamSession(
                 ),
             )
             if (!ok) throw IllegalStateException("Publishing the camera failed")
-            _ui.update { it.copy(stage = CamUi.Stage.Streaming, publishing = true, error = null, width = fmt.width, height = fmt.height, targetFps = fmt.fps) }
+            _ui.update { it.copy(stage = CamUi.Stage.Streaming, publishing = true, error = null, width = fmt.width, height = fmt.height, targetFps = fmt.fps, lens = chosenLens()?.key ?: "main", zoom = cap.zoom, focusSet = false) }
             listener?.onTrack(r, t)
             // Wait for the room to end, or for the status socket to ask for a fresh join.
             return kotlinx.coroutines.selects.select {

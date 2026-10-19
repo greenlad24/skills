@@ -75,6 +75,7 @@ class MainActivity : AppCompatActivity(), StageView.Actions, CamSession.Listener
         root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
         stage = StageView(this, this)
         stage.setGuides(prefs.guides)
+        stage.setLenses(session.lenses)
         joinView = buildJoinView()
         root.addView(stage, FrameLayout.LayoutParams(-1, -1))
         root.addView(joinView, FrameLayout.LayoutParams(-1, -1))
@@ -301,6 +302,9 @@ class MainActivity : AppCompatActivity(), StageView.Actions, CamSession.Listener
 
     override fun onGuidesToggled(on: Boolean) { prefs.guides = on }
     override fun onRelock() { session.relockPicture() }
+    override fun onLensSelected(key: String) { session.selectLens(key) }
+    override fun onZoom(factor: Float) { session.zoomBy(factor) }
+    override fun onFocus(u: Float?, v: Float?) { session.focusAt(u, v) }
     override fun onLeave() {
         stage.setDrawer(false)
         session.stop()

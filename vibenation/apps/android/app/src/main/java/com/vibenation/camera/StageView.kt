@@ -5,6 +5,9 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.text.TextUtils
+import android.view.GestureDetector
+import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -25,6 +28,11 @@ class StageView(context: Context, private val actions: Actions) : ViewGroup(cont
         fun onGuidesToggled(on: Boolean)
         fun onRelock()
         fun onLeave()
+        fun onLensSelected(key: String)
+        /** Pinch: factor > 1 = zoom in. */
+        fun onZoom(factor: Float)
+        /** Tap at (u, v) across the picture (0..1); null = double tap, back to auto focus. */
+        fun onFocus(u: Float?, v: Float?)
     }
 
     private fun dp(v: Float) = Vn.dp(context, v)
@@ -47,6 +55,13 @@ class StageView(context: Context, private val actions: Actions) : ViewGroup(cont
     private val handle = LinearLayout(context)
     private val handleChevron = IconView(context, IconView.Kind.CHEVRON_LEFT)
     private val handleDot = View(context)
+    // Zoom + focus readout in the strip (nothing is drawn over the picture).
+    private val zoomText = TextView(context).apply {
+        setTextColor(Vn.TEXT_2); textSize = 12f; typeface = Vn.mono(context, 700); gravity = Gravity.CENTER
+    }
+    private val focusText = TextView(context).apply {
+        setTextColor(Vn.TEXT_3); textSize = 9f; typeface = Vn.sans(context, 800); gravity = Gravity.CENTER; letterSpacing = 0.08f
+    }
 
     // Drawer.
     private val drawer = FrameLayout(context)
@@ -59,6 +74,9 @@ class StageView(context: Context, private val actions: Actions) : ViewGroup(cont
     private val note = TextView(context)
     private val unlockedRow = LinearLayout(context)
     private val guidesBtn = GlassButton(context, "Guides off")
+    private val lensRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+    private val lensBtns = mutableMapOf<String, GlassButton>()
+    private var lensKey = "main"
     private val holdBtn: HoldButton
 
     var drawerOpen = false
@@ -93,7 +111,11 @@ class StageView(context: Context, private val actions: Actions) : ViewGroup(cont
         handle.contentDescription = "Open drawer"
         handle.setOnClickListener { setDrawer(!drawerOpen) }
         rightBar.addView(handle, FrameLayout.LayoutParams(dp(44f), dp(88f), Gravity.CENTER))
+        val readout = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
+        readout.addView(zoomText); readout.addView(focusText)
+        rightBar.addView(readout, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM).apply { bottomMargin = dp(18f) })
         addView(rightBar)
+        setupGestures()
 
         // --- drawer
         holdBtn = HoldButton(context, 1500L) { setUnlocked(true) }
@@ -177,6 +199,12 @@ class StageView(context: Context, private val actions: Actions) : ViewGroup(cont
             col.addView(r, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(if (row == 0) 12f else 8f) })
         }
 
+        // Lens choice (changing it needs the settings unlocked, like the other picture settings).
+        col.addView(TextView(context).apply {
+            text = "CAMERA"; setTextColor(Vn.TEXT_3); textSize = 10f; typeface = Vn.sans(context, 700); letterSpacing = 0.06f
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12f) })
+        col.addView(lensRow, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6f) })
+
         note.apply { textSize = 11f; typeface = Vn.sans(context, 600); visibility = GONE }
         col.addView(note, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8f) })
 
@@ -208,6 +236,65 @@ class StageView(context: Context, private val actions: Actions) : ViewGroup(cont
         bottom.addView(guidesBtn, LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = dp(8f) })
         bottom.addView(holdBtn, LinearLayout.LayoutParams(0, -2, 1f))
         col.addView(bottom, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8f) })
+    }
+
+    /** Fill the lens buttons with what this phone has (Ultra-wide / Main / Telephoto / Front). */
+    fun setLenses(lenses: List<LockingCameraCapturer.Lens>) {
+        lensRow.removeAllViews(); lensBtns.clear()
+        lenses.forEachIndexed { i, l ->
+            val b = GlassButton(context, l.label).apply {
+                label.textSize = 11f
+                contentDescription = "Use the ${l.label} camera"
+                setOnClickListener {
+                    if (!unlocked) { flashNote("Hold to unlock first", Vn.WARN); return@setOnClickListener }
+                    touchUnlocked()
+                    if (l.key != lensKey) actions.onLensSelected(l.key)
+                }
+            }
+            lensBtns[l.key] = b
+            lensRow.addView(b, LinearLayout.LayoutParams(0, -2, 1f).apply { if (i > 0) marginStart = dp(6f) })
+        }
+        lensRow.visibility = if (lenses.size > 1) VISIBLE else GONE
+        markLens(lensKey)
+    }
+
+    private fun markLens(key: String) {
+        lensKey = key
+        for ((k, b) in lensBtns) {
+            val on = k == key
+            b.background = Vn.rounded(if (on) Color.argb(46, 255, 236, 220) else Vn.CARD, dp(12f).toFloat(), if (on) Vn.TEXT else Vn.GLASS_EDGE_SOFT, dp(1f))
+            b.label.setTextColor(if (on) Vn.TEXT else Vn.TEXT_2)
+        }
+    }
+
+    /** Pinch on the picture zooms; a tap sets the focus point there; a double tap goes back to auto focus. */
+    @SuppressLint("ClickableViewAccessibility")
+    private fun setupGestures() {
+        val scale = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            override fun onScale(d: ScaleGestureDetector): Boolean {
+                actions.onZoom(d.scaleFactor)
+                return true
+            }
+        })
+        val taps = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onDown(e: MotionEvent) = true
+            override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                if (imageBox.width == 0 || imageBox.height == 0) return false
+                actions.onFocus((e.x / imageBox.width).coerceIn(0f, 1f), (e.y / imageBox.height).coerceIn(0f, 1f))
+                flashNote("Focus set here · double-tap for auto focus", Vn.TEXT_2)
+                return true
+            }
+            override fun onDoubleTap(e: MotionEvent): Boolean {
+                actions.onFocus(null, null)
+                flashNote("Auto focus", Vn.TEXT_2)
+                return true
+            }
+        })
+        imageBox.setOnTouchListener { _, ev ->
+            scale.onTouchEvent(ev)
+            if (!scale.isInProgress && ev.pointerCount == 1) taps.onTouchEvent(ev)
+            true
+        }
     }
 
     private var noteOverride: Pair<String, Int>? = null
@@ -323,6 +410,11 @@ class StageView(context: Context, private val actions: Actions) : ViewGroup(cont
             else -> ""
         }
         placeholder.visibility = if (u.publishing) GONE else VISIBLE
+
+        if (u.lens != lensKey) markLens(u.lens)
+        zoomText.text = if (u.publishing) String.format("%.1f×", u.zoom) else ""
+        focusText.text = if (u.publishing && u.focusSet) "FOCUS" else ""
+        zoomText.contentDescription = "Zoom ${String.format("%.1f", u.zoom)} times"
     }
 
     // ---------------------------------------------------------------- layout
