@@ -84,7 +84,7 @@ export class DemoShow {
       channels: CHANNELS.map((c) => ({
         n: c.n, name: c.name, short: c.short, section: c.section, fader: c.fader,
         meter: 0, gr: 0, mute: c.n === 4, solo: false, held: HELD0.some((h) => h.startsWith(`ch${c.n}.`)), aiRecent: false,
-        role: c.n === 11 ? 'Trombone' : undefined,
+        role: undefined, // a guest role (e.g. a singer on a conga mic) is set live; none by default
       })),
       master: { lufsI: -16.2, lufsS: -16.0, truePeak: -1.4, limiterGr: 1.8 },
       song: SONGS[0],

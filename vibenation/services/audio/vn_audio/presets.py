@@ -8,6 +8,7 @@ point; the mixer loop and post-show learning move them within bounds.
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass, field
 
 # EQ band: (type, freq Hz, gain dB, Q). Types: bell, hpf, lpf, lshelf, hshelf, off.
@@ -219,3 +220,18 @@ for _s in STRIPS:
     _b = SAVED_BALANCE.get(_s.n)
     if _b:
         _s.fader, _s.pan, _s.eq = _b['fader'], _b['pan'], list(_b['eq'])
+
+# Vox P and Congas 1 use exactly Vox C's processing (user, 19 Oct 2026: "the effects and mixing parameters on Vox C,
+# Vox P and Congas 1 should be the same as Vox C"). Faders, pans and input trims stay their own (the saved balance).
+SAME_AS_VOX_C = (10, 11)
+_voxc = next(_s for _s in STRIPS if _s.n == 9)
+for _s in STRIPS:
+    if _s.n in SAME_AS_VOX_C:
+        _s.eq = list(_voxc.eq)
+        _s.comp = copy.deepcopy(_voxc.comp)
+        _s.gate = copy.deepcopy(_voxc.gate)
+        _s.plate, _s.room, _s.delay = _voxc.plate, _voxc.room, _voxc.delay
+        _s.no_hpf, _s.rider, _s.conv = _voxc.no_hpf, _voxc.rider, None
+        _s.inserts = [(k, dict(v)) for k, v in _voxc.inserts]
+        if _s.n in SAVED_BALANCE:
+            SAVED_BALANCE[_s.n]['eq'] = list(_voxc.eq)
