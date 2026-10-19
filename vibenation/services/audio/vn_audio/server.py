@@ -59,6 +59,8 @@ class Engine:
         self.raw_clip_alert = [0.0] * 16
         self.master_over_alert = 0.0
         self.last_clip_fix = [0.0] * 16
+        self.stuck = [0] * 16          # frames a channel has been silent while its input plays
+        self.last_rebuild = [0.0] * 16
         self.last_heard = [0.0] * 16
         self.dead_alerted = [False] * 16
         self.notches: dict = {}
@@ -161,6 +163,7 @@ class Engine:
         self._ride_drums(f)
         self._watch_howl(f.get('howl', []))
         self._watch_clip_and_dead(f)
+        self._watch_stuck(f)
         frame = {'type': 'meters', **f, 'gr': self.gr, 'ride': self.ride, 'master': {**m, 'limiterGr': self.limiter_gr, 'busGr': self.bus_gr, 'drive': round(self.graph.master_gain, 1), 'bandOffset': round(self.graph.band_offset, 1), 'toneOff': self.tone_off},
                  'singing': [self.playing(n, f) for n in range(1, 17)], 'arrangement': self.arr.summary(),
                  'drums': {n: {'fader': self.graph.strips[n].fader, 'balanced': n in self.drum_done} for n in DRUMS}}
@@ -354,6 +357,28 @@ class Engine:
                 del self.notches[key]
                 self.broadcast({'type': 'alert', 'level': 'info', 'ch': key, 'text': f'Feedback gone on {st.name}: notch released.'})
                 self.broadcast(self.state())
+
+    def _watch_stuck(self, f: dict) -> None:
+        """Emergency: a channel whose input plays but whose processing outputs nothing (a filter went unstable and
+        latched; seen when an EQ band's Q was swept fast) gets its plugins rebuilt within half a second."""
+        now = time.time()
+        for n in self.graph.strips:
+            i = n - 1
+            if f['raw'][i] > -80 and f['peak'][i] <= -170:
+                self.stuck[i] += 1
+            else:
+                self.stuck[i] = 0
+            if self.stuck[i] >= 5 and now - self.last_rebuild[i] > 5:
+                self.stuck[i] = 0
+                self.last_rebuild[i] = now
+                st = self.graph.strips[n]
+                try:
+                    self.graph.rebuild_strip(n)
+                    self.mh.connect_ports(self.graph.strip_out(n), f'{self.analyzer.client.name}:ch_{n}')
+                    log.warning('ch%d: processing went silent while the input played; plugins rebuilt', n)
+                    self.broadcast({'type': 'alert', 'level': 'info', 'ch': n, 'text': f'{st.name} stopped sounding (a filter got stuck): restarted its processing.'})
+                except Exception as e:  # noqa: BLE001
+                    log.error('ch%d rebuild failed: %s', n, e)
 
     def _watch_clip_and_dead(self, f: dict) -> None:
         """Emergencies (allowed even on held channels): a channel clipping at its digital trim

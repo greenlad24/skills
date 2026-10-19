@@ -123,46 +123,8 @@ class MixGraph:
         # all impulse-response presets in one bundle, registered once (mod-host caches a bundle on first load)
         register_ir_presets(mh, {n: os.path.join(IR_DIR, st.conv) for n, st in self.strips.items()
                                  if st.conv and os.path.exists(os.path.join(IR_DIR, st.conv))})
-        for n, s in self.strips.items():
-            if s.gate:
-                mh.add(URI['gate'], GATE + n)
-            mh.add(URI['eq'], EQ + n)
-            mh.add(URI['comp'], COMP + n)
-            mh.monitor(COMP + n, 'rlm')
-            first = GATE + n if s.gate else EQ + n
-            mh.connect_ports(self.sources[n - 1], port(first, 'in'))
-            if s.gate:
-                mh.connect_ports(port(GATE + n, 'out'), port(EQ + n, 'in'))
-            mh.connect_ports(port(EQ + n, 'out'), port(COMP + n, 'in'))
-            prev = port(COMP + n, 'out')
-            for k, (kind, _params) in enumerate(s.inserts):
-                inst = INS + 10 * n + k
-                mh.add(P.INSERT_URI[kind], inst)
-                mh.connect_ports(prev, port(inst, 'in'))
-                prev = port(inst, 'out')
-            out = self.strip_out(n)
-            conv_ok = False
-            if s.conv and os.path.exists(os.path.join(IR_DIR, s.conv)):
-                try:
-                    mh.add(CONV_URI, CONV + n)
-                    mh.cmd(f'preset_load {CONV + n} urn:vibenation:ir:ch{n}')
-                    mh.connect_ports(out, port(CONV + n, 'in'))
-                    mh.connect_ports(port(CONV + n, 'out_1'), port(MIXER, f'in_{n}l'))
-                    mh.connect_ports(port(CONV + n, 'out_2'), port(MIXER, f'in_{n}r'))
-                    conv_ok = True
-                    self.conv_on.add(n)
-                    log.info('ch%d: impulse response %s', n, s.conv)
-                except Exception as e:  # noqa: BLE001 - never let a missing IR stop the engine
-                    log.warning('ch%d: impulse response %s could not load (%s); channel runs without it', n, s.conv, e)
-                    mh.remove(CONV + n)
-            if not conv_ok:
-                if s.conv and not os.path.exists(os.path.join(IR_DIR, s.conv)):
-                    log.warning('ch%d: impulse response %s not found in %s; channel runs without it', n, s.conv, IR_DIR)
-                mh.connect_ports(out, port(MIXER, f'in_{n}l'))
-                mh.connect_ports(out, port(MIXER, f'in_{n}r'))
-            for k, inst in SEND.items():
-                mh.connect_ports(out, port(inst, f'in_{n}'))
-            self.apply_strip(n)
+        for n in self.strips:
+            self._build_strip(n)
 
         # Effects: mono send bus -> stereo effect -> returns mixer slot
         for k, inst in SEND.items():
@@ -251,6 +213,64 @@ class MixGraph:
                 pass
             self.mh.connect_ports(new[n - 1], self.input_port(n))
         self.sources = new
+
+    def _build_strip(self, n: int) -> None:
+        """One channel's plugins and connections: source -> [gate] -> EQ -> compressor -> inserts -> [impulse response] -> mixer + sends."""
+        mh = self.mh
+        s = self.strips[n]
+        if s.gate:
+            mh.add(URI['gate'], GATE + n)
+        mh.add(URI['eq'], EQ + n)
+        mh.add(URI['comp'], COMP + n)
+        mh.monitor(COMP + n, 'rlm')
+        first = GATE + n if s.gate else EQ + n
+        mh.connect_ports(self.sources[n - 1], port(first, 'in'))
+        if s.gate:
+            mh.connect_ports(port(GATE + n, 'out'), port(EQ + n, 'in'))
+        mh.connect_ports(port(EQ + n, 'out'), port(COMP + n, 'in'))
+        prev = port(COMP + n, 'out')
+        for k, (kind, _params) in enumerate(s.inserts):
+            inst = INS + 10 * n + k
+            mh.add(P.INSERT_URI[kind], inst)
+            mh.connect_ports(prev, port(inst, 'in'))
+            prev = port(inst, 'out')
+        out = self.strip_out(n)
+        conv_ok = False
+        if s.conv and os.path.exists(os.path.join(IR_DIR, s.conv)):
+            try:
+                mh.add(CONV_URI, CONV + n)
+                mh.cmd(f'preset_load {CONV + n} urn:vibenation:ir:ch{n}')
+                mh.connect_ports(out, port(CONV + n, 'in'))
+                mh.connect_ports(port(CONV + n, 'out_1'), port(MIXER, f'in_{n}l'))
+                mh.connect_ports(port(CONV + n, 'out_2'), port(MIXER, f'in_{n}r'))
+                conv_ok = True
+                self.conv_on.add(n)
+                log.info('ch%d: impulse response %s', n, s.conv)
+            except Exception as e:  # noqa: BLE001 - never let a missing IR stop the engine
+                log.warning('ch%d: impulse response %s could not load (%s); channel runs without it', n, s.conv, e)
+                mh.remove(CONV + n)
+        if not conv_ok:
+            if s.conv and not os.path.exists(os.path.join(IR_DIR, s.conv)):
+                log.warning('ch%d: impulse response %s not found in %s; channel runs without it', n, s.conv, IR_DIR)
+            mh.connect_ports(out, port(MIXER, f'in_{n}l'))
+            mh.connect_ports(out, port(MIXER, f'in_{n}r'))
+        for k, inst in SEND.items():
+            mh.connect_ports(out, port(inst, f'in_{n}'))
+        self.apply_strip(n)
+
+    def rebuild_strip(self, n: int) -> None:
+        """Emergency: re-create one channel's plugins (a filter that went unstable stays silent forever otherwise).
+        The rest of the mix keeps playing."""
+        s = self.strips[n]
+        for inst in [GATE + n, EQ + n, COMP + n, CONV + n] + [INS + 10 * n + k for k in range(len(s.inserts))]:
+            try:
+                self.mh.remove(inst)
+            except Exception:  # noqa: BLE001 - not every channel has every plugin
+                pass
+        self.conv_on.discard(n)
+        self._build_strip(n)
+        self.apply_gain(n)
+        self.apply_inserts(n)
 
     def strip_out(self, n: int) -> str:
         k = len(self.strips[n].inserts)
