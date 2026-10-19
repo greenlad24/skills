@@ -113,7 +113,7 @@ export function MixScreen() {
             {shown.map((c) => (
               <Strip key={c.n} c={c} selected={c.n === sel} fine={fine} compOn={mixOf(c).easy.comp > 0} onPick={pick} />
             ))}
-            <MasterStrip />
+            <MasterStrip selected={sel === 0} onPick={() => setSel(0)} />
           </div>
         ) : (
           layer === 'bus' ? <MasteringPanel /> : (
@@ -125,8 +125,17 @@ export function MixScreen() {
       </section>
 
       <aside aria-label="Selected channel" style={{ flex: '1 1 400px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <SelectedPanel c={cur} mix={mix} bpm={s.bpm} ab={ab} setAb={setAb} onBand={onBand} onAddBand={onAddBand} onRemoveBand={onRemoveBand} pan={pan} onPan={onPan} onEasy={onEasy} onKnob={onKnob} />
-        <ChangeCards changes={mix.changes} ab={ab} setAb={setAb} onUndo={onUndo} onAmount={onAmount} />
+        {sel === 0 ? (
+          <section aria-label="Mastering" style={{ ...panel, padding: 18, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 18 }}>Master · mastering chain</span>
+            <MasteringPanel />
+          </section>
+        ) : (
+          <>
+            <SelectedPanel c={cur} mix={mix} bpm={s.bpm} ab={ab} setAb={setAb} onBand={onBand} onAddBand={onAddBand} onRemoveBand={onRemoveBand} pan={pan} onPan={onPan} onEasy={onEasy} onKnob={onKnob} />
+            <ChangeCards changes={mix.changes} ab={ab} setAb={setAb} onUndo={onUndo} onAmount={onAmount} />
+          </>
+        )}
       </aside>
     </main>
   );
