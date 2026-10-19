@@ -41,10 +41,19 @@ def match_voices(job, pid: str, settings: dict | None = None) -> dict:
             heard[Path(f).name] = t
     if not heard:
         return {}
+    for name in list(heard):                  # one recording with several scripts read → one part per script
+        parts = _split_recording(d, name, heard[name], plan["videos"])
+        if parts:
+            say(f"🎙 {name} has {len(parts)} scripts in it — making a separate video from each.")
+            del heard[name]
+            heard.update(parts)
     auto = transcribe.match(heard, plan["videos"])
     a = load_assign(pid)
     nar = {vid: name for name, (vid, _) in auto.items()}
+    split_src = {n[len(PARTS):].split("/")[0] for n in heard if n.startswith(PARTS)}
     for vid, name in (a.get("narration") or {}).items():       # recordings we couldn't recognise keep their place
+        if name.startswith(PARTS) or name in split_src:
+            continue                                            # pieces are re-made from the recording each time
         if name not in auto and vid not in nar and name not in nar.values():
             nar[vid] = name
     for vid, name in (a.get("narration_manual") or {}).items():  # your own choice on the upload screen always wins
@@ -63,6 +72,48 @@ def match_voices(job, pid: str, settings: dict | None = None) -> dict:
     return report
 
 
+PARTS = "PARTS/"
+
+
+def parts_dir(d: Path) -> Path:
+    return d / "work" / "narration_parts"
+
+
+def narration_path(d: Path, name: str) -> Path:
+    """A narration name → its file (an upload, or a piece cut from a recording that holds several scripts)."""
+    if name.startswith(PARTS):
+        return parts_dir(d) / name[len(PARTS):]
+    return d / "narration" / name
+
+
+def _split_recording(d: Path, name: str, tr: dict, videos: list) -> dict:
+    """→ {part name: transcript of that part} when the recording reads 2+ scripts, else {}."""
+    from . import transcribe
+    regions = transcribe.split(tr.get("words") or [], videos)
+    if not regions:
+        return {}
+    src = d / "narration" / name
+    out = {}
+    for k, (_, t0, t1, _) in enumerate(regions):
+        rel = f"{name}/{k + 1}_{int(t0 * 100)}_{int(t1 * 100)}.wav"
+        f = parts_dir(d) / rel
+        if not f.exists():
+            f.parent.mkdir(parents=True, exist_ok=True)
+            import subprocess
+            p = subprocess.run([media.ffmpeg_exe(), "-y", "-v", "error", "-ss", f"{t0:.3f}", "-to", f"{t1:.3f}", "-i", str(src),
+                                "-vn", "-ac", "1", "-ar", "48000", str(f)], capture_output=True)
+            if p.returncode != 0 or not f.exists():
+                return {}
+        words = [dict(w, s=round(w["s"] - t0, 3), e=round(w["e"] - t0, 3)) for w in tr["words"] if t0 <= w["s"] < t1]
+        part = {"text": "".join(w["w"] for w in words), "words": words}
+        cache = d / "work" / "transcripts" / f"{transcribe._key(f)}.json"     # no need to listen again
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        import json
+        cache.write_text(json.dumps(part, ensure_ascii=False), "utf-8")
+        out[PARTS + rel] = part
+    return out
+
+
 def refresh_assign(pid: str, plan: dict) -> dict:
     """Auto-match new files while keeping manual choices; drop links to deleted files."""
     d = projects.pdir(pid) / "footage"
@@ -72,7 +123,14 @@ def refresh_assign(pid: str, plan: dict) -> dict:
     cur["vo"] = {k: v for k, v in cur.get("vo", {}).items() if v in names}
     cur["music"] = [m for m in cur.get("music", []) if m in names]
     out = matcher.auto_match(plan, footage_files(pid), cur)
-    out["narration"] = matcher.match_narration(plan, footage_files(pid, "narration"), cur.get("narration"))
+    d0 = projects.pdir(pid)
+    parts = {k: v for k, v in (cur.get("narration") or {}).items()
+             if v.startswith(PARTS) and narration_path(d0, v).exists() and (d0 / "narration" / v[len(PARTS):].split("/")[0]).exists()}
+    split_src = {v[len(PARTS):].split("/")[0] for v in parts.values()}
+    rest = {k: v for k, v in (cur.get("narration") or {}).items() if k not in parts}
+    files = [f for f in footage_files(pid, "narration") if Path(f).name not in split_src]   # a split recording is used in pieces
+    out["narration"] = dict(matcher.match_narration({"videos": [v for v in plan["videos"] if v["id"] not in parts]},
+                                                    files, rest), **parts)
     nar_names = {Path(f).name for f in footage_files(pid, "narration")}
     out["narration_manual"] = {k: v for k, v in (cur.get("narration_manual") or {}).items() if v in nar_names}
     projects.save_json(projects.pdir(pid) / "assign.json", out)
@@ -132,7 +190,7 @@ def _variants(plan: dict, video_ids: list, versions: int) -> list:
     return out
 
 
-def _build(pid, v, settings, say, edl=None):
+def _build(pid, v, settings, say, edl=None, others=None):
     from . import shaper, text as T
     from PIL import ImageFont
     if T.LAYOUT != ImageFont.Layout.RAQM and not shaper.available():   # Mac: Thai marks need the shaper
@@ -141,8 +199,15 @@ def _build(pid, v, settings, say, edl=None):
         T._SHAPER_OK = None
     d, plan, assign, product_images, music = _context(pid)
     R = smart_edit.resolve(v, assign, footage_files(pid), product_images, settings, d / "work" / v["id"],
-                           log=say, narration_dir=d / "narration", edl_override=edl)
+                           log=say, narration_dir=d / "narration", edl_override=edl, others=others)
     return d, R, music
+
+
+def _remember(others: list, R) -> None:
+    """Cut lists of the videos already planned in this batch — the next ones are made to look different."""
+    cut = getattr(R, "cut", None)
+    if cut and cut["segments"] and all(o["video"] != cut["video"] for o in others):
+        others.append(cut)
 
 
 def _draft(settings: dict) -> dict:
@@ -157,11 +222,12 @@ def render_videos(job, pid: str, video_ids: list, settings: dict, draft: bool = 
     _, plan, *_ = _context(pid)
     items = _variants(plan, _voiced(pid, plan, video_ids, job.say), versions)
     st = dict(_draft(settings) if draft else settings, _allow_install=True)
-    results = []
+    results, others = [], []
     for i, v in enumerate(items):
         label = f"{v['id']} ({v['anim_style']})"
         job.say(f"{label}: planning the edit…")
-        d, R, music = _build(pid, v, st, lambda m, label=label: job.say(f"{label}: {m}"))
+        d, R, music = _build(pid, v, st, lambda m, label=label: job.say(f"{label}: {m}"), others=others)
+        _remember(others, R)
         for n in R.notes:
             job.say(f"{label}: {n}")
         out = d / "renders" / f"{v['id']}_{v['anim_style']}{'_draft' if draft else ''}_{time.strftime('%H%M%S')}.mp4"
@@ -210,12 +276,13 @@ def prepare_edits(job, pid: str, video_ids: list, settings: dict, versions: int 
         else:
             f.unlink()
     st = _draft(settings)
-    keys = []
+    keys, others = [], []
     for i, v in enumerate(items):
         key = _edit_key(v)
         label = f"{v['id']} ({v['anim_style']})"
         job.say(f"{label}: planning the edit…")
-        d, R, music = _build(pid, v, settings, lambda m, label=label: job.say(f"{label}: {m}"))
+        d, R, music = _build(pid, v, settings, lambda m, label=label: job.say(f"{label}: {m}"), others=others)
+        _remember(others, R)
         for n in R.notes:
             job.say(f"{label}: {n}")
         rec = {"key": key, "video": v["id"], "anim_style": v["anim_style"], "variation": int(v.get("variation", 0)),

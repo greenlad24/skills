@@ -278,7 +278,7 @@ def test_exif_rotated_photo_is_upright(tmp_path):
     assert out != str(src) and Image.open(out).size == (200, 400)
 
 
-def test_clips_keep_filmed_order_and_no_photos(footage, narration, tmp_path):
+def test_clips_follow_the_script_no_photos_no_repeats(footage, narration, tmp_path):
     from PIL import Image
     plan, v, a, files = _setup(footage, narration)
     photo = tmp_path / "product.jpg"
@@ -286,24 +286,41 @@ def test_clips_keep_filmed_order_and_no_photos(footage, narration, tmp_path):
     R = SE.resolve(v, a, files + [str(photo)], [str(photo)], {"provider": "manual"}, tmp_path / "w", narration_dir=narration)
     _check_timeline(R)
     assert all(s.kind == "video" for s in R.segments)                       # only filmed clips
+    runs = [r for i, r in enumerate([s.path for s in R.segments]) if i == 0 or r != R.segments[i - 1].path]
+    assert len(runs) == len(set(runs))                                       # no clip twice
     clips = SE.clip_catalog(files, [], a)
-    rank = {c.path: i for i, c in enumerate(clips)}
-    seq = [(rank[s.path], s.src_in) for s in R.segments]
-    assert seq == sorted(seq)                                                # steps never jump back
-    assert len({s.path for s in R.segments}) == len(clips)                   # every clip is used
+    by_shot = {sid: c.path for c in clips for sid in c.shots}
+    first = by_shot.get(v["timeline"][0]["shot_id"])
+    if first:
+        assert R.segments[0].path == first                                   # the hook shows the hook's clip
 
 
-def test_ai_order_is_enforced(footage, narration, tmp_path):
+def test_five_videos_look_different(footage, narration, tmp_path):
+    plan, v, a, files = _setup(footage, narration)
+    others, seqs = [], []
+    for k in range(5):
+        vk = dict(v, id=f"V{k + 1}")
+        a["narration"] = {vk["id"]: "IMG_0400.MOV"}
+        R = SE.resolve(vk, a, files, [], {"provider": "manual"}, tmp_path / f"w{k}", narration_dir=narration,
+                       others=list(others))
+        _check_timeline(R)
+        others.append(R.cut)
+        seqs.append(tuple(R.cut["segments"]))
+    assert len(set(seqs)) == 5, seqs                                        # no two videos alike
+    assert len({tuple(c for c, _ in s) for s in seqs}) == 5   # five different clip orders
+    assert len({s[0] for s in seqs}) >= 3                                    # mostly different openers
+
+
+def test_ai_script_order_is_kept(footage, narration, tmp_path):
     plan, v, a, files = _setup(footage, narration)
     clips = SE.clip_catalog(files, [], a)
     sp = SE.narration_spine(narration / "IMG_0400.MOV")
     draft = SE.fallback_edl(v, clips, sp, SE.beat_windows(v, sp))
-    bad = {"segments": [{"start": 0, "end": 3, "clip": "C3", "in": 0.3, "effect": "none"},
+    got = {"segments": [{"start": 0, "end": 3, "clip": "C3", "in": 0.3, "effect": "none"},
                         {"start": 3, "end": 6, "clip": "C1", "in": 0.3, "effect": "none"},
                         {"start": 6, "end": 99, "clip": "C2", "in": 0.3, "effect": "none"}], "notes": ""}
-    out = SE.validate_edl(bad, clips, sp, draft)
-    ranks = [int(s["clip"][1:]) for s in out["segments"]]
-    assert ranks == sorted(ranks)
+    out = SE.validate_edl(got, clips, sp, draft)
+    assert [s["clip"] for s in out["segments"]] == ["C3", "C1", "C2"]       # what is said decides the order
 
 
 def _runs(R):
@@ -478,6 +495,63 @@ def test_only_voiced_videos_are_made(footage, narration, tmp_path, monkeypatch):
     assert rep["IMG_0400.MOV"]["video"] == "V2"                    # recognised by what was said, not by order
     assert service.load_assign("x")["narration"] == {"V2": "IMG_0400.MOV"}
     assert service._voiced("x", plan, []) == ["V2"]                 # 1 recording → 1 video
+
+
+def _two_scripts():
+    plan = normalize_plan(sample_plan())
+    v1, v2 = plan["videos"]
+    plan["videos"][1] = dict(v2, timeline=[dict(b, vo_th=t) for b, t in zip(v2["timeline"], ["ใช่ค่ะ นุ่มจริงมาก ลองนอนแล้ว หลับสบายทั้งคืน", "", "", ""])])
+    words, t = [], 0.5
+    for w in ["ทำไมถูกจัง", "ที่นอนห้าฟุต", "แค่สองพันกว่าบาท", "นุ่มเด้ง", "ไม่ปวดหลัง", "ราคาเหลือแค่", "กดตะกร้าเหลือง", "ได้เลย"]:
+        words.append({"w": w, "s": t, "e": t + 0.7})
+        t += 0.8
+    words.append({"w": "โอเค", "s": 9.5, "e": 9.8})                         # chit-chat between takes
+    t = 12.0
+    for w in ["ใช่ค่ะ", "นุ่มจริงมาก", "ลองนอนแล้ว", "หลับสบายทั้งคืน"]:
+        words.append({"w": w, "s": t, "e": t + 0.8})
+        t += 1.0
+    return plan, words
+
+
+def test_one_recording_with_two_scripts_is_split():
+    from studio.editor import transcribe as T
+    plan, words = _two_scripts()
+    parts = T.split(words, plan["videos"])
+    assert [p[0] for p in parts] == ["V1", "V2"]
+    assert parts[0][1] < 0.5 and 6.0 < parts[0][2] <= 12.0                # V1 = the first reading
+    assert 9.8 <= parts[1][1] <= 12.0 and parts[1][2] > 15.0               # V2 = the second, chit-chat left out
+    one = [w for w in words if w["s"] < 9]
+    assert T.split(one, plan["videos"]) == []                              # just one script → no split
+
+
+def test_two_scripts_in_one_file_make_two_videos(tmp_path, monkeypatch):
+    from studio import projects
+    from studio.editor import service, transcribe as T
+    plan, words = _two_scripts()
+    d = tmp_path / "p"
+    (d / "narration").mkdir(parents=True)
+    (d / "footage").mkdir()
+    subprocess.run([media.ffmpeg_exe(), "-y", "-v", "error", "-f", "lavfi", "-i", "sine=f=200:d=18:sample_rate=48000",
+                    str(d / "narration" / "all.m4a")], check=True)
+    monkeypatch.setattr(projects, "pdir", lambda pid: d)
+    projects.save_json(d / "plan.json", plan)
+    monkeypatch.setattr(T, "transcript", lambda path, cache, log=print, allow_install=True:
+                        {"text": "".join(w["w"] for w in words), "words": words} if Path(path).name == "all.m4a" else None)
+
+    class J:
+        progress = 0
+        def say(self, m): pass
+    service.match_voices(J(), "x", {})
+    nar = service.load_assign("x")["narration"]
+    assert sorted(nar) == ["V1", "V2"] and all(v.startswith("PARTS/all.m4a/") for v in nar.values())
+    for v in nar.values():
+        f = service.narration_path(d, v)
+        assert f.exists() and media.probe(f)["duration"] > 3
+    assert service._voiced("x", plan, []) == ["V1", "V2"]                  # one file, two scripts → two videos
+    a = service.refresh_assign("x", plan)                                   # the pieces survive a refresh
+    assert a["narration"] == nar
+    R = SE.resolve(plan["videos"][1], a, [], [], {"provider": "manual"}, d / "work" / "V2", narration_dir=d / "narration")
+    assert any("narration" in n for n in R.notes) and 3 < R.total < 8      # V2 uses only its own piece
 
 
 def test_wide_clips_turn_right_by_default(footage, tmp_path):

@@ -5,8 +5,9 @@
    joined only at real pauses. It is never chopped into per-line pieces.
 2. Claude Opus sees every clip you uploaded (3 frames each), how long each clip is, when
    each phrase of the voice is spoken and the script — and writes an edit decision list
-   (EDL) that only uses those clips. Cuts land on phrase boundaries; clips may be reused
-   from other in-points; there are never gaps or "missing footage" cards.
+   (EDL) that only uses those clips: for every spoken line, the clip that shows what is said.
+   Each clip at most once per video; each of a product's videos opens on a different clip and
+   uses a different order, so the 5 videos never look alike. No gaps or placeholder cards.
 3. Without AI (copy/paste mode, or if the AI call fails) a built-in editor does the same
    job: phrase-based cuts, the shot the script asked for when it was filmed, otherwise
    the next best clip you uploaded.
@@ -400,38 +401,140 @@ def _fit(c: "Clip", ln: float) -> tuple:
     return 0.0, max(0.5, min(1.0, (c.duration - 0.05) / ln))   # beyond 0.5x the last frame is held
 
 
-def chrono_edl(video: dict, clips: list, sp: Spine, windows: list, p: dict) -> dict:
-    """Each clip you filmed appears ONCE, in the order you filmed it (= the order of the steps).
+VARIETY = (0.15, 0.6, 0.35, 0.85, 0.05)   # which part of a clip each video uses, so the 5 videos look different
 
-    Clips get time in proportion to their length; cuts snap to pauses in the voice. When there is more
-    voice than footage, clips play slower instead of repeating.
+
+def variety_of(video: dict) -> int:
+    """0, 1, 2… per video of a product (V1, V2…) plus its extra versions — drives the different picks."""
+    m = re.search(r"\d+", str(video.get("id", "")))
+    return (int(m.group()) - 1 if m else 0) + int(video.get("variation", 0) or 0)
+
+
+def _slots(video: dict, sp: Spine, windows: list, p: dict) -> list:
+    """[(t0, t1, beat index)]: one shot per spoken line, long lines split at pauses in the voice."""
+    gaps = [(x[1] + y[0]) / 2 for x, y in zip(sp.phrases, sp.phrases[1:])]
+    out = []
+    for bi, (a, b) in enumerate(windows):
+        if b - a < 0.05:
+            continue
+        n = max(1, int((b - a) // max(p["max"], p["target"] * 1.6)) + (1 if (b - a) > p["max"] else 0))
+        cuts = [a]
+        for k in range(1, n):
+            t = _snap(a + (b - a) * k / n, gaps, cuts[-1] + MIN_SEG * 2, b - MIN_SEG * 2)
+            if t - cuts[-1] >= MIN_SEG * 2:
+                cuts.append(t)
+        cuts.append(b)
+        out += [(x, y, bi) for x, y in zip(cuts, cuts[1:])]
+    if out:
+        out[0] = (0.0, out[0][1], out[0][2])
+        out[-1] = (out[-1][0], sp.total, out[-1][2])
+    return out
+
+
+def chrono_edl(video: dict, clips: list, sp: Spine, windows: list, p: dict, others: list | None = None) -> dict:
+    """Built-in editor: the picture follows THIS video's script, line by line.
+
+    For each spoken line it shows the clip filmed for that line's shot when there is one, otherwise the
+    next fitting clip. A clip is shown at most once per video. Each video of the product starts on a
+    different clip and uses different parts of the clips, so the 5 videos don't look alike.
     """
     D = sp.total
     vids = [c for c in clips if c.kind == "video"]
-    lengths = [max(0.4, c.duration - 0.45) for c in vids]
-    scale = D / sum(lengths)
-    gaps = [(x[1] + y[0]) / 2 for x, y in zip(sp.phrases, sp.phrases[1:])]
-    cut_ix = voice._choose_cuts(sp.phrases, lengths) if 0 < len(lengths) - 1 <= len(gaps) else []
-    if cut_ix:   # every clip change sits in a pause of the voice (best overall fit, in order)
-        bounds = [0.0] + [gaps[i] for i in cut_ix] + [D]
-    else:        # more clips than pauses: proportional, snapped to the nearest free pause
-        bounds, t = [0.0], 0.0
-        for ln in lengths[:-1]:
-            t += ln * scale
-            bounds.append(_snap(t, gaps, bounds[-1] + MIN_SEG, D - MIN_SEG))
-        bounds.append(D)
-    segs = []
-    for k, c in enumerate(vids):
-        a, b = bounds[k], bounds[k + 1]
-        if b - a < 0.05:
+    if not vids:
+        return {"segments": [], "overlays": _overlays_for(video, sp, windows), "notes": "built-in editor"}
+    k = variety_of(video)
+    beats = video["timeline"]
+    slots = _slots(video, sp, windows, p) or [(0.0, D, 0)]
+    if len(slots) > len(vids):              # fewer clips than lines: lines share a shot (no repeats)
+        per = len(slots) / len(vids)
+        grouped = []
+        for i in range(len(vids)):
+            grp = slots[int(round(i * per)): int(round((i + 1) * per))]
+            if grp:
+                grouped.append((grp[0][0], grp[-1][1], grp[0][2]))
+        slots = grouped
+    opened = {o["segments"][0][0] for o in (others or []) if o.get("segments")}
+    used_by, follows = {}, set()
+    for o in others or []:
+        seq = [cid for cid, _ in o.get("segments", [])]
+        for pos, cid in enumerate(seq):
+            used_by.setdefault(cid, []).append(pos)
+        follows |= set(zip(seq, seq[1:]))                   # "B right after A" already seen in another video
+    n = len(vids)
+    start = (k * max(1, n // 5 or 1)) % n            # each video begins its search somewhere else
+    order = vids[start:] + vids[:start]
+    rank = {c.id: i for i, c in enumerate(order)}
+    taken, segs, last = set(), [], -1
+    for si, (a, b, bi) in enumerate(slots):
+        want = beats[bi]["shot_id"] if bi < len(beats) else ""
+
+        def score(c):
+            sc = 0.0
+            if want and want in c.shots:
+                sc += 3.0                                   # filmed for exactly this line
+            if si == 0 and c.id in opened:
+                sc -= 3.5                                   # another video already opens on it
+            sc -= 0.4 * sum(1 for pos in used_by.get(c.id, []) if abs(pos - si) <= 1)
+            if segs and (segs[-1]["clip"], c.id) in follows:
+                sc -= 0.8
+            sc += 0.6 if rank[c.id] > last else 0.0         # keep moving forward through the footage
+            sc -= 0.01 * ((rank[c.id] - last) % n)
+            return sc
+        free = [c for c in order if c.id not in taken]
+        if not free:
+            segs[-1]["end"] = b
             continue
-        src_in, speed = _fit(c, b - a)
-        eff = "slow_zoom" if (len(segs) % 2 == 1 and b - a >= 2.0) else "none"
-        if not segs:
-            eff = _calm_effect(video["timeline"][0]["effect"] if video["timeline"] else "none", p)
-        segs.append({"start": a, "end": b, "clip": c.id, "in": src_in, "effect": eff, "speed": speed})
-    if segs:
-        segs[0]["start"], segs[-1]["end"] = 0.0, D
+        c = max(free, key=score)
+        taken.add(c.id)
+        last = rank[c.id]
+        segs.append({"start": a, "end": b, "clip": c.id})
+    seen = [[cid for cid, _ in o.get("segments", [])] for o in others or []]
+    mine = [x["clip"] for x in segs]
+    for r in range(1, len(mine)):                           # same order as another video → shuffle the middle
+        if mine not in seen:
+            break
+        rest = mine[1:]
+        mine = mine[:1] + rest[r % len(rest):] + rest[:r % len(rest)]
+    for x, cid in zip(segs, mine):
+        x["clip"] = cid
+    # no shot may run longer than its clip can cover (at most 2x slower): move the extra time to shots with room
+    ids = {c.id: c for c in vids}
+    cap = [2 * max(0.2, ids[x["clip"]].duration - 0.1) for x in segs]
+    dur = [x["end"] - x["start"] for x in segs]
+    for _ in range(len(segs)):
+        over = sum(max(0.0, d - c) for d, c in zip(dur, cap))
+        if over < 0.01:
+            break
+        dur = [min(d, c) for d, c in zip(dur, cap)]
+        room = [c - d for d, c in zip(dur, cap)]
+        tot = sum(room)
+        if tot < 0.01:
+            dur[-1] += over                                  # truly not enough footage: last frame holds
+            break
+        dur = [d + over * r / tot for d, r in zip(dur, room)]
+    gaps = [(x[1] + y[0]) / 2 for x, y in zip(sp.phrases, sp.phrases[1:])]
+    t = 0.0
+    for i, x in enumerate(segs):
+        x["start"] = t
+        if i < len(segs) - 1:
+            want = t + dur[i]
+            lo, hi = t + MIN_SEG, min(D - MIN_SEG, t + cap[i])
+            t = _snap(want, [g for g in gaps if abs(g - want) <= 0.6], lo, max(lo, hi))
+        else:
+            t = D
+        x["end"] = t
+    for i, x in enumerate(segs):
+        c, ln = ids[x["clip"]], x["end"] - x["start"]
+        use = max(0.4, c.duration - 0.45)
+        if use >= ln:
+            src_in, speed = min(0.25, c.duration - ln) + (use - ln) * VARIETY[k % len(VARIETY)], 1.0
+        else:
+            src_in, speed = _fit(c, ln)
+        eff = "slow_zoom" if (i % 2 == (k % 2) and ln >= 2.0) else "none"
+        if i == 0:
+            eff = _calm_effect(beats[0]["effect"] if beats else "none", p)
+        x.update({"in": src_in, "effect": eff, "speed": speed})
+    segs[0]["start"], segs[-1]["end"] = 0.0, D
     return {"segments": segs, "overlays": _overlays_for(video, sp, windows), "notes": "built-in editor"}
 
 
@@ -456,9 +559,10 @@ def talking_edl(video: dict, clips: list, sp: Spine, windows: list, p: dict) -> 
     return {"segments": segs, "overlays": _overlays_for(video, sp, windows), "notes": "built-in editor"}
 
 
-def fallback_edl(video: dict, clips: list, sp: Spine, windows: list, p: dict | None = None) -> dict:
+def fallback_edl(video: dict, clips: list, sp: Spine, windows: list, p: dict | None = None,
+                 others: list | None = None) -> dict:
     p = p or pace(reference.DEFAULT_PROFILE)
-    return talking_edl(video, clips, sp, windows, p) if sp.aroll else chrono_edl(video, clips, sp, windows, p)
+    return talking_edl(video, clips, sp, windows, p) if sp.aroll else chrono_edl(video, clips, sp, windows, p, others)
 
 
 # --------------------------------------------------------------------------- AI editor
@@ -480,7 +584,7 @@ EDL_SCHEMA = {
 
 
 def edl_prompt(video: dict, clips: list, sp: Spine, windows: list, draft: dict, sheet_names: dict,
-               prof: dict | None = None, ref_sheet: str = "") -> str:
+               prof: dict | None = None, ref_sheet: str = "", others: list | None = None) -> str:
     prof = prof or reference.DEFAULT_PROFILE
     p = pace(prof)
     beats = []
@@ -492,6 +596,12 @@ def edl_prompt(video: dict, clips: list, sp: Spine, windows: list, draft: dict, 
            "matched_to_planned_shot": c.shots, "what_that_shot_should_show": [shots.get(s, "") for s in c.shots],
            "frames_image": sheet_names.get(c.id, "")} for c in clips]
     talking = bool(sp.aroll)
+    others_rule = ""
+    if others:
+        others_rule = ("- This product has other videos made from the SAME clips (cut lists below: clip, in-point). This video must\n"
+                       "  look clearly DIFFERENT from them: a different opening clip, a different order of clips, and other\n"
+                       "  parts (in-points) of any clip they also use. Never copy their sequence.\n  Other videos: "
+                       + json.dumps(others, ensure_ascii=False) + "\n")
     graphics = [{"type": o["type"], "text": o["text"], "at": o["at"], "dur": o["dur"]} for o in draft.get("overlays", [])]
     return f"""You are a top Thai TikTok Shop video editor. Edit ONE short vertical affiliate video.
 
@@ -514,12 +624,13 @@ RULES
 - Cut on phrase boundaries or between words — never in the middle of a word.
 - PACING: copy the creator's own style reference below — typical shot {p["target"]:.1f} s, up to {p["max"]:.1f} s.
 - Show what is being said: when the voice talks about a feature/result, pick the clip that shows it.
-- ORDER: the clips are listed in the order the creator FILMED them, which is the order of the steps
-  (C1 first). Keep that order: a clip may only appear after all earlier clips' moments, never jump back to an
-  earlier clip. Use EVERY clip EXACTLY ONCE as one continuous shot — never show the same clip twice, never
-  split one clip into several shots. Skip a clip only if it is broken. Video clips: in + (end - start) must be
-  <= the clip's seconds (a clip may run up to 2x slower if the voice is longer than the footage).
-- Never use a clip that looks broken, black, or a retake fumble if a better one exists.
+- FOLLOW THIS VIDEO'S SCRIPT: for every spoken line, put on screen the clip whose PICTURE shows what is being
+  said at that moment (look at the frames — the automatic shot matching may be wrong). The order of the shots
+  follows what is said, NOT the order the clips were filmed. The opening shot must fit this script's hook.
+- Each clip at most ONCE in this video, as one continuous shot. You do NOT have to use every clip — leave out
+  clips that don't fit this script. Video clips: in + (end - start) must be <= the clip's seconds (a clip may
+  run up to 2x slower if the voice is longer than the footage).
+{others_rule}- Never use a clip that looks broken, black, or a retake fumble if a better one exists.
 - First 1.5 s must be the most eye-catching footage.
 - effect: {"slow_zoom (a gentle zoom the creator likes) on about every other shot, otherwise none; never shake or flash" if p["calm"] else "punch_in / punch_shake on emphasis, slow_zoom on calm shots, flash at most once, otherwise none"}.
 
@@ -553,14 +664,14 @@ def build_sheets(clips: list, work_dir: Path) -> dict:
 
 
 def ai_edl(video, clips, sp, windows, draft, settings, work_dir: Path, log, prof: dict | None = None,
-           sheets: dict | None = None) -> dict | None:
+           sheets: dict | None = None, others: list | None = None) -> dict | None:
     if not ai_ready(settings):
         return None
     provider = settings.get("provider", "claude_code")
     sheets = sheets if sheets is not None else build_sheets(clips, work_dir)
     ref = reference.sheet_path()
     prompt = edl_prompt(video, clips, sp, windows, draft, {k: Path(v).name for k, v in sheets.items()}, prof,
-                        ref.name if ref else "")
+                        ref.name if ref else "", others)
     from ..planner import _provider
     mod = _provider(provider)
     log("Claude is watching your clips and planning the edit…")
@@ -629,15 +740,6 @@ def validate_edl(edl: dict, clips: list, sp: Spine, fallback: dict, p: dict | No
     if len(merged) > 1 and merged[0]["end"] - merged[0]["start"] < MIN_SEG * 0.6:
         merged[1]["start"] = 0.0
         merged.pop(0)
-    # the steps must stay in the order they were filmed (C1 → Cn): put the chosen footage back in order
-    order = [c.id for c in clips]
-    rank = {cid: i for i, cid in enumerate(order)}
-    own = [s for s in merged if s["clip"] != AROLL]
-    keys = [(rank[s["clip"]], s["in"]) for s in own]
-    if keys != sorted(keys):
-        picks = sorted(((rank[s["clip"]], s["in"], s["clip"], s["speed"]) for s in own))
-        for s, (_, src_in, cid, spd) in zip(own, picks):
-            s["clip"], s["in"], s["speed"] = cid, src_in, spd
     # each clip ONCE: a repeat of a clip already shown becomes more time for the shot before it
     seen, dedup = set(), []
     for s in merged:
@@ -752,7 +854,7 @@ def _snap_to_frames(R: Resolved) -> None:
 # --------------------------------------------------------------------------- entry point
 def resolve(video: dict, assign: dict, footage_files: list, product_images: list, settings: dict, work_dir: Path,
             log=print, narration_dir: Path | None = None, use_ai: bool = True,
-            edl_override: dict | None = None) -> Resolved:
+            edl_override: dict | None = None, others: list | None = None) -> Resolved:
     """Plan (or, with edl_override, re-use a reviewed plan) and build the renderable timeline.
 
     R.edl holds the final cut list + stickers, so it can be saved for the review screen.
@@ -762,7 +864,11 @@ def resolve(video: dict, assign: dict, footage_files: list, product_images: list
     notes = []
     sp, tr = None, None
     nar = (assign.get("narration") or {}).get(video["id"])
-    nar_path = narration_dir / nar if nar and narration_dir and (narration_dir / nar).exists() else None
+    if nar and nar.startswith("PARTS/") and narration_dir:      # a piece of a recording that holds several scripts
+        part = narration_dir.parent / "work" / "narration_parts" / nar[len("PARTS/"):]
+        nar_path = part if part.exists() else None
+    else:
+        nar_path = narration_dir / nar if nar and narration_dir and (narration_dir / nar).exists() else None
     if nar_path is None:
         vo = (assign.get("vo") or {}).get(video["id"])
         files = {Path(f).name: Path(f) for f in footage_files}
@@ -796,7 +902,8 @@ def resolve(video: dict, assign: dict, footage_files: list, product_images: list
     windows = beat_windows(video, sp)
     prof = reference.load()
     pc = pace(prof)
-    draft = fallback_edl(video, clips, sp, windows, pc) if clips else \
+    others = [o for o in (others or []) if o.get("video") != video["id"]]
+    draft = fallback_edl(video, clips, sp, windows, pc, others) if clips else \
         {"segments": [{"start": 0.0, "end": sp.total, "clip": "", "in": 0.0, "effect": "none"}],
          "overlays": [], "notes": ""}
     if not clips:
@@ -825,7 +932,7 @@ def resolve(video: dict, assign: dict, footage_files: list, product_images: list
             if clips else dict(draft, overlays=edl_override.get("overlays", []))
         edl["overlays"] = edl_override.get("overlays", [])
     elif use_claude and settings.get("smart_edit", True):
-        key = _cache_key(video, clips, sp, settings, prof)
+        key = _cache_key(video, clips, sp, settings, prof, others)
         cache = work_dir / f"edl_{key}.json"
         got = None
         if cache.exists():
@@ -836,7 +943,7 @@ def resolve(video: dict, assign: dict, footage_files: list, product_images: list
                 got = None
         if got is None:
             try:
-                got = ai_edl(video, clips, sp, windows, _round(draft), settings, work_dir, log, prof, sheets)
+                got = ai_edl(video, clips, sp, windows, _round(draft), settings, work_dir, log, prof, sheets, others)
                 if got:
                     cache.write_text(json.dumps(got, ensure_ascii=False, indent=1), "utf-8")
             except Exception as e:   # the built-in editor always works
@@ -845,12 +952,17 @@ def resolve(video: dict, assign: dict, footage_files: list, product_images: list
                 got = None
         if got:
             edl = validate_edl(got, clips, sp, draft, pc)
+            order = [x["clip"] for x in edl["segments"]]
+            if any(order == [c for c, _ in o.get("segments", [])] for o in others):
+                log("Claude's cut looked the same as another video — using a different cut instead.")
+                edl = validate_edl(draft, clips, sp, draft, pc)
             if edl.get("notes"):
                 notes.append("Edit idea: " + edl["notes"])
     if clips and edl is draft:
         edl = validate_edl(draft, clips, sp, draft, pc)
     R = to_resolved(video, edl, clips, sp)
     R.edl = edl
+    R.cut = {"video": video["id"], "segments": [(x["clip"], round(x["in"], 1)) for x in edl.get("segments", [])]}
     if pc["calm"]:
         R.progress_color = None   # the creator's style has no progress bar
     R.notes = notes
@@ -873,11 +985,12 @@ def _round(edl: dict) -> dict:
             "overlays": edl["overlays"]}
 
 
-def _cache_key(video: dict, clips: list, sp: Spine, settings: dict, prof: dict | None = None) -> str:
+def _cache_key(video: dict, clips: list, sp: Spine, settings: dict, prof: dict | None = None,
+               others: list | None = None) -> str:
     """Same clips + same voice + same script → same edit (extra animation versions re-use it)."""
     script = [(b["shot_id"], b["vo_th"], b["overlays"]) for b in video["timeline"]]
     blob = json.dumps({"clips": [(c.id, _short_hash(c.path), c.pre) for c in clips], "total": round(sp.total, 2),
                        "phrases": [(round(a, 2), round(b, 2)) for a, b in sp.phrases], "script": script,
                        "heard": [round(t, 2) if t is not None else None for t in sp.starts],
-                       "provider": settings.get("provider"), "style": prof, "v": 2}, ensure_ascii=False, sort_keys=True)
+                       "provider": settings.get("provider"), "style": prof, "others": others or [], "v": 3}, ensure_ascii=False, sort_keys=True)
     return hashlib.sha1(blob.encode()).hexdigest()[:16]

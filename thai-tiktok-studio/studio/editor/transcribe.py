@@ -173,3 +173,69 @@ def beat_starts(words: list, video: dict) -> list:
             else:
                 last = t
     return out
+
+
+# --------------------------------------------------------------------------- one recording, several scripts
+def _tri(s: str) -> set:
+    return {s[i:i + 3] for i in range(max(0, len(s) - 2))}
+
+
+def split(words: list, videos: list, gap: float = 0.5, min_cover: float = 0.4) -> list:
+    """You read several scripts in ONE recording → [(video_id, t0, t1, coverage)] in recording order.
+
+    The recording is cut into sentences at pauses; each sentence is labelled with the script it belongs
+    to (or none, for chit-chat), preferring to stay on the same script; each script keeps its most
+    complete reading (a later retake wins a tie). Returns [] when fewer than 2 scripts were read.
+    """
+    if not words or len(videos) < 2:
+        return []
+    chunks = []
+    for w in words:
+        if chunks and w["s"] - chunks[-1]["e"] < gap:
+            chunks[-1]["e"], chunks[-1]["t"] = w["e"], chunks[-1]["t"] + w["w"]
+        else:
+            chunks.append({"s": w["s"], "e": w["e"], "t": w["w"]})
+    scripts = [(v["id"], _tri(norm(script_of(v)))) for v in videos]
+    scripts = [(vid, t) for vid, t in scripts if t]
+    if len(scripts) < 2:
+        return []
+    labels = [None] + [vid for vid, _ in scripts]
+    tris = dict(scripts)
+
+    def emit(ch, lab):
+        t = _tri(norm(ch["t"]))
+        if len(t) < 2:
+            return 0.0                       # "เอ่อ", "โอเค" — fits anywhere
+        return 0.3 if lab is None else len(t & tris[lab]) / len(t)
+    SWITCH = 0.25
+    best = {lab: (emit(chunks[0], lab), [lab]) for lab in labels}
+    for ch in chunks[1:]:
+        nxt = {}
+        for lab in labels:
+            prev, path = max(((sc - (SWITCH if pl != lab else 0.0), p) for pl, (sc, p) in best.items()),
+                             key=lambda x: x[0])
+            nxt[lab] = (prev + emit(ch, lab), path + [lab])
+        best = nxt
+    path = max(best.values(), key=lambda x: x[0])[1]
+    runs = []
+    for ch, lab in zip(chunks, path):
+        if runs and runs[-1]["lab"] == lab:
+            runs[-1]["e"], runs[-1]["t"] = ch["e"], runs[-1]["t"] + ch["t"]
+        else:
+            runs.append({"lab": lab, "s": ch["s"], "e": ch["e"], "t": ch["t"]})
+    pick = {}
+    for r in runs:
+        if r["lab"] is None:
+            continue
+        cover = len(_tri(norm(r["t"])) & tris[r["lab"]]) / len(tris[r["lab"]])
+        if cover >= min_cover and (r["lab"] not in pick or cover >= pick[r["lab"]][3] - 0.1):
+            pick[r["lab"]] = (r["lab"], r["s"], r["e"], round(cover, 3))
+    out = sorted(pick.values(), key=lambda x: x[1])
+    if len(out) < 2:
+        return []
+    res = []
+    for i, (vid, s, e, cov) in enumerate(out):        # a little air around each reading, never into the next
+        lo = out[i - 1][2] if i else 0.0
+        hi = out[i + 1][1] if i + 1 < len(out) else e + 0.6
+        res.append((vid, round(max(lo, s - 0.3), 3), round(min(hi, e + 0.45), 3), cov))
+    return res

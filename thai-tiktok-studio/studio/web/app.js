@@ -672,7 +672,9 @@ function renderUpload(body) {
   const vids = p.files.filter((f) => f.kind === "video" || f.kind === "image");
   const auds = p.files.filter((f) => f.kind === "audio");
   const nars = p.narration || [];
-  const opt = (list, sel) => `<option value="">${t("upload.none")}</option>` + list.map((f) => `<option ${f.name === sel ? "selected" : ""} value="${esc(f.name)}">${esc(f.name)}${f.duration ? ` (${f.duration}s)` : ""}</option>`).join("");
+  const parts = Object.values((p.assign || {}).narration || {}).filter((n) => n.indexOf("PARTS/") === 0)
+    .sort().map((n) => ({ name: n, label: partLabel(n) }));
+  const opt = (list, sel) => `<option value="">${t("upload.none")}</option>` + list.map((f) => `<option ${f.name === sel ? "selected" : ""} value="${esc(f.name)}">${esc(f.label || f.name)}${f.duration ? ` (${f.duration}s)` : ""}</option>`).join("");
   let total = 0, have = 0;
   p.plan.videos.forEach((v) => v.shots.forEach((sh) => { total++; if (a.shots[sh.id] || (sh.shot_size === "product_photo" && p.product_images.length)) have++; }));
   const allOk = have === total;
@@ -694,10 +696,10 @@ function renderUpload(body) {
       <div id="narProg"></div>
       ${nars.length ? `<ul class="files">${fileCards(nars, "narration")}</ul>
         <p class="list-title">${t("upload.whichVoice")}</p>
-        <div class="match-list">${p.plan.videos.map((v) => `<label class="match-row"><span>#${v.rank} ${esc(v.title_th)}</span><select id="nar_${esc(v.id)}" data-nar="${esc(v.id)}">${opt(nars, a.narration[v.id])}</select></label>`).join("")}</div>
+        <div class="match-list">${p.plan.videos.map((v) => `<label class="match-row"><span>#${v.rank} ${esc(v.title_th)}</span><select id="nar_${esc(v.id)}" data-nar="${esc(v.id)}">${opt(nars.concat(parts), a.narration[v.id])}</select></label>`).join("")}</div>
         ${Object.keys(p.voice_match || {}).length ? `<ul class="heard">${Object.entries(p.voice_match).map(([f, r]) => {
           const v = p.plan.videos.find((x) => x.id === r.video);
-          return `<li>🎙 <b>${esc(f)}</b> → ${v ? `${t("voices.is")} <b>#${v.rank} ${esc(v.title_th)}</b> <span class="muted">(${Math.round(r.score * 100)}%)</span>` : `<span class="bad">${t("voices.none")}</span>`}
+          return `<li>🎙 <b>${esc(partLabel(f))}</b> → ${v ? `${t("voices.is")} <b>#${v.rank} ${esc(v.title_th)}</b> <span class="muted">(${Math.round(r.score * 100)}%)</span>` : `<span class="bad">${t("voices.none")}</span>`}
             <div class="muted small">“${esc(r.heard)}…”</div></li>`; }).join("")}</ul>` : ""}`
         : `<p class="muted center">${t("upload.noVoice")}</p>`}
     </section>
@@ -732,6 +734,13 @@ function renderUpload(body) {
   if ($("#btnSaveAssign")) $("#btnSaveAssign").onclick = async () => { try { await saveAssign(); toast(tt("upload.matchSaved"), 2500, "good"); refreshProject(); } catch (e) { errToast(e); } };
   $$("[data-phone]", body).forEach((b) => (b.onclick = showPhoneLink));
   if ($("#toMake")) $("#toMake").onclick = async () => { try { await saveAssign(); } catch (e) { /* keep going */ } setStep("make"); };
+}
+function partLabel(name) {   // "PARTS/rec.m4a/2_1234_5678.wav" → "rec.m4a · script 2 (0:12–0:56)"
+  if (name.indexOf("PARTS/") !== 0) return name;
+  const bits = name.slice(6).split("/"), m = (bits[1] || "").match(/^(\d+)_(\d+)_(\d+)/);
+  if (!m) return bits[0];
+  const mmss = (cs) => { const sec = Math.round(+cs / 100); return Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0"); };
+  return `${bits[0]} · ${tt("voices.part", { n: m[1] })} (${mmss(m[2])}–${mmss(m[3])})`;
 }
 async function saveAssign() {
   if (!$("#musicSel") && !$("[data-nar]")) return;  // not on the upload screen

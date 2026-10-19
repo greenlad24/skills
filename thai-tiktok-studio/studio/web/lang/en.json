@@ -666,5 +666,6 @@
  "vphone.s2": "Open the phone camera and <b>scan this QR</b>",
  "vphone.s3": "Tap <b>Save video</b>, copy the caption, then post it from the TikTok app",
  "vphone.tip": "Same file as on this computer, byte for byte · the link works for {h} hours, for this video only",
- "vphone.here": "Save on this computer instead"
+ "vphone.here": "Save on this computer instead",
+ "voices.part": "script {n}"
 }

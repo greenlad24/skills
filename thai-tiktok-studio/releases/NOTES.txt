@@ -1,2 +1,2 @@
-1.9.12 — บันทึกลงเครื่อง → มีคิวอาร์ส่งวิดีโอไปมือถือแบบคุณภาพเต็ม (ไฟล์เดียวกันทุกไบต์) พร้อมแคปชันให้คัดลอก โพสต์เองจากแอป TikTok ได้วิวมากกว่า · ปุ่ม 📱 ส่งไปมือถือ ในหน้าตั้งเวลาโพสต์ด้วย
-1.9.12 — Save to device now shows a QR code: scan it to save the video on your phone in full quality (the exact same file) with the caption ready to copy, then post from the TikTok app for better reach · also a 📱 To my phone button on each scheduled post
+1.9.13 — วิดีโอทั้ง 5 ไม่ซ้ำกันแล้ว: แต่ละวิดีโอเลือกคลิปตามสิ่งที่พูดในสคริปต์ของตัวเอง (พูดถึงอะไร เห็นภาพนั้น) เปิดด้วยคลิปต่างกัน ลำดับต่างกัน และใช้ช่วงต่างกันของคลิป · ไฟล์เสียงเดียวที่อ่านหลายสคริปต์ จะถูกแยกเป็นหลายวิดีโอให้อัตโนมัติ
+1.9.13 — Your 5 videos no longer look alike: each one picks the clips that show what ITS script says, opens on a different clip, uses a different order and different parts of the clips · one recording with several scripts read in it is split into one video per script automatically

@@ -494,6 +494,9 @@ def set_assign(pid):
     data = request.get_json(force=True) or {}
     names = {i["name"] for i in service.file_infos(pid)}
     nar_names = {i["name"] for i in service.file_infos(pid, "narration")}
+    nar_names |= {v for v in (data.get("narration") or {}).values()            # pieces of a several-script recording
+                  if isinstance(v, str) and v.startswith(service.PARTS) and ".." not in v
+                  and service.narration_path(projects.pdir(pid), v).is_file()}
     assign = {
         "narration": {k: v for k, v in (data.get("narration") or {}).items() if v in nar_names},
         "narration_manual": {k: v for k, v in {**(service.load_assign(pid).get("narration_manual") or {}),
