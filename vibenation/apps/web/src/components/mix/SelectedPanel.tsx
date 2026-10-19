@@ -47,7 +47,7 @@ export function SelectedPanel({ c, mix, bpm, ab, setAb, onBand, onAddBand, onRem
         <span style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 48, lineHeight: 0.9, letterSpacing: '-0.04em', color: '#8A3A12' }}>{String(c.n).padStart(2, '0')}</span>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingBottom: 4, minWidth: 0 }}>
           <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 18 }}>{name}</span>
-          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: '#6B5444' }}>{c.held ? 'HELD BY YOU' : 'CLAUDE MIXING'} · {c.section.toUpperCase()}</span>
+          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: '#6B5444' }}>{c.held ? 'HELD BY YOU' : 'MIX LOCKED'} · {c.section.toUpperCase()}</span>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, paddingBottom: 4, fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 700 }}>
           <span>{c.mute ? 'mute' : `${faderText(c.fader)} dB`}</span><LcdGr i={c.n - 1} fallback={c.gr} />
@@ -58,7 +58,7 @@ export function SelectedPanel({ c, mix, bpm, ab, setAb, onBand, onAddBand, onRem
         <span style={{ flex: 1 }} />
         {c.held
           ? <span style={{ padding: '5px 11px', borderRadius: 999, background: 'var(--text-1)', color: '#140D09', fontSize: 12, fontWeight: 700 }}>Held by you · rest of show</span>
-          : <span style={{ padding: '5px 11px', borderRadius: 999, background: 'rgba(185,166,255,0.12)', border: '1px solid rgba(185,166,255,0.35)', color: 'var(--ai-text)', fontSize: 12, fontWeight: 700 }}>Claude mixing</span>}
+          : <span style={{ padding: '5px 11px', borderRadius: 999, background: 'rgba(185,166,255,0.12)', border: '1px solid rgba(185,166,255,0.35)', color: 'var(--ai-text)', fontSize: 12, fontWeight: 700 }}>Mix locked · no auto changes</span>}
       </div>
       {c.held && <span style={{ fontSize: 12, color: 'var(--text-meta)', lineHeight: 1.45 }}>You changed this channel, so Claude leaves it alone until the stream ends. It only steps in for an emergency: feedback, clipping or a dead signal.</span>}
 

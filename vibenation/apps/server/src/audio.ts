@@ -2,7 +2,7 @@
 // show state, turns its measurement frames into meter frames for browsers, and
 // forwards mix actions. Reconnects forever; the demo meters run while it's down.
 
-import type { AudioStatus, ChannelState, ClientAction, EqBand, MeterFrame } from '@vibenation/shared';
+import type { AudioStatus, ChannelState, ClientAction, EqBand, MasteringState, MeterFrame } from '@vibenation/shared';
 
 const URL_BASE = process.env.VN_AUDIO_URL ?? 'http://127.0.0.1:8091';
 
@@ -16,7 +16,11 @@ export type EngineStrip = {
 };
 type EngineState = {
   type: 'engine';
-  mix: { strips: Record<string, EngineStrip>; base?: Record<string, EngineStrip>; master_gain: number; bpm: number };
+  mix: {
+    strips: Record<string, EngineStrip>; base?: Record<string, EngineStrip>; master_gain: number; bpm: number;
+    master?: { eq: EngineStrip['eq']; eq_live?: EngineStrip['eq'] | null; console: Record<string, number>; bus: Record<string, number>; tape: Record<string, number>; ceiling: number };
+  };
+  tone?: boolean;
   transport: Omit<AudioStatus, 'connected' | 'calibrating' | 'leveller'>;
   leveller: boolean;
   calibrating: boolean;
@@ -45,7 +49,7 @@ export class AudioLink {
   private base: Record<string, EngineStrip> = {};
 
   constructor(
-    private onState: (patch: { audio: AudioStatus | null; channels?: (c: ChannelState) => ChannelState; bpm?: number }) => void,
+    private onState: (patch: { audio: AudioStatus | null; channels?: (c: ChannelState) => ChannelState; bpm?: number; mastering?: MasteringState }) => void,
     private onMeters: (f: MeterFrame) => void,
     private log: (msg: string) => void,
   ) {
@@ -94,6 +98,10 @@ export class AudioLink {
     this.onState({
       audio: this.status,
       bpm: s.mix.bpm,
+      mastering: s.mix.master ? {
+        eq: toBands(s.mix.master.eq_live ?? s.mix.master.eq), console: s.mix.master.console, bus: s.mix.master.bus, tape: s.mix.master.tape,
+        ceiling: s.mix.master.ceiling, drive: s.mix.master_gain, leveller: s.leveller, tone: s.tone ?? false,
+      } : undefined,
       channels: (c) => {
         const e = this.strips[String(c.n)];
         if (!e) return c;
@@ -132,7 +140,7 @@ export class AudioLink {
   /** Forward a browser action to the engine if it's a mix action. Returns true if handled. */
   forward(a: ClientAction): boolean {
     if (!this.connected || !this.ws) return false;
-    const mixTypes = ['fader', 'mute', 'solo', 'pan', 'eq', 'comp', 'send', 'insert', 'gate', 'master_fader', 'transport', 'calibrate'];
+    const mixTypes = ['fader', 'mute', 'solo', 'pan', 'eq', 'comp', 'send', 'insert', 'gate', 'master_fader', 'master', 'transport', 'calibrate'];
     if (!mixTypes.includes(a.type)) return false;
     this.ws.send(JSON.stringify(a));
     return true;

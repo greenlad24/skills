@@ -74,8 +74,11 @@ Answer with JSON only:
 {"heard": "<what you hear in a few words, e.g. 'keys solo, vocal resting'>", "assessment": "<one or two plain sentences>", "changes": [{"ch": <n>, "action": "fader"|"eq"|"comp"|"send"|"rider", ... , "why": "<short plain reason a musician understands>", "confidence": "sure"|"likely"|"guessing"}], "next_check_s": <60-180>}
 Shapes: fader {"value": <new dB>}; eq {"band": <index from the list>, "gain"?: <new dB>, "f"?: <new Hz>}; comp {"thresh"?: <new dB>, "ratio"?: <new>}; send {"fx": "plate"|"room"|"delay", "value": <new dB or null for off>}; rider {"value": <new offset dB, -3..+3, moves that singer/soloist relative to their own running level>}.`;
 
+// User, 19 Oct 2026: "no auto changes to the mix": Claude's mixer loop is off (emergencies are handled by the engine).
+const MIX_LOCKED = true;
+
 export class MixerLoop {
-  enabled = true;
+  enabled = !MIX_LOCKED;
   busy = false;
   nextAt = Date.now() + 45_000;
   lastRun = 0;

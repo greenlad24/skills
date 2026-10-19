@@ -6,11 +6,12 @@ import { Strip } from '../components/mix/Strip';
 import { MasterStrip } from '../components/mix/Meters';
 import { ChangeCards, SelectedPanel, type ChMix } from '../components/mix/SelectedPanel';
 import { sendControl } from '../components/mix/sendSoon';
+import { MasteringPanel } from '../components/mix/Mastering';
 
 // Mixing station — Engineer mode. Strips + master on the left, selected channel on the right.
 
 type Layer = 'all' | 'a' | 'b' | 'bus' | 'fxr';
-const LAYERS: [Layer, string][] = [['all', 'All 16'], ['a', 'CH 1–8'], ['b', 'CH 9–16'], ['bus', 'Buses'], ['fxr', 'FX returns']];
+const LAYERS: [Layer, string][] = [['all', 'All 16'], ['a', 'CH 1–8'], ['b', 'CH 9–16'], ['bus', 'Mastering'], ['fxr', 'FX returns']];
 
 const panel: CSSProperties = { borderRadius: 22, background: 'linear-gradient(180deg, rgba(36,27,21,0.8), rgba(20,15,11,0.8))', border: '1px solid rgba(255,236,220,0.07)', boxShadow: 'inset 0 1px 0 rgba(255,236,220,0.05), 0 24px 60px rgba(0,0,0,0.4)' };
 
@@ -115,9 +116,11 @@ export function MixScreen() {
             <MasterStrip />
           </div>
         ) : (
-          <div style={{ minHeight: 200, borderRadius: 16, border: '1px dashed rgba(255,236,220,0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, color: 'var(--text-meta)', textAlign: 'center' }}>
-            {layer === 'bus' ? 'Buses' : 'FX returns'} are coming in the audio milestone.
-          </div>
+          layer === 'bus' ? <MasteringPanel /> : (
+            <div style={{ minHeight: 200, borderRadius: 16, border: '1px dashed rgba(255,236,220,0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, color: 'var(--text-meta)', textAlign: 'center' }}>
+              FX returns are coming in the audio milestone.
+            </div>
+          )
         )}
       </section>
 

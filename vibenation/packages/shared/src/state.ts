@@ -122,6 +122,18 @@ export interface AudioStatus {
   leveller: boolean;
 }
 
+/** The mastering chain as the engine runs it (master EQ, console, bus glue, tape, limiter, level). */
+export interface MasteringState {
+  eq: EqBand[];
+  console: Record<string, number>;
+  bus: Record<string, number>;
+  tape: Record<string, number>;
+  ceiling: number; // dBTP
+  drive: number; // master level into the limiter, dB
+  leveller: boolean; // automatic level on
+  tone: boolean; // tone keeper (holds F's tone) on
+}
+
 export interface MasterState {
   lufsI: number;
   lufsS: number;
@@ -200,6 +212,7 @@ export interface ShowState {
   controls: Record<string, number | string>;
   demo: boolean;
   audio: AudioStatus | null;
+  mastering?: MasteringState;
   preflight: PreflightCheck[];
   youtube: { configured: boolean; connected: boolean; channel: string | null };
   /** Platforms whose stream key is saved on the server (TikTok/Instagram) or that are connected (OAuth). */
@@ -251,6 +264,7 @@ export type ClientAction =
   | { type: 'comp'; ch: number; thresh?: number; ratio?: number; attack?: number; release?: number; makeup?: number; mix?: number }
   | { type: 'send'; ch: number; fx: 'plate' | 'room' | 'delay'; db: number | null }
   | { type: 'insert'; ch: number; slot: number; params: Record<string, number> }
+  | { type: 'master'; eq?: [EqBand['kind'], number, number, number][]; console?: Record<string, number>; bus?: Record<string, number>; tape?: Record<string, number>; ceiling?: number; tone?: boolean; leveller?: boolean }
   | { type: 'master_fader'; db: number } // master drive (dB); holding it turns the automatic leveller off
   | { type: 'gate'; ch: number; thresh?: number; range?: number; attack?: number; hold?: number; release?: number }
   | { type: 'transport'; action: 'play' | 'pause' | 'seek' | 'load'; seconds?: number; set?: string }

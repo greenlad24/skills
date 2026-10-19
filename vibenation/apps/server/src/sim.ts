@@ -114,6 +114,7 @@ export class DemoShow {
         this.state.audio = patch.audio;
         if (patch.channels) this.state.channels = this.state.channels.map(patch.channels);
         if (patch.bpm) this.state.bpm = patch.bpm;
+        if (patch.mastering) this.state.mastering = patch.mastering;
         this.refreshProcs();
         this.push();
       },
@@ -419,6 +420,9 @@ export class DemoShow {
         break;
       case 'master_fader':
         this.hold('master.fader');
+        break;
+      case 'master':
+        this.hold(`master.${['eq', 'console', 'bus', 'tape', 'ceiling'].find((k) => k in a) ?? 'chain'}`);
         break;
     }
     this.refreshProcs();

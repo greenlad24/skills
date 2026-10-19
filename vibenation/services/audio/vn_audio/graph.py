@@ -365,6 +365,14 @@ class MixGraph:
         for k, v in data.get('fx', {}).items():
             if k in self.fx:
                 self.fx[k].update(v)
+        m = data.get('master') or {}
+        for key, target in (('console', P.MASTER_CONSOLE), ('bus', P.MASTER_BUS), ('tape', P.MASTER_TAPE)):
+            if isinstance(m.get(key), dict):
+                target.update({k: v for k, v in m[key].items() if k in target})
+        if isinstance(m.get('eq'), list) and m['eq']:
+            P.MASTER_EQ[:] = [tuple(b) for b in m['eq']][:8]
+        if 'ceiling' in m:
+            P.CEILING_DBTP = max(-6.0, min(-0.5, float(m['ceiling'])))
         self.master_gain = min(P.MAX_DRIVE_DB, float(data.get('master_gain', 0.0)))
         self.band_offset = max(-3.0, min(2.0, float(data.get('band_offset', 0.0))))  # same range as the keeper
         if P.BALANCE_LOCKED:
@@ -374,7 +382,8 @@ class MixGraph:
         return {
             'strips': {n: {**asdict(s), 'mute': self.mute[n], 'solo': self.solo[n]} for n, s in self.strips.items()},
             'base': {s.n: asdict(s) for s in P.STRIPS},
-            'master': {'console': P.MASTER_CONSOLE, 'bus': P.MASTER_BUS, 'tape': P.MASTER_TAPE},
+            'master': {'console': P.MASTER_CONSOLE, 'bus': P.MASTER_BUS, 'tape': P.MASTER_TAPE, 'eq': P.MASTER_EQ,
+                       'eq_live': self.master_eq_live, 'ceiling': P.CEILING_DBTP},
             'fx': self.fx,
             'master_gain': self.master_gain,
             'global_trim': self.global_trim,

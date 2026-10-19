@@ -107,9 +107,9 @@ class Engine:
         threading.Thread(target=self._auto_source, name='auto-source', daemon=True).start()
         self.mh.connect_ports(port(MTAPE, 'out_l'), f'{a}:pre_l')
         self.mh.connect_ports(port(MTAPE, 'out_r'), f'{a}:pre_r')
-        self.leveller_on = True
+        self.leveller_on = not P.MIX_LOCKED
         self.keeper_on = True   # vocals-on-top keeper
-        self.tone_on = True     # tone keeper (F's long-term balance)
+        self.tone_on = not P.MIX_LOCKED  # tone keeper (F's long-term balance); off while the mix is locked
         self.duck_on = True     # plate/echo dip under the lead vocal
         self.arrange_on = True  # arrangement follower (lead/backing, solos, auto-mute); off only for level measurements
         self.auto_venue = True
@@ -498,7 +498,7 @@ class Engine:
             d.clear()
 
     def _calibrate(self, raw: list[float]) -> None:
-        if not self.running() or time.time() > self.calibrating_until:
+        if not self.running() or time.time() > self.calibrating_until or P.MIX_LOCKED:
             return
         for i, v in enumerate(raw):
             if v > -50:  # the source itself is playing (not hiss or stage bleed)
@@ -606,7 +606,7 @@ class Engine:
 
     def state(self) -> dict:
         tr = self.player.status() if self.source == 'recording' else {**self.player.status(), 'source': 'venue', 'name': 'MR18 venue feed', 'playing': self.venue.status()['connected']}
-        return {'type': 'engine', 'mix': self.graph.snapshot(), 'transport': tr, 'venue': self.venue.status(), 'leveller': self.leveller_on,
+        return {'type': 'engine', 'mix': self.graph.snapshot(), 'transport': tr, 'venue': self.venue.status(), 'tone': self.tone_on, 'leveller': self.leveller_on,
                 'calibrating': self.calibrating_until > time.time()}
 
     # ---------- commands ----------
@@ -616,15 +616,28 @@ class Engine:
         n = int(c.get('ch', 0))
         s = g.strips.get(n)
         if t == 'master':
-            # Live master-bus changes (EQ bands, bus glue, tape): {"eq": [[kind, f, gain, q], ...], "bus": {...}, "tape": {...}}
+            # Mastering: {"eq": [[kind, f, gain, q], ...], "bus": {...}, "tape": {...}, "console": {...},
+            # "ceiling": dBTP, "tone": bool (tone keeper), "leveller": bool}. A person editing the master EQ takes it over:
+            # the tone keeper stops and its small offsets are folded into what they set.
             if isinstance(c.get('eq'), list):
-                P.MASTER_EQ[:] = [tuple(b) for b in c['eq']][:8]
+                bands = [(str(k), float(f), max(-15.0, min(15.0, float(gn))), float(q)) for k, f, gn, q in c['eq']][:8]
+                if any(b[0] not in EQ_TYPE or b[0] == 'off' for b in bands):
+                    raise ValueError('Unknown EQ point type.')
+                P.MASTER_EQ[:] = bands
+                g.master_eq_live = None
+                self.tone_off = [0.0] * len(self.tone_off)
+                self.tone_on = False
             for key, target in (('bus', P.MASTER_BUS), ('tape', P.MASTER_TAPE), ('console', P.MASTER_CONSOLE)):
                 if isinstance(c.get(key), dict):
-                    target.update({k: v for k, v in c[key].items() if k in target})
+                    target.update({k: float(v) for k, v in c[key].items() if k in target})
+            if 'ceiling' in c:
+                P.CEILING_DBTP = max(-6.0, min(-0.5, float(c['ceiling'])))
+            if 'tone' in c:
+                self.tone_on = bool(c['tone'])
+            if 'leveller' in c:
+                self.leveller_on = bool(c['leveller'])
             g.apply_master()
-            return {'type': 'master', 'eq': P.MASTER_EQ, 'bus': P.MASTER_BUS, 'tape': P.MASTER_TAPE, 'console': P.MASTER_CONSOLE}
-        if t == 'fader' and s:
+        elif t == 'fader' and s:
             s.fader = max(-60.0, min(10.0, float(c['db'])))
             self.drum_retarget(n)
             g.apply_fader(n)

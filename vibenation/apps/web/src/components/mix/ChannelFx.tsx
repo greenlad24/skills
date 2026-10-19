@@ -7,10 +7,10 @@ import { Knob } from './Knob';
 // inserts (our analog models), the bleed expander and the three effect sends. Turning one sends
 // it straight to the engine and holds that effect for the person for the rest of the show.
 
-type P = { sym: string; label: string; min: number; max: number; step: number; def: number; fmt: (v: number) => string; opts?: string[] };
-const db = (v: number) => `${v > 0 ? '+' : ''}${v.toFixed(1)} dB`;
-const pct = (v: number) => `${Math.round(v)}%`;
-const ms = (v: number) => `${v < 10 ? v.toFixed(1) : Math.round(v)} ms`;
+export type P = { sym: string; label: string; min: number; max: number; step: number; def: number; fmt: (v: number) => string; opts?: string[] };
+export const db = (v: number) => `${v > 0 ? '+' : ''}${v.toFixed(1)} dB`;
+export const pct = (v: number) => `${Math.round(v)}%`;
+export const ms = (v: number) => `${v < 10 ? v.toFixed(1) : Math.round(v)} ms`;
 const x10 = (v: number) => v.toFixed(1);
 
 /** Parameters of our insert plugins (ranges from their Faust sources in services/audio/plugins). */
@@ -64,11 +64,11 @@ const GATE: P[] = [
 const SENDS: { fx: 'plate' | 'room' | 'delay'; label: string }[] = [{ fx: 'plate', label: 'PLATE' }, { fx: 'room', label: 'ROOM' }, { fx: 'delay', label: 'ECHO' }];
 const SEND_OFF = -40; // at or below this the send is off
 
-const COLORS = ['#E08A5A', '#E6C07A', '#B9A6FF', '#7FD1C3', '#E58FB0', '#8FA3D9', '#9FC7A8'];
+export const COLORS = ['#E08A5A', '#E6C07A', '#B9A6FF', '#7FD1C3', '#E58FB0', '#8FA3D9', '#9FC7A8'];
 const group: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 10, padding: 12, borderRadius: 14, background: 'rgba(255,236,220,0.035)', border: '1px solid rgba(255,236,220,0.06)' };
 const grid: CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(64px, 1fr))', gap: 10 };
 
-function KnobCell({ p, v, color, onChange }: { p: P; v: number; color: string; onChange: (v: number) => void }) {
+export function KnobCell({ p, v, color, onChange }: { p: P; v: number; color: string; onChange: (v: number) => void }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, minWidth: 0 }}>
       <Knob value={v} min={p.min} max={p.max} step={p.step} color={color} label={p.label} valueText={p.fmt(v)} onChange={onChange} />
@@ -78,7 +78,7 @@ function KnobCell({ p, v, color, onChange }: { p: P; v: number; color: string; o
   );
 }
 
-function Group({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) {
+export function Group({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) {
   return (
     <div style={group}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>

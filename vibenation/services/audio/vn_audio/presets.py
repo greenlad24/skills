@@ -193,6 +193,9 @@ MASTER_TAPE = {'speed': 1, 'drive': 0, 'saturation': 30, 'bias': 50, 'bump': 40,
 # ---- The user's saved balance (18 Oct 2026, 23:27: "save the current balance - that should be the balance from now on
 # with no changes to it"). Faders, pans and EQ exactly as set by hand on the demo; nothing automatic moves them. ----
 BALANCE_LOCKED = True  # no automatic balance moves: no vocal riders, no lead/backing or solo offsets, no band offset, no AI fader moves
+MIX_LOCKED = True  # user, 19 Oct 2026: "no auto changes to the mix": no tone keeper, no auto level, no soundcheck re-trims, no AI mixer.
+# Still on (user's own picks): auto-mute of idle channels, the vocal expander, reverb ducking, and the emergency guards
+# (feedback notch, clipping trim, dead-signal alert).
 BAND_OFFSET_FIXED = 2.0
 SAVED_BALANCE: dict[int, dict] = {
     1: {'fader': -3.5, 'pan': 0.0, 'eq': [('lshelf', 37.0, -4.0, 1.0), ('bell', 3775.0, -3.0, 1.2), ('lpf', 6490.0, 0.0, 0.7), ('bell', 160.0, 3.5, 1.0)]},
