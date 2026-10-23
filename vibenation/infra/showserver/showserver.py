@@ -209,6 +209,7 @@ SLATE_MUSIC_DST = '/opt/vibenation-media/slate-music'
 # phone pictures (WebRTC): measured on the 17 Oct live test recording, the sound was ~0.83 s behind the picture. A negative delay
 # stamps the audio earlier so the stream lines up (measure with a clap and adjust live: {"audio": {"delayMs": n}}).
 AV_SYNC_MS = os.environ.get('VN_SHOW_AUDIO_DELAY_MS', '-830')
+IR_SRC = '/home/vibe/vibenation-media/megami/approved'
 SHOW_OVERRIDES = {'LIVEKIT_URL': 'wss://app.jeeznews.com', 'VN_VIDEO_PROFILE': 'gpu', 'VN_SLATE_MUSIC_DIR': SLATE_MUSIC_DST,
                   'VN_VIDEO_AUDIO_DELAY_MS': AV_SYNC_MS}
 # The build server's web app reaches the show server's engines through an SSH tunnel on these ports.
@@ -277,6 +278,12 @@ def cmd_provision(ip: str) -> None:
         subprocess.run(['ssh', '-i', SSH_KEY, f'root@{ip}', 'mkdir -p /opt/vibenation/data'], check=True)
         subprocess.run(['rsync', '-az', '-e', f'ssh -i {SSH_KEY}', mix, f'root@{ip}:/opt/vibenation/data/mix_state.json'], check=True)
     subprocess.run(['rsync', '-az', '-e', f'ssh -i {SSH_KEY}', '/usr/local/lib/lv2/', f'root@{ip}:/usr/local/lib/lv2/'], check=True)
+    # The approved per-channel impulse responses (MEGAMI copies, version 3): without them those channels play unprocessed.
+    if os.path.isdir(IR_SRC):
+        subprocess.run(['ssh', '-i', SSH_KEY, f'root@{ip}', 'mkdir -p /opt/vibenation/data/ir'], check=True)
+        subprocess.run(['rsync', '-az', '--include', '*_engine.wav', '--exclude', '*', '-e', f'ssh -i {SSH_KEY}', IR_SRC.rstrip('/') + '/', f'root@{ip}:/opt/vibenation/data/ir/'], check=True)
+    else:
+        print(f'warning: no impulse responses at {IR_SRC}: V3 channels will run without them')
     # Slate music for the stream's breaks (the video service falls back to silence without it).
     if os.path.isdir(SLATE_MUSIC_SRC):
         subprocess.run(['ssh', '-i', SSH_KEY, f'root@{ip}', f'mkdir -p {SLATE_MUSIC_DST}'], check=True)

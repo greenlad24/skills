@@ -47,7 +47,9 @@ RETURNS, MEQ, MCOMP, LIMITER, MCONSOLE, MTAPE = 1030, 1040, 1041, 1042, 1043, 10
 INS = 500  # character inserts: 500 + 10*n + k
 CONV = 700  # per-channel stereo convolution (measured impulse responses): 700 + n
 CONV_URI = 'http://gareus.org/oss/lv2/zeroconvolv#MonoToStereo'
-IR_DIR = os.environ.get('VN_IR_DIR', '/home/vibe/vibenation-media/megami/approved')
+# Approved impulse responses: VN_IR_DIR, else data/ir in the repo (the show server gets them there), else the build server's media.
+_IR_REPO = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'data', 'ir')
+IR_DIR = os.environ.get('VN_IR_DIR') or (os.path.abspath(_IR_REPO) if os.path.isdir(_IR_REPO) else '/home/vibe/vibenation-media/megami/approved')
 RETURN_SLOT = {'plate': 1, 'room': 2, 'delay': 3}
 
 EQ_TYPE = {'off': 0, 'bell': 1, 'hpf': 2, 'hshelf': 3, 'lpf': 4, 'lshelf': 5}
