@@ -44,7 +44,12 @@ log = logging.getLogger('vn_video.audio')
 RAW = 'audio/x-raw,format=F32LE,rate=48000,channels=2,layout=interleaved'
 MUSIC_CAPS = 'audio/x-raw,format=S16LE,rate=48000,channels=2,layout=interleaved'
 
-ENCODE = (f'audiomixer name=mix ! {RAW} ! audioconvert ! level name=level interval=1000000000 post-messages=true '
+# The mixer waits up to 200 ms for late audio. With 0 (the default) it fills any 10 ms block that
+# arrives late with silence: JACK hands audio over in 43 ms periods, and in this busy process
+# that made a tiny hole in every period on YouTube (constant stutter, live test 24 Oct). The
+# delay doesn't shift A/V sync: buffers keep their capture timestamps.
+MIXER_LATENCY_NS = 200_000_000
+ENCODE = (f'audiomixer name=mix latency={MIXER_LATENCY_NS} ! {RAW} ! audioconvert ! level name=level interval=1000000000 post-messages=true '
           '! audioresample ! audioconvert ! audio/x-raw,rate=44100,channels=2 '
           '! avenc_aac bitrate=128000 ! aacparse ! audio/mpeg,mpegversion=4,stream-format=raw '
           '! appsink name=aac emit-signals=true sync=false async=false max-buffers=200 drop=true ')
