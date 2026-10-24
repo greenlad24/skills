@@ -33,6 +33,9 @@ FPS = 10
 VOICES = (9, 10)                      # always-voice channels (ch 11 / 16 join when the classifier says voice)
 SOLOISTS = (5, 6)                     # guitar amp and piano (6 = pair 6+7). Sax, harmonica, guitar DI, DI 1 and congas 2 are
                                       # supporting channels and never solo (user, 18 Oct 2026)
+FEATURES = (4, 5, 6, 8)               # camera-only solos (the director cuts to them, the mix doesn't lift them): the two
+                                      # soloists plus acoustic DI and guitar DI (user, 24 Oct 2026: "switch to other cameras
+                                      # only when there's musical solos (by that instrument)")
 PAIRS = {6: (6, 7)}                   # a stereo pair moves together
 AUTOMUTE = tuple(range(4, 17))        # everything but kick, snare, overheads
 LINE = (6, 7, 14)                     # line inputs (keys, synth bass): no bleed, so any signal means playing
@@ -79,6 +82,9 @@ class Arrangement:
         self.solo: int | None = None
         self.solo_cand: tuple[int, float] | None = None
         self.solo_end_s = 0.0
+        self.feature: int | None = None                     # the instrument the camera features (FEATURES), same rules as solo
+        self.feature_cand: tuple[int, float] | None = None
+        self.feature_end_s = 0.0
         self.voices = list(VOICES)
         self.held: set[int] = set()                         # channels a human holds: never moved
 
@@ -107,6 +113,7 @@ class Arrangement:
                 c.muted = True
         self._follow_lead(dt)
         self._follow_solo(dt)
+        self._follow_feature(dt)
         return self._targets()
 
     # ---------- lead / backing ----------
@@ -175,6 +182,31 @@ class Arrangement:
         if self.solo_cand[1] >= SOLO_START_S:
             self.solo, self.solo_cand = best, None
 
+    def _follow_feature(self, dt: float) -> None:
+        """The solo the director films: like _follow_solo, over FEATURES, never moves the mix."""
+        if self.feature is not None:
+            voice_back = any(self.ch[n].silent_s == 0 for n in self.voices)
+            ends = voice_back or self.ch[self.feature].silent_s > 1.0 or self._lift(self.feature) < 0
+            self.feature_end_s = self.feature_end_s + dt if ends else 0.0
+            if self.feature_end_s >= SOLO_END_S:
+                self.feature, self.feature_end_s = None, 0.0
+            return
+        if not self.vocal_resting():
+            self.feature_cand = None
+            return
+        # The mix's soloist wins at once, so the camera and the mix never disagree.
+        if self.solo is not None:
+            self.feature, self.feature_cand = self.solo, None
+            return
+        cands = [(self._lift(n), n) for n in FEATURES if self.ch[n].silent_s == 0 and self._lift(n) >= 2.0]
+        if not cands:
+            self.feature_cand = None
+            return
+        _, best = max(cands)
+        self.feature_cand = (best, self.feature_cand[1] + dt) if self.feature_cand and self.feature_cand[0] == best else (best, dt)
+        if self.feature_cand[1] >= SOLO_START_S:
+            self.feature, self.feature_cand = best, None
+
     # ---------- outputs ----------
 
     def role(self, n: int) -> str:
@@ -213,5 +245,6 @@ class Arrangement:
             'lead': self.lead if self.lead_singing() else None,
             'backing': [n for n in self.voices if self.role(n) == 'backing'],
             'solo': self.solo,
+            'feature': self.feature,
             'muted': [n for n in AUTOMUTE if self.role(n) == 'muted'],
         }

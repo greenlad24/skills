@@ -28,8 +28,9 @@ type EngineState = {
 export type EngineFrame = {
   type: 'meters';
   peak: number[]; rms: number[]; raw: number[]; spec: number[][]; gr: number[]; ride?: number[]; singing?: boolean[];
-  /** Arrangement follower: who sings lead/backing, who soloes, which idle channels are auto-muted. */
-  arrangement?: { lead: number | null; backing: number[]; solo: number | null; muted: number[] };
+  /** Arrangement follower: who sings lead/backing, who soloes (solo = the mix lifts it; feature = the camera
+   *  films it, also acoustic DI and guitar DI), which idle channels are auto-muted. */
+  arrangement?: { lead: number | null; backing: number[]; solo: number | null; feature?: number | null; muted: number[] };
   master: { lufsM: number; lufsS: number; lufsI: number; truePeak: number; limiterGr: number; drive: number; spec: number[] };
 };
 

@@ -1,9 +1,8 @@
 // The director: picks the on-air camera from what the band is playing.
-// Deterministic and fast (every 0.5 s): solos and the lead vocal pull the shot to that
-// player's camera; otherwise it alternates vocal/feature shots with the wide, within
-// dwell limits from the playbook. A manual cut is respected: the director waits out the
-// dwell, then carries on from the shot the human picked. Claude reviews the rules and
-// the camera roles every few minutes (see directorReview).
+// Deterministic and fast (every 0.5 s). The main camera is the one whose name lists the lead
+// singer (Vox C or Vox P) and it is held steady; the director cuts away only for an instrumental
+// solo, to the camera whose name lists that instrument, and comes back when the solo ends
+// (user, 24 Oct 2026). A manual cut is respected: the director waits out the hold, then carries on.
 
 import type { CameraState, ShowState } from '@vibenation/shared';
 import type { AudioLink } from './audio.js';
@@ -35,7 +34,9 @@ const NAME_CHANNELS: [RegExp, number[]][] = [
   [/vox\s*c|vocal\s*c|centre|center/, [9]],
   [/vox\s*p|vocal\s*p/, [10]],
   [/piano|keys?\b|rhodes|organ/, [6, 7]],
-  [/gtr|guitar/, [4, 5, 8]],
+  [/acoustic(\s*(gtr|guitar))?|ac\s*di|\bdi\s*1\b/g, [4]],
+  [/(gtr|guitar)\s*di/g, [8]],
+  [/gtr|guitar/g, [5]], // a plain "Gtr" / "Guitar" is the guitar amp
   [/drum|kit\b|kick|snare/, [1, 2, 3]],
   [/bass/, [12, 14]],
   [/sax|horn|trombone|trumpet|harmonica|flute|brass/, [11, 15, 16]],
@@ -44,7 +45,13 @@ const NAME_CHANNELS: [RegExp, number[]][] = [
 export function channelsOf(c: CameraState): { wide: boolean; chans: Set<number> } {
   const n = c.name.toLowerCase();
   const chans = new Set<number>();
-  for (const [re, chs] of NAME_CHANNELS) if (re.test(n)) chs.forEach((x) => chans.add(x));
+  // Most specific first; a matched phrase is used up, so "Acoustic guitar" isn't also the guitar amp.
+  let rest = n;
+  for (const [re, chs] of NAME_CHANNELS) {
+    if (!rest.match(re)) continue;
+    chs.forEach((x) => chans.add(x));
+    rest = rest.replace(re, ' ');
+  }
   if (!chans.has(9) && !chans.has(10) && /vocal|vox|sing|lead/.test(n)) { chans.add(9); chans.add(10); }
   const wide = /wide|stage|band|front|crowd|audience/.test(n) || chans.size === 0;
   return { wide, chans };
@@ -56,21 +63,27 @@ export function subjectOf(c: CameraState): Subject {
   return 'wide';
 }
 
-// Floors so cuts feel like a human director following the performer, not a metronome.
-const MIN_DWELL_S = 8;     // never cut sooner (playbook may ask for longer)
-const SETTLE_S = 2;        // a new focus must hold this long before it causes a cut
-// The lead singer (Vox C, Vox P, or Congas 1 when it's a voice) is on screen 80-90 % of the song (user, 19 Oct 2026):
-// ~34 s on the singer's camera, then a ~6 s breather on the band, then back = 85 %.
-const SINGER_MAX_S = 34;   // solos are held up to 60 s
-const BREATHER_S = 6;      // a breather away from the singer is this short
+// Floors so cuts feel like a human director, not a metronome.
+const SETTLE_S = 2;        // a new lead singer or soloist must hold this long before it causes a cut
+const MIN_DWELL_S = 8;     // never cut between singers sooner than this
+const SOLO_MIN_S = 4;      // a solo shot lasts at least this long
+// The main singer: the one who sang lead most over the last 30 s. The other singer takes the main
+// camera only when they clearly own that window, so trading lines or a duet keeps the shot steady.
+const LEAD_WINDOW_S = 30;
+const LEAD_TAKEOVER = 0.65;
+
+/** Guitars stand in for each other when no camera names the exact one: the two acoustic
+ *  channels (4 acoustic DI, 8 guitar DI) first, then the guitar amp (5). */
+const STAND_INS: Record<number, number[]> = { 4: [8, 5], 8: [4, 5], 5: [8, 4] };
 
 export class Director {
   playbook: Playbook = loadPlaybook().director ?? { ...DEFAULT_PLAYBOOK };
   private lastCut = Date.now();
   private manualUntil = 0;
-  private focus: { key: string; ch: number | null; since: number; why: string } | null = null;
-  private stable: number | null = null; // the last confirmed performer
-  private breather = false; // the live shot is a short breather away from the singer
+  private focus: { key: string; since: number } | null = null;
+  private lead: number | null = null; // the main singer, kept while they rest between phrases
+  private leads: number[] = [];       // who sang lead, one entry per tick while someone sings (LEAD_WINDOW_S)
+  private onSolo = false; // the live shot is a solo shot
   reason = '';
 
   constructor(
@@ -85,15 +98,7 @@ export class Director {
   manualCut() {
     this.lastCut = Date.now();
     this.manualUntil = Date.now() + this.playbook.manualHoldS * 1000;
-  }
-
-  /** Who is performing now, from the audio engine's arrangement follower (the same decisions
-   *  the mix uses): a solo, else the lead vocal (pauses between phrases count as singing), else the band. */
-  private performer(): { ch: number | null; why: string } {
-    const a = this.audio.history.at(-1)?.arrangement;
-    if (a?.solo) return { ch: a.solo, why: `solo on ch${a.solo}` };
-    if (a?.lead) return { ch: a.lead, why: `ch${a.lead} singing lead` };
-    return { ch: null, why: 'band playing, vocal resting' };
+    this.onSolo = false;
   }
 
   private tick() {
@@ -102,44 +107,50 @@ export class Director {
     const cams = s.cams.filter((c) => c.connected && !c.error);
     if (cams.length < 2) return;
     const now = Date.now();
-    // Track the performer with a settle time, so a breath or a fill never causes a cut.
-    const p = this.performer();
-    const key = String(p.ch);
-    if (!this.focus || this.focus.key !== key) this.focus = { key, ch: p.ch, since: now, why: p.why };
+    const a = this.audio.history.at(-1)?.arrangement;
+    if (a?.lead) {
+      this.leads.push(a.lead);
+      if (this.leads.length > LEAD_WINDOW_S * 2) this.leads.shift();
+      const share = this.leads.filter((x) => x === a.lead).length / this.leads.length;
+      if (this.lead === null || (a.lead !== this.lead && share >= LEAD_TAKEOVER)) this.lead = a.lead;
+    }
+    const solo = a?.feature ?? a?.solo ?? null;
+    // Track what the shot should follow with a settle time, so a breath or a fill never causes a cut.
+    const key = `${this.lead}/${solo}`;
+    if (!this.focus || this.focus.key !== key) this.focus = { key, since: now };
     if (now < this.manualUntil) return;
-    const settled = (now - this.focus.since) / 1000 >= SETTLE_S;
+    if ((now - this.focus.since) / 1000 < SETTLE_S) return;
     const held = (now - this.lastCut) / 1000;
-    if (held < (this.breather ? BREATHER_S : Math.max(MIN_DWELL_S, this.playbook.minDwellS))) return;
+
     const info = new Map(cams.map((c) => [c.id, channelsOf(c)]));
     const live = cams.find((c) => c.id === s.liveCam);
     const covers = (c: CameraState | undefined, ch: number) => !!c && info.get(c.id)!.chans.has(ch);
     // The camera that shows a performer best: the fewest other people in its name.
-    const camFor = (ch: number) => cams.filter((c) => covers(c, ch)).sort((a, b) => info.get(a.id)!.chans.size - info.get(b.id)!.chans.size)[0];
-    const wideCam = cams.find((c) => info.get(c.id)!.wide);
-    const other = cams.find((c) => c.id !== s.liveCam);
-    if (settled) this.stable = this.focus.ch;
-    if (!settled) return; // a performer change is being confirmed: hold the shot
-    const want = this.stable;
+    const best = (ch: number) => cams.filter((c) => covers(c, ch)).sort((x, y) => info.get(x.id)!.chans.size - info.get(y.id)!.chans.size)[0];
+    const camFor = (ch: number) => best(ch) ?? (STAND_INS[ch] ?? []).map(best).find(Boolean);
+    const name = (ch: number) => s.channels.find((c) => c.n === ch)?.name ?? `ch${ch}`;
 
     let target: CameraState | undefined;
     let why = '';
-    let breather = false;
-    if (want !== null && !covers(live, want) && camFor(want)) {
-      target = camFor(want);
-      why = this.focus.why;
-    } else if (want !== null && covers(live, want) && held > (this.focus.why.startsWith('solo') ? 60 : SINGER_MAX_S)) {
-      target = wideCam && wideCam.id !== s.liveCam ? wideCam : other;
-      why = `held ${Math.round(held)} s on the performer: a breather on the band`;
-      breather = !this.focus.why.startsWith('solo');
-    } else if (want === null && held > Math.max(this.playbook.maxWideS, 15)) {
-      target = wideCam && wideCam.id !== s.liveCam && !info.get(s.liveCam)?.wide ? wideCam : other;
-      why = 'instrumental: changing angle';
+    if (solo !== null && camFor(solo)) {
+      // A solo: film the soloist, unless the live camera already shows them.
+      if (!covers(live, solo) && camFor(solo)!.id !== s.liveCam) {
+        target = camFor(solo);
+        why = `${name(solo)} solo`;
+      }
+    } else if (this.lead !== null && camFor(this.lead)) {
+      // The main camera: the lead singer's. Back at once after a solo, otherwise not before the dwell.
+      const main = camFor(this.lead)!;
+      if (main.id !== s.liveCam && (this.onSolo ? held >= SOLO_MIN_S : held >= Math.max(MIN_DWELL_S, this.playbook.minDwellS))) {
+        target = main;
+        why = this.onSolo ? `solo over: back to ${name(this.lead)}` : `${name(this.lead)} singing lead`;
+      }
     }
     if (target && target.id !== s.liveCam) {
       this.lastCut = now;
-      this.breather = breather;
+      this.onSolo = solo !== null;
       this.reason = why;
-      this.cut(target.id, why, settled ? 'likely' : 'guessing');
+      this.cut(target.id, why, 'likely');
     }
   }
 }
