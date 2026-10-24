@@ -84,6 +84,7 @@ class LockingCameraCapturer(
     companion object {
         private const val TAG = "VnCamera"
         const val LOCK_AFTER_MS = 4000L
+        const val STAGE_EV = 1.0f
 
         /** Last locked picture in this app session (null = lock fresh). */
         @Volatile var held: Held? = null
@@ -178,6 +179,8 @@ class LockingCameraCapturer(
     @Volatile var format: Format = format
         private set
     private lateinit var characteristics: CameraCharacteristics
+    private var aeRegionsMax = 0
+    private var aeCompensation = 0
     private var canContinuousAf = false
     private var afRegionsMax = 0
     private var xyzToCamera: DoubleArray? = null
@@ -201,6 +204,8 @@ class LockingCameraCapturer(
         val afModes = characteristics.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES)?.toSet().orEmpty()
         canContinuousAf = CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_VIDEO in afModes
         afRegionsMax = characteristics.get(CameraCharacteristics.CONTROL_MAX_REGIONS_AF) ?: 0
+        aeRegionsMax = characteristics.get(CameraCharacteristics.CONTROL_MAX_REGIONS_AE) ?: 0
+        aeCompensation = stageCompensation(characteristics)
         xyzToCamera = Cct.pickColorTransform(characteristics)
         manualCapable = characteristics.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES)?.let { caps ->
             CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR in caps &&
@@ -323,6 +328,9 @@ class LockingCameraCapturer(
         // Tripod camera: no digital stabilisation (it crops and wobbles).
         b.set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, CameraMetadata.CONTROL_VIDEO_STABILIZATION_MODE_OFF)
         if (canContinuousAf) b.set(CaptureRequest.CONTROL_AF_MODE, CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_VIDEO)
+        // Stage scenes: bright lamps in frame make auto exposure leave the players dark (congas
+        // camera, 24 Oct 2026). Expose a bit brighter than the camera's own choice.
+        if (aeCompensation != 0) b.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, aeCompensation)
         b.set(CaptureRequest.CONTROL_AE_LOCK, lockedNow)
         b.set(CaptureRequest.CONTROL_AWB_LOCK, lockedNow)
         applyZoom(b)
@@ -358,6 +366,21 @@ class LockingCameraCapturer(
         val r = Rect(x - half, y - half, x + half, y + half)
         r.intersect(0, 0, activeArray.width(), activeArray.height())
         b.set(CaptureRequest.CONTROL_AF_REGIONS, arrayOf(MeteringRectangle(r, MeteringRectangle.METERING_WEIGHT_MAX)))
+        // The tapped spot also sets the brightness: tap the players, then Re-lock picture.
+        if (aeRegionsMax >= 1) {
+            val ah = (minOf(c.width(), c.height()) * 0.18f).roundToInt()
+            val ar = Rect(x - ah, y - ah, x + ah, y + ah)
+            ar.intersect(0, 0, activeArray.width(), activeArray.height())
+            b.set(CaptureRequest.CONTROL_AE_REGIONS, arrayOf(MeteringRectangle(ar, MeteringRectangle.METERING_WEIGHT_MAX)))
+        }
+    }
+
+    /** +1 EV (clamped to what the camera allows), in the camera's compensation steps. */
+    private fun stageCompensation(ch: CameraCharacteristics): Int {
+        val range = ch.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE) ?: return 0
+        val step = ch.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_STEP)?.toFloat() ?: return 0
+        if (step <= 0f) return 0
+        return (STAGE_EV / step).roundToInt().coerceIn(range.lower, range.upper)
     }
 
     /** Re-issue the current picture (locked or held) with the latest zoom / focus point. */
