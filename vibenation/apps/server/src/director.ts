@@ -40,7 +40,7 @@ const NAME_CHANNELS: [RegExp, number[]][] = [
   [/drum|kit\b|kick|snare/, [1, 2, 3]],
   [/bass/, [12, 14]],
   [/sax|horn|trombone|trumpet|harmonica|flute|brass/, [11, 15, 16]],
-  [/conga|perc/, [11, 13]],
+  [/cong[ao]|perc/, [11, 13]], // "Congas" or "Congos"
 ];
 export function channelsOf(c: CameraState): { wide: boolean; chans: Set<number> } {
   const n = c.name.toLowerCase();
