@@ -46,6 +46,8 @@ export function ShowScreen() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <span className="vn-label">CAMERAS</span>
           <span style={{ color: 'var(--text-3)', fontSize: 12 }}>Click a camera or press 1–{s.cams.length} to put it on air (Claude keeps directing from there) · the slate is a source too</span>
+          <span style={{ flex: 1 }} />
+          <ShareButton broadcastId={s.onAir ? s.golive.broadcastId : undefined} />
         </div>
         <section aria-label="Cameras" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(176px, 1fr))', gap: 14, marginTop: -6 }}>
           {s.cams.map((c) => <CamTile key={c.id} cam={c} live={!s.slate && c.id === s.liveCam} />)}
@@ -503,5 +505,20 @@ function Sidebar({ s, open, setOpen }: { s: ShowState; open: boolean; setOpen: (
         </div>
       )}
     </aside>
+  );
+}
+
+/** Copies the live's YouTube link (unlisted lives open for anyone who has it). */
+function ShareButton({ broadcastId }: { broadcastId?: string }) {
+  const [copied, setCopied] = useState(false);
+  const url = broadcastId ? `https://youtube.com/live/${broadcastId}` : '';
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* no clipboard on http */ }
+  };
+  return (
+    <button type="button" disabled={!url} onClick={() => void copy()} title={url ? `Copy ${url}` : 'Go live to get a link to share'}
+      style={{ height: 32, padding: '0 14px', borderRadius: 10, border: '1px solid rgba(255,236,220,0.14)', background: 'rgba(255,236,220,0.06)', color: url ? 'var(--text)' : 'var(--text-3)', fontSize: 13, fontWeight: 600, cursor: url ? 'pointer' : 'not-allowed' }}>
+      {copied ? 'Copied ✓' : 'Share link'}
+    </button>
   );
 }
