@@ -341,7 +341,7 @@ export class DemoShow {
       }
       case 'take': {
         const cam = s.cams.find((c) => c.id === a.cam);
-        if (!cam) return;
+        if (!cam || (cam.identity && !cam.connected)) return; // a disconnected phone can't go on air
         s.liveCam = cam.id;
         s.slate = null; // a camera click ends the slate: back to the band
         this.lastCut = now();

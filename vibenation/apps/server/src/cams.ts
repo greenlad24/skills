@@ -9,6 +9,9 @@ import type { FastifyInstance } from 'fastify';
 import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
 import type { CamCommand, CamStatus, CameraState } from '@vibenation/shared';
 
+/** A camera whose phone has been disconnected this long leaves the camera choices. */
+const GONE_AFTER_MS = 20_000;
+
 const SECRET = process.env.VN_SESSION_SECRET || randomBytes(32).toString('hex');
 const LK_KEY = process.env.LIVEKIT_API_KEY ?? '';
 const LK_SECRET = process.env.LIVEKIT_API_SECRET ?? '';
@@ -126,11 +129,15 @@ export function registerCams(app: FastifyInstance, host: CamHost) {
   });
 
   // Phone status + tally socket. Auth is the signed camToken from /join.
+  const goneTimers = new Map<number, ReturnType<typeof setTimeout>>();
   app.get<{ Querystring: { ct?: string } }>('/cam-ws', { websocket: true }, (socket, req) => {
     const id = Number(readSigned('cam', req.query.ct));
     if (!id) return socket.close(4003, 'bad camera token');
     const send = (c: CamCommand) => socket.send(JSON.stringify(c));
-    sockets.set(id, { send });
+    const entry = { send };
+    sockets.set(id, entry);
+    clearTimeout(goneTimers.get(id));
+    goneTimers.delete(id);
     send({ type: 'tally', live: host.liveCam() === id });
     // After a server restart the phone reconnects here without re-joining: rebuild its real
     // camera entry (identity + name from the LiveKit room) so it doesn't land on a demo camera.
@@ -156,9 +163,16 @@ export function registerCams(app: FastifyInstance, host: CamHost) {
       host.upsertCam({ ...cur, connected: true, battery, charging: !!s.charging, temp: s.temp, wifi: s.wifi, kbps: s.kbps, fps: s.fps, width: s.width, height: s.height, wb: s.wb, exposure: s.exposure, locked: s.locked, warn, error: undefined });
     });
     socket.on('close', () => {
+      if (sockets.get(id) !== entry) return; // the phone already reconnected on a new socket
       sockets.delete(id);
       const cur = real();
       if (cur) host.upsertCam({ ...cur, connected: false, error: 'Disconnected', warn: undefined });
+      // Still gone after the grace period: drop it from the camera choices. It comes back by
+      // itself when the phone reconnects (the socket open above rebuilds its entry).
+      goneTimers.set(id, setTimeout(() => {
+        goneTimers.delete(id);
+        if (!sockets.has(id)) host.camGone(id);
+      }, GONE_AFTER_MS));
     });
   });
 
