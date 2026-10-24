@@ -230,8 +230,9 @@ class Program:
         if sink is not None:
             sink.send_event(GstVideo.video_event_new_upstream_force_key_unit(Gst.CLOCK_TIME_NONE, True, 0))
 
-    def wrap_frame(self, frame) -> Gst.Sample | None:
-        """LiveKit I420 frame -> Gst.Sample (repacked if strides differ from GStreamer's)."""
+    def wrap_frame(self, frame, look=None) -> Gst.Sample | None:
+        """LiveKit I420 frame -> Gst.Sample (repacked if strides differ from GStreamer's).
+        look: (Looks, camera name) to brighten/colour that camera's picture."""
         w, h = frame.width, frame.height
         if w < 2 or h < 2:
             return None
@@ -257,6 +258,10 @@ class Program:
                     o = vi.offset[i] + r * vi.stride[i]
                     data[o:o + row] = plane[r * src_stride:r * src_stride + row]
             data = bytes(data)
+        if look is not None:
+            cw, ch = (w + 1) // 2, (h + 1) // 2
+            sizes = (vi.stride[0] * h, vi.stride[1] * ch, vi.stride[2] * ch) if not tight else (w * h, cw * ch, cw * ch)
+            data = look[0].apply(look[1], data, tuple(vi.offset[:3]), sizes)
         return Gst.Sample.new(Gst.Buffer.new_wrapped(data), caps, None, None)
 
     def push(self, src: Gst.Element, sample: Gst.Sample):

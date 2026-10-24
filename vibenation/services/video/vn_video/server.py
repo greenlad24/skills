@@ -20,6 +20,7 @@ from .audio import Audio
 from .cams import Cams
 from .config import OUTPUT_PROFILES, SLATES, Settings, load
 from .gst import Gst
+from .looks import Looks
 from .outputs import Destination
 from .program import Program, encode_jpeg, render
 
@@ -40,6 +41,7 @@ class Service:
         self.subs: dict[str, list[Destination]] = {k: [] for k in OUTPUT_PROFILES}
         self.prog = Program(cfg, self._on_encoded)
         self.audio = Audio(cfg.audio, cfg.jack_ports, self._on_audio, cfg.slate_music_dir, cfg.slate_music_db)
+        self.looks = Looks()
         self.cams = Cams(cfg.livekit_url, cfg.livekit_key, cfg.livekit_secret, cfg.room, self._on_frame)
         self.error: str | None = None
         self.cpu = 0.0
@@ -93,7 +95,9 @@ class Service:
                 targets.append(self.prog.srcW)
         if not targets:
             return
-        sample = self.prog.wrap_frame(frame)
+        cam = self.cams.cams.get(cam_id)
+        name = cam.name if cam else ''
+        sample = self.prog.wrap_frame(frame, (self.looks, name) if name in self.looks.by_name else None)
         if sample is not None:
             for t in targets:
                 self.prog.push(t, sample)
@@ -206,6 +210,16 @@ class Service:
     async def command(self, body: dict):
         if 'program' in body:
             self.set_program(body['program'])
+        if 'look' in body:
+            lk = dict(body['look'] or {})
+            name = lk.pop('name', None)
+            if not name and lk.get('cam') is not None:
+                cam = self.cams.cams.get(int(lk['cam']))
+                name = cam.name if cam else None
+            lk.pop('cam', None)
+            if not name:
+                raise ValueError('look needs a camera name or a connected cam id')
+            self.looks.set(name, **lk)
         if 'info' in body:
             i = body['info'] or {}
             inf = self.info
@@ -343,6 +357,7 @@ class Service:
                      'nowPlaying': self.info.now_playing, 'colors': list(self.info.colors)},
             'audio': {**self.audio.info(), 'delayMs': self.audio_delay_ms},
             'cameras': self.cams.info(),
+            'looks': self.looks.by_name,
             'encoders': enc,
             'outputs': [d.info() for d in self.dests.values()],
             'stats': {'fps': round(self.prog.fps['program'], 1), 'verticalFps': round(self.prog.fps['vertical'], 1),

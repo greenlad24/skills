@@ -20,6 +20,7 @@ log = logging.getLogger('vn_video.cams')
 class Cam:
     def __init__(self, cam_id: int, identity: str):
         self.id, self.identity = cam_id, identity
+        self.name = ''                    # its role, e.g. "Congos" from "CAM 4 · Congos" (keys its look)
         self.width = self.height = 0
         self.rotation = 0
         self.frames = 0
@@ -32,7 +33,7 @@ class Cam:
         self.task: asyncio.Task | None = None
 
     def info(self) -> dict:
-        return {'id': self.id, 'identity': self.identity, 'width': self.width, 'height': self.height,
+        return {'id': self.id, 'identity': self.identity, 'name': self.name, 'width': self.width, 'height': self.height,
                 'fps': round(self.fps, 1), 'rotation': self.rotation,
                 'lastFrameAgeMs': round((time.time() - self.last_frame_t) * 1000) if self.last_frame_t else None,
                 'quality': {0: 'low', 1: 'medium', 2: 'high'}.get(self.quality) if self.quality is not None else None,
@@ -122,6 +123,7 @@ class Cams:
         if old and old.task:
             old.task.cancel()
         cam = Cam(cid, participant.identity)
+        cam.name = (participant.name or '').split('·', 1)[-1].strip()
         cam.publication = pub
         self.cams[cid] = cam
         cam.task = asyncio.ensure_future(self._read(cam, track))
