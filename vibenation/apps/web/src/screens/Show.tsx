@@ -517,7 +517,7 @@ function ShareButton({ broadcastId }: { broadcastId?: string }) {
   };
   return (
     <button type="button" disabled={!url} onClick={() => void copy()} title={url ? `Copy ${url}` : 'Go live to get a link to share'}
-      style={{ height: 32, padding: '0 14px', borderRadius: 10, border: '1px solid rgba(255,236,220,0.14)', background: 'rgba(255,236,220,0.06)', color: url ? 'var(--text)' : 'var(--text-3)', fontSize: 13, fontWeight: 600, cursor: url ? 'pointer' : 'not-allowed' }}>
+      style={{ height: 32, padding: '0 14px', borderRadius: 10, border: '1px solid rgba(255,236,220,0.14)', background: 'rgba(255,236,220,0.06)', color: url ? 'var(--text-1)' : 'var(--text-3)', fontSize: 13, fontWeight: 600, cursor: url ? 'pointer' : 'not-allowed' }}>
       {copied ? 'Copied ✓' : 'Share link'}
     </button>
   );
