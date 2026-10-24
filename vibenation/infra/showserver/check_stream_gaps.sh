@@ -3,7 +3,14 @@
 # YouTube) and counts silent gaps in the sound. Run on the show server while live:
 #   bash /opt/vibenation/infra/showserver/check_stream_gaps.sh
 # Prints "OK 0 gaps" or "STUTTER: N gaps"; exit code 1 on stutter.
+#
+# WARNING: on the 24 Oct live, YouTube dropped and reconnected ~14 s after each run (a few
+# seconds of outage for viewers). Until that is understood it refuses to run while a platform
+# is live; pass --while-live to run anyway.
 set -u
+if [ "${1:-}" != "--while-live" ] && curl -s -m3 127.0.0.1:8092/state | python3 -c 'import json,sys; o=json.load(sys.stdin)["outputs"]; sys.exit(0 if any(x["name"] != "GapCheck" and x["state"] == "live" for x in o) else 1)'; then
+  echo 'A platform is live: not running (it can make YouTube reconnect). Use --while-live to force.'; exit 3
+fi
 cd /tmp && rm -f vn_gapcheck.flv vn_gapcheck.wav
 timeout 40 ffmpeg -v error -listen 1 -i rtmp://127.0.0.1:19350/live/gapcheck -c copy -t 10 -y vn_gapcheck.flv &
 sleep 1
