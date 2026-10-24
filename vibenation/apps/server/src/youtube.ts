@@ -64,7 +64,17 @@ async function yt<T>(method: string, pathAndQuery: string, body?: unknown): Prom
   return (text ? JSON.parse(text) : {}) as T;
 }
 
-type BroadcastItem = { id: string; snippet: { title: string; scheduledStartTime?: string }; status: { lifeCycleStatus: string }; contentDetails?: { boundStreamId?: string } };
+type BroadcastItem = { id: string; snippet: { title: string; scheduledStartTime?: string }; status: { lifeCycleStatus: string }; contentDetails?: { boundStreamId?: string; latencyPreference?: string } };
+
+/** Every broadcast plays with YouTube's normal latency: low and ultra-low latency keep only a
+ * few seconds of player buffer, and viewers on a shaky connection hear the sound stutter
+ * (live test, 24 Oct). Never change this; youtube.test.ts fails if anything else is set. */
+export const LATENCY = 'normal';
+
+/** contentDetails with normal latency forced on (low latency off). */
+export function withNormalLatency<T extends Record<string, unknown>>(cd: T): T & { latencyPreference: typeof LATENCY; enableLowLatency: false } {
+  return { ...cd, latencyPreference: LATENCY, enableLowLatency: false };
+}
 type StreamItem = { id: string; cdn: { ingestionInfo: { ingestionAddress: string; streamName: string } } };
 
 async function ingestFor(streamId?: string): Promise<Broadcast['ingest']> {
@@ -93,7 +103,7 @@ export const youtube = {
     const b = await yt<BroadcastItem>('POST', '/liveBroadcasts?part=snippet,status,contentDetails', {
       snippet: { title: opts.title.slice(0, 100), description: opts.description.slice(0, 5000), scheduledStartTime: new Date().toISOString() },
       status: { privacyStatus: opts.privacy, selfDeclaredMadeForKids: false },
-      contentDetails: { enableAutoStart: true, enableAutoStop: true, latencyPreference: 'low', enableDvr: true },
+      contentDetails: withNormalLatency({ enableAutoStart: true, enableAutoStop: true, enableDvr: true }),
     });
     const s = await yt<StreamItem>('POST', '/liveStreams?part=snippet,cdn,contentDetails', {
       snippet: { title: `VibeNation ${new Date().toISOString().slice(0, 16)}` },
@@ -110,6 +120,7 @@ export const youtube = {
     const list = await this.upcoming();
     const b = list.find((x) => x.id === broadcastId);
     if (!b) throw new Error('That scheduled broadcast was not found.');
+    await this.ensureNormalLatency(b.id); // a broadcast scheduled in YouTube Studio may use low latency
     if (b.ingest) return b;
     const s = await yt<StreamItem>('POST', '/liveStreams?part=snippet,cdn,contentDetails', {
       snippet: { title: `VibeNation ${new Date().toISOString().slice(0, 16)}` },
@@ -131,6 +142,21 @@ export const youtube = {
       method: 'POST', headers: { authorization: `Bearer ${await accessToken()}`, 'content-type': 'image/jpeg' }, body: new Uint8Array(jpeg),
     });
     if (!r.ok) throw new Error(`Thumbnail upload failed: ${r.status} ${(await r.text()).slice(0, 200)} (custom thumbnails need a verified channel)`);
+  },
+
+  /** The broadcast's latency setting as YouTube reports it. */
+  async latency(broadcastId: string): Promise<string> {
+    const r = await yt<{ items: BroadcastItem[] }>('GET', `/liveBroadcasts?part=contentDetails&id=${broadcastId}`);
+    return r.items[0]?.contentDetails?.latencyPreference ?? 'unknown';
+  },
+
+  /** Switch a not-yet-live broadcast to normal latency (YouTube refuses changes once it is live). */
+  async ensureNormalLatency(broadcastId: string) {
+    const r = await yt<{ items: { id: string; contentDetails: Record<string, unknown> }[] }>('GET', `/liveBroadcasts?part=contentDetails&id=${broadcastId}`);
+    const cd = r.items[0]?.contentDetails;
+    if (!cd || cd.latencyPreference === LATENCY) return;
+    const { boundStreamId: _s, boundStreamLastUpdateTimeMs: _t, ...rest } = cd;
+    await yt('PUT', '/liveBroadcasts?part=contentDetails', { id: broadcastId, contentDetails: withNormalLatency(rest) });
   },
 
   async status(broadcastId: string): Promise<string> {

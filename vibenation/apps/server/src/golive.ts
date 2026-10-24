@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 import type { FeedItem, Platform, PreflightCheck, ShowState } from '@vibenation/shared';
 import type { AudioLink } from './audio.js';
-import { youtube } from './youtube.js';
+import { LATENCY, youtube } from './youtube.js';
 import type { StreamPackage } from './package.js';
 
 const DATA = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../data');
@@ -133,6 +133,8 @@ export class GoLive {
           : await youtube.create({ title: pkg?.titles[0] ?? 'LIVE: Funk & Soul Cover Band | Real Musicians (Not AI)', description: pkg?.description ?? 'Subscribe: https://youtube.com/@MusicLiveLove', privacy, tags: pkg?.tags });
         if (!b.ingest) throw new Error('YouTube did not return a stream key.');
         s.golive.broadcastId = b.id;
+        const latency = await youtube.latency(b.id).catch(() => 'unknown');
+        if (latency !== LATENCY) this.h.addFeed({ kind: 'EMERGENCY', text: `YouTube broadcast is on ${latency} latency, not normal: viewers may hear the sound stutter.`, why: 'Set it to Normal latency in YouTube Studio before the next show.' });
         dests.push({ name: 'YouTube', url: b.ingest.url, key: b.ingest.key, profile: '16x9-9M' });
         this.h.addFeed({ kind: 'SHOW', text: scheduled ? `Bound to your scheduled YouTube broadcast "${b.title}".` : `Created the YouTube broadcast "${b.title}" (${privacy}).` });
       }
