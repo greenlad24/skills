@@ -15,7 +15,7 @@ const ghostBtn = { flex: 1, minHeight: 44, borderRadius: 12, border: '1px solid 
 export function GoLiveScreen() {
   const s = useShow();
   const [countdown, setCountdown] = useState<number | null>(null);
-  const [privacy, setPrivacy] = useState<'public' | 'private'>('public');
+  const [privacy, setPrivacy] = useState<'public' | 'unlisted'>('public');
   const [pb, setPb] = useState<{ director: { version: number }; shows: number; lessons: { k: string; t: string }[] } | null>(null);
   useEffect(() => { fetch('/api/playbook').then((r) => r.json()).then(setPb).catch(() => undefined); }, [s?.golive.phase]);
   const [scheduled, setScheduled] = useState<{ id: string; title: string; scheduledStart?: string }[]>([]);
@@ -45,7 +45,7 @@ export function GoLiveScreen() {
   const blocker = firstError
     ? { text: `${firstError.title}: ${firstError.detail}`, level: 'error' as const }
     : count === 0 ? { text: 'Connect at least one destination to go live', level: 'warn' as const } : null;
-  const start = (p: 'public' | 'private' = 'public') => { if (!blocker && !s.onAir) { setPrivacy(p); setCountdown(COUNTDOWN_S); } };
+  const start = (p: 'public' | 'unlisted' = 'public') => { if (!blocker && !s.onAir) { setPrivacy(p); setCountdown(COUNTDOWN_S); } };
   const next = scheduled.find((b) => b.scheduledStart && Date.parse(b.scheduledStart) > Date.now() - 3600_000);
 
   return (
@@ -74,7 +74,7 @@ export function GoLiveScreen() {
             <button style={{ ...ghostBtn, flex: 'none' }} onClick={() => { if (confirm('End the stream? Viewers see the thanks-for-watching slate, then the stream stops.')) send({ type: 'end' }); }}>End the show…</button>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, fontSize: 13 }}>
-              <button style={linkBtn} disabled={!!blocker} onClick={() => start('private')}>Start a private test stream first</button>
+              <button style={linkBtn} disabled={!!blocker} onClick={() => start('unlisted')}>Start an unlisted test stream first (link only)</button>
             </div>
           )}
         </section>
