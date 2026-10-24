@@ -230,6 +230,10 @@ class Audio:
         music = self.music is not None and bool(self.music.tracks)
         p = Gst.parse_launch(SOURCES[source] + BAND + (MUSIC if music else '') + ENCODE)
         p.use_clock(CLOCK)
+        mixer = p.get_by_name('mix')
+        if mixer.get_property('latency') < MIXER_LATENCY_NS:  # never stream without the late-audio wait
+            log.error('audio mixer latency below %d ms: fixing it (it causes the stutter)', MIXER_LATENCY_NS // 1_000_000)
+            mixer.set_property('latency', MIXER_LATENCY_NS)
         sink = p.get_by_name('aac')
         sink.connect('new-sample', self._new_sample)
         self.pipe, self.source = p, source
